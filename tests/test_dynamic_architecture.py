@@ -146,3 +146,22 @@ def test_dynamic_revision_does_not_insert_irrelevant_fixed_shop(tmp_path,monkeyp
     assert "ShopService" not in names
     assert reply.authored_plan.revision_count == 1
     assert reply.ready_to_build
+
+
+class BrokenDesignRouter:
+    def complete_json(self, prompt, **kwargs):
+        raise RuntimeError("real local model endpoint is down")
+
+def test_failed_model_architecture_does_not_return_successful_stock_game(tmp_path,monkeypatch):
+    monkeypatch.setenv("RMM_PREDESIGN_LIVE_SEARCH","0")
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN","1")
+    monkeypatch.setenv("RMM_ENABLE_MODEL_QUERY_EXPANSION","0")
+    session=CompleteRobloxAISession(output_root=tmp_path)
+    session.planner.router=BrokenDesignRouter()
+    reply=session.plan("코인 상점과 전투")
+    assert not reply.ready_to_build
+    ledger=reply.authored_plan.proposal.game_design["pre_design_research"]["ledger"]
+    assert "dynamic_architecture_failed" in ledger["unimplemented_facets"]
+    assert reply.authored_plan.proposal.game_design["dynamic_design"] is None
+    build=session.build(source_only=True)
+    assert not build.metadata["acceptance"]["passed"]
