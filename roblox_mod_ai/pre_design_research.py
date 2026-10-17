@@ -143,11 +143,16 @@ class RobloxPreDesignResearch:
         self.live_enabled = (os.environ.get("RMM_PREDESIGN_LIVE_SEARCH", "1") == "1"
                              if live_enabled is None else live_enabled)
         self.api = RobloxAPICatalog()
+        self.model_query_error: str | None = None
 
     def _propose_semantic_searches(self, prompt: str, ledger: dict) -> list[dict]:
         """Model proposes queries only, never source evidence or game success."""
-        if os.environ.get("RMM_ENABLE_MODEL_QUERY_EXPANSION") != "1" or self.router is None:
+        setting = os.environ.get("RMM_ENABLE_MODEL_QUERY_EXPANSION", "auto").lower()
+        enabled = setting == "1" or (setting == "auto"
+                  and bool(os.environ.get("ROBLOX_LLAMA_SERVER_URL")))
+        if not enabled or self.router is None:
             return []
+        self.model_query_error = None
         requirements = ledger["requirements"]
         try:
             output = self.router.complete_json(
@@ -160,7 +165,8 @@ class RobloxPreDesignResearch:
                               "requirements":requirements},ensure_ascii=False),
                 role="planner", temperature=0.1
             )
-        except (ValueError, RuntimeError, OSError, TypeError):
+        except (ValueError, RuntimeError, OSError, TypeError) as exc:
+            self.model_query_error = type(exc).__name__ + ": " + str(exc)[:200]
             return []
         proposed=[]
         if not isinstance(output,dict): return []
@@ -210,6 +216,9 @@ class RobloxPreDesignResearch:
         evidence: list[dict[str, Any]] = []
         queries: list[dict[str, Any]] = []
         failures: list[dict[str, str]] = []
+        if self.model_query_error:
+            failures.append({"facet":"model_query_expansion", "provider":"local_small_model",
+                             "reason":self.model_query_error})
         asset_candidates: list[dict[str, Any]] = []
         reuse_candidates: list[dict[str, str]] = []
         requested={facet["id"] for facet in ledger["facets"]}
