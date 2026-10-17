@@ -1,139 +1,15 @@
-"""Roblox Creator Store & Marketplace asset discovery and verification client."""
+"""Official Roblox Creator Store search with authoritative detail verification.
 
+No offline guessed IDs. A creator badge is not a security audit of asset bytes.
+"""
 from __future__ import annotations
 
 import os
 import re
-import urllib.parse
+import httpx
 from typing import Any
 
-import httpx
-
 from .spec import RobloxAssetSpec
-
-
-# Standard Roblox Asset Type IDs and Names for Toolbox API
-ASSET_TYPE_IDS = {
-    "Model": 10,
-    "Audio": 3,
-    "Decal": 13,
-    "MeshPart": 40,
-    "Plugin": 38,
-    "Animation": 24,
-}
-
-# Curated verified offline fallback assets (Roblox official / endorsed IDs)
-CURATED_CREATOR_STORE_ASSETS: list[RobloxAssetSpec] = [
-    RobloxAssetSpec(
-        asset_id="rbxassetid://47433",
-        name="Classic Sword",
-        asset_type="Model",
-        creator="Roblox",
-        destination_service="StarterPack",
-        description="Official classic Roblox sword with slash animation and damage mechanics.",
-        verified=True,
-    ),
-    RobloxAssetSpec(
-        asset_id="rbxassetid://1843118928",
-        name="Raycast Gun Framework",
-        asset_type="Model",
-        creator="RobloxEndorsed",
-        destination_service="ReplicatedStorage",
-        description="Fast server-authoritative raycast projectile and gun mechanics.",
-        verified=True,
-    ),
-    RobloxAssetSpec(
-        asset_id="rbxassetid://6543210987",
-        name="Modern HUD Kit",
-        asset_type="Model",
-        creator="RobloxCommunity",
-        destination_service="StarterGui",
-        description="Clean, mobile-responsive health bar, coins display, and inventory UI frames.",
-        verified=True,
-    ),
-    RobloxAssetSpec(
-        asset_id="rbxassetid://5432109876",
-        name="Arena Spawn Baseplate",
-        asset_type="Model",
-        creator="Roblox",
-        destination_service="Workspace",
-        description="Standard textured platform with team spawn points and forcefield barriers.",
-        verified=True,
-    ),
-    RobloxAssetSpec(
-        asset_id="rbxassetid://7890123456",
-        name="Shop NPC Rig",
-        asset_type="Model",
-        creator="Roblox",
-        destination_service="Workspace",
-        description="R15 interactive NPC with ProximityPrompt for opening in-game shop.",
-        verified=True,
-    ),
-    RobloxAssetSpec(
-        asset_id="rbxassetid://12345001",
-        name="Obby Checkpoint Pad",
-        asset_type="Model",
-        creator="Roblox",
-        destination_service="Workspace",
-        description="Interactive checkpoint platform with stage number indicator and particle effect.",
-        verified=True,
-    ),
-    RobloxAssetSpec(
-        asset_id="rbxassetid://12345002",
-        name="Tycoon Conveyor & Dropper",
-        asset_type="Model",
-        creator="Roblox",
-        destination_service="Workspace",
-        description="Physics-based ore dropper and motorized conveyor belt assembly.",
-        verified=True,
-    ),
-    RobloxAssetSpec(
-        asset_id="rbxassetid://12345003",
-        name="Simulator Click Tool",
-        asset_type="Model",
-        creator="Roblox",
-        destination_service="StarterPack",
-        description="Clicking tool with swing animations and capacity meter.",
-        verified=True,
-    ),
-    # Audio Assets
-    RobloxAssetSpec(
-        asset_id="rbxassetid://9114223174",
-        name="Coin Collect Sound",
-        asset_type="Audio",
-        creator="Roblox",
-        destination_service="SoundService",
-        description="High-quality chime sound for collecting coins or level-up rewards.",
-        verified=True,
-    ),
-    RobloxAssetSpec(
-        asset_id="rbxassetid://9114221588",
-        name="Sword Slash Sound",
-        asset_type="Audio",
-        creator="Roblox",
-        destination_service="SoundService",
-        description="Dynamic whoosh and blade impact sound effect.",
-        verified=True,
-    ),
-    RobloxAssetSpec(
-        asset_id="rbxassetid://9114224001",
-        name="Purchase Cash Register Sound",
-        asset_type="Audio",
-        creator="Roblox",
-        destination_service="SoundService",
-        description="Cash register bell sound effect for shop transactions.",
-        verified=True,
-    ),
-    RobloxAssetSpec(
-        asset_id="rbxassetid://9114224002",
-        name="Stage Victory Fanfare",
-        asset_type="Audio",
-        creator="Roblox",
-        destination_service="SoundService",
-        description="Victory fanfare sound for completing obby stages and achievements.",
-        verified=True,
-    ),
-]
 
 # Signatures often found in malicious/backdoor Roblox models
 BACKDOOR_PATTERNS = [
@@ -146,192 +22,141 @@ BACKDOOR_PATTERNS = [
 ]
 
 
+
+ASSET_TYPES = frozenset(("Model", "Audio", "Decal", "MeshPart", "Plugin"))
+
 class RobloxCreatorStoreCatalog:
-    """Discovers, verifies, and safely injects assets from the Roblox Creator Store."""
+    SEARCH_URL = "https://apis.roblox.com/toolbox-service/v2/assets:search"
+    DETAILS_URL = "https://apis.roblox.com/toolbox-service/v2/assets/"
 
-    def __init__(self, api_key: str | None = None) -> None:
-        self.api_key = api_key or os.environ.get("ROBLOX_OPEN_CLOUD_API_KEY", "")
-        self.timeout = 5.0
+    def __init__(self, api_key: str | None = None, client: httpx.Client | None = None) -> None:
+        self.api_key = api_key if api_key is not None else os.environ.get("ROBLOX_CREATOR_STORE_API_KEY", os.environ.get("ROBLOX_OPEN_CLOUD_API_KEY", ""))
+        self.client = client
+        self.timeout = 8.0
+        self.last_error: str | None = None
 
-    def search(
-        self,
-        query: str,
-        asset_type: str = "Model",
-        limit: int = 5,
-    ) -> list[RobloxAssetSpec]:
-        """Strictly searches Creator Store for assets matching the requested asset_type."""
-        query_clean = query.strip()
-        if not query_clean:
+    def _headers(self) -> dict[str,str]:
+        headers = {"Accept":"application/json"}
+        if self.api_key: headers["x-api-key"] = self.api_key
+        return headers
+
+    def _request(self, method: str, url: str, **kwargs: Any) -> dict[str,Any]:
+        if self.client is None:
+            with httpx.Client(timeout=self.timeout) as client:
+                response = client.request(method, url, headers=self._headers(), **kwargs)
+        else:
+            response = self.client.request(method, url, headers=self._headers(), **kwargs)
+        response.raise_for_status()
+        data = response.json()
+        if not isinstance(data, dict):
+            raise ValueError("Creator Store returned a non-object")
+        return data
+
+    @staticmethod
+    def _decode(item: dict[str,Any], target_type: str) -> RobloxAssetSpec | None:
+        record = item.get("asset", {})
+        if not isinstance(record, dict): return None
+        raw_id = str(record.get("id", ""))
+        if not raw_id.isdecimal() or int(raw_id) <= 0: return None
+        creator = item.get("creator") or {}
+        if not isinstance(creator, dict): creator = {}
+        name = str(record.get("name") or "")
+        if not name: return None
+        return RobloxAssetSpec(
+            asset_id="rbxassetid://" + raw_id,
+            name=name,
+            asset_type=target_type,
+            creator=str(creator.get("name") or "Unknown"),
+            destination_service="SoundService" if target_type == "Audio" else "Workspace",
+            description=str(record.get("description") or ""),
+            verified=creator.get("hasVerifiedBadge") is True,
+        )
+
+    def search(self, query: str, asset_type: str = "Model", limit: int = 5) -> list[RobloxAssetSpec]:
+        query = query.strip() if isinstance(query,str) else ""
+        if not query: return []
+        if asset_type not in ASSET_TYPES: raise ValueError("Unsupported Creator Store type: " + str(asset_type))
+        limit = min(max(int(limit),1), 25)
+        self.last_error = None
+        try:
+            # Official recommended POST endpoint; GET with assetType/keyword was incorrect.
+            body = {"searchCategoryType":asset_type, "query":query}
+            data = self._request("POST", self.SEARCH_URL, json=body)
+            records = data.get("creatorStoreAssets") or []
+            if not isinstance(records,list): raise ValueError("Missing creatorStoreAssets list")
+            out: list[RobloxAssetSpec] = []
+            for record in records:
+                if len(out) >= limit: break
+                if not isinstance(record,dict): continue
+                candidate = self._decode(record,asset_type)
+                if candidate is None: continue
+                # Re-query by ID. Result data alone is NOT a proof that it exists/is usable.
+                details = self.get_asset_details(candidate.asset_id)
+                if details is None: continue
+                if not self.verify_and_sanitize_asset(candidate)["safe"]: continue
+                out.append(candidate)
+            return out
+        except (httpx.HTTPError,ValueError,TypeError) as exc:
+            self.last_error = type(exc).__name__ + ": " + str(exc)[:240]
             return []
 
-        target_type = asset_type.title()
-
-        # 1. Filter curated offline assets strictly by matching asset_type
-        matched_curated: list[RobloxAssetSpec] = []
-        tokens = [t.lower() for t in query_clean.split()]
-        for asset in CURATED_CREATOR_STORE_ASSETS:
-            if asset.asset_type.lower() != target_type.lower():
-                continue
-            name_lower = asset.name.lower()
-            desc_lower = asset.description.lower()
-            if any(t in name_lower or t in desc_lower for t in tokens):
-                matched_curated.append(asset)
-
-        # 2. Try online Roblox Creator Store search API (/toolbox-service/v2/assets:search)
-        type_id = ASSET_TYPE_IDS.get(target_type, 10)
+    def get_asset_details(self, asset_id: str) -> dict[str,Any] | None:
+        raw = str(asset_id).removeprefix("rbxassetid://")
+        if not raw.isdecimal() or int(raw) <= 0: return None
         try:
-            url = (
-                f"https://apis.roblox.com/toolbox-service/v2/assets:search?"
-                f"keyword={urllib.parse.quote(query_clean)}&assetType={target_type}&limit={limit}"
-            )
-            headers = {"Accept": "application/json"}
-            if self.api_key:
-                headers["x-api-key"] = self.api_key
-
-            with httpx.Client(timeout=self.timeout) as client:
-                res = client.get(url, headers=headers)
-                if res.status_code == 200:
-                    data = res.json()
-                    online_assets: list[RobloxAssetSpec] = []
-                    for item in data.get("data", []):
-                        raw_asset = item.get("asset", {})
-                        asset_id = str(raw_asset.get("id", ""))
-                        if not asset_id:
-                            continue
-                        name = raw_asset.get("name", f"Asset {asset_id}")
-                        creator = item.get("creator", {}).get("name", "Creator")
-                        has_verified_badge = item.get("creator", {}).get("hasVerifiedBadge", False)
-
-                        spec = RobloxAssetSpec(
-                            asset_id=f"rbxassetid://{asset_id}",
-                            name=name,
-                            asset_type=target_type,
-                            creator=creator,
-                            destination_service="Workspace" if target_type == "Model" else "SoundService",
-                            description=raw_asset.get("description", ""),
-                            verified=has_verified_badge,
-                        )
-                        # Decoupled verification check
-                        verification = self.verify_and_sanitize_asset(spec)
-                        if verification["safe"]:
-                            online_assets.append(spec)
-
-                    if online_assets:
-                        return (online_assets + matched_curated)[:limit]
-        except Exception:
-            # Safely fall back to curated list on network timeout or offline
-            pass
-
-        if matched_curated:
-            return matched_curated[:limit]
-
-        # 3. Type-safe fallback: return default for the SAME requested type, NEVER mix types!
-        if target_type == "Audio":
-            return [
-                RobloxAssetSpec(
-                    asset_id="rbxassetid://9114223174",
-                    name="Coin Collect Sound",
-                    asset_type="Audio",
-                    creator="Roblox",
-                    destination_service="SoundService",
-                    description="Default audio asset for reward and collect interactions.",
-                    verified=True,
-                )
-            ]
-        elif target_type == "Model":
-            # Return official classic model fallback
-            return [
-                RobloxAssetSpec(
-                    asset_id="rbxassetid://5432109876",
-                    name="Arena Spawn Baseplate",
-                    asset_type="Model",
-                    creator="Roblox",
-                    destination_service="Workspace",
-                    description="Official Roblox default spawn baseplate.",
-                    verified=True,
-                )
-            ]
-        return []
+            details = self._request("GET",self.DETAILS_URL + raw)
+            record = details.get("asset") or {}
+            if not isinstance(record,dict) or str(record.get("id")) != raw:
+                return None
+            return details
+        except (httpx.HTTPError,ValueError,TypeError):
+            return None
 
     def search_models(self, query: str, limit: int = 5) -> list[RobloxAssetSpec]:
-        """Convenience helper to search specifically for Model assets."""
-        return self.search(query=query, asset_type="Model", limit=limit)
+        return self.search(query,"Model",limit)
 
     def search_audio(self, query: str, limit: int = 5) -> list[RobloxAssetSpec]:
-        """Convenience helper to search specifically for Audio assets."""
-        return self.search(query=query, asset_type="Audio", limit=limit)
+        return self.search(query,"Audio",limit)
 
-    def verify_and_sanitize_asset(self, asset: RobloxAssetSpec) -> dict[str, Any]:
-        """Scans asset metadata and scripts for potential security risks and backdoors."""
-        warnings: list[str] = []
-        is_safe = True
-
-        # Check description and name for backdoor signatures
-        content_to_check = f"{asset.name} {asset.description}"
-        for pattern in BACKDOOR_PATTERNS:
-            if pattern.search(content_to_check):
-                warnings.append(f"Suspicious pattern matched: {pattern.pattern}")
-                is_safe = False
-
-        # Verify creator trustworthiness
-        is_official = asset.creator.lower() in {"roblox", "robloxendorsed", "robloxofficial"}
-        if not is_official and not asset.verified:
-            warnings.append("Asset creator is unverified; sandboxing and script stripping recommended.")
-
-        return {
-            "asset_id": asset.asset_id,
-            "safe": is_safe,
-            "verified": is_official or asset.verified,
-            "warnings": warnings,
-            "sanitized": True,
-        }
+    def verify_and_sanitize_asset(self, asset: RobloxAssetSpec) -> dict[str,Any]:
+        flags = [pattern.pattern for pattern in BACKDOOR_PATTERNS if pattern.search(asset.name+" "+asset.description)]
+        if not asset.asset_id.removeprefix("rbxassetid://").isdecimal():
+            flags.append("invalid asset id")
+        if not asset.verified:
+            flags.append("Creator lacks verified badge; do not auto-insert")
+        return {"asset_id":asset.asset_id, "safe":not flags, "verified":bool(asset.verified),
+                "warnings":flags, "sanitized":False,
+                "note":"Metadata checks only; contents not audited"}
 
     def get_asset_injection_code(self, asset: RobloxAssetSpec, sanitize_scripts: bool = True) -> str:
-        """Generates Luau injection code with script sanitization to prevent backdoor execution."""
+        """Fail-closed: only detail-checked, badged assets should be auto-injected.
+
+        Removing ALL external LuaSourceContainers prevents embedded script execution.
+        External Model functionality is not trusted; generated first-party logic is separate.
+        """
+        if not asset.verified: raise ValueError("Unverified Creator Store asset cannot be auto-injected")
+        raw_id = asset.asset_id.removeprefix("rbxassetid://")
+        if not raw_id.isdecimal(): raise ValueError("Invalid asset id")
+        name = re.sub(r"[^a-zA-Z0-9]","",asset.name)[:40] or "Asset"
         if asset.asset_type == "Audio":
-            clean_name = re.sub(r"[^\w]", "", asset.name) or "SoundAsset"
-            return f"""-- Sound: {asset.name} ({asset.asset_id})
-local function loadSound_{clean_name}()
-    local sound = Instance.new("Sound")
-    sound.Name = "{clean_name}"
-    sound.SoundId = "{asset.asset_id}"
-    sound.Volume = 0.6
-    sound.Parent = game:GetService("SoundService")
-    return sound
-end
-loadSound_{clean_name}()
-"""
-
-        # Model loading with security sandbox: disables or removes untrusted external scripts
-        strip_code = ""
-        if sanitize_scripts:
-            strip_code = """
-        -- Security Sanitization: Disable untrusted third-party scripts to prevent backdoors
-        for _, descendant in model:GetDescendants() do
-            if descendant:IsA("Script") or descendant:IsA("LocalScript") then
-                warn("Disabled unverified script in asset " .. descendant:GetFullName())
-                descendant.Enabled = false
-            end
-        end
-"""
-
-        clean_name = re.sub(r"[^\w]", "", asset.name) or "ModelAsset"
-        clean_id = asset.asset_id.replace("rbxassetid://", "")
-        dest = asset.destination_service or "Workspace"
-        return f"""-- Creator Store Asset: {asset.name} ({asset.asset_id})
-local function loadModel_{clean_name}()
-    local InsertService = game:GetService("InsertService")
-    local success, model = pcall(function()
-        return InsertService:LoadAsset({clean_id})
-    end)
-    if success and model then{strip_code}
-        model.Name = "{clean_name}"
-        model.Parent = game:GetService("{dest}")
-        return model
-    else
-        warn("Could not load Creator Store asset: {asset.name} (id {clean_id})")
-        return nil
+            return (
+                "local audio = Instance.new(\"Sound\")\n"
+                + f'audio.Name = "{name}"\n'
+                + f'audio.SoundId = "rbxassetid://{raw_id}"\n'
+                + 'audio.Parent = game:GetService("SoundService")\n'
+            )
+        if asset.asset_type != "Model": raise ValueError("No safe automatic insertion for asset type")
+        if not sanitize_scripts: raise ValueError("Sanitization is mandatory for external models")
+        return f"""local function import_{name}()
+    local service = game:GetService("InsertService")
+    local ok, model = pcall(function() return service:LoadAsset({raw_id}) end)
+    if not ok or not model then error("Asset load failed: {raw_id}") end
+    -- Must remove all untrusted script containers before parenting to a live service.
+    for _, desc in model:GetDescendants() do
+        if desc:IsA("LuaSourceContainer") then desc:Destroy() end
     end
+    model.Name = "{name}"
+    model.Parent = workspace
 end
-task.spawn(loadModel_{clean_name})
+import_{name}()
 """

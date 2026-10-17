@@ -193,10 +193,11 @@ TestEZ = "roblox/testez@^0.4.1"
             paths_created[module.name] = dest
 
         # 4. Materialize verified asset injection loader in src/server/AssetLoader.server.luau
-        if proposal.assets:
+        if any(asset.verified for asset in proposal.assets):
             asset_loader_code = "--!strict\n-- Auto-generated Asset Loader for Creator Store Assets\n\n"
             for asset in proposal.assets:
-                asset_loader_code += self.creator_store.get_asset_injection_code(asset, sanitize_scripts=True) + "\n"
+                if asset.verified:
+                    asset_loader_code += self.creator_store.get_asset_injection_code(asset, sanitize_scripts=True) + "\n"
             loader_dest = target_dir / "src" / "server" / "AssetLoader.server.luau"
             loader_dest.parent.mkdir(parents=True, exist_ok=True)
             loader_dest.write_text(asset_loader_code, encoding="utf-8")

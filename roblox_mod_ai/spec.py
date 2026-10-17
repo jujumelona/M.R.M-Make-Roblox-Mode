@@ -58,7 +58,7 @@ class RobloxAssetSpec:
     creator: str = "Roblox"
     destination_service: str = "Workspace"
     description: str = ""
-    verified: bool = True
+    verified: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
