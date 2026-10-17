@@ -82,10 +82,10 @@ class RobloxGameDesignPlanner:
 
         # Quantitative requirements come from authored text, not hardcoded demo sizes.
         counts: dict[str, int] = {}
-        stage_match = re.search(r"(\\d{1,4})\\s*(?:단계|스테이지|stages?|checkpoints?)", prompt, re.IGNORECASE)
+        stage_match = re.search(r"(\d{1,4})\s*(?:단계|스테이지|stages?|checkpoints?)", prompt, re.IGNORECASE)
         if stage_match:
             counts["stages"] = int(stage_match.group(1))
-        coin_match = re.search(r"(\\d{1,4})\\s*(?:개(?:의)?\\s*)?(?:코인|동전|coins?)", prompt, re.IGNORECASE)
+        coin_match = re.search(r"(\d{1,4})\s*(?:개(?:의)?\s*)?(?:코인|동전|coins?)", prompt, re.IGNORECASE)
         if coin_match:
             counts["coins"] = int(coin_match.group(1))
         if any(n <= 0 or n > 128 for n in counts.values()):
