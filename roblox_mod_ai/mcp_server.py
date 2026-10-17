@@ -74,7 +74,7 @@ class RobloxMCPServer:
             },
             {
                 "name": "roblox_creator_store_search",
-                "description": "Search Roblox Creator Store for verified 3D models, audio, and effect asset IDs.",
+                "description": "Search live Creator Store; no guessed fallback assets. Creator badge does not prove model-code safety.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -104,7 +104,7 @@ class RobloxMCPServer:
                 "description": "Operate local Studio MCP start_stop_play with explicitly approved commands. No cloud fallback.",
                 "inputSchema": {"type":"object","properties":{
                     "arguments":{"type":"object"},
-                    "allow_write":{"type":"boolean","default":false}
+                    "allow_write":{"type":"boolean","default":False}
                 }},
             },
             {
