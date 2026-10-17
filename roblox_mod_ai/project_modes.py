@@ -30,9 +30,18 @@ def addon_manifest(proposal, project_generator) -> dict:
         key: value for key, value in world.items()
         if key not in ("$className", "$properties", "Baseplate", "SpawnLocation")
     }
+    features = proposal.game_design.get("features", {})
+    wanted = set()
+    if features.get("is_combat"): wanted.update(("AttackRequest", "DamageEvent"))
+    if features.get("is_shop"): wanted.add("ShopPurchase")
+    if features.get("is_leaderboard") or features.get("is_coin_collect"):
+        wanted.add("UpdateStats")
+    if features.get("is_obby"): wanted.update(("StageChanged", "ResetToStage"))
+    if features.get("is_tycoon"): wanted.add("ButtonPurchased")
+    if features.get("is_simulator"): wanted.add("ClickRequest")
     remotes = {
         key: value for key, value in root["ReplicatedStorage"]["Remotes"].items()
-        if not key.startswith("$")
+        if key in wanted
     }
     return {
         "schema": "rmm/owned-experience-addon-v1",
@@ -57,8 +66,8 @@ def write_addon_manifest(proposal, project_generator, output_dir: Path) -> Path:
     root = Path(output_dir)
     result = addon_manifest(proposal, project_generator)
     result["sources_sha256"] = {
-        m.file_path: hashlib.sha256((root / m.file_path).read_bytes()).hexdigest()
-        for m in proposal.modules
+        path.relative_to(root).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+        for path in sorted((root / "src").rglob("*.luau")) if path.is_file() and not path.is_symlink()
     }
     target = root / "addon.manifest.json"
     target.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
