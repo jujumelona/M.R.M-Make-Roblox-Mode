@@ -348,7 +348,7 @@ class RobloxGameDesignPlanner:
                 })
 
         # 4. Generate Test Specs tailored to the generated modules
-        primary_genre = "Combat"
+        primary_genre = "Custom" if dynamic_design or not any(features.values()) else "Combat"
         for g_name, active in [("Obby", features["is_obby"]), ("Shop", features["is_shop"]), ("Tycoon", features["is_tycoon"]), ("Simulator", features["is_simulator"]), ("Combat", features["is_combat"])]:
             if active:
                 primary_genre = g_name
@@ -412,8 +412,21 @@ class RobloxGameDesignPlanner:
         return authored_plan
 
     def revise(self, plan: RobloxAuthoredPlan, feedback: str) -> RobloxAuthoredPlan:
-        """Revise an existing authored plan based on feedback, adding requested systems."""
+        """Revise using the combined user scope; never silently lose novel mechanics."""
         proposal = plan.proposal
+        # For any novel gameplay request, fully re-design against the combined
+        # requirement ledger instead of splicing in an unrelated prefab.
+        combined = proposal.requested_prompt + "\n" + feedback
+        new_research = self.researcher.research(combined)
+        if (proposal.game_design.get("dynamic_design") or
+                new_research["ledger"]["unimplemented_facets"] or
+                new_research["ledger"]["unmatched_requirements"]):
+            updated = self.plan(combined,
+                project_mode=proposal.game_design.get("project_mode", "new_experience"))
+            updated.revision_count = plan.revision_count + 1
+            updated.checkpoints = list(plan.checkpoints)
+            updated.create_checkpoint(note="Full request replan for novel Roblox mechanics")
+            return updated
         proposal.requested_prompt += f" | Revision: {feedback}"
 
         # Same original request + revision is the search authority for every revision.

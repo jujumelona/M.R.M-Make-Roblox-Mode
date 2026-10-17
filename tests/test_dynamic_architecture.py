@@ -132,3 +132,14 @@ def test_model_may_not_ignore_part_of_multi_feature_request():
             "facets":[{"id":"pets"},{"id":"shop"}]}
     with pytest.raises(DynamicDesignError, match="Unimplemented gameplay facets"):
         _clean_model_json(raw,ledger,{"NetworkRemotes","PlayerDataManager"})
+
+
+def test_dynamic_revision_does_not_insert_irrelevant_fixed_shop(tmp_path,monkeypatch):
+    session,fake=_session(tmp_path,monkeypatch)
+    session.plan("펫 부화")
+    reply=session.revise("펫 상점 추가")
+    names={m.name for m in reply.authored_plan.proposal.modules}
+    assert "CustomPetHatching" in names
+    assert "ShopService" not in names
+    assert reply.authored_plan.revision_count == 1
+    assert reply.ready_to_build
