@@ -36,7 +36,7 @@ def build_notebook() -> None:
             "\n"
             "> 자연어 요구사항만으로 **Roblox Studio 경험 및 인게임 모딩 시스템**을 자동 기획하고, Luau 코드를 정적 검증 및 플레이테스트한 뒤 **즉시 열 수 있는 `.rbxlx` 및 Rojo 프로젝트 ZIP**을 생성하는 올인원 Colab 노트북입니다.\n"
             "\n"
-            "- **Full**: 기획 생성부터 Luau 생성, 정적 분석, TestEZ 플레이테스트, `.rbxlx` 및 Rojo ZIP 빌드까지 전체 실행\n"
+            "- **Full**: 기획/RAG/Luau 생성 및 도구체인 검사 (실제 Roblox Studio 멀티플레이 검증은 별도 필요)\n"
             "- **Plan**: 자연어 요구사항을 게임플레이, 네트워크(RemoteEvent), DataStore, UI 서브시스템으로 분해 및 기획안 생성\n"
             "- **Revise**: 이전 계획 또는 체크포인트를 바탕으로 사용자 피드백을 반영하여 부분 수정\n"
             "- **Execute**: 이미 확정된 `proposal.json` 계획 파일로 즉시 코드 생성 및 빌드 수행\n"
@@ -74,6 +74,7 @@ def build_notebook() -> None:
             'os.environ["RMM_GENRE"] = GENRE\n'
             "if REMOTE_BASE_URL:\n"
             '    os.environ["RMM_MODEL_BASE_URL"] = REMOTE_BASE_URL\n'
+            '    os.environ["ROBLOX_LLAMA_SERVER_URL"] = REMOTE_BASE_URL\n'
             "if REMOTE_API_KEY:\n"
             '    os.environ["RMM_MODEL_API_KEY"] = REMOTE_API_KEY\n'
         ),
@@ -173,7 +174,7 @@ def build_notebook() -> None:
             'print(f"  - 대표 서비스: {\', \'.join(services[:6])}...")\n'
             "\n"
             "creator_catalog = RobloxCreatorStoreCatalog()\n"
-            'sample_models = creator_catalog.search_models("sword")\n'
+
             'print(f"Roblox Creator Store 카탈로그 연동 확인: \'sword\' 검색 시 {len(sample_models)}개 에셋 매칭")\n'
             "\n"
             "toolchain = RobloxToolchainManager()\n"
