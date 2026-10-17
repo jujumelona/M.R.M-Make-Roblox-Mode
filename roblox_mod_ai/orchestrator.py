@@ -12,6 +12,7 @@ from .authored_plan import RobloxAuthoredPlan
 from .code_generator import LuauCodeGenerator
 from .quality_gates import acceptance_obligations, make_artifact_manifest
 from .runtime_verification import OpenCloudRuntimeVerifier
+from .rbxlx_inspector import inspect_compiled_place
 import hashlib
 import zipfile
 from .luau_analyzer import LuauAnalysisReport, LuauStaticAnalyzer
@@ -174,6 +175,11 @@ class RobloxProductionOrchestrator:
             tool_results["rojo"] = result
             if not result.get("success") or not result.get("executed") or not place.is_file() or place.stat().st_size == 0:
                 return {"passed": False, "error": f"Rojo build failed (no XML fallback): {result}"}
+            structural = inspect_compiled_place(proposal, place)
+            tool_results["compiled_structure"] = structural
+            if not structural["passed"]:
+                return {"passed": False, "error": "Compiled Rojo place is missing requested objects: "
+                        + str([x["id"] for x in structural["checks"] if not x["passed"]])}
             build_mode = "rojo_cli"
             rbxlx_path = str(place)
             artifact_manifest = make_artifact_manifest(output_dir, place)

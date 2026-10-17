@@ -47,6 +47,7 @@ jobs:
           ( cd "$project" && selene src )
           rojo build "$project/default.project.json" -o "$project/compiled.rbxlx"
           test -s "$project/compiled.rbxlx"
+          python tools/audit_rojo_place.py --plan .rmm-smoke/proposal.json --place "$project/compiled.rbxlx"
           python tools/build_studio_test_place.py "$project"
           rojo build "$project/studio-tests.project.json" -o "$project/studio-e2e.rbxlx"
           test -s "$project/studio-e2e.rbxlx"
@@ -76,6 +77,7 @@ jobs:
           ( cd "$project" && selene src )
           rojo build "$project/default.project.json" -o "$project/library-compiled.rbxlx"
           test -s "$project/library-compiled.rbxlx"
+          python tools/audit_rojo_place.py --plan .rmm-libraries/proposal.json --place "$project/library-compiled.rbxlx"
       - name: Upload compile evidence
         if: always()
         uses: actions/upload-artifact@v4
