@@ -34,7 +34,8 @@ class RobloxCodeRepairAgent:
                attempts: int = 3) -> str:
         setting = os.environ.get("RMM_ENABLE_MODEL_GENERATION", "auto").lower()
         enabled = setting == "1" or (setting == "auto" and
-                                   bool(os.environ.get("ROBLOX_LLAMA_SERVER_URL")))
+                                   bool(os.environ.get("ROBLOX_LLAMA_SERVER_URL")
+                                        or os.environ.get("RMM_MODEL_BASE_URL")))
         if not enabled:
             raise RuntimeError("Small-model Luau generator disabled; "
                                "configure ROBLOX_LLAMA_SERVER_URL or RMM_ENABLE_MODEL_GENERATION=1")

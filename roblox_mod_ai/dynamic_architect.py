@@ -45,7 +45,8 @@ class DynamicDesignError(ValueError):
 
 def dynamic_design_enabled() -> bool:
     choice = os.environ.get("RMM_ENABLE_DYNAMIC_DESIGN", "auto").lower()
-    return choice == "1" or (choice == "auto" and bool(os.environ.get("ROBLOX_LLAMA_SERVER_URL")))
+    return choice == "1" or (choice == "auto" and bool(os.environ.get("ROBLOX_LLAMA_SERVER_URL")
+                     or os.environ.get("RMM_MODEL_BASE_URL")))
 
 
 def _normalize_requirements(ledger: dict[str, Any]) -> set[str]:

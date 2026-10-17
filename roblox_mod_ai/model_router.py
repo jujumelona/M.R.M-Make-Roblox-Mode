@@ -25,7 +25,9 @@ class ModelRouter:
 
     def _init_adapters(self) -> None:
         # Check environment or use local llama.cpp endpoint
-        llama_url = os.environ.get("ROBLOX_LLAMA_SERVER_URL") or "http://127.0.0.1:8080/v1"
+        llama_url = (os.environ.get("ROBLOX_LLAMA_SERVER_URL")
+                     or os.environ.get("RMM_MODEL_BASE_URL")
+                     or "http://127.0.0.1:8080/v1")
         self.adapters["llama_cpp"] = LlamaCppAdapter(base_url=llama_url)
         self.adapters["openai"] = OpenAICompatibleAdapter()
 
