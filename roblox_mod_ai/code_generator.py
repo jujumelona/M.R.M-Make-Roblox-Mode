@@ -468,9 +468,9 @@ local function handlePurchase(player: Player, itemId: string): (boolean, string)
             if os.clock() - lastCast < 1 then return end
             lastCast = os.clock()
             local caster = player.Character
-            local root = caster and caster:FindFirstChild("HumanoidRootPart")
-            if not root or not root:IsA("BasePart") then return end
-            local ray = workspace:Raycast(root.Position, root.CFrame.LookVector * 30)
+            local castRoot = caster and caster:FindFirstChild("HumanoidRootPart")
+            if not castRoot or not castRoot:IsA("BasePart") then return end
+            local ray = workspace:Raycast(castRoot.Position, castRoot.CFrame.LookVector * 30)
             local targetModel = ray and ray.Instance:FindFirstAncestorOfClass("Model")
             local target = targetModel and targetModel:FindFirstChildOfClass("Humanoid")
             if target and targetModel ~= caster then target:TakeDamage(20) end
