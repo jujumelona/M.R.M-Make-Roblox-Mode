@@ -138,6 +138,9 @@ class RobloxCreatorStoreCatalog:
         raw_id = asset.asset_id.removeprefix("rbxassetid://")
         if not raw_id.isdecimal(): raise ValueError("Invalid asset id")
         name = re.sub(r"[^a-zA-Z0-9]","",asset.name)[:40] or "Asset"
+        if asset.asset_type != "Audio":
+            raise ValueError("Models must be imported/reviewed in owner's Studio; "
+                             "runtime InsertService does not grant third-party asset permissions")
         if asset.asset_type == "Audio":
             return (
                 "local audio = Instance.new(\"Sound\")\n"

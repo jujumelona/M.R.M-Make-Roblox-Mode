@@ -215,16 +215,22 @@ JestGlobals = "roblox/jest-globals@=3.20.0"
             dest.write_bytes(economy_source.read_bytes())
             paths_created["EconomyRules"] = dest
 
-        # 4. Materialize verified asset injection loader in src/server/AssetLoader.server.luau
-        if any(asset.verified for asset in proposal.assets):
-            asset_loader_code = "--!strict\n-- Auto-generated Asset Loader for Creator Store Assets\n\n"
-            for asset in proposal.assets:
-                if asset.verified:
-                    asset_loader_code += self.creator_store.get_asset_injection_code(asset, sanitize_scripts=True) + "\n"
-            loader_dest = target_dir / "src" / "server" / "AssetLoader.server.luau"
-            loader_dest.parent.mkdir(parents=True, exist_ok=True)
-            loader_dest.write_text(asset_loader_code, encoding="utf-8")
-            paths_created["AssetLoader"] = loader_dest
+        # Creator Store metadata does NOT imply InsertService loading permission.
+        # Do NOT run third-party model insertion inside a live server.
+        if proposal.assets:
+            asset_plan = target_dir / "creator_store_assets.json"
+            asset_plan.write_text(json.dumps({
+                "schema": "rmm/asset-import-review-v1",
+                "automatic_runtime_import": False,
+                "requires_owner_approval_in_studio": True,
+                "assets": [{
+                    **asset.to_dict(),
+                    "creator_badge_only": bool(asset.verified),
+                    "content_sanitized": False,
+                    "game_usage_permission_verified": False,
+                } for asset in proposal.assets],
+            }, indent=2, ensure_ascii=False), encoding="utf-8")
+            paths_created["creator_store_assets"] = asset_plan
 
         # 5. Write test specs
         for test in proposal.tests:

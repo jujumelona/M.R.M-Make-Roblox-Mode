@@ -11,6 +11,6 @@ def test_type_guard_and_metadata_flag():
                          creator="Trusted",verified=True)
     safe=c.verify_and_sanitize_asset(good)
     assert safe["safe"]
-    code=c.get_asset_injection_code(good)
-    assert 'desc:IsA("LuaSourceContainer")' in code
-    assert "LoadAsset" in code
+    import pytest
+    with pytest.raises(ValueError):
+        c.get_asset_injection_code(good)

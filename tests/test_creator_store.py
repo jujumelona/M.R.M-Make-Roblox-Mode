@@ -27,7 +27,9 @@ def test_official_post_search_and_detail_model():
         c=RobloxCreatorStoreCatalog(client=client)
         models=c.search("sword",asset_type="Model",limit=1)
         assert len(models)==1 and models[0].verified
-        assert "LuaSourceContainer" in c.get_asset_injection_code(models[0])
+        import pytest
+        with pytest.raises(ValueError):
+            c.get_asset_injection_code(models[0])
 
 def test_official_post_search_audio():
     with catalog() as client:
