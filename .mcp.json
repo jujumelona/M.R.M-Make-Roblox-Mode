@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "rmm-roblox-mod-ai": {
+      "command": "python",
+      "args": [
+        "-m",
+        "roblox_mod_ai.mcp_server"
+      ],
+      "env": {
+        "ROBLOX_MOD_AI_WORKSPACE": "rmm-output",
+        "ROBLOX_MOD_AI_ALLOW_OFFLINE_FALLBACK": "1"
+      }
+    }
+  }
+}

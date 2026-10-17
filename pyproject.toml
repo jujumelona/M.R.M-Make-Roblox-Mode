@@ -23,6 +23,7 @@ dev = [
 [project.scripts]
 rmm = "roblox_mod_ai.cli:main"
 roblox-mod-ai = "roblox_mod_ai.cli:main"
+rmm-mcp = "roblox_mod_ai.mcp_server:main"
 
 [tool.setuptools.packages.find]
 include = ["roblox_mod_ai*"]

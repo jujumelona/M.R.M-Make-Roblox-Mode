@@ -90,6 +90,29 @@ Rojo나 Luau CLI가 없어도 생성된 `<GameTitle>.rbxlx` 파일을 윈도우 
 `RobloxOpenCloudClient`를 통해 Studio를 직접 켜지 않고도 GitHub Actions CI/CD 또는 터미널에서 Open Cloud API로 게임 버전을 자동 배포할 수 있습니다:
 - 환경변수 설정: `ROBLOX_OPEN_CLOUD_API_KEY`, `ROBLOX_UNIVERSE_ID`, `ROBLOX_PLACE_ID`
 
+## 🧠 작은 AI(Small Models) 지원: MCP & Skills 생태계
+
+7B~14B급 로컬 소형 AI 모델(Qwen, MiMo, Llama 등)이 한 번에 방대한 게임 코드를 작성하면 환각(Hallucination)이나 문법 오류가 발생합니다. R.M.M은 **MCP(Model Context Protocol)**와 **Skills(절차적 가이드)**를 통해 소형 모델이 세부 도구를 호출하며 완벽하게 작업할 수 있도록 지원합니다.
+
+### 1. `.mcp.json` 및 MCP Server (`rmm-mcp`)
+Claude Desktop, Cursor, Antigravity 등 표준 MCP 클라이언트에 즉시 등록 가능한 도구 세트:
+- `roblox_api_search`: Roblox 엔진 API 시그니처 및 예제 검색 (틀린 메서드 호출 방지)
+- `roblox_creator_store_search`: 공식 Creator Store 3D 모델 및 사운드 에셋 검색
+- `roblox_luau_validate`: 작성한 Luau 코드의 블록 밸런스 및 린트 정적 검사
+- `roblox_plan_experience`: 자연어 요구사항을 서브시스템으로 분해
+- `roblox_project_write` / `read`: 프로젝트 내 스크립트 안전 읽기/쓰기
+- `roblox_playtest_run`: TestEZ 헤드리스 플레이테스트 실행 및 오류 진단
+- `roblox_rbxlx_build`: `.rbxlx` 및 프로젝트 ZIP 컴파일
+- `roblox_open_cloud_deploy`: Roblox 클라우드 즉시 배포
+
+### 2. 단계별 Skills (`skills/`)
+소형 AI가 작업을 분할 수행할 수 있도록 표준 절차서 제공:
+- [`skills/plan-roblox-experience/SKILL.md`](skills/plan-roblox-experience/SKILL.md): 서브시스템 기획 및 리모트 이벤트 설계
+- [`skills/generate-luau-service/SKILL.md`](skills/generate-luau-service/SKILL.md): DataStore pcall 및 서버 권한 안티치트 패턴
+- [`skills/generate-luau-client/SKILL.md`](skills/generate-luau-client/SKILL.md): UserInputService 및 TweenService UI 컨트롤러
+- [`skills/validate-and-playtest/SKILL.md`](skills/validate-and-playtest/SKILL.md): 자체 오류 수정(Self-Correction) 피드백 루프
+- [`skills/deploy-roblox-place/SKILL.md`](skills/deploy-roblox-place/SKILL.md): .rbxlx 패키징 및 Open Cloud 배포
+
 ---
 
 ## 🧪 테스트 실행
@@ -98,7 +121,7 @@ Rojo나 Luau CLI가 없어도 생성된 `<GameTitle>.rbxlx` 파일을 윈도우 
 pytest tests -v
 ```
 
-전체 7개 테스트 스위트 (세션 수명주기, Luau 정적 검사기, Rojo/.rbxlx 생성기, Creator Store 검색기, 헤드리스 플레이테스터)가 포함되어 있습니다.
+전체 12개 테스트 스위트 (세션 수명주기, MCP JSON-RPC 서버, API 카탈로그, 인게임 모딩 시스템, Luau 정적 검사기, Rojo/Wally/.rbxlx 생성기, Creator Store 검색기, 헤드리스 플레이테스터)가 포함되어 있습니다.
 
 ---
 
