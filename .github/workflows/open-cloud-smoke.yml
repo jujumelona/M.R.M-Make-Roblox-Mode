@@ -1,0 +1,60 @@
+name: Roblox Open Cloud smoke (TEST place only)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  cloud-smoke:
+    runs-on: ubuntu-latest
+    environment: roblox-test
+    timeout-minutes: 15
+    env:
+      ROBLOX_OPEN_CLOUD_API_KEY: ${{ secrets.ROBLOX_OPEN_CLOUD_API_KEY }}
+      ROBLOX_TEST_UNIVERSE_ID: ${{ secrets.ROBLOX_TEST_UNIVERSE_ID }}
+      ROBLOX_TEST_PLACE_ID: ${{ secrets.ROBLOX_TEST_PLACE_ID }}
+      RMM_ALLOW_TEST_PLACE_PUBLISH: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - uses: paradoxum-games/setup-rokit@v3
+        with:
+          cache: true
+      - name: Check dedicated test credentials (fail closed)
+        run: |
+          test -n "$ROBLOX_OPEN_CLOUD_API_KEY" || { echo "::error::Missing Open Cloud API key"; exit 1; }
+          test -n "$ROBLOX_TEST_UNIVERSE_ID" || { echo "::error::Missing test universe"; exit 1; }
+          test -n "$ROBLOX_TEST_PLACE_ID" || { echo "::error::Missing test place"; exit 1; }
+      - name: Generate and compile example game
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from roblox_mod_ai.api import CompleteRobloxAISession
+          root = Path(".rmm-cloud")
+          session = CompleteRobloxAISession(output_root=root)
+          session.plan("코인 수집, 상점 시스템, 리더보드가 포함된 검투 아레나")
+          result = session.build(source_only=True)
+          assert result.analysis_report.passed and result.metadata["acceptance"]["passed"]
+          Path(".rmm-cloud/location.txt").write_text(result.project_dir, encoding="utf-8")
+          PY
+          root="$(cat .rmm-cloud/location.txt)"
+          (cd "$root" && wally install)
+          stylua "$root/src"
+          stylua --check "$root/src"
+          (cd "$root" && selene src)
+          rojo build "$root/default.project.json" -o "$root/compiled.rbxlx"
+          test -s "$root/compiled.rbxlx"
+      - name: Publish isolated test place and execute real engine script
+        run: |
+          root="$(cat .rmm-cloud/location.txt)"
+          python tools/run_open_cloud_smoke.py --plan .rmm-cloud/proposal.json --place "$root/compiled.rbxlx" --report .rmm-cloud/cloud_smoke_report.json
+      - name: Preserve smoke result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: open-cloud-smoke-evidence
+          path: .rmm-cloud/cloud_smoke_report.json
+          if-no-files-found: warn
+          include-hidden-files: true

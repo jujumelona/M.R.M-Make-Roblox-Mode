@@ -67,3 +67,17 @@ project; never publish that project to your production game.
 Limitation: GitHub Actions validates and builds the Studio test project,
 but actual Studio plugin execution requires a running Roblox Studio instance
 which is not provided by GitHub Python CI.
+
+### Manually execute real Open Cloud smoke in GitHub Actions
+
+Use the `Roblox Open Cloud smoke (TEST place only)` Actions workflow, not the ordinary
+Python CI, after creating a **disposable, isolated Roblox test universe/place**.
+Configure the `roblox-test` GitHub environment with the three required secrets:
+`ROBLOX_OPEN_CLOUD_API_KEY`, `ROBLOX_TEST_UNIVERSE_ID`,
+and `ROBLOX_TEST_PLACE_ID`. Restrict deployment to a dedicated test environment.
+The action requires manual `workflow_dispatch` and publishes *only* to the explicitly
+configured test IDs. It compiles via Rojo and runs the real server smoke task.
+Without credentials it fails closed; ordinary CI never deploys.
+
+This checks server instance structure and the test DataStore only. It does NOT
+complete StudioTestService multiplayer testing or certify the production game.
