@@ -10,6 +10,7 @@ from typing import Any
 
 from .authored_plan import RobloxAuthoredPlan
 from .code_generator import LuauCodeGenerator
+from .dynamic_repair import repair_tool_diagnostics
 from .quality_gates import acceptance_obligations, make_artifact_manifest
 from .runtime_verification import OpenCloudRuntimeVerifier
 from .rbxlx_inspector import inspect_compiled_place
@@ -164,6 +165,28 @@ class RobloxProductionOrchestrator:
                     result = action()
                     tool_results[name] = result
                     if not result.get("success") or not result.get("executed"):
+                        if (result.get("executed") and
+                                proposal.game_design.get("dynamic_design")):
+                            try:
+                                recovery = repair_tool_diagnostics(
+                                    proposal, output_dir, name, result,
+                                    retry_tool=action,
+                                    format_sources=lambda: self.toolchain.run_stylua(output_dir),
+                                    router=self.router)
+                            except Exception as exc:
+                                recovery = {"passed":False,
+                                            "reason":type(exc).__name__ + ": " + str(exc)[:400]}
+                            tool_results[name + "_repair"] = recovery
+                            if recovery.get("passed"):
+                                # Re-evaluate source/semantic acceptance after edits.
+                                revised_source={m.file_path:(output_dir/m.file_path).read_text(
+                                    encoding="utf-8") for m in proposal.modules}
+                                analysis_report=self.analyzer.analyze_files(revised_source)
+                                acceptance=acceptance_obligations(proposal, output_dir)
+                                if not analysis_report.passed or not acceptance["passed"]:
+                                    return {"passed":False,
+                                            "error":"Post-repair static/contract check failed"}
+                                continue
                         return {"passed": False, "error": f"{name} failed or skipped: {result}"}
             return {"passed": True, "static_checks": len(acceptance["checks"])}
 
