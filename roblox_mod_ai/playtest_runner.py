@@ -136,7 +136,7 @@ class RobloxPlaytestRunner:
                 name=name + " instance presence (NOT gameplay)",
                 target_module=target,
                 file_path=path,
-                test_code="\\n".join(lines),
+                test_code=chr(10).join(lines),
             ))
         return specs
 
