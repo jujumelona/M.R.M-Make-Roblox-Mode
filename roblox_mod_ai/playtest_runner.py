@@ -119,21 +119,25 @@ class RobloxPlaytestRunner:
         for name, target, path, requirements in cases:
             lines = [
                 "--!strict",
-                "-- Structural presence only. NEVER interpreted as gameplay or DataStore proof.",
-                "return function()",
-                f'    describe("{name} instance presence", function()',
+                "-- Jest Roblox tests: structure only, not gameplay validation.",
+                'local ReplicatedStorage = game:GetService("ReplicatedStorage")',
+                'local JestGlobals = require(ReplicatedStorage:WaitForChild("DevPackages"):WaitForChild("JestGlobals"))',
+                "local describe = JestGlobals.describe",
+                "local it = JestGlobals.it",
+                "local expect = JestGlobals.expect",
+                f'describe("{name} instance presence", function()',
             ]
             for service, child in requirements:
                 lines.extend([
-                    f'        it("has {service}.{child}", function()',
-                    f'            local service = game:GetService("{service}")',
-                    f'            expect(service:FindFirstChild("{child}") ~= nil).to.equal(true)',
-                    "        end)",
+                    f'    it("has {service}.{child}", function()',
+                    f'        local service = game:GetService("{service}")',
+                    f'        expect(service:FindFirstChild("{child}") ~= nil).toBe(true)',
+                    "    end)",
                 ])
-            lines.extend(["    end)", "end", ""])
+            lines.extend(["end)", ""])
             specs.append(RobloxTestSpec(
                 test_id="test_" + name.lower(),
-                name=name + " instance presence (NOT gameplay)",
+                name=name + " Jest instance presence (NOT gameplay)",
                 target_module=target,
                 file_path=path,
                 test_code=chr(10).join(lines),

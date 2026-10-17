@@ -25,6 +25,9 @@ def create_studio_project(project_dir: Path, repo_root: Path) -> Path:
         else:
             destination = tree["StarterPlayer"]["StarterPlayerScripts"]
         destination[name] = {"$path": str(shared / source)}
+    # Jest and its specs are strictly test-place-only; not included in release Rojo.
+    tree["ReplicatedStorage"]["DevPackages"] = {"$path": str(project_dir / "DevPackages")}
+    tree["ReplicatedStorage"]["TestSuites"] = {"$path": str(project_dir / "tests")}
     root["name"] = str(root["name"]) + "_STUDIO_E2E_ONLY"
     output = project_dir / "studio-tests.project.json"
     output.write_text(json.dumps(root, ensure_ascii=False, indent=2), encoding="utf-8")
