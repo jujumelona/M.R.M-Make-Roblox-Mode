@@ -253,6 +253,14 @@ class RobloxCreatorStoreCatalog:
             ]
         return []
 
+    def search_models(self, query: str, limit: int = 5) -> list[RobloxAssetSpec]:
+        """Convenience helper to search specifically for Model assets."""
+        return self.search(query=query, asset_type="Model", limit=limit)
+
+    def search_audio(self, query: str, limit: int = 5) -> list[RobloxAssetSpec]:
+        """Convenience helper to search specifically for Audio assets."""
+        return self.search(query=query, asset_type="Audio", limit=limit)
+
     def verify_and_sanitize_asset(self, asset: RobloxAssetSpec) -> dict[str, Any]:
         """Scans asset metadata and scripts for potential security risks and backdoors."""
         warnings: list[str] = []

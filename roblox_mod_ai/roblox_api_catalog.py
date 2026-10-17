@@ -182,3 +182,11 @@ class RobloxAPICatalog:
             }
             for d in matches[:limit]
         ]
+
+    def list_services(self) -> list[str]:
+        """Returns unique class and service names indexed in the API catalog."""
+        services: list[str] = []
+        for doc in ROBLOX_API_DOCS:
+            if doc.class_name not in services:
+                services.append(doc.class_name)
+        return services
