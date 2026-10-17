@@ -16,17 +16,21 @@ class LocalGameModel:
     def complete_json(self, prompt, **kwargs):
         self.prompt_history.append(("plan",prompt))
         # The architecture is tied to exact authored clause ids.
-        facets = ["pets", "shop"] if "상점" in prompt else ["pets"]
+        payload = (json.loads(prompt[prompt.index('{"original_prompt"'):])
+                   if '{"original_prompt"' in prompt else {})
+        clauses = [entry["id"] for entry in payload.get("requirements", [])] or ["req-001"]
+        facets = [entry["id"] for entry in payload.get("facets", [])] or ["pets"]
         return {
             "modules":[{"name":"CustomPetHatching",
                         "role":"server",
-                        "requirement_ids":["req-001"],
+                        "requirement_ids":clauses,
                         "facet_ids":facets,
                         "behavior":"Server checks egg distance, handles hatching and writes player owned items."}],
             "remotes":[{"name":"HatchPet","type":"RemoteEvent"}],
             "world_objects":[{"name":"PetEggStand","class":"Part","position":[9,2,0],"size":[3,3,3]}],
-            "acceptance":[{"requirement_id":"req-001",
-                           "observable_result":"Nearby players can hatch an egg, distant players cannot."}],
+            "acceptance":[{"requirement_id":rid,
+                           "observable_result":"Nearby players can hatch an egg, distant players cannot."}
+                          for rid in clauses],
             "acceptance_facets":[{"facet_id":f,"observable_result":
                                   "Server implements the requested "+f+" gameplay interaction."}
                                  for f in facets],
