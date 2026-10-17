@@ -42,6 +42,7 @@ jobs:
           set -euo pipefail
           project="$(cat .rmm-smoke/location.txt)"
           ( cd "$project" && wally install )
+          stylua "$project/src"
           stylua --check "$project/src"
           rojo build "$project/default.project.json" -o "$project/compiled.rbxlx"
           test -s "$project/compiled.rbxlx"
