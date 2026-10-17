@@ -44,6 +44,8 @@ def test_roblox_project_and_rbxlx_generation(tmp_path: Path):
     generator.materialize_project_tree(proposal, project_dir)
 
     assert (project_dir / "default.project.json").is_file()
+    assert (project_dir / "wally.toml").is_file()
+    assert "evaera/promise" in (project_dir / "wally.toml").read_text(encoding="utf-8")
     assert (project_dir / "src/server/CheckpointManager.server.luau").is_file()
     assert (project_dir / "src/client/TimerHUD.client.luau").is_file()
 
@@ -76,3 +78,28 @@ def test_roblox_project_and_rbxlx_generation(tmp_path: Path):
             found_source = True
             break
     assert found_source
+
+
+def test_modding_system_generation():
+    from roblox_mod_ai.code_generator import LuauCodeGenerator
+    generator = LuauCodeGenerator()
+    proposal = RobloxProposal(
+        requested_prompt="Sandbox game with modding support",
+        game_title="SandboxWorld",
+        description="Sandbox game",
+        game_design={},
+        modules=[],
+    )
+    mod = RobloxModuleSpec(
+        module_id="mod_system",
+        name="ModdingSystem",
+        kind="shared_module",
+        file_path="src/shared/ModdingSystem.luau",
+        roblox_service=RobloxService.REPLICATED_STORAGE,
+    )
+    code = generator.generate_module_code(mod, proposal)
+    assert "registerMod" in code
+    assert "exportModToJSON" in code
+    assert "importModFromJSON" in code
+    assert "damageMultiplier" in code
+

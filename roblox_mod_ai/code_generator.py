@@ -28,8 +28,9 @@ class LuauCodeGenerator:
     def generate_module_code(self, module: RobloxModuleSpec, proposal: RobloxProposal) -> str:
         """Generates Luau code based on module kind, role, and proposal context."""
         kind = module.kind.lower()
-
-        if "remote" in kind or "bridge" in kind or "shared" in kind:
+        if "modding" in module.name.lower() or "mod_manager" in module.name.lower():
+            return self._generate_modding_system(module, proposal)
+        elif "remote" in kind or "bridge" in kind or "shared" in kind:
             return self._generate_shared_module(module, proposal)
         elif "server" in kind or "datastore" in kind or module.file_path.endswith(".server.luau"):
             return self._generate_server_script(module, proposal)
@@ -292,6 +293,91 @@ damageRemote.OnClientEvent:Connect(function(position: Vector3)
         effectPart:Destroy()
     end)
 end)
+"""
+
+    def _generate_modding_system(self, module: RobloxModuleSpec, proposal: RobloxProposal) -> str:
+        return f"""--!strict
+-- Module: {module.name}
+-- Service: ReplicatedStorage
+-- Description: Safe Data-Driven In-Game Modding System without loadstring
+
+local HttpService = game:GetService("HttpService")
+
+local {module.name} = {{}}
+
+export type ModItemConfig = {{
+    id: string,
+    name: string,
+    category: "Weapon" | "Armor" | "Consumable",
+    damageMultiplier: number?,
+    speedMultiplier: number?,
+    assetId: string?,
+}}
+
+export type ModDefinition = {{
+    modId: string,
+    title: string,
+    author: string,
+    version: string,
+    description: string,
+    items: {{ ModItemConfig }},
+    customRules: {{ [string]: number | boolean }},
+}}
+
+local registeredMods: {{ [string]: ModDefinition }} = {{}}
+
+-- Register a verified data-driven mod
+function {module.name}.registerMod(mod: ModDefinition): (boolean, string)
+    if not mod.modId or mod.modId == "" then
+        return false, "Invalid modId"
+    end
+
+    -- Sanitize values to prevent extreme exploit numbers
+    for _, item in mod.items do
+        if item.damageMultiplier and item.damageMultiplier > 5.0 then
+            item.damageMultiplier = 5.0 -- Clamp max damage
+        end
+        if item.speedMultiplier and item.speedMultiplier > 2.0 then
+            item.speedMultiplier = 2.0 -- Clamp max speed
+        end
+    end
+
+    registeredMods[mod.modId] = mod
+    print(string.format("[ModdingSystem] Registered mod '%s' v%s by %s", mod.title, mod.version, mod.author))
+    return true, "Success"
+end
+
+function {module.name}.getMod(modId: string): ModDefinition?
+    return registeredMods[modId]
+end
+
+function {module.name}.getAllMods(): {{ ModDefinition }}
+    local list = {{}}
+    for _, mod in registeredMods do
+        table.insert(list, mod)
+    end
+    return list
+end
+
+-- Export mod to shareable JSON string
+function {module.name}.exportModToJSON(modId: string): string?
+    local mod = registeredMods[modId]
+    if not mod then return nil end
+    return HttpService:JSONEncode(mod)
+end
+
+-- Import community mod from JSON string safely
+function {module.name}.importModFromJSON(jsonString: string): (boolean, string)
+    local success, decoded = pcall(function()
+        return HttpService:JSONDecode(jsonString)
+    end)
+    if not success or type(decoded) ~= "table" then
+        return false, "Malformed JSON mod data"
+    end
+    return {module.name}.registerMod(decoded :: ModDefinition)
+end
+
+return {module.name}
 """
 
     def _generate_generic_module(self, module: RobloxModuleSpec, proposal: RobloxProposal) -> str:
