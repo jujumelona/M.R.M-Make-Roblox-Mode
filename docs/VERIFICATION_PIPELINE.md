@@ -22,7 +22,7 @@
 
 Create a separate disposable TEST experience/place. Never configure a production place as the test target.
 Set ROBLOX_OPEN_CLOUD_API_KEY, ROBLOX_TEST_UNIVERSE_ID, ROBLOX_TEST_PLACE_ID, and RMM_ALLOW_TEST_PLACE_PUBLISH=1.
-The key requires places:write and luau-execution-session:write scopes for this TEST experience.
+The key requires places:write and luau-execution-sessions:write scopes for this TEST experience.
 Without these inputs the runtime check reports unexecuted, not successful.
 
 ## Real Studio multiplayer receipt
@@ -44,3 +44,26 @@ Do not set any check to true without a real executed test.
 - Final success is true only when all required phases have passed.
 
 GitHub Python CI cannot itself perform Windows/macOS Roblox Studio tests. CI success does not certify a playable game.
+
+## Studio E2E harness (actual, not simulated success)
+
+Run `python tools/build_studio_test_place.py <your-generated-project-folder>`.
+It creates a **separate** `studio-tests.project.json` mapping the guarded server/client
+scripts in `studio_tests/`, leaving `default.project.json` and release files unchanged.
+Use `rojo build studio-tests.project.json -o studio-e2e.rbxlx`, open that file in Studio,
+and install `studio_tests/RMMQualityRunner.plugin.luau` as a local Studio plugin.
+Enable Studio API services for the isolated TEST experience so DataStore can be exercised.
+The plugin button runs two actual StudioTestService multiplayer sessions, first
+checking 2 clients, real physical pickups, RemoteFunction purchase, item effect,
+on-leave save, and then a second session checking same-user data restoration.
+If simulated UserIds change across sessions, the restore check correctly fails
+instead of assuming success.
+
+The plugin prints a structured RMM_STUDIO_E2E_RESULT only if all phases pass.
+Attach the SHA256 of the exact matching release place and record as
+RMM_STUDIO_E2E_RECEIPT. The harness is added only to the instrumented test
+project; never publish that project to your production game.
+
+Limitation: GitHub Actions validates and builds the Studio test project,
+but actual Studio plugin execution requires a running Roblox Studio instance
+which is not provided by GitHub Python CI.

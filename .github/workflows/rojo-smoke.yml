@@ -46,6 +46,9 @@ jobs:
           stylua --check "$project/src"
           rojo build "$project/default.project.json" -o "$project/compiled.rbxlx"
           test -s "$project/compiled.rbxlx"
+          python tools/build_studio_test_place.py "$project"
+          rojo build "$project/studio-tests.project.json" -o "$project/studio-e2e.rbxlx"
+          test -s "$project/studio-e2e.rbxlx"
           ls -lh "$project/compiled.rbxlx"
       - name: Upload compile evidence
         if: always()
