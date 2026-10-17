@@ -76,6 +76,11 @@ def test_generic_pet_game_generates_custom_luau_world_and_remote(tmp_path,monkey
     assert "CustomPetHatching" in modules
     assert "CombatSystem" not in modules and "ShopService" not in modules
     assert plan.game_design["dynamic_design"]["source_reuse"]=="none_unless_validated"
+    novel_test=next(x for x in plan.tests if x.test_id=="test_dynamic_structure")
+    assert 'CustomPetHatching' in novel_test.test_code
+    assert 'HatchPet' in novel_test.test_code
+    assert 'PetEggStand' in novel_test.test_code
+    assert "not gameplay behavior" in novel_test.test_code
     result=session.build(source_only=True)
     assert result.metadata["acceptance"]["passed"], result.metadata["acceptance"]
     assert result.success is False # No Roblox engine used.

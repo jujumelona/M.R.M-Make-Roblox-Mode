@@ -142,6 +142,56 @@ class RobloxPlaytestRunner:
                 file_path=path,
                 test_code=chr(10).join(lines),
             ))
+        # The dynamic game still needs real Studio/Cloud behavior tests.
+        # These generated Jest assertions establish only that new roles,
+        # remotes and world objects exist in the actual Studio DataModel.
+        dynamic = proposal.game_design.get("dynamic_design") or {}
+        if dynamic:
+            checks = [
+                "--!strict",
+                'local ReplicatedStorage = game:GetService("ReplicatedStorage")',
+                'local JestGlobals = require(ReplicatedStorage:WaitForChild("DevPackages"):WaitForChild("JestGlobals"))',
+                "local describe = JestGlobals.describe",
+                "local it = JestGlobals.it",
+                "local expect = JestGlobals.expect",
+                'describe("Dynamic game object presence, not gameplay behavior", function()',
+            ]
+            for module in proposal.modules:
+                if not module.module_id.startswith("dyn_"):
+                    continue
+                if module.file_path.startswith("src/server/"):
+                    tree_expr='game:GetService("ServerScriptService")'
+                elif module.file_path.startswith("src/client/"):
+                    tree_expr='game:GetService("StarterPlayer"):WaitForChild("StarterPlayerScripts")'
+                else:
+                    tree_expr='ReplicatedStorage:WaitForChild("Shared")'
+                checks += [
+                    f'    it("includes {module.name}", function()',
+                    f'        expect({tree_expr}:FindFirstChild("{module.name}") ~= nil).toBe(true)',
+                    "    end)",
+                ]
+            for name, kind in dynamic.get("remotes", {}).items():
+                checks += [
+                    f'    it("declares {name} remote", function()',
+                    '        local remotes = ReplicatedStorage:WaitForChild("Remotes")',
+                    f'        local remote = remotes:FindFirstChild("{name}")',
+                    f'        expect(remote ~= nil and remote:IsA("{kind}")).toBe(true)',
+                    "    end)",
+                ]
+            for obj in dynamic.get("world_objects", []):
+                name,kind=obj["name"],obj["class"]
+                checks += [
+                    f'    it("contains {name} world object", function()',
+                    f'        local instance = workspace:FindFirstChild("{name}")',
+                    f'        expect(instance ~= nil and instance:IsA("{kind}")).toBe(true)',
+                    "    end)",
+                ]
+            checks.append("end)")
+            specs.append(RobloxTestSpec(
+                test_id="test_dynamic_structure", name="Novel mechanics Studio instance contract",
+                target_module="DynamicGame", file_path="tests/DynamicStructure.spec.luau",
+                test_code="\\n".join(checks),
+            ))
         return specs
 
     def run_headless_playtest(self, proposal: RobloxProposal) -> PlaytestReport:
