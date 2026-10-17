@@ -21,7 +21,12 @@ local function walkToCoin(humanoid, coin)
     conn:Disconnect()
 end
 
+local authorizedToPurchase = false
 ready.OnClientEvent:Connect(function(command)
+    if command == "buy" then
+        authorizedToPurchase = true
+        return
+    end
     if command == "leave" then
         if StudioTestService:CanLeaveTest() then StudioTestService:LeaveTest() end
         return
@@ -46,20 +51,22 @@ ready.OnClientEvent:Connect(function(command)
         if coins.Value - startCoins >= 50 then break end
         if coin:IsA("BasePart") then walkToCoin(humanoid, coin) end
     end
-    local collection = coins.Value - startCoins >= 50
-    local purchaseSucceeded, effect, deducted = false, false, false
-    if collection then
-        local balanceBefore = coins.Value
-        local remoteFolder = ReplicatedStorage:WaitForChild("Remotes", 10)
-        local purchase = remoteFolder and remoteFolder:FindFirstChild("ShopPurchase")
-        if purchase and purchase:IsA("RemoteFunction") then
-            local called, success = pcall(function() return purchase:InvokeServer("speed_boots") end)
-            purchaseSucceeded = called and success == true
-            task.wait(0.5)
-            effect = humanoid.WalkSpeed >= 24
-            deducted = coins.Value == balanceBefore - 50
-        end
+    if coins.Value - startCoins < 50 then
+        report:FireServer({phase="purchased", purchaseSucceeded=false})
+        return
     end
-    report:FireServer({coinsCollected=collection,
-        purchaseSucceeded=purchaseSucceeded, realItemEffect=effect, coinsDeducted=deducted})
+
+    -- Synchronize with the test server so it snapshots actual Coins before purchase.
+    report:FireServer({phase="collected"})
+    local deadline = os.clock() + 12
+    while not authorizedToPurchase and os.clock() < deadline do task.wait(0.1) end
+    if not authorizedToPurchase then return end
+
+    local remoteFolder = ReplicatedStorage:WaitForChild("Remotes", 10)
+    local purchase = remoteFolder and remoteFolder:FindFirstChild("ShopPurchase")
+    local called, success = false, false
+    if purchase and purchase:IsA("RemoteFunction") then
+        called, success = pcall(function() return purchase:InvokeServer("speed_boots") end)
+    end
+    report:FireServer({phase="purchased", purchaseSucceeded=called and success == true})
 end)

@@ -66,32 +66,68 @@ if #members < 2 then
     return
 end
 
-local clientReport = nil
-report.OnServerEvent:Connect(function(player, result)
-    if player == p and type(result) == "table" then clientReport = result end
-end)
+local startingCoins = coins.Value
 local secondClient = members[2]
 local secondCoins = getCoins(secondClient)
 if not secondCoins then
     finish({ok=false, reason="Second client lacks replicated leaderstats"})
     return
 end
+local secondStartingCoins = secondCoins.Value
+local beforePurchaseCoins = nil
+local clientReport = nil
+
+report.OnServerEvent:Connect(function(sender, payload)
+    if sender ~= p or type(payload) ~= "table" then return end
+    if payload.phase == "collected" and beforePurchaseCoins == nil then
+        local collected = coins.Value - startingCoins
+        if collected >= 50 then
+            beforePurchaseCoins = coins.Value
+            status:FireClient(p, "buy")
+        else
+            clientReport = {phase="rejected", reason="server observed insufficient collected coins"}
+        end
+    elseif payload.phase == "purchased" and beforePurchaseCoins ~= nil then
+        clientReport = payload
+    end
+end)
 
 status:FireClient(p, "run")
-deadline = os.clock() + 70
+deadline = os.clock() + 95
 while not clientReport and os.clock() < deadline do task.wait(0.2) end
 if not clientReport then
-    finish({ok=false, reason="Client did not report coin+shop interaction"})
+    finish({ok=false, reason="Client did not finish coin pickup + shop purchase"})
     return
 end
-local ok = clientReport.coinsCollected == true
+
+local character = p.Character
+local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+local owned = p:FindFirstChild("OwnedItems")
+local effectOnServer = humanoid and humanoid.WalkSpeed >= 24
+local ownedOnServer = owned and owned:FindFirstChild("speed_boots") ~= nil
+local chargedCorrectly = beforePurchaseCoins ~= nil and coins.Value == beforePurchaseCoins - 50
+local independentSecondClient = secondCoins.Value == secondStartingCoins
+local ok = (
+    clientReport.phase == "purchased"
     and clientReport.purchaseSucceeded == true
-    and clientReport.realItemEffect == true
-    and clientReport.coinsDeducted == true
+    and beforePurchaseCoins ~= nil
+    and beforePurchaseCoins - startingCoins >= 50
+    and effectOnServer
+    and ownedOnServer
+    and chargedCorrectly
+    and independentSecondClient
+)
 local expectedCoins = coins.Value
 local userId = p.UserId
 if not ok then
-    finish({ok=false, reason="Gameplay interaction failed", client=clientReport})
+    finish({
+        ok=false,
+        reason="Server-authoritative coin/shop checks failed",
+        collectedBeforePurchase = beforePurchaseCoins,
+        initialBalance=startingCoins, finalBalance=coins.Value,
+        realEffect=effectOnServer, itemOwned=ownedOnServer,
+        charged=chargedCorrectly, secondClientUnchanged=independentSecondClient,
+    })
     return
 end
 -- A client disconnect must invoke PlayerRemoving and persist profile.
@@ -117,9 +153,9 @@ until os.clock() > deadline
 local saved = persisted and persisted.coins == expectedCoins and table.find(persisted.inventory or {}, "speed_boots") ~= nil
 finish({
     ok = saved == true,
-    client_server = ok,
-    coin_pickup = clientReport.coinsCollected,
-    shop_purchase = clientReport.purchaseSucceeded and clientReport.coinsDeducted and clientReport.realItemEffect,
+    client_server = ok and independentSecondClient,
+    coin_pickup = beforePurchaseCoins - startingCoins >= 50,
+    shop_purchase = chargedCorrectly and effectOnServer and ownedOnServer,
     persisted = saved == true,
     userId = userId,
     coins = expectedCoins,
