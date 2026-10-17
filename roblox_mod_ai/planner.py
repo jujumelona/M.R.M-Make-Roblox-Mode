@@ -463,7 +463,8 @@ class RobloxGameDesignPlanner:
         ) or "- No requirement details recorded"
         evidence_lines = "\n".join(
             f"- [{item['facet']}] {item['url']} (sha256: {item['content_sha256'][:16]})"
-            for item in pre.get("evidence", [])[:12]
+            for item in pre.get("evidence", [])
+            if item.get("provider") == "official_docs" and item.get("url")
         ) or "- No official document content fetched; not evidence-grounded"
         pending = ", ".join(ledger.get("unimplemented_facets", [])) or "none"
         return f"""# 🎮 Roblox Experience Plan: {proposal.game_title} (Genre: {genre})
