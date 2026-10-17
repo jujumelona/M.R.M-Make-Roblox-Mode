@@ -71,8 +71,12 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
     if features.get("is_simulator"):
         check("simulator.world", bool(world.get("SellZones")), "Sell zone available")
 
-    check("persistence.handler", has("PlayerDataManager", "DataStoreService", "BindToClose", "pcall"),
-          "Persistent player data hooks exist (roundtrip requires real runtime)")
+    check("persistence.handler", has("PlayerDataManager", "UpdateAsync", "BindToClose",
+                                      "lockUntil", "sessionLocks", "OwnedItems", "retryWithBackoff"),
+          "Atomic profile lease, renewal, and inventory persistence present; actual restore requires Studio")
+    if features.get("is_magic"):
+        check("magic.ability", has("MagicAbilities", "OnServerEvent", "Raycast", "cooldown"),
+              "Requested magic may not be replaced with a generic stub")
     check("network.remotes", bool(world) and bool(
         json.loads((root / "default.project.json").read_text(encoding="utf-8")).get("tree", {}).get("ReplicatedStorage", {}).get("Remotes")
     ), "Network remotes mapped by Rojo")

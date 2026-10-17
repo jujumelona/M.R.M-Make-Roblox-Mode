@@ -262,6 +262,25 @@ local function onPlayerAdded(player: Player)
     stageVal.Name = "Stage"
     stageVal.Value = data.stage
     stageVal.Parent = leaderstats
+
+    -- Renew exclusive session lease for players connected longer than two minutes.
+    task.spawn(function()
+        while player.Parent == Players and sessionLocks[userId] == sessionToken do
+            task.wait(45)
+            if player.Parent ~= Players or sessionLocks[userId] ~= sessionToken then break end
+            local renewed, current = retryWithBackoff(function()
+                return PlayerDataStore:UpdateAsync(key, function(stored)
+                    if not stored or stored.lockToken ~= sessionToken then return nil end
+                    stored.lockUntil = os.time() + 120
+                    return stored
+                end)
+            end, 3)
+            if not renewed or current == nil then
+                player:Kick("Your profile session lock could not be renewed.")
+                break
+            end
+        end
+    end)
 end
 
 local function savePlayerData(player: Player): boolean
