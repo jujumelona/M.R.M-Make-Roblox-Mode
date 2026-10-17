@@ -317,9 +317,16 @@ class RobloxGameDesignPlanner:
                            not any(features.values()))
         if needs_novel and dynamic_design_enabled():
             try:
+                # A fixed shop/sword/obby template cannot implement bespoke
+                # mechanics (pet shop, procedural RPG, etc.). Do not transplant
+                # these even when one keyword also matches.
+                infrastructure = {"NetworkRemotes", "PlayerDataManager"}
+                existing = [m for m in modules if m.name in infrastructure]
                 dynamic_design = RobloxDynamicArchitect(self.router).design(
-                    prompt, research, modules
+                    prompt, research, existing
                 )
+                modules = existing
+                features = {key: False for key in features}
                 for row in dynamic_design["modules"]:
                     row.evidence_refs = list(dict.fromkeys(
                         e["url"] for e in research.get("evidence", [])

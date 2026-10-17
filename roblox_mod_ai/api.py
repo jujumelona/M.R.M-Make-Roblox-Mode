@@ -26,9 +26,10 @@ class CompleteChatReply:
     def ready_to_build(self) -> bool:
         research = self.authored_plan.proposal.game_design.get("pre_design_research", {})
         ledger = research.get("ledger", {})
-        return not ledger.get("unimplemented_facets") and any(
-            self.authored_plan.proposal.game_design.get("features", {}).values()
-        )
+        return (not ledger.get("unimplemented_facets")
+                and not ledger.get("unmatched_requirements")
+                and (any(self.authored_plan.proposal.game_design.get("features", {}).values())
+                     or bool(self.authored_plan.proposal.game_design.get("dynamic_design"))))
 
 
 class CompleteRobloxAISession:

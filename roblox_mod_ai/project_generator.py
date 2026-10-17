@@ -118,8 +118,6 @@ class RobloxProjectGenerator:
             world["SellZones"] = {"$className": "Folder",
                 "SellPad": {"$className": "Part", "$properties": {
                     "Anchored": True, "Size": [12, 1, 12], "Position": [30, 0.5, 0]}}}
-        if dynamic and len(world) != len(set(world)):
-            raise ValueError("Generated world object conflict")
         world["Baseplate"] = {"$className": "Part", "$properties": {
             "Anchored": True, "Size": [512, 20, 512], "Position": [0, -10, 0],
         }}

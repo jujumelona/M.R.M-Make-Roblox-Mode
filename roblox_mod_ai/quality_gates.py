@@ -127,6 +127,10 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
     dyn = proposal.game_design.get("dynamic_design") or {}
     if dyn:
         requirements = set(dyn.get("acceptance", {}))
+        check("dynamic.no_unverified_reuse", dyn.get("source_reuse") == "none_unless_validated"
+              and not any(m.name not in {"NetworkRemotes", "PlayerDataManager"}
+                          and not m.module_id.startswith("dyn_") for m in proposal.modules),
+              "Unsupported request does not re-use incomplete fixed game templates")
         assignments = dyn.get("module_requirements", {})
         model_modules = [m for m in proposal.modules if m.module_id.startswith("dyn_")]
         covered = {req for m in model_modules for req in assignments.get(m.module_id, [])}
