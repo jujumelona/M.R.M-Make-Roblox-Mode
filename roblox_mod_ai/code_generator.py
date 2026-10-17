@@ -399,7 +399,31 @@ local SHOP_ITEMS: {{ [string]: {{ name: string, price: number, itemType: string 
     health_potion = {{ name = "Health Potion", price = 25, itemType = "Consumable" }},
 }}
 
+local lastPurchaseByUserId: {{ [number]: number }} = {{}}
+local MAX_SHOP_DISTANCE = 18
+local PURCHASE_COOLDOWN = 0.35
+
 local function handlePurchase(player: Player, itemId: string): (boolean, string)
+    -- Roblox RemoteFunction arguments are UNTRUSTED, regardless of Luau type annotations.
+    if typeof(itemId) ~= "string" or #itemId > 48 then
+        return false, "Invalid item id"
+    end
+    local now = os.clock()
+    if now - (lastPurchaseByUserId[player.UserId] or -10000) < PURCHASE_COOLDOWN then
+        return false, "Purchase cooldown"
+    end
+    lastPurchaseByUserId[player.UserId] = now
+    local character = player.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    local shopFolder = workspace:FindFirstChild("ShopStalls")
+    local counter = shopFolder and shopFolder:FindFirstChild("ShopCounter")
+    if not humanoid or humanoid.Health <= 0 or not root or not root:IsA("BasePart") then
+        return false, "Character unavailable"
+    end
+    if not counter or not counter:IsA("BasePart") or (root.Position - counter.Position).Magnitude > MAX_SHOP_DISTANCE then
+        return false, "You must be near the shop to purchase"
+    end
     local item = SHOP_ITEMS[itemId]
     if not item then
         return false, "Item does not exist in catalog."
@@ -425,8 +449,6 @@ local function handlePurchase(player: Player, itemId: string): (boolean, string)
 
 
     -- Deliver concrete gameplay effects, not empty cosmetic Tools.
-    local character = player.Character
-    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     if itemId == "speed_boots" then
         if not humanoid then coinsVal.Value += item.price; return false, "Character unavailable" end
         humanoid.WalkSpeed = math.max(humanoid.WalkSpeed, 24)
@@ -472,6 +494,9 @@ local function handlePurchase(player: Player, itemId: string): (boolean, string)
 end
 
 purchaseFunction.OnServerInvoke = handlePurchase
+Players.PlayerRemoving:Connect(function(player)
+    lastPurchaseByUserId[player.UserId] = nil
+end)
 
 local function restoreEquipment(player: Player, character: Model)
     local owned = player:WaitForChild("OwnedItems", 10)
@@ -821,12 +846,15 @@ attackRemote.OnServerEvent:Connect(function(player, targetCharacter: Model?)
     playerCooldowns[userId] = now
 
     local char = player.Character
-    if not char then return end
+    if not char or targetCharacter == char then return end
+    local attacker = char:FindFirstChildOfClass("Humanoid")
+    if not attacker or attacker.Health <= 0 then return end
     local root = char:FindFirstChild("HumanoidRootPart") :: BasePart?
     local targetRoot = targetCharacter:FindFirstChild("HumanoidRootPart") :: BasePart?
     local targetHumanoid = targetCharacter:FindFirstChild("Humanoid") :: Humanoid?
 
-    if not root or not targetRoot or not targetHumanoid then return end
+    if not root or not targetRoot or not targetHumanoid or targetHumanoid.Health <= 0 then return end
+    if not targetCharacter:IsDescendantOf(workspace) then return end
 
     -- Server-side anti-cheat distance validation
     local distance = (root.Position - targetRoot.Position).Magnitude
@@ -835,39 +863,55 @@ attackRemote.OnServerEvent:Connect(function(player, targetCharacter: Model?)
         return
     end
 
+    -- Client chooses a candidate, but server independently checks line of sight.
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = {{char}}
+    local ray = workspace:Raycast(root.Position, targetRoot.Position - root.Position, params)
+    if not ray or not ray.Instance:IsDescendantOf(targetCharacter) then return end
     targetHumanoid:TakeDamage(20)
 end)
 """
 
     def _generate_combat_controller(self, module: RobloxModuleSpec, proposal: RobloxProposal) -> str:
         return f"""--!strict
--- Service: StarterPlayerScripts
--- Script: {module.name}
--- Description: Client weapon swing detection and hit raycasting.
-
+-- Roblox cross-platform combat: mouse, touch and gamepad actions.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UserInputService = game:GetService("UserInputService")
+local ContextActionService = game:GetService("ContextActionService")
 local SoundService = game:GetService("SoundService")
 
 local localPlayer = Players.LocalPlayer
-local remotesFolder = ReplicatedStorage:WaitForChild("Remotes")
-local attackRemote = remotesFolder:WaitForChild("AttackRequest") :: RemoteEvent
+local attackRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("AttackRequest") :: RemoteEvent
 
-UserInputService.InputBegan:Connect(function(input, processed)
-    if processed then return end
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        local mouse = localPlayer:GetMouse()
-        local target = mouse.Target
-        if target and target.Parent and target.Parent:FindFirstChild("Humanoid") then
-            attackRemote:FireServer(target.Parent :: Model)
-            local slashSound = SoundService:FindFirstChild("SwordSlashSound") :: Sound?
-            if slashSound then slashSound:Play() end
-        end
+local function attack(_actionName: string, state: Enum.UserInputState, _input: InputObject)
+    if state ~= Enum.UserInputState.Begin then return Enum.ContextActionResult.Pass end
+    local camera = workspace.CurrentCamera
+    if not camera then return Enum.ContextActionResult.Pass end
+    local viewport = camera.ViewportSize
+    local ray = camera:ViewportPointToRay(viewport.X * 0.5, viewport.Y * 0.5)
+    local params = RaycastParams.new()
+    local character = localPlayer.Character
+    if character then
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        params.FilterDescendantsInstances = {{character}}
     end
-end)
-"""
+    local hit = workspace:Raycast(ray.Origin, ray.Direction * 100, params)
+    local model = hit and hit.Instance:FindFirstAncestorOfClass("Model")
+    if model and model:FindFirstChildOfClass("Humanoid") then
+        attackRemote:FireServer(model)
+        local sound = SoundService:FindFirstChild("SwordSlashSound") :: Sound?
+        if sound then sound:Play() end
+    end
+    return Enum.ContextActionResult.Sink
+end
 
+ContextActionService:BindAction(
+    "RMM_Attack", attack, true,
+    Enum.UserInputType.MouseButton1, Enum.KeyCode.ButtonR2
+)
+ContextActionService:SetTitle("RMM_Attack", "Attack")
+"""
 
     def _generate_coin_collector(self, module: RobloxModuleSpec, proposal: RobloxProposal) -> str:
         """Server-owned physical coin pickup; depends on Rojo-created Workspace Coins."""

@@ -53,6 +53,10 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
     if features.get("is_shop"):
         check("shop.currency", has("ShopService", "EconomyRules.canAfford", "EconomyRules.charge", "OnServerInvoke"),
               "Server validates and deducts balance")
+        check("shop.remote_security", has("ShopService",
+            'typeof(itemId) ~= "string"', 'PURCHASE_COOLDOWN', 'MAX_SHOP_DISTANCE',
+            'humanoid.Health <= 0', 'ShopStalls'),
+              "RemoteFunction type, distance, character and rate validated by server")
         check("shop.effect", has("ShopService", "speed_boots", "WalkSpeed", "health_potion", "Humanoid", "Activated:Connect"),
               "Shop has measurable speed/health/combat effects, not empty items")
         check("shop.ui", has("ShopController", "ScreenGui", "TextButton", "InvokeServer", "ProximityPrompt"),
@@ -75,9 +79,11 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
         ),
               "HUD reflects changing coin balance")
     if features.get("is_combat"):
-        check("combat.server", has("CombatSystem", "OnServerEvent", "MAX_REACH", "TakeDamage"),
+        check("combat.server", has("CombatSystem", "OnServerEvent", "MAX_REACH", "TakeDamage",
+                                         "FilterDescendantsInstances", "IsDescendantOf"),
               "Server validates hit distance and applies damage")
-        check("combat.client", has("CombatController", "FireServer", "InputBegan"),
+        check("combat.client", has("CombatController", "FireServer", "BindAction",
+                "MouseButton1", "ButtonR2", "SetTitle"),
               "Client submits attack request")
         check("combat.arena", bool(world.get("CombatArena")), "Arena walls in Rojo Workspace")
     if features.get("is_obby"):
