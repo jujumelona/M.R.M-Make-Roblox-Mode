@@ -43,49 +43,109 @@ assert(ok, "DataStore test failed: " .. tostring(err))
 
 
 class OpenCloudRuntimeVerifier:
-    """Build -> explicit isolated test-place upload -> actual engine execution.
+    """Publish an isolated test place and poll a *real* Roblox engine task.
 
-    A server-side smoke test is not an actual multiplayer client interaction test.
+    All network calls are injectable for contract testing. Fake HTTP responses
+    never represent a successful live engine execution.
     """
 
-    def __init__(self, client: httpx.Client | None = None) -> None:
+    def __init__(
+        self,
+        client: httpx.Client | None = None,
+        publisher: object | None = None,
+        poll_interval: float = 2.0,
+        max_polls: int = 90,
+    ) -> None:
         self.client = client
+        self.publisher = publisher
+        self.poll_interval = poll_interval
+        self.max_polls = max_polls
 
     def run(self, proposal: RobloxProposal, place_file: Path) -> dict:
-        key = os.environ.get("ROBLOX_OPEN_CLOUD_API_KEY")
-        universe = os.environ.get("ROBLOX_TEST_UNIVERSE_ID")
-        place = os.environ.get("ROBLOX_TEST_PLACE_ID")
-        if not all((key, universe, place)) or os.environ.get("RMM_ALLOW_TEST_PLACE_PUBLISH") != "1":
-            return {"passed": False, "executed": False,
-                    "reason": "Real engine test requires an isolated test place, API key, and RMM_ALLOW_TEST_PLACE_PUBLISH=1"}
-        pub = RobloxOpenCloudClient(api_key=key).publish_place(universe, place, place_file, version_type="Published")
-        if not pub.get("success") or not pub.get("version_number"):
-            return {"passed": False, "executed": False, "reason": "Test place publish failed", "publish": pub}
-        version = pub["version_number"]
-        base = f"https://apis.roblox.com/cloud/v2/universes/{universe}/places/{place}/versions/{version}"
-        url = base + "/luau-execution-session-tasks"
+        key = os.environ.get("ROBLOX_OPEN_CLOUD_API_KEY", "")
+        universe = os.environ.get("ROBLOX_TEST_UNIVERSE_ID", "")
+        place = os.environ.get("ROBLOX_TEST_PLACE_ID", "")
+        if not key or not universe.isdecimal() or not place.isdecimal() or (
+            os.environ.get("RMM_ALLOW_TEST_PLACE_PUBLISH") != "1"
+        ):
+            return {
+                "passed": False, "executed": False,
+                "reason": "Dedicated test Place ID, Universe ID, API key, and explicit publish opt-in required",
+            }
+
+        compiled = Path(place_file)
+        if not compiled.is_file() or compiled.suffix.lower() not in (".rbxlx", ".rbxl"):
+            return {"passed": False, "executed": False, "reason": "Compiled test place is missing"}
+
+        publisher = self.publisher or RobloxOpenCloudClient(api_key=key)
+        try:
+            pub = publisher.publish_place(universe, place, compiled, version_type="Published")
+        except Exception as exc:
+            return {"passed": False, "executed": False, "reason": f"Test place publish exception: {type(exc).__name__}"}
+        version = pub.get("version_number") if isinstance(pub, dict) else None
+        if not pub.get("success") or not isinstance(version, (int, str)) or not str(version).isdecimal():
+            return {
+                "passed": False, "executed": False,
+                "reason": "Test place publish did not return a valid version",
+                "publish_status": pub.get("status_code") if isinstance(pub, dict) else None,
+            }
+
+        url = (
+            f"https://apis.roblox.com/cloud/v2/universes/{universe}/places/{place}/"
+            f"versions/{version}/luau-execution-session-tasks"
+        )
         headers = {"x-api-key": key, "Content-Type": "application/json"}
         session = self.client or httpx.Client(timeout=30)
+        prefix = f"universes/{universe}/places/{place}/versions/{version}/"
         try:
-            res = session.post(url, json={"script": make_smoke_script(proposal)}, headers=headers)
-            res.raise_for_status()
-            task = res.json()
-            path = task.get("path", "")
-            if not path.startswith(f"universes/{universe}/places/{place}/"):
-                return {"passed": False, "executed": False, "reason": "Invalid task path"}
-            deadline = time.monotonic() + 120
-            while task.get("state") in ("QUEUED", "PROCESSING", "STATE_UNSPECIFIED") and time.monotonic() < deadline:
-                time.sleep(2)
-                response = session.get("https://apis.roblox.com/cloud/v2/" + path, headers=headers)
+            create = session.post(url, json={"script": make_smoke_script(proposal)}, headers=headers)
+            create.raise_for_status()
+            task = create.json()
+            if not isinstance(task, dict):
+                return {"passed": False, "executed": False, "reason": "Invalid task response"}
+            path = task.get("path")
+            if not isinstance(path, str) or not path.startswith(prefix) or (
+                "/luau-execution-sessions/" not in path or "/tasks/" not in path
+            ) or "?" in path or "#" in path or ".." in path:
+                return {"passed": False, "executed": False, "reason": "Invalid task resource path"}
+
+            # The create endpoint may not supply state/output; ALWAYS fetch the task.
+            task_url = "https://apis.roblox.com/cloud/v2/" + path
+            state = "UNKNOWN"
+            for attempt in range(self.max_polls):
+                if attempt and self.poll_interval:
+                    time.sleep(self.poll_interval)
+                response = session.get(task_url, headers={"x-api-key": key})
                 response.raise_for_status()
                 task = response.json()
-            results = task.get("output", {}).get("results", [])
-            passed = task.get("state") == "COMPLETE" and results == [True]
-            return {"passed": passed, "executed": task.get("state") not in ("QUEUED", "PROCESSING"),
-                    "state": task.get("state"), "results": results, "task_path": path,
-                    "test_place_version": version, "scope": "server_smoke_and_datastore_only"}
-        except (httpx.HTTPError, ValueError) as exc:
-            return {"passed": False, "executed": False, "reason": str(exc)}
+                if not isinstance(task, dict):
+                    return {"passed": False, "executed": False, "reason": "Invalid polled task response"}
+                state = task.get("state")
+                if state in ("COMPLETE", "FAILED", "CANCELLED"):
+                    results = task.get("output", {}).get("results", [])
+                    passed = state == "COMPLETE" and results == [True]
+                    return {
+                        "passed": passed, "executed": True,
+                        "state": state, "results": results,
+                        "task_path": path, "test_place_version": version,
+                        "scope": "server_smoke_and_datastore_only",
+                        "reason": "ok" if passed else str(
+                            task.get("error", "Task did not return exactly [true]")
+                        ),
+                    }
+                if state not in ("QUEUED", "PROCESSING", "STATE_UNSPECIFIED"):
+                    return {"passed": False, "executed": False, "state": state,
+                            "reason": "Unexpected Roblox task state", "task_path": path}
+            return {
+                "passed": False, "executed": False, "state": state,
+                "reason": "Roblox task poll limit reached",
+                "task_path": path, "test_place_version": version,
+            }
+        except (httpx.HTTPError, ValueError, TypeError) as exc:
+            return {
+                "passed": False, "executed": False,
+                "reason": f"Roblox Cloud request failed: {type(exc).__name__}",
+            }
         finally:
             if self.client is None:
                 session.close()

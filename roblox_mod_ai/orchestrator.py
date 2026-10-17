@@ -206,17 +206,18 @@ class RobloxProductionOrchestrator:
             # prove client-server user interactions or join/leave restore.
             real_multiplayer = self._validate_studio_receipt(Path(rbxlx_path))
             runtime["multiplayer"] = real_multiplayer
-            runtime["passed"] = bool(runtime.get("passed") and real_multiplayer["passed"])
+            runtime["server_smoke_passed"] = bool(runtime.get("passed"))
+            runtime["passed"] = bool(runtime["server_smoke_passed"] and real_multiplayer["passed"])
             ready = stage(TaskStage.PLAYTEST, lambda: {
                 "passed": runtime["passed"], "scope": "server engine + Studio multiplayer",
                 "error": runtime.get("reason", real_multiplayer.get("reason", "runtime verification incomplete"))})
             playtest_report = PlaytestReport(
                 passed=ready, total_tests=2,
-                passed_count=int(bool(runtime.get("executed") and runtime.get("state") == "COMPLETE")) + int(real_multiplayer["passed"]),
-                failed_count=2 - (int(bool(runtime.get("executed") and runtime.get("state") == "COMPLETE")) + int(real_multiplayer["passed"])),
+                passed_count=int(bool(runtime.get("server_smoke_passed"))) + int(real_multiplayer["passed"]),
+                failed_count=2 - (int(bool(runtime.get("server_smoke_passed"))) + int(real_multiplayer["passed"])),
                 duration_ms=0,
                 results=[
-                    TestCaseResult(name="Open Cloud server+DataStore", passed=bool(runtime.get("executed") and runtime.get("state") == "COMPLETE"),
+                    TestCaseResult(name="Open Cloud server+DataStore", passed=bool(runtime.get("server_smoke_passed")),
                                    duration_ms=0, message=str(runtime.get("reason", runtime.get("state")))),
                     TestCaseResult(name="Studio multiplayer + persistence restore", passed=real_multiplayer["passed"],
                                    duration_ms=0, message=str(real_multiplayer.get("reason", "evidence accepted"))),
