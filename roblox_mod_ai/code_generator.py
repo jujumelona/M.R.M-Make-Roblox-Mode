@@ -381,6 +381,7 @@ end)
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local EconomyRules = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("EconomyRules"))
 
 local remotesFolder = ReplicatedStorage:WaitForChild("Remotes")
 local purchaseFunction = remotesFolder:FindFirstChild("ShopPurchase") :: RemoteFunction?
@@ -410,7 +411,7 @@ local function handlePurchase(player: Player, itemId: string): (boolean, string)
     end
 
     local coinsVal = leaderstats:FindFirstChild("Coins") :: IntValue?
-    if not coinsVal or coinsVal.Value < item.price then
+    if not coinsVal or not EconomyRules.canAfford(coinsVal.Value, item.price) then
         return false, "Insufficient coins! You need " .. item.price .. " coins."
     end
 
@@ -420,7 +421,7 @@ local function handlePurchase(player: Player, itemId: string): (boolean, string)
     end
 
     -- Deduct currency server-authoritatively
-    coinsVal.Value -= item.price
+    coinsVal.Value = EconomyRules.charge(coinsVal.Value, item.price) :: number
 
 
     -- Deliver concrete gameplay effects, not empty cosmetic Tools.

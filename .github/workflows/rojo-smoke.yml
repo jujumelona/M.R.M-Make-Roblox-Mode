@@ -22,6 +22,8 @@ jobs:
         uses: paradoxum-games/setup-rokit@v3
         with:
           cache: true
+      - name: Run standalone pure Luau rules in Lune
+        run: lune run tests/economy_logic
       - name: Generate source only (release must remain unverified)
         run: |
           python - <<'PY'

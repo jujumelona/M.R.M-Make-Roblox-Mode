@@ -42,7 +42,7 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
               "Server Touched handler increments Coins")
         check("coin.respawn", has("CoinCollector", "task.delay", "CanTouch"), "Collectible cooldown and respawn")
     if features.get("is_shop"):
-        check("shop.currency", has("ShopService", "coinsVal.Value <", "coinsVal.Value -=", "OnServerInvoke"),
+        check("shop.currency", has("ShopService", "EconomyRules.canAfford", "EconomyRules.charge", "OnServerInvoke"),
               "Server validates and deducts balance")
         check("shop.effect", has("ShopService", "speed_boots", "WalkSpeed", "health_potion", "Humanoid", "Activated:Connect"),
               "Shop has measurable speed/health/combat effects, not empty items")
@@ -51,7 +51,7 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
         check("shop.world", bool(world.get("ShopStalls", {}).get("ShopCounter", {}).get("ShopPrompt")),
               "Shop ProximityPrompt included by Rojo")
         if coin_requested:
-            check("coin.to.shop", has("CoinCollector", "Coins", ".Value +=") and has("ShopService", "Coins", ".Value -="),
+            check("coin.to.shop", has("CoinCollector", "Coins", ".Value +=") and has("ShopService", "Coins", "EconomyRules.charge"),
                   "Producer and consumer share authoritative leaderstats Coins")
     if leaderboard:
         check("leaderboard.stats", (

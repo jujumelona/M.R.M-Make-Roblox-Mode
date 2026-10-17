@@ -30,3 +30,6 @@ rmm-mcp = "roblox_mod_ai.mcp_server:main"
 
 [tool.setuptools.packages.find]
 include = ["roblox_mod_ai*"]
+
+[tool.setuptools.package-data]
+roblox_mod_ai = ["economy_rules.luau"]

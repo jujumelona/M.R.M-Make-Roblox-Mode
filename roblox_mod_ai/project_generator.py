@@ -203,6 +203,13 @@ JestGlobals = "roblox/jest-globals@=3.20.0"
             dest.write_text(module.code, encoding="utf-8")
             paths_created[module.name] = dest
 
+        if proposal.game_design.get("features", {}).get("is_shop"):
+            economy_source = Path(__file__).with_name("economy_rules.luau")
+            dest = target_dir / "src" / "shared" / "EconomyRules.luau"
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(economy_source.read_bytes())
+            paths_created["EconomyRules"] = dest
+
         # 4. Materialize verified asset injection loader in src/server/AssetLoader.server.luau
         if any(asset.verified for asset in proposal.assets):
             asset_loader_code = "--!strict\n-- Auto-generated Asset Loader for Creator Store Assets\n\n"
