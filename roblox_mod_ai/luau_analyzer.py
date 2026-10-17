@@ -155,6 +155,9 @@ class LuauStaticAnalyzer:
 
             # Syntax block counting
             tokens = re.findall(r"\b(function|if|for|while|do|then|end|repeat|until)\b", code_line)
+            # "elseif ... then" continues an existing if block, not a new block.
+            if re.search(r"\belseif\b.*\bthen\b", code_line) and "then" in tokens:
+                tokens.remove("then")
             for token in tokens:
                 if token in {"function", "do", "repeat"}:
                     open_blocks += 1

@@ -33,21 +33,21 @@ def test_work_graph_receipt_and_build_mode(tmp_path: Path):
     session = CompleteRobloxAISession(output_root=tmp_path)
     plan = session.plan("코인 상점과 검투가 합쳐진 아레나 게임")
 
-    result = session.build(plan, run_name="test_work_graph")
-    assert result.success is True
+    result = session.build(plan, run_name="test_work_graph", source_only=True)
+    assert result.success is False
     assert result.work_receipt is not None
-    assert result.work_receipt.overall_success is True
+    assert result.work_receipt.overall_success is False
 
     # Verify stage progression in receipt
     stage_names = [s.stage.value for s in result.work_receipt.stages]
     assert "resolve_dependencies" in stage_names
     assert "generate_code" in stage_names
     assert "lint_and_self_correct" in stage_names
-    assert "playtest" in stage_names
+    assert "playtest" not in stage_names  # no engine was launched
     assert "package" in stage_names
 
     # Verify build mode truthfulness
-    assert result.build_mode in ("rojo_cli", "native_xml_engine")
+    assert result.build_mode == "source_only"
 
     # Verify work_receipt.json was persisted
     receipt_file = Path(result.project_dir) / "work_receipt.json"

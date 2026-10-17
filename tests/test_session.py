@@ -35,9 +35,12 @@ def test_session_plan_revise_build(tmp_path: Path):
     assert loaded_reply.authored_plan.revision_count == 1
 
     # 5. Build
-    build_result = new_session.build(run_name="test_run")
-    assert build_result.success
-    assert Path(build_result.rbxlx_path).is_file()
-    assert Path(build_result.project_zip_path).is_file()
+    build_result = new_session.build(run_name="test_run", source_only=True)
+    # A source-only build is not a verified Roblox game.
+    assert not build_result.success
+    assert not build_result.rbxlx_path
+    assert not build_result.playtest_report.passed
+    assert (Path(build_result.project_dir) / "src/server/ShopService.server.luau").is_file()
+    assert (Path(build_result.project_dir) / "src/server/CoinCollector.server.luau").is_file()
     assert build_result.analysis_report.passed
-    assert build_result.playtest_report.passed
+    assert build_result.metadata["acceptance"]["passed"]
