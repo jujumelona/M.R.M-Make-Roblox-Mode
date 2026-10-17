@@ -1,5 +1,7 @@
 # 🎮 R.M.M (Roblox Mod & Experience AI)
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jujumelona/R.M.M-Make-Roblox-Mode/blob/main/R.M.M_Make_Roblox_Mode_Colab.ipynb)
+
 > **M.M.M(Make Minecraft Mode)**의 핵심 아키텍처와 로컬 GGUF 모델 파이프라인을 재활용하여 구현된 **Roblox 전용 AI 경험 제작 자동화 프레임워크**입니다.
 
 자연어 프롬프트만으로 게임플레이 기획, Roblox Creator Store 애셋 탐색, 타입 검증된 Luau 스크립트 생성, 정적 분석 및 플레이테스트를 수행하고, **Roblox Studio에서 즉시 열 수 있는 `.rbxlx` 및 Rojo 프로젝트 ZIP**을 출력합니다.
@@ -27,7 +29,20 @@
 
 ## 🚀 빠른 시작 (Quickstart)
 
-### 1. Python API
+### 1. Google Colab (클릭 한 번으로 즉시 실행)
+
+M.M.M과 동일하게 브라우저에서 설치 없이 실행할 수 있는 공식 Colab 인터랙티브 노트북을 제공합니다:
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jujumelona/R.M.M-Make-Roblox-Mode/blob/main/R.M.M_Make_Roblox_Mode_Colab.ipynb)
+
+1. **상단 뱃지 클릭**: Colab에서 [`R.M.M_Make_Roblox_Mode_Colab.ipynb`](R.M.M_Make_Roblox_Mode_Colab.ipynb) 열기
+2. **원하는 모드 선택**: `Full` (기획 + 빌드), `Plan` (기획만), `Revise` (수정), `Audit` (정적 감사)
+3. **자연어 프롬프트 입력**: "코인 수집, 상점, 리더보드가 포함된 검투 아레나 만들어줘"
+4. **셀 순차 실행**: 생성된 `.rbxlx` 및 프로젝트 ZIP 파일이 브라우저로 자동 다운로드됩니다.
+
+---
+
+### 2. Python API
 
 ```python
 from roblox_mod_ai import CompleteRobloxAISession
