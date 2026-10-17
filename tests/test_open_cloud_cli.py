@@ -15,7 +15,7 @@ def test_cloud_smoke_cli_does_not_claim_success_without_credentials(monkeypatch,
 
 
 def test_cloud_workflow_is_manual_and_test_place_only():
-    content = (Path(__file__).resolve().parents[1] / ".github/workflows/open-cloud-smoke.yml").read_text()
+    content = (Path(__file__).resolve().parents[1] / ".github/workflows/open-cloud-smoke.yml").read_text(encoding="utf-8")
     assert "workflow_dispatch" in content
     assert "environment: roblox-test" in content
     assert "secrets.ROBLOX_TEST_PLACE_ID" in content
