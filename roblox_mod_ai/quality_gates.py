@@ -56,7 +56,11 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
     if leaderboard:
         check("leaderboard.stats", has("PlayerDataManager", 'leaderstats.Name = "leaderstats"', '"Coins"', '"Level"'),
               "Player stats replicated as leaderstats folder")
-        check("leaderboard.hud", has("HUDController", "ScreenGui", "TextLabel", "coins.Changed"),
+        check("leaderboard.hud", (
+            has("HUDController", "ScreenGui", "TextLabel", "coins.Changed")
+            if proposal.game_design.get("ui_backend") != "fusion"
+            else has("HUDController", "scope:New", "coinState:set", "CoinsDisplay")
+        ),
               "HUD reflects changing coin balance")
     if features.get("is_combat"):
         check("combat.server", has("CombatSystem", "OnServerEvent", "MAX_REACH", "TakeDamage"),
@@ -71,9 +75,17 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
     if features.get("is_simulator"):
         check("simulator.world", bool(world.get("SellZones")), "Sell zone available")
 
-    check("persistence.handler", has("PlayerDataManager", "UpdateAsync", "BindToClose",
-                                      "lockUntil", "sessionLocks", "OwnedItems", "retryWithBackoff"),
-          "Atomic profile lease, renewal, and inventory persistence present; actual restore requires Studio")
+    if proposal.game_design.get("storage_backend") == "profilestore":
+        check("persistence.handler", has("PlayerDataManager", "ProfileStore.New",
+              "StartSessionAsync", "EndSession", "OwnedItems", "OnSessionEnd"),
+              "External ProfileStore sessions, autosave and inventory replication configured")
+    else:
+        check("persistence.handler", has("PlayerDataManager", "UpdateAsync", "BindToClose",
+                                          "lockUntil", "sessionLocks", "OwnedItems", "retryWithBackoff"),
+              "Built-in atomic DataStore session lease and inventory configured")
+    if proposal.game_design.get("ui_backend") == "fusion":
+        check("ui.fusion", has("HUDController", "Fusion.scoped", "Fusion.Children", "scope:Computed"),
+              "Fusion reactive HUD generated")
     if features.get("is_magic"):
         check("magic.ability", has("MagicAbilities", "OnServerEvent", "Raycast", "cooldown"),
               "Requested magic may not be replaced with a generic stub")

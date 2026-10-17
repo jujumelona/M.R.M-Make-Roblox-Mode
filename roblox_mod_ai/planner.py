@@ -59,6 +59,13 @@ class RobloxGameDesignPlanner:
 
         # 2. Detect requested subsystems dynamically
         features = self.detect_genres_and_features(prompt)
+        import os
+        storage_backend = "profilestore" if (
+            "profilestore" in prompt.lower() or os.environ.get("RMM_STORAGE_BACKEND") == "profilestore"
+        ) else "builtin"
+        ui_backend = "fusion" if (
+            "fusion" in prompt.lower() or os.environ.get("RMM_UI_BACKEND") == "fusion"
+        ) else "builtin"
 
         # Base modules required by every safe Roblox project: NetworkRemotes & PlayerDataManager
         modules: list[RobloxModuleSpec] = [
@@ -264,7 +271,9 @@ class RobloxGameDesignPlanner:
             game_design={
                 "genre": primary_genre,
                 "features": features,
-                "storage": "DataStoreService with session-locking & exponential backoff pcall",
+                "storage": "ProfileStore" if storage_backend == "profilestore" else "DataStoreService with session-locking & exponential backoff pcall",
+                "storage_backend": storage_backend,
+                "ui_backend": ui_backend,
                 "networking": "RemoteEvents/RemoteFunctions with server authority & reach checks",
             },
             modules=modules,

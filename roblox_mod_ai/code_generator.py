@@ -7,6 +7,7 @@ import re
 from typing import Any
 
 from .luau_analyzer import LuauStaticAnalyzer
+from .library_adapters import PROFILESTORE_SERVER, FUSION_HUD
 from .model_router import ModelRouter
 from .spec import RobloxModuleSpec, RobloxProposal
 
@@ -65,6 +66,8 @@ class LuauCodeGenerator:
         elif "network" in name or "remote" in kind or "shared" in kind:
             return self._generate_shared_network_module(module, proposal)
         elif "playerdata" in name or "data" in kind:
+            if proposal.game_design.get("storage_backend") == "profilestore":
+                return PROFILESTORE_SERVER
             return self._generate_safe_datastore_service(module, proposal)
         elif "shop" in name and ("server" in kind or module.file_path.endswith(".server.luau")):
             return self._generate_shop_service(module, proposal)
@@ -89,6 +92,8 @@ class LuauCodeGenerator:
         elif "coincollector" in name:
             return self._generate_coin_collector(module, proposal)
         elif "hud" in name:
+            if proposal.game_design.get("ui_backend") == "fusion":
+                return FUSION_HUD
             return self._generate_hud_controller(module, proposal)
         else:
             return self._generate_generic_module(module, proposal)
