@@ -59,6 +59,11 @@ class RobloxGameDesignPlanner:
 
         # 2. Detect requested subsystems dynamically
         features = self.detect_genres_and_features(prompt)
+        if not any(features.values()):
+            raise ValueError(
+                "No supported Roblox gameplay system found in this request. "
+                "Cannot claim an empty generated world satisfies the prompt."
+            )
         import os
         storage_backend = "profilestore" if (
             "profilestore" in prompt.lower() or os.environ.get("RMM_STORAGE_BACKEND") == "profilestore"

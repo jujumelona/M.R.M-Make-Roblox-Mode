@@ -8,6 +8,7 @@ from typing import Any
 
 from .luau_analyzer import LuauStaticAnalyzer
 from .library_adapters import PROFILESTORE_SERVER, FUSION_HUD
+from .agent_loop import RobloxCodeRepairAgent
 from .model_router import ModelRouter
 from .spec import RobloxModuleSpec, RobloxProposal
 
@@ -985,10 +986,5 @@ return ModdingSystem
 """
 
     def _generate_generic_module(self, module: RobloxModuleSpec, proposal: RobloxProposal) -> str:
-        return f"""--!strict
--- Module: {module.name}
--- Description: {module.description or "Generic Luau component"}
-
-local {module.name} = {{}}
-return {module.name}
-"""
+        """Never return an empty Lua table and pretend an unknown game was implemented."""
+        return RobloxCodeRepairAgent(router=self.router).repair(module, proposal)
