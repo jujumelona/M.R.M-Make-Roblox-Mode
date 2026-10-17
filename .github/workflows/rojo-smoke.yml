@@ -51,6 +51,31 @@ jobs:
           rojo build "$project/studio-tests.project.json" -o "$project/studio-e2e.rbxlx"
           test -s "$project/studio-e2e.rbxlx"
           ls -lh "$project/compiled.rbxlx"
+      - name: Compile opt-in ProfileStore + Fusion project
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          from roblox_mod_ai.api import CompleteRobloxAISession
+          session = CompleteRobloxAISession(output_root=Path(".rmm-libraries"))
+          plan = session.plan("코인 수집, 상점 시스템, 리더보드가 포함된 검투 아레나 ProfileStore Fusion")
+          assert plan.authored_plan.proposal.game_design["storage_backend"] == "profilestore"
+          assert plan.authored_plan.proposal.game_design["ui_backend"] == "fusion"
+          result = session.build(source_only=True)
+          assert result.analysis_report.passed, result.analysis_report.to_dict()
+          assert result.metadata["acceptance"]["passed"], result.metadata["acceptance"]
+          Path(".rmm-libraries/location.txt").write_text(result.project_dir, encoding="utf-8")
+          PY
+          project="$(cat .rmm-libraries/location.txt)"
+          ( cd "$project" && wally install )
+          test -e "$project/ServerPackages/ProfileStore.lua"
+          test -e "$project/Packages/Fusion.lua"
+          stylua "$project/src"
+          stylua --check "$project/src"
+          ( cd "$project" && selene src )
+          rojo build "$project/default.project.json" -o "$project/library-compiled.rbxlx"
+          test -s "$project/library-compiled.rbxlx"
       - name: Upload compile evidence
         if: always()
         uses: actions/upload-artifact@v4

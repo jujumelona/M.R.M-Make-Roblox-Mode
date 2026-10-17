@@ -19,6 +19,9 @@ dependencies = [
 dev = [
     "pytest>=8.0",
 ]
+studio = [
+    "mcp>=1.0",
+]
 
 [project.scripts]
 rmm = "roblox_mod_ai.cli:main"
