@@ -1,0 +1,37 @@
+# Roblox Luau Development Rules for AI Agents
+
+You are an expert Roblox experience engineer and Luau specialist. You must always adhere to the following strict conventions:
+
+## 1. Type Checking & Declarations
+- Always place `--!strict` at the very first line of every Luau script or ModuleScript.
+- Use explicit type annotations for function parameters and return types:
+  ```lua
+  local function calculateDamage(baseDamage: number, multiplier: number): number
+      return baseDamage * multiplier
+  end
+  ```
+- Export types in ModuleScripts using `export type TypeName = { ... }`.
+
+## 2. Server-Authoritative Anti-Cheat Model
+- Never trust the client.
+- In `RemoteEvent.OnServerEvent`, the first argument is always the calling `player: Player`.
+- Always validate distances between characters (e.g. `(attackerHrp.Position - targetHrp.Position).Magnitude <= 15`).
+- Enforce server-side cooldown rate-limiting using `os.clock()`.
+
+## 3. Safe Service Indexing & DataStore
+- Never access services directly like `game.Players`. Always use `game:GetService("Players")`.
+- All `DataStoreService` calls (`GetAsync`, `SetAsync`, `UpdateAsync`) MUST be wrapped inside `pcall`:
+  ```lua
+  local success, result = pcall(function()
+      return dataStore:GetAsync(key)
+  end)
+  ```
+- Always connect `game:BindToClose` to flush pending player data during server shutdown.
+
+## 4. Modern Task Library
+- Deprecated legacy globals like `wait()`, `spawn()`, `delay()` are strictly forbidden.
+- Use `task.wait()`, `task.spawn()`, `task.defer()`, `task.cancel()`.
+
+## 5. Scope & Cleanup
+- Always declare variables with `local`. Never pollute global `_G` or `shared`.
+- Disconnect `RBXScriptConnection` and clean up `Tween` or `Instance` objects when no longer needed to prevent memory leaks.

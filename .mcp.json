@@ -10,6 +10,16 @@
         "ROBLOX_MOD_AI_WORKSPACE": "rmm-output",
         "ROBLOX_MOD_AI_ALLOW_OFFLINE_FALLBACK": "1"
       }
+    },
+    "roblox-studio-bridge": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "robloxstudio-mcp@latest"
+      ],
+      "env": {
+        "PORT": "3000"
+      }
     }
   }
 }
