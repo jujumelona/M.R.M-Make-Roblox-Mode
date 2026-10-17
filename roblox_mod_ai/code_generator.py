@@ -459,12 +459,12 @@ panel.Size = UDim2.fromOffset(300, 290)
 panel.Position = UDim2.new(0.5, -150, 0.5, -145)
 panel.Visible = false
 panel.Parent = gui
-local items = {
-    {"speed_boots", "Speed Boots - 50"},
-    {"magic_staff", "Arcane Staff - 150"},
-    {"shield", "Iron Shield - 100"},
-    {"health_potion", "Health Potion - 25"},
-}
+local items = {{
+    {{"speed_boots", "Speed Boots - 50"}},
+    {{"magic_staff", "Arcane Staff - 150"}},
+    {{"shield", "Iron Shield - 100"}},
+    {{"health_potion", "Health Potion - 25"}},
+}}
 for index, item in items do
     local button = Instance.new("TextButton")
     button.Name = item[1]
