@@ -170,3 +170,20 @@ def test_command_exposes_saved_research_without_fabricated_official_docs(tmp_pat
     assert result["status"]=="live_disabled"
     assert result["ledger"]["original_prompt"]=="코인 상점"
     assert not [x for x in result["evidence"] if x["provider"]=="official_docs"]
+
+
+def test_researched_module_references_are_source_bound(tmp_path):
+    with fake_docs_client() as client:
+        research=RobloxPreDesignResearch(
+            docs=RobloxOfficialDocs(client=client),live_enabled=True)
+        planner=RobloxGameDesignPlanner(pre_design_research=research)
+        plan=planner.plan("코인 수집, 상점")
+        p=plan.proposal
+        sources={e["url"] for e in p.game_design["pre_design_research"]["evidence"]
+                 if e["provider"]=="official_docs"}
+        shop=next(m for m in p.modules if m.name=="ShopService")
+        assert shop.evidence_refs
+        assert set(shop.evidence_refs)<=sources
+        saved=p.to_dict()
+        restored=type(p).from_dict(saved)
+        assert next(m for m in restored.modules if m.name=="ShopService").evidence_refs==shop.evidence_refs

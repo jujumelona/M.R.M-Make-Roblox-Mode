@@ -285,6 +285,25 @@ class RobloxGameDesignPlanner:
                 seen_ids.add(a.asset_id)
                 unique_assets.append(a)
 
+        # Evidence handoff is module-specific: a shop module sees shop docs,
+        # rather than an unrelated generic RAG summary.
+        module_facet = {
+            "ShopService":"shop", "ShopController":"shop",
+            "CoinCollector":"coins", "CombatSystem":"combat",
+            "CombatController":"combat", "ObbyService":"obby",
+            "ObbyController":"obby", "TycoonService":"tycoon",
+            "TycoonController":"tycoon", "SimulatorService":"simulator",
+            "SimulatorController":"simulator", "MagicAbilities":"magic",
+            "PlayerDataManager":"persistence", "HUDController":"interface",
+        }
+        for module in modules:
+            facet = module_facet.get(module.name)
+            module.evidence_refs = list(dict.fromkeys(
+                item["url"] for item in research["evidence"]
+                if item.get("provider") == "official_docs" and
+                   item.get("facet") == facet and item.get("url")
+            ))
+
         # 4. Generate Test Specs tailored to the generated modules
         primary_genre = "Combat"
         for g_name, active in [("Obby", features["is_obby"]), ("Shop", features["is_shop"]), ("Tycoon", features["is_tycoon"]), ("Simulator", features["is_simulator"]), ("Combat", features["is_combat"])]:
@@ -394,6 +413,19 @@ class RobloxGameDesignPlanner:
                 )
             )
 
+        # Re-bind module evidence after every revision; old citations may refer
+        # to a different request or document state.
+        for module in proposal.modules:
+            topic = ("shop" if "Shop" in module.name else
+                     "magic" if "Magic" in module.name else
+                     "combat" if "Combat" in module.name else
+                     "coins" if "Coin" in module.name else None)
+            if topic:
+                module.evidence_refs = list(dict.fromkeys(
+                    item["url"] for item in research["evidence"]
+                    if item.get("provider") == "official_docs"
+                    and item.get("facet") == topic and item.get("url")
+                ))
         # Update test specs
         proposal.tests = self.test_runner.generate_default_test_specs(proposal)
 
