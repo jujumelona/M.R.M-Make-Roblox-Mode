@@ -249,6 +249,9 @@ class RobloxProductionOrchestrator:
             data = json.loads(Path(path).read_text(encoding="utf-8"))
             required = {"client_server", "coin_pickup", "shop_purchase", "datastore_restore"}
             ok = (data.get("runner") == "StudioTestService"
+                  and data.get("evidence_type") == "local_studio_output"
+                  and isinstance(data.get("studio_test_place_sha256"), str)
+                  and len(data.get("studio_test_place_sha256", "")) == 64
                   and data.get("place_sha256") == hashlib.sha256(place.read_bytes()).hexdigest()
                   and all(data.get("checks", {}).get(name) is True for name in required))
             return {"passed": bool(ok), "reason": "receipt validated" if ok else "invalid or incomplete receipt"}

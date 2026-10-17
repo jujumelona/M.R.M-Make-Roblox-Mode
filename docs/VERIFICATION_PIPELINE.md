@@ -81,3 +81,21 @@ Without credentials it fails closed; ordinary CI never deploys.
 
 This checks server instance structure and the test DataStore only. It does NOT
 complete StudioTestService multiplayer testing or certify the production game.
+
+### Produce the Studio receipt from actual Output
+
+After you have compiled both a release place and a `studio-e2e.rbxlx` test place,
+open the Studio test place and run the `RMMQualityRunner.plugin.luau` plugin.
+Copy the Output containing the `RMM_STUDIO_E2E_RESULT` JSON record into a UTF-8 file
+(e.g. `studio-output.txt`). Then run:
+
+```bash
+python tools/make_studio_receipt.py --studio-log studio-output.txt \
+  --release-place compiled.rbxlx --studio-place studio-e2e.rbxlx \
+  --output studio_receipt.json
+```
+
+Set `RMM_STUDIO_E2E_RECEIPT` to `studio_receipt.json` when running the production
+verification. The converter rejects absent/failed checks and calculates hashes of both
+compiled files; it does not invent gameplay results. Studio console output is
+**self-attested**, not a cryptographic Roblox certificate.
