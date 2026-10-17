@@ -80,6 +80,54 @@ jobs:
           rojo build "$project/default.project.json" -o "$project/library-compiled.rbxlx"
           test -s "$project/library-compiled.rbxlx"
           python tools/audit_rojo_place.py --plan .rmm-libraries/proposal.json --place "$project/library-compiled.rbxlx"
+      - name: Test non-destructive owned-Place addon installation and compile
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from roblox_mod_ai.api import CompleteRobloxAISession
+          from roblox_mod_ai.addon_installer import prepare_owned_addon, apply_owned_addon
+          owner=Path(".rmm-owner-sample").resolve()
+          owner.mkdir(parents=True, exist_ok=True)
+          (owner/"src/server").mkdir(parents=True, exist_ok=True)
+          (owner/"src/server/LegacyGame.server.luau").write_text('print("original untouched")', encoding="utf-8")
+          tree={
+              "$className":"DataModel",
+              "Workspace":{"$className":"Workspace",
+                           "OriginalCastle":{"$className":"Part",
+                             "$properties":{"Anchored":True,"Size":[9,9,9],"Position":[100,5,0]}},
+                           "SpawnLocation":{"$className":"SpawnLocation"}},
+              "ReplicatedStorage":{"$className":"ReplicatedStorage",
+                                   "Shared":{"$path":"src/shared"},
+                                   "Remotes":{"$className":"Folder"}},
+              "ServerScriptService":{"$className":"ServerScriptService","$path":"src/server"},
+              "StarterPlayer":{"$className":"StarterPlayer",
+                               "StarterPlayerScripts":{"$path":"src/client"}},
+              "StarterGui":{"$className":"StarterGui","$path":"src/gui"},
+          }
+          (owner/"default.project.json").write_text(json.dumps({"name":"OwnedSample","tree":tree}),encoding="utf-8")
+          session=CompleteRobloxAISession(output_root=Path(".rmm-addon-stage"))
+          session.plan("코인 수집 상점 리더보드",project_mode="existing_experience_addon")
+          out=session.build(source_only=True)
+          assert out.metadata["addon_prepared"] and not out.success, out.metadata
+          assert not out.rbxlx_path and not (Path(out.project_dir)/"default.project.json").exists()
+          inspection=prepare_owned_addon(Path(out.project_dir), owner)
+          assert inspection["passed"], inspection
+          outcome=apply_owned_addon(Path(out.project_dir),owner,
+                                    i_own_this_experience=True,reviewed_player_data=True)
+          assert outcome["local_files_applied"]>0 and not outcome["published"]
+          assert (owner/"src/server/LegacyGame.server.luau").read_text(encoding="utf-8")=='print("original untouched")'
+          after=json.loads((owner/"default.project.json").read_text(encoding="utf-8"))["tree"]["Workspace"]
+          assert "OriginalCastle" in after and "Coins" in after and "ShopStalls" in after
+          assert "Baseplate" not in after
+          Path(".rmm-addon-stage/location.txt").write_text(str(owner),encoding="utf-8")
+          PY
+          original="$(cat .rmm-addon-stage/location.txt)"
+          rojo build "$original/default.project.json" -o "$original/owner-addon.rbxlx"
+          test -s "$original/owner-addon.rbxlx"
+          python tools/audit_rojo_place.py --plan .rmm-addon-stage/proposal.json --place "$original/owner-addon.rbxlx"
       - name: Upload compile evidence
         if: always()
         uses: actions/upload-artifact@v4
