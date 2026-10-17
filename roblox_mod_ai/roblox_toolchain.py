@@ -155,6 +155,21 @@ stylua = "JohnnyMorganz/StyLua@2.0.2"
         except Exception as exc:
             return {"success": False, "executed": True, "error": str(exc)}
 
+    def run_luau_analyze(self, target_dir: str | Path) -> dict[str, Any]:
+        """Run actual Luau CLI analyzer across generated Luau source files."""
+        tool = shutil.which("luau-analyze")
+        if not tool:
+            return {"success": False, "executed": False, "message": "luau-analyze missing"}
+        paths = sorted(str(p) for p in Path(target_dir).rglob("*.luau") if "/tests/" not in p.as_posix())
+        if not paths:
+            return {"success": False, "executed": False, "message": "no source scripts"}
+        try:
+            res = subprocess.run([tool, *paths], capture_output=True, text=True, timeout=60)
+            return {"success": res.returncode == 0, "executed": True,
+                    "stdout": res.stdout, "stderr": res.stderr}
+        except Exception as exc:
+            return {"success": False, "executed": True, "error": str(exc)}
+
     def run_rojo_build(self, project_json: str | Path, output_file: str | Path) -> dict[str, Any]:
         """Executes 'rojo build -o <output> <project_json>'."""
         p_json = str(Path(project_json).resolve())

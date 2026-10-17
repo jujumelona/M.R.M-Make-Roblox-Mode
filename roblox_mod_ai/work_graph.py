@@ -105,7 +105,7 @@ class RobloxWorkGraph:
 
         def dfs(node_id: str) -> None:
             if node_id in visiting:
-                return  # break cycle gracefully
+                raise ValueError(f"Module dependency cycle: {node_id}")
             if node_id in visited:
                 return
             visiting.add(node_id)
@@ -113,8 +113,9 @@ class RobloxWorkGraph:
             if mod:
                 deps = getattr(mod, "depends_on", []) or []
                 for dep in deps:
-                    if dep in by_id:
-                        dfs(dep)
+                    if dep not in by_id:
+                        raise ValueError(f"Missing module dependency: {mod.module_id} -> {dep}")
+                    dfs(dep)
             visiting.remove(node_id)
             visited.add(node_id)
             if mod:
