@@ -177,3 +177,12 @@ MMM의 요구사항 원장·호스트 소유 검색·증거 전달 패턴을 Rob
 실제 외부 근거를 못 찾은 경우 성공으로 위장하지 않습니다.
 실행: `rmm research "50단계 점프맵에 펫과 상점 추가"`.
 자세한 내용: [docs/PREDESIGN_ROBLOX_RAG.md](docs/PREDESIGN_ROBLOX_RAG.md).
+
+### 범용 게임 로직 설계 및 부적합 코드 재사용 방지
+
+로컬 소형 모델 주소(`ROBLOX_LLAMA_SERVER_URL` 또는 `RMM_MODEL_BASE_URL`)가 설정되어 있으면,
+기존 장르 템플릿보다 원문 요구사항별 신규 모듈 설계를 우선합니다. 기존 외부 코드와
+Creator Store 모델은 이름만 보고 재사용하지 않습니다. 새로 설계한 모듈은 범위가 제한된
+World/Remote 계약을 검증한 후 Luau로 생성하며, Selene/StyLua/Rojo를 통과해야 합니다.
+엔진 실제 게임플레이 검증은 별도로 필요합니다.
+[상세 설계·제약](docs/UNIVERSAL_GAME_PIPELINE.md).
