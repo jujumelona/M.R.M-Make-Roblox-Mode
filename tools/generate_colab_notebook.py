@@ -32,7 +32,7 @@ def build_notebook() -> None:
         source=(
             "# 🎮 R.M.M Make Roblox Mode (Roblox Mod & Experience AI)\n"
             "\n"
-            "[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jujumelona/R.M.M-Make-Roblox-Mode/blob/main/R.M.M_Make_Roblox_Mode_Colab.ipynb)\n"
+            "[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jujumelona/M.R.M-Make-Roblox-Mode/blob/main/R.M.M_Make_Roblox_Mode_Colab.ipynb)\n"
             "\n"
             "> 자연어 요구사항만으로 **Roblox Studio 경험 및 인게임 모딩 시스템**을 자동 기획하고, Luau 코드를 정적 검증 및 플레이테스트한 뒤 **즉시 열 수 있는 `.rbxlx` 및 Rojo 프로젝트 ZIP**을 생성하는 올인원 Colab 노트북입니다.\n"
             "\n"
@@ -90,8 +90,8 @@ def build_notebook() -> None:
             "import sys\n"
             "from pathlib import Path\n"
             "\n"
-            'REPO_DIR = Path("/content/R.M.M-Make-Roblox-Mode")\n'
-            'REPO_URL = "https://github.com/jujumelona/R.M.M-Make-Roblox-Mode.git"\n'
+            'REPO_DIR = Path("/content/M.R.M-Make-Roblox-Mode")\n'
+            'REPO_URL = "https://github.com/jujumelona/M.R.M-Make-Roblox-Mode.git"\n'
             "\n"
             'IN_COLAB = "google.colab" in sys.modules or Path("/content").is_dir()\n'
             "\n"

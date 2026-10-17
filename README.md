@@ -1,6 +1,6 @@
 # 🎮 R.M.M (Roblox Mod & Experience AI)
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jujumelona/R.M.M-Make-Roblox-Mode/blob/main/R.M.M_Make_Roblox_Mode_Colab.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jujumelona/M.R.M-Make-Roblox-Mode/blob/main/R.M.M_Make_Roblox_Mode_Colab.ipynb)
 
 > **M.M.M(Make Minecraft Mode)**의 핵심 아키텍처와 로컬 GGUF 모델 파이프라인을 재활용하여 구현된 **Roblox 전용 AI 경험 제작 자동화 프레임워크**입니다.
 
@@ -33,7 +33,7 @@
 
 M.M.M과 동일하게 브라우저에서 설치 없이 실행할 수 있는 공식 Colab 인터랙티브 노트북을 제공합니다:
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jujumelona/R.M.M-Make-Roblox-Mode/blob/main/R.M.M_Make_Roblox_Mode_Colab.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jujumelona/M.R.M-Make-Roblox-Mode/blob/main/R.M.M_Make_Roblox_Mode_Colab.ipynb)
 
 1. **상단 뱃지 클릭**: Colab에서 [`R.M.M_Make_Roblox_Mode_Colab.ipynb`](R.M.M_Make_Roblox_Mode_Colab.ipynb) 열기
 2. **원하는 모드 선택**: `Full` (기획 + 빌드), `Plan` (기획만), `Revise` (수정), `Audit` (정적 감사)
