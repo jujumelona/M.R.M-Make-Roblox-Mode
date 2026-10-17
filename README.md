@@ -167,3 +167,13 @@ Python CI는 엔진 실행 없이 소스/계약을 검증합니다. 테스트 �
 위 코드와 라이브러리의 설치·컴파일 성공만으로 실제 게임플레이 성공을 주장하지 않습니다.
 세부 사항: [docs/EXTERNAL_INTEGRATIONS.md](docs/EXTERNAL_INTEGRATIONS.md).
 
+
+### 프롬프트 우선 게임 설계 RAG
+
+MMM의 요구사항 원장·호스트 소유 검색·증거 전달 패턴을 Roblox에 맞게 적용했습니다.
+`rmm plan`은 계획 생성 전에 Roblox 공식 문서·로컬 API·재사용 코드 후보를 검색하며,
+한국어 프롬프트의 원문과 미구현 요구를 보존합니다. 소형 모델은 근거가 되는
+원문 구간을 지정한 영어 검색어만 제안할 수 있습니다.
+실제 외부 근거를 못 찾은 경우 성공으로 위장하지 않습니다.
+실행: `rmm research "50단계 점프맵에 펫과 상점 추가"`.
+자세한 내용: [docs/PREDESIGN_ROBLOX_RAG.md](docs/PREDESIGN_ROBLOX_RAG.md).
