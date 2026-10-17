@@ -11,6 +11,7 @@ import json
 import os
 import re
 from typing import Any
+from .model_router import ModelRouter
 
 from .creator_store import RobloxCreatorStoreCatalog
 from .official_docs import RobloxOfficialDocs
@@ -133,19 +134,96 @@ class RobloxPreDesignResearch:
     """
     def __init__(self, docs: RobloxOfficialDocs | None = None,
                  creator_store: RobloxCreatorStoreCatalog | None = None,
-                 *, live_enabled: bool | None = None) -> None:
+                 *, live_enabled: bool | None = None,
+                 router: ModelRouter | None = None) -> None:
         self.docs = docs if docs is not None else RobloxOfficialDocs()
+        self.router = router
         self.creator_store = creator_store if creator_store is not None else RobloxCreatorStoreCatalog()
         self.live_enabled = (os.environ.get("RMM_PREDESIGN_LIVE_SEARCH", "1") == "1"
                              if live_enabled is None else live_enabled)
         self.api = RobloxAPICatalog()
 
+    def _propose_semantic_searches(self, prompt: str, ledger: dict) -> list[dict]:
+        """Model proposes queries only, never source evidence or game success."""
+        if os.environ.get("RMM_ENABLE_MODEL_QUERY_EXPANSION") != "1" or self.router is None:
+            return []
+        requirements = ledger["requirements"]
+        try:
+            output = self.router.complete_json(
+                "Return JSON object {searches:[{source_span:string, english_query:string}]} "
+                "with at most six Roblox API/documentation queries for distinct "
+                "features in the user request. source_span must be an exact substring "
+                "of the user request. Translate Korean into English API terms. "
+                "Do not add gameplay features not present in the request.\n"
+                + json.dumps({"original_prompt":prompt,
+                              "requirements":requirements},ensure_ascii=False),
+                role="planner", temperature=0.1
+            )
+        except (ValueError, RuntimeError, OSError, TypeError):
+            return []
+        proposed=[]
+        if not isinstance(output,dict): return []
+        for entry in output.get("searches",[])[:6]:
+            if not isinstance(entry,dict): continue
+            span=_clean(entry.get("source_span",""))
+            query=_clean(entry.get("english_query",""))
+            if not span or span.casefold() not in prompt.casefold(): continue
+            if not query or len(query)>160 or not re.search(r"[a-zA-Z]{3,}",query):
+                continue
+            if not query.lower().startswith("roblox "): query="Roblox "+query
+            matched=[r["id"] for r in requirements
+                     if span.casefold() in r["statement"].casefold()]
+            if not matched: continue
+            facet_id="semantic-"+hashlib.sha256((span+query).encode("utf-8")).hexdigest()[:8]
+            proposed.append({"id":facet_id,"requirements":matched,
+                             "search_query":query,"implementation_key":None,
+                             "implemented_by_builtin":False,
+                             "model_query_only":True})
+        return proposed
+
     def research(self, prompt: str) -> dict[str, Any]:
         ledger = build_request_ledger(prompt)
+        semantic = self._propose_semantic_searches(prompt,ledger)
+        if semantic:
+            ledger["facets"] = (ledger["facets"] + semantic)[:_MAX_FACETS]
+            ledger["unimplemented_facets"] = sorted(set(
+                ledger["unimplemented_facets"] + [x["id"] for x in semantic
+                    if not any(f.get("implementation_key") for f in ledger["facets"]
+                       if set(f["requirements"]) & set(x["requirements"]))]
+            ))
+            covered={rid for f in ledger["facets"] for rid in f["requirements"]}
+            ledger["unmatched_requirements"] = [r["id"] for r in ledger["requirements"]
+                                                  if r["id"] not in covered]
+        if not ledger["facets"]:
+            # A domain-unknown request still gets a traceable search attempt.
+            ledger["facets"]=[{
+                "id":"unclassified",
+                "requirements":[r["id"] for r in ledger["requirements"]],
+                "search_query":"Roblox "+_clean(prompt)[:115],
+                "implementation_key":None,
+                "implemented_by_builtin":False
+            }]
+            ledger["unimplemented_facets"]=sorted(set(
+                ledger["unimplemented_facets"]+["unclassified"]
+            ))
         evidence: list[dict[str, Any]] = []
         queries: list[dict[str, Any]] = []
         failures: list[dict[str, str]] = []
         asset_candidates: list[dict[str, Any]] = []
+        reuse_candidates: list[dict[str, str]] = []
+        requested={facet["id"] for facet in ledger["facets"]}
+        for facet, name, package, upstream in (
+            ("persistence","ProfileStore","lm-loleris/profilestore@1.0.3",
+             "https://github.com/MadStudioRoblox/ProfileStore"),
+            ("interface","Fusion","elttob/fusion@0.3.0",
+             "https://github.com/dphfox/Fusion"),
+        ):
+            if facet in requested:
+                reuse_candidates.append({
+                    "facet":facet,"name":name,"package":package,"url":upstream,
+                    "status":"known_package_candidate_only",
+                    "source_inspected":False, "wally_resolution_required":True,
+                })
         seen_urls: set[tuple[str, str]] = set()
 
         for facet in ledger["facets"]:
@@ -239,6 +317,7 @@ class RobloxPreDesignResearch:
             "queries": queries,
             "evidence": evidence,
             "asset_candidates": asset_candidates,
+            "reuse_candidates": reuse_candidates,
             "provider_failures": failures,
             "status": status,
             "covered_facets": sorted(covered),

@@ -34,7 +34,7 @@ class RobloxGameDesignPlanner:
         self.router = router or ModelRouter()
         self.creator_store = creator_store or RobloxCreatorStoreCatalog()
         self.test_runner = RobloxPlaytestRunner()
-        self.researcher = pre_design_research or RobloxPreDesignResearch(creator_store=self.creator_store)
+        self.researcher = pre_design_research or RobloxPreDesignResearch(creator_store=self.creator_store, router=self.router)
 
     def detect_genres_and_features(self, prompt: str) -> dict[str, bool]:
         """Classifies the gameplay genres and subsystems requested in prompt."""
