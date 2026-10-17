@@ -15,6 +15,7 @@ from .open_cloud import RobloxOpenCloudClient
 from .playtest_runner import RobloxPlaytestRunner
 from .project_generator import RobloxProjectGenerator
 from .roblox_api_catalog import RobloxAPICatalog
+from .roblox_toolchain import RobloxToolchainManager
 
 SERVER_NAME = "rmm-roblox-mod-ai"
 SERVER_VERSION = "0.1.0"
@@ -30,6 +31,7 @@ class RobloxMCPServer:
         self.analyzer = LuauStaticAnalyzer()
         self.playtest_runner = RobloxPlaytestRunner()
         self.open_cloud = RobloxOpenCloudClient()
+        self.toolchain = RobloxToolchainManager()
         self.session = CompleteRobloxAISession(output_root=self.workspace_root)
 
     def get_tool_definitions(self) -> list[dict[str, Any]]:
@@ -137,6 +139,30 @@ class RobloxMCPServer:
                     "required": ["universe_id", "place_id", "file_path"],
                 },
             },
+            {
+                "name": "roblox_toolchain_status",
+                "description": "Checks the availability and version numbers of installed Roblox open-source tools (Rojo, Wally, Selene, StyLua, NPX).",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {},
+                },
+            },
+            {
+                "name": "roblox_toolchain_run",
+                "description": "Runs official Roblox CLI tools directly: 'stylua' (format), 'selene' (lint), 'wally_install' (fetch packages), or 'rojo_build' (compile .rbxlx).",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "action": {
+                            "type": "string",
+                            "enum": ["stylua", "selene", "wally_install", "rojo_build"],
+                            "description": "Action to run",
+                        },
+                        "target_dir": {"type": "string", "description": "Target project directory", "default": "."},
+                    },
+                    "required": ["action"],
+                },
+            },
         ]
 
     def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -221,6 +247,27 @@ class RobloxMCPServer:
                     arguments.get("file_path", ""),
                 )
                 return res
+
+            elif tool_name == "roblox_toolchain_status":
+                return self.toolchain.get_status().to_dict()
+
+            elif tool_name == "roblox_toolchain_run":
+                action = arguments.get("action", "")
+                target = arguments.get("target_dir", ".")
+                resolved_target = str((self.workspace_root / target).resolve()) if not Path(target).is_absolute() else target
+
+                if action == "stylua":
+                    return self.toolchain.run_stylua(resolved_target)
+                elif action == "selene":
+                    return self.toolchain.run_selene(resolved_target)
+                elif action == "wally_install":
+                    return self.toolchain.run_wally_install(resolved_target)
+                elif action == "rojo_build":
+                    out_file = Path(resolved_target) / "out.rbxlx"
+                    proj_file = Path(resolved_target) / "default.project.json"
+                    return self.toolchain.run_rojo_build(proj_file, out_file)
+                else:
+                    return {"error": f"Unknown toolchain action: {action}"}
 
             else:
                 return {"error": f"Unknown tool: {tool_name}"}

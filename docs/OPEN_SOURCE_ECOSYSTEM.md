@@ -35,31 +35,22 @@ AI 에이전트(Claude Desktop, Cursor, Antigravity 등)가 Roblox Studio 및 Lu
 
 ---
 
-## 2. Hugging Face에 공개된 Roblox Luau LoRA 및 GGUF 모델
+## 2. 로블록스 오픈소스 도구체인 (Toolchain) 실연동 아키텍처
 
-작은 AI 모델(Small LLMs)이 로블록스 특유의 Luau API와 네트워킹 구조를 정확히 작성할 수 있도록 파인튜닝된 공개 가중치 모델들입니다:
+R.M.M은 [`RobloxToolchainManager`](../roblox_mod_ai/roblox_toolchain.py)를 통해 커뮤니티 표준 CLI 도구들을 프로젝트 빌드 및 검사 수명주기에 직접 연결하여 실행합니다:
 
-| 모델 ID / Repo | 아키텍처 / 기반 모델 | 포맷 | VRAM 요구량 | 특징 및 용도 |
-|---|---|---|---|---|
-| [`preferredev/Roblox-Coder-v2_gguf`](https://huggingface.co/preferredev/Roblox-Coder-v2_gguf) | Qwen2.5-Coder-7B | GGUF (양자화) | **~6.0 GB** | **llama.cpp / llama-server 즉시 로드 가능**. 로블록스 스튜디오 Luau 스크립트 생성에 최적화 |
-| [`squaredcuber/roblox-luau-mistral-7b-2`](https://huggingface.co/squaredcuber/roblox-luau-mistral-7b-2) | Mistral-7B-Instruct-v0.3 | PEFT LoRA | **~8.0 GB** | 로블록스 개발 문법 및 관용구 학습 LoRA 어댑터 |
-| [`bostonstrong567/Luau-Qwen3-Coder-30B-A3B`](https://huggingface.co/bostonstrong567/Luau-Qwen3-Coder-30B-A3B) | Qwen2.5-Coder-32B | PEFT LoRA (Unsloth) | **~18.0 GB** | 수만 개의 실제 로블록스 게임 오픈소스 코드로 학습된 고성능 대형 어댑터 |
-| [`thameurabderrahim/deepseek-coder-1.3b-roblox-lora`](https://huggingface.co/thameurabderrahim/deepseek-coder-1.3b-roblox-lora) | DeepSeek-Coder-1.3B | PEFT LoRA | **~3.5 GB** | 4GB 이하 저사양 GPU에서도 동작하는 초경량 Luau 코드 생성 어댑터 |
+| 도구명 | CLI 명령어 | 연동 파이프라인 단계 | 기능 설명 |
+|---|---|---|---|
+| **Rojo** | `rojo build`, `rojo serve` | **Step 5: 컴파일** | `default.project.json`을 기반으로 공식 네이티브 `.rbxlx` 바이너리/XML 생성 및 2-Way 실시간 동기화 |
+| **Wally** | `wally install` | **Step 2: 의존성 설치** | `wally.toml`에 선언된 `Promise`, `Signal`, `TestEZ` 등의 오픈소스 패키지를 `Packages/`로 자동 다운로드 |
+| **StyLua** | `stylua <dir>` | **Step 2c: 코드 포매팅** | 생성된 모든 Luau 스크립트를 로블록스 표준 코딩 스타일에 맞춰 자동 포매팅 |
+| **Selene** | `selene <dir>` | **Step 3: 정적 린팅** | 컴파일 전 Luau 전용 초고속 정적 린터를 실행하여 버그 및 잠재적 런타임 오류 감지 |
+| **Rokit / Aftman** | `rokit install`, `aftman install` | **도구체인 버전 고정** | 프로젝트 루트에 `rokit.toml`, `aftman.toml` 매니페스트를 자동 생성하여 팀/CI 환경에서 모든 도구를 원클릭 설치 |
+| **TestEZ** | `roblox/testez` | **Step 4: 플레이테스트** | BDD 스타일(`describe`, `it`, `expect`) 단위 및 통합 테스트 실행 |
 
-### 공개 학습 데이터셋 (Corpus)
-* [`khtsly/roblox-luau-corpus`](https://huggingface.co/datasets/khtsly/roblox-luau-corpus): 약 19만 행, 수억 토큰 규모의 실제 로블록스 Luau 코드 및 API 문서 모음집.
-* [`Pinkstack/luau-coding-instructions-pretrain`](https://huggingface.co/datasets/Pinkstack/luau-coding-instructions-pretrain): 레이캐스팅, 데이터스토어, 컴포넌트 시스템 관련 Instruction 파인튜닝 데이터.
+### 도구체인 자동 폴백 (Graceful Fallback)
+시스템에 Rojo나 StyLua 등의 바이너리가 아직 설치되어 있지 않은 환경이라도 빌드가 실패하지 않도록 설계되었습니다:
+- **Rojo 미설치 시**: 내장된 고속 Python XML `.rbxlx` 빌더가 대신 완전한 스튜디오 플레이스를 생성.
+- **Selene 미설치 시**: 내장 정적 분석 엔진(`LuauStaticAnalyzer`)이 블록 밸런스, 비권장 글로벌, DataStore `pcall`을 전수 검사.
+- **Wally 미설치 시**: 패키지 매니페스트(`wally.toml`)를 올바르게 보존하여 추후 `wally install`이 가능하도록 유지.
 
----
-
-## 3. 핵심 오픈소스 로블록스 도구체인 (Toolchain)
-
-전문 로블록스 개발팀에서 표준으로 사용하는 오픈소스 스택입니다:
-
-1. **Rojo (`rojo.space`)**: 파일 시스템 ↔ Studio 간 2-Way 실시간 동기화.
-2. **Wally (`wally.run`)**: 로블록스 전용 패키지 관리자 (`wally.toml` 기반, `Promise`, `Signal`, `Knit` 등 관리).
-3. **Lune / Remodel**: 스튜디오 외부 CLI 환경에서 `.rbxlx` XML 플레이스 파일을 조작하고 헤드리스 Luau를 실행하는 러너.
-4. **Selene (`kampfkarren/selene`)**: Luau 전용 초고속 정적 코드 린터.
-5. **StyLua (`JohnnyMorganz/StyLua`)**: 공인 Luau 코드 포매터.
-6. **Rokit / Aftman**: 위 도구들의 버전을 고정하고 자동 설치해 주는 도구체인 매니저.
-7. **TestEZ (`Roblox/testez`)**: BDD 스타일 (`describe`, `it`, `expect`) 로블록스 단위 테스트 프레임워크.

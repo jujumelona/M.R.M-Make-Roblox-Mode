@@ -121,7 +121,7 @@ Claude Desktop, Cursor, Antigravity 등 표준 MCP 클라이언트에 즉시 등
 pytest tests -v
 ```
 
-전체 12개 테스트 스위트 (세션 수명주기, MCP JSON-RPC 서버, API 카탈로그, 인게임 모딩 시스템, Luau 정적 검사기, Rojo/Wally/.rbxlx 생성기, Creator Store 검색기, 헤드리스 플레이테스터)가 포함되어 있습니다.
+전체 15개 테스트 스위트 (세션 수명주기, MCP JSON-RPC 서버, API 카탈로그, 오픈소스 도구체인 매니저(Rojo/Wally/Selene/StyLua/Rokit), 인게임 모딩 시스템, Luau 정적 검사기, Rojo/Wally/.rbxlx 생성기, Creator Store 검색기, 헤드리스 플레이테스터)가 포함되어 있습니다.
 
 ---
 

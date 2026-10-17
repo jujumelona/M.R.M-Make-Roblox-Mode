@@ -21,6 +21,7 @@ from .orchestrator import RobloxPipelineResult, RobloxProductionOrchestrator
 from .planner import RobloxGameDesignPlanner
 from .playtest_runner import PlaytestReport, RobloxPlaytestRunner
 from .project_generator import RobloxProjectGenerator
+from .roblox_toolchain import RobloxToolchainManager, ToolchainStatus
 from .spec import (
     ModuleKind,
     RobloxAssetSpec,

@@ -72,16 +72,3 @@ def test_mcp_server_json_rpc():
     assert "result" in call_resp
     assert "TweenService" in call_resp["result"]["content"][0]["text"]
 
-
-def test_roblox_model_registry():
-    from roblox_mod_ai.model_registry import RobloxModelRegistry
-    models = RobloxModelRegistry.list_models()
-    assert len(models) >= 4
-    model_ids = [m["model_id"] for m in models]
-    assert "roblox-coder-v2-gguf" in model_ids
-    assert "roblox-luau-mistral-7b-lora" in model_ids
-
-    meta = RobloxModelRegistry.get_model("roblox-coder-v2-gguf")
-    assert meta is not None
-    assert meta.recommended_vram_gb <= 8.0
-

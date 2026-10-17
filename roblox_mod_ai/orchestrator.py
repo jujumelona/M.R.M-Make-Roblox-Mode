@@ -13,6 +13,7 @@ from .luau_analyzer import LuauAnalysisReport, LuauStaticAnalyzer
 from .model_router import ModelRouter
 from .playtest_runner import PlaytestReport, RobloxPlaytestRunner
 from .project_generator import RobloxProjectGenerator
+from .roblox_toolchain import RobloxToolchainManager
 from .spec import RobloxProposal
 
 
@@ -58,6 +59,7 @@ class RobloxProductionOrchestrator:
         self.project_generator = RobloxProjectGenerator(self.workspace_root)
         self.analyzer = LuauStaticAnalyzer()
         self.playtest_runner = RobloxPlaytestRunner()
+        self.toolchain = RobloxToolchainManager()
 
     def execute(
         self,
@@ -83,8 +85,18 @@ class RobloxProductionOrchestrator:
         print(f"📁 Step 2: Materializing Rojo project tree at {output_dir}...", flush=True)
         created_paths = self.project_generator.materialize_project_tree(proposal, output_dir)
 
-        # 3. Static Luau Analysis & Linting
-        print("🔍 Step 3: Running Luau static analysis and syntax checks...", flush=True)
+        # 2b. Write rokit.toml & aftman.toml manifests for toolchain version management
+        (output_dir / "rokit.toml").write_text(self.toolchain.generate_rokit_manifest(), encoding="utf-8")
+        (output_dir / "aftman.toml").write_text(self.toolchain.generate_aftman_manifest(), encoding="utf-8")
+
+        # 2c. Connect Open-Source Toolchain: StyLua format & Wally package install
+        print("🎨 Step 2c: Connecting Roblox Toolchain (StyLua format & Wally package install)...", flush=True)
+        self.toolchain.run_stylua(output_dir)
+        self.toolchain.run_wally_install(output_dir)
+
+        # 3. Static Luau Analysis & Selene Linting
+        print("🔍 Step 3: Running Luau static analysis and Selene linting...", flush=True)
+        self.toolchain.run_selene(output_dir)
         file_map = {m.file_path: m.code for m in proposal.modules}
         analysis_report = self.analyzer.analyze_files(file_map)
 
@@ -105,10 +117,12 @@ class RobloxProductionOrchestrator:
         zip_file_path = ""
 
         if not source_only:
-            # 5. Build Native .rbxlx XML Place File
+            # 5. Build Native .rbxlx XML Place File (Try Rojo CLI first, fallback to built-in XML builder)
             print(f"📦 Step 5: Compiling Roblox XML Place file ({proposal.game_title}.rbxlx)...", flush=True)
             rbxlx_dest = output_dir.parent / f"{proposal.game_title}.rbxlx"
-            self.project_generator.build_rbxlx_place_file(proposal, rbxlx_dest)
+            rojo_res = self.toolchain.run_rojo_build(output_dir / "default.project.json", rbxlx_dest)
+            if not rojo_res.get("success"):
+                self.project_generator.build_rbxlx_place_file(proposal, rbxlx_dest)
             rbxlx_file_path = str(rbxlx_dest)
             print(f"✨ Native Roblox Place generated: {rbxlx_dest}", flush=True)
 
@@ -140,5 +154,6 @@ class RobloxProductionOrchestrator:
                 "modules_count": len(proposal.modules),
                 "assets_count": len(proposal.assets),
                 "tests_count": len(proposal.tests),
+                "toolchain": self.toolchain.get_status().to_dict(),
             },
         )
