@@ -10,6 +10,8 @@ from typing import Any
 
 from .api import CompleteRobloxAISession
 from .creator_store import RobloxCreatorStoreCatalog
+from .official_docs import RobloxOfficialDocs
+from .studio_bridge import StudioMCPClient
 from .luau_analyzer import LuauStaticAnalyzer
 from .open_cloud import RobloxOpenCloudClient
 from .playtest_runner import RobloxPlaytestRunner
@@ -28,6 +30,8 @@ class RobloxMCPServer:
         self.workspace_root = Path(workspace_root).resolve()
         self.api_catalog = RobloxAPICatalog()
         self.creator_store = RobloxCreatorStoreCatalog()
+        self.official_docs = RobloxOfficialDocs()
+        self.studio_bridge = StudioMCPClient()
         self.analyzer = LuauStaticAnalyzer()
         self.playtest_runner = RobloxPlaytestRunner()
         self.open_cloud = RobloxOpenCloudClient()
@@ -82,6 +86,28 @@ class RobloxMCPServer:
                 },
             },
             {
+                "name": "roblox_official_docs_search",
+                "description": "Search verified URLs and limited excerpts from official Roblox Creator Hub llms.txt; do not invent API signatures.",
+                "inputSchema": {
+                    "type":"object",
+                    "properties":{"query":{"type":"string"},"limit":{"type":"integer","default":5}},
+                    "required":["query"],
+                },
+            },
+            {
+                "name": "roblox_studio_status",
+                "description": "Query the actual running local official Roblox Studio MCP (Windows/macOS only). Never simulates Studio.",
+                "inputSchema": {"type":"object","properties":{}},
+            },
+            {
+                "name": "roblox_studio_playtest",
+                "description": "Operate local Studio MCP start_stop_play with explicitly approved commands. No cloud fallback.",
+                "inputSchema": {"type":"object","properties":{
+                    "arguments":{"type":"object"},
+                    "allow_write":{"type":"boolean","default":false}
+                }},
+            },
+            {
                 "name": "roblox_luau_validate",
                 "description": "Statically analyze and lint a Luau code snippet. Detects unbalanced blocks, syntax errors, and deprecated wait() calls.",
                 "inputSchema": {
@@ -129,7 +155,7 @@ class RobloxMCPServer:
             },
             {
                 "name": "roblox_playtest_run",
-                "description": "Runs automated headless Playtest and TestEZ specification checks on the current proposal.",
+                "description": "Reports unexecuted Roblox headless tests as unverified; real playtests require Studio or Open Cloud.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {},
@@ -193,12 +219,23 @@ class RobloxMCPServer:
                 results = self.api_catalog.search(query=query, class_name=class_name)
                 return {"results": results, "count": len(results)}
 
+            elif tool_name == "roblox_official_docs_search":
+                return self.official_docs.search(arguments.get("query",""),arguments.get("limit",5))
+
+            elif tool_name == "roblox_studio_status":
+                return self.studio_bridge.run("get_studio_state")
+
+            elif tool_name == "roblox_studio_playtest":
+                return self.studio_bridge.run("start_stop_play",arguments.get("arguments") or {},
+                                              allow_write=arguments.get("allow_write") is True)
+
             elif tool_name == "roblox_creator_store_search":
                 query = arguments.get("query", "")
                 asset_type = arguments.get("asset_type", "Model")
                 limit = arguments.get("limit", 5)
                 assets = self.creator_store.search(query=query, asset_type=asset_type, limit=limit)
-                return {"assets": [a.to_dict() for a in assets]}
+                return {"assets": [a.to_dict() for a in assets],
+                        "error": self.creator_store.last_error}
 
             elif tool_name == "roblox_luau_validate":
                 code = arguments.get("code", "")
