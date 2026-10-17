@@ -44,6 +44,7 @@ jobs:
           ( cd "$project" && wally install )
           stylua "$project/src"
           stylua --check "$project/src"
+          ( cd "$project" && selene src )
           rojo build "$project/default.project.json" -o "$project/compiled.rbxlx"
           test -s "$project/compiled.rbxlx"
           python tools/build_studio_test_place.py "$project"

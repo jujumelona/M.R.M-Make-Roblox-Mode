@@ -122,9 +122,9 @@ stylua = "JohnnyMorganz/StyLua@2.0.2"
         """Runs Selene linter on all Luau code in target_dir."""
         path = str(Path(target_dir).resolve())
         if not self.selene_path:
-            return {"success": True, "executed": False, "message": "Selene not in PATH, using built-in analyzer"}
+            return {"success": False, "executed": False, "message": "Selene not in PATH"}
         try:
-            res = subprocess.run([self.selene_path, path], capture_output=True, text=True, timeout=15)
+            res = subprocess.run([self.selene_path, "src"], cwd=path, capture_output=True, text=True, timeout=45)
             return {
                 "success": res.returncode == 0,
                 "executed": True,

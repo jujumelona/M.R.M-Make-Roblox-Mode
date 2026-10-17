@@ -179,6 +179,11 @@ TestEZ = "roblox/testez@^0.4.1"
         wally_path.write_text(wally_content, encoding="utf-8")
         paths_created["wally_config"] = wally_path
 
+        # Roblox-specific standard library definitions for actual Selene linting
+        selene = target_dir / "selene.toml"
+        selene.write_text('std = "roblox"\n', encoding="utf-8")
+        paths_created["selene_config"] = selene
+
         # 3. Write generated Luau modules into src directories
         for module in proposal.modules:
             file_rel = module.file_path
