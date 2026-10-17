@@ -34,6 +34,25 @@ class RobloxMCPServer:
         self.toolchain = RobloxToolchainManager()
         self.session = CompleteRobloxAISession(output_root=self.workspace_root)
 
+    def _resolve_safe_path(self, rel_path: str) -> Path:
+        """Validates that rel_path is strictly within self.workspace_root to prevent traversal."""
+        if not rel_path or not isinstance(rel_path, str):
+            raise ValueError("File path must be a non-empty string.")
+        if "\0" in rel_path:
+            raise ValueError("Null bytes in path are prohibited.")
+        raw_path = Path(rel_path)
+        if raw_path.is_absolute():
+            raise PermissionError(f"Absolute path '{rel_path}' is not permitted. Paths must be relative to workspace.")
+
+        resolved = (self.workspace_root / raw_path).resolve()
+        try:
+            resolved.relative_to(self.workspace_root)
+        except ValueError:
+            raise PermissionError(
+                f"Directory traversal detected: path '{rel_path}' escapes workspace boundary '{self.workspace_root}'."
+            )
+        return resolved
+
     def get_tool_definitions(self) -> list[dict[str, Any]]:
         """Returns tool declarations adhering to MCP protocol schema."""
         return [
@@ -212,14 +231,20 @@ class RobloxMCPServer:
             elif tool_name == "roblox_project_write":
                 rel_path = arguments.get("file_path", "")
                 content = arguments.get("content", "")
-                dest = self.workspace_root / rel_path
+                try:
+                    dest = self._resolve_safe_path(rel_path)
+                except (ValueError, PermissionError) as exc:
+                    return {"error": str(exc), "success": False}
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 dest.write_text(content, encoding="utf-8")
                 return {"success": True, "written_bytes": len(content), "path": str(dest)}
 
             elif tool_name == "roblox_project_read":
                 rel_path = arguments.get("file_path", "")
-                src = self.workspace_root / rel_path
+                try:
+                    src = self._resolve_safe_path(rel_path)
+                except (ValueError, PermissionError) as exc:
+                    return {"error": str(exc)}
                 if not src.is_file():
                     return {"error": f"File not found: {rel_path}"}
                 return {"content": src.read_text(encoding="utf-8"), "path": str(src)}
@@ -254,7 +279,11 @@ class RobloxMCPServer:
             elif tool_name == "roblox_toolchain_run":
                 action = arguments.get("action", "")
                 target = arguments.get("target_dir", ".")
-                resolved_target = str((self.workspace_root / target).resolve()) if not Path(target).is_absolute() else target
+                try:
+                    safe_target = self._resolve_safe_path(target)
+                except (ValueError, PermissionError) as exc:
+                    return {"error": str(exc)}
+                resolved_target = str(safe_target)
 
                 if action == "stylua":
                     return self.toolchain.run_stylua(resolved_target)

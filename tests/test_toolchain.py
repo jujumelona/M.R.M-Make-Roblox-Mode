@@ -14,7 +14,7 @@ def test_toolchain_manager_status():
     assert isinstance(status.wally_available, bool)
     assert isinstance(status.selene_available, bool)
     assert isinstance(status.stylua_available, bool)
-    assert status.npx_available is True  # npx was found on this system!
+    assert isinstance(status.npx_available, bool)
 
     status_dict = status.to_dict()
     assert "rojo" in status_dict
@@ -46,4 +46,5 @@ def test_toolchain_mcp_integration():
     assert "rojo" in res
     assert "wally" in res
     assert "npx" in res
-    assert res["npx"]["available"] is True
+    assert "available" in res["npx"]
+    assert isinstance(res["npx"]["available"], bool)
