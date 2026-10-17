@@ -86,6 +86,7 @@ class RobloxProductionOrchestrator:
         """
         start = time.perf_counter()
         proposal = candidate.proposal if isinstance(candidate, RobloxAuthoredPlan) else candidate
+        addon_mode = proposal.game_design.get("project_mode") == "existing_experience_addon"
         output_dir = self.workspace_root / run_name / proposal.game_title
         output_dir.mkdir(parents=True, exist_ok=True)
         receipt = WorkReceipt(task_id=f"rmm_{proposal.game_title}_{int(time.time())}", overall_success=False)
@@ -168,6 +169,15 @@ class RobloxProductionOrchestrator:
 
         def package():
             nonlocal rbxlx_path, zip_path, build_mode
+            if addon_mode:
+                # An add-on is NOT a standalone Roblox Place and cannot be safely
+                # published without inspecting the owner's base Experience.
+                outzip = output_dir.parent / f"{proposal.game_title}_owned_addon.zip"
+                self.project_generator.pack_project_zip(output_dir, outzip)
+                zip_path = str(outzip)
+                build_mode = "owned_addon_sources"
+                return {"passed": True, "mode": build_mode,
+                        "note": "Additive sources prepared. No Place edited or published."}
             if source_only:
                 return {"passed": True, "mode": "source_only", "note": "Never counts as release verified"}
             place = output_dir.parent / f"{proposal.game_title}.rbxlx"
@@ -206,7 +216,7 @@ class RobloxProductionOrchestrator:
             ready = stage(TaskStage.LINT_AND_SELF_CORRECT, lint)
         if ready:
             ready = stage(TaskStage.PACKAGE, package)
-        if ready and not source_only:
+        if ready and not source_only and not addon_mode:
             runtime = OpenCloudRuntimeVerifier().run(proposal, Path(rbxlx_path))
             # Open Cloud smoke proves server structure and DataStore only; it does not
             # prove client-server user interactions or join/leave restore.
@@ -229,7 +239,7 @@ class RobloxProductionOrchestrator:
                                    duration_ms=0, message=str(real_multiplayer.get("reason", "evidence accepted"))),
                 ],
             )
-        receipt.overall_success = bool(ready and not source_only)
+        receipt.overall_success = bool(ready and not source_only and not addon_mode)
         (output_dir / "work_receipt.json").write_text(json.dumps(receipt.to_dict(), indent=2), encoding="utf-8")
         elapsed_ms = (time.perf_counter() - start) * 1000
         return RobloxPipelineResult(
@@ -241,7 +251,9 @@ class RobloxProductionOrchestrator:
             duration_ms=round(elapsed_ms, 2), work_receipt=receipt,
             build_mode=build_mode, generated_files=[m.file_path for m in proposal.modules],
             metadata={"acceptance": acceptance, "runtime": runtime, "tool_results": tool_results,
-                      "errors": errors, "source_only": source_only},
+                      "errors": errors, "source_only": source_only,
+                      "project_mode": proposal.game_design.get("project_mode", "new_experience"),
+                      "addon_prepared": bool(addon_mode and ready)},
         )
 
     @staticmethod

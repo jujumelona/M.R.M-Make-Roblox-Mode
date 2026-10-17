@@ -7,6 +7,7 @@ from typing import Any
 
 from .authored_plan import RobloxAuthoredPlan
 from .creator_store import RobloxCreatorStoreCatalog
+from .project_modes import validate_mode
 from .model_router import ModelRouter
 from .playtest_runner import RobloxPlaytestRunner
 from .spec import (
@@ -46,8 +47,9 @@ class RobloxGameDesignPlanner:
             "is_leaderboard": any(w in p for w in ["leaderboard", "leaderstats", "리더보드", "순위"]),
         }
 
-    def plan(self, prompt: str) -> RobloxAuthoredPlan:
+    def plan(self, prompt: str, *, project_mode: str = "new_experience") -> RobloxAuthoredPlan:
         """Decompose prompt into functional subsystems, assets, and Luau architecture."""
+        validate_mode(project_mode)
         # 1. Generate Game Title
         title_match = re.search(r"['\"]([^'\"]+)['\"]", prompt)
         if title_match:
@@ -278,6 +280,7 @@ class RobloxGameDesignPlanner:
                 "features": features,
                 "storage": "ProfileStore" if storage_backend == "profilestore" else "DataStoreService with session-locking & exponential backoff pcall",
                 "storage_backend": storage_backend,
+                "project_mode": project_mode,
                 "ui_backend": ui_backend,
                 "networking": "RemoteEvents/RemoteFunctions with server authority & reach checks",
             },
@@ -383,6 +386,7 @@ class RobloxGameDesignPlanner:
 
 > **Prompt**: {proposal.requested_prompt}
 > **Target**: Roblox Studio (Luau {proposal.target.luau_version}, Rojo {proposal.target.rojo_version})
+> **Project mode**: {proposal.game_design.get("project_mode", "new_experience")}
 
 ## 1. Architectural Subsystems (Topological Order)
 {modules_md}

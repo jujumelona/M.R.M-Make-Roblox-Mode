@@ -50,11 +50,11 @@ class CompleteRobloxAISession:
         self.authored_plan: RobloxAuthoredPlan | None = None
         self.brief: str = ""
 
-    def plan(self, prompt: str) -> CompleteChatReply:
+    def plan(self, prompt: str, *, project_mode: str = "new_experience") -> CompleteChatReply:
         """Create a new game design plan from a natural-language description."""
         self.reset()
         self.brief = prompt
-        plan = self.planner.plan(prompt)
+        plan = self.planner.plan(prompt, project_mode=project_mode)
         self.authored_plan = plan
         self.save_plan()
 

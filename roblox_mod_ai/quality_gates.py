@@ -26,10 +26,19 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
     def has(name: str, *tokens: str) -> bool:
         return name in files and files[name].is_file() and all(t in source.get(name, "") for t in tokens)
 
+    addon_mode = proposal.game_design.get("project_mode") == "existing_experience_addon"
     try:
-        world = json.loads((root / "default.project.json").read_text(encoding="utf-8"))["tree"]["Workspace"]
+        if addon_mode:
+            manifest = json.loads((root / "addon.manifest.json").read_text(encoding="utf-8"))
+            world = manifest["workspace_additions"]
+            remotes_present = bool(manifest.get("remote_additions"))
+        else:
+            config = json.loads((root / "default.project.json").read_text(encoding="utf-8"))
+            world = config["tree"]["Workspace"]
+            remotes_present = bool(config.get("tree", {}).get("ReplicatedStorage", {}).get("Remotes"))
     except (FileNotFoundError, KeyError, json.JSONDecodeError):
         world = {}
+        remotes_present = False
     coin_requested = bool(features.get("is_coin_collect")) or any(
         word in prompt for word in ("코인 수집", "동전 수집", "collect coins", "coin collection")
     )
@@ -92,9 +101,13 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
     if features.get("is_magic"):
         check("magic.ability", has("MagicAbilities", "OnServerEvent", "Raycast", "cooldown"),
               "Requested magic may not be replaced with a generic stub")
-    check("network.remotes", bool(world) and bool(
-        json.loads((root / "default.project.json").read_text(encoding="utf-8")).get("tree", {}).get("ReplicatedStorage", {}).get("Remotes")
-    ), "Network remotes mapped by Rojo")
+    check("network.remotes", remotes_present,
+          "Declared network Remotes in new Place or additive owner-only overlay")
+    if addon_mode:
+        check("addon.non_destructive", not (root / "default.project.json").exists()
+              and (root / "addon.manifest.json").exists()
+              and "Baseplate" not in world and "SpawnLocation" not in world,
+              "Existing Experience add-on never replaces base world")
     return {
         "passed": bool(checks) and all(c["passed"] for c in checks),
         "checks": checks,

@@ -22,6 +22,8 @@ def main() -> None:
     plan_parser = subparsers.add_parser("plan", help="Generate game design plan from prompt")
     plan_parser.add_argument("prompt", type=str, help="Natural language experience description")
     plan_parser.add_argument("--output", "-o", type=str, default="rmm-output", help="Output directory")
+    plan_parser.add_argument("--mode", choices=["new_experience", "existing_experience_addon"],
+                             default="new_experience", help="New place or additive add-on for an owned Experience")
 
     # Command: revise
     revise_parser = subparsers.add_parser("revise", help="Revise an existing saved plan")
@@ -52,7 +54,7 @@ def main() -> None:
 
     if args.command == "plan":
         session = CompleteRobloxAISession(output_root=args.output)
-        reply = session.plan(args.prompt)
+        reply = session.plan(args.prompt, project_mode=args.mode)
         print(reply.message)
         print(f"\n[Plan saved to {args.output}/proposal.json]")
 
