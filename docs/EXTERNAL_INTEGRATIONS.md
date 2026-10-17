@@ -55,10 +55,16 @@ Luau code has not necessarily executed.
 - Open Cloud: opt-in real server smoke and test DataStore write-read
 - Studio MCP / StudioTestService: actual client/server and persistence checks
 
-Jest Roblox, Lune, and rbx-dom are useful test/serialization projects.
-They are **not** mandatory in this build until their test runners and
-contracts can be verified. The existing deprecated TestEZ examples are
-structural-only and are not presented as gameplay proof.
+Jest Roblox 3.20 is a concrete Wally dev dependency and its structural
+specs are mounted into the test-only Rojo project, where an explicit
+StudioTestService phase calls Jest.runCLI. Lune 0.11 is installed by Rokit
+in CI and executes the exact same pure EconomyRules.luau used in generated
+shops: malformed prices, negative balances and insufficient coins are
+rejected. Rojo internally uses Roblox's rbx-dom ecosystem; MRM additionally
+audits the actual Rojo .rbxlx instances and scripts with its Python
+compiled-place inspector. A separate Rust rbx-dom consumer is not yet
+integrated because this existing pathway already validates emitted Roblox
+XML, while game runtime still requires Studio.
 
 ## Bounded error repair
 
@@ -80,3 +86,16 @@ The Studio receipt requires a separate `jest_suites=true` evidence bit.
 
 Python tests, Wally dependency install and Rojo compilation validate only
 that the runner was included, not that a real Studio environment executed it.
+
+## Current CI evidence and boundaries
+
+The Rojo smoke workflow runs Wally, StyLua, Selene, standalone Lune economy
+assertions, actual default/optional ProfileStore+Fusion Rojo builds, and
+compiled .rbxlx object audits. Studio tests only *compile* on GitHub Linux
+runners; there is no actual Roblox Studio executable in that CI.
+
+The TestEZ arithmetic placeholders have been replaced with Jest Roblox
+instance-presence tests; these are intentionally not a full multiplayer
+behavior or DataStore restore test. Use the separately configured isolated
+test-place Open Cloud workflow and StudioTestService with actual credentials
+to obtain runtime approval.

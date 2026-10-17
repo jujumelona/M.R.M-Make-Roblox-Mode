@@ -152,3 +152,18 @@ Python CI는 엔진 실행 없이 소스/계약을 검증합니다. 테스트 �
 ## 📄 라이선스
 
 [MIT License](LICENSE)
+
+### 공식 오픈소스 통합 (2026-10)
+
+- [Roblox Studio MCP](https://create.roblox.com/docs/studio/mcp) — Studio 실행 중 로컬 연결. `tools/studio_mcp_config.py`.
+- [Roblox 공식 문서](https://create.roblox.com/docs/llms.txt) — 허용된 공식 URL에서만 API 문서 검색. `roblox_official_docs_search`.
+- [Creator Store](https://create.roblox.com/docs/cloud/reference/toolbox-service) — 실제 자산 검색/상세 확인. 검색 실패 시 가짜 ID를 반환하지 않음.
+- [ProfileStore](https://github.com/MadStudioRoblox/ProfileStore) — 선택적 데이터 세션 관리. `RMM_STORAGE_BACKEND=profilestore`.
+- [Fusion](https://github.com/dphfox/Fusion) — 선택적 반응형 HUD. `RMM_UI_BACKEND=fusion`.
+- [Jest Roblox](https://roblox.github.io/jest-roblox/) — 테스트 전용 프로젝트에서 `Jest.runCLI` 사용.
+- [Lune](https://lune-org.github.io/docs/) — CI에서 실제 상점 경제 로직 Luau 실행.
+- [rbx-dom](https://github.com/rojo-rbx/rbx-dom) — Rojo 도구체인 간접 활용. 생성 파일은 별도의 컴파일 결과 감사 시행.
+
+위 코드와 라이브러리의 설치·컴파일 성공만으로 실제 게임플레이 성공을 주장하지 않습니다.
+세부 사항: [docs/EXTERNAL_INTEGRATIONS.md](docs/EXTERNAL_INTEGRATIONS.md).
+
