@@ -165,7 +165,8 @@ class RobloxPreDesignResearch:
                               "requirements":requirements},ensure_ascii=False),
                 role="planner", temperature=0.1
             )
-        except (ValueError, RuntimeError, OSError, TypeError) as exc:
+        except Exception as exc:
+            # Optional model/network failures are recorded, not trusted as evidence.
             self.model_query_error = type(exc).__name__ + ": " + str(exc)[:200]
             return []
         proposed=[]
@@ -189,6 +190,7 @@ class RobloxPreDesignResearch:
         return proposed
 
     def research(self, prompt: str) -> dict[str, Any]:
+        self.model_query_error = None
         ledger = build_request_ledger(prompt)
         semantic = self._propose_semantic_searches(prompt,ledger)
         if semantic:
@@ -267,7 +269,8 @@ class RobloxPreDesignResearch:
                     "source_path":"roblox_mod_ai/code_generator.py",
                     "symbol":name,
                     "excerpt":body[:1000],
-                    "content_sha256":hashlib.sha256(body.encode("utf-8")).hexdigest(),
+                    "content_sha256":hashlib.sha256(body[:1000].encode("utf-8")).hexdigest(),
+                    "source_sha256":hashlib.sha256(body.encode("utf-8")).hexdigest(),
                     "grounding":"inspected_first_party_source_candidate",
                     "query":query,
                 })
