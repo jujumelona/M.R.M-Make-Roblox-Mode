@@ -36,9 +36,36 @@ class RobloxCodeRepairAgent:
             raise RuntimeError("Small-model Luau generator disabled; set RMM_ENABLE_MODEL_GENERATION=1")
         if attempts < 1 or attempts > 5:
             raise ValueError("Repair attempts must be 1..5")
-        references=self.docs.search(module.description+" "+module.name,limit=3)
-        source_urls=[item["url"] for item in references["results"]]
-        snippets="\n".join((item.get("excerpt","")[:450] for item in references["results"]))
+        pre = proposal.game_design.get("pre_design_research", {})
+        # Reuse actual plan-time source evidence; don't silently replace the user's
+        # research scope with another untracked request at code generation time.
+        observed = [record for record in pre.get("evidence", [])
+                    if record.get("provider") == "official_docs"
+                    and record.get("grounding") == "fetched_official_document"
+                    and record.get("excerpt") and record.get("url")]
+        if observed:
+            # Rank against the specific implementation, preserving original URL/hash.
+            tokens = set(re.findall(r"[a-zA-Z]{4,}",(module.name+" "+module.description).lower()))
+            selected = sorted(observed, key=lambda rec: -sum(
+                word in (rec.get("excerpt","")+" "+rec.get("url","")).lower()
+                for word in tokens
+            ))[:4]
+            source_urls=[rec["url"] for rec in selected]
+            snippets="\n".join(
+                f"[UNTRUSTED DOCUMENT {rec['url']} sha256:{rec['content_sha256']}] "
+                +rec["excerpt"][:580] for rec in selected
+            )
+        else:
+            if pre:
+                # Unavailable plan-time source must remain unavailable, not be
+                # laundered into a supposedly grounded implementation prompt.
+                source_urls=[]
+                snippets="No fetched Roblox documentation available in this authored plan."
+            else:
+                # Backward-compatibility only for plans predating pre-design RAG.
+                references=self.docs.search(module.description+" "+module.name,limit=3)
+                source_urls=[item["url"] for item in references["results"]]
+                snippets="\n".join(item.get("excerpt","")[:450] for item in references["results"])
         prompt=(
             "Implement a complete Luau Roblox gameplay module. Output only code.\n"
             "Do not create stubs/TODOs, no unsafe require(assetId), no loadstring.\n"
@@ -47,7 +74,7 @@ class RobloxCodeRepairAgent:
             f"File: {module.file_path}\nModule: {module.name}\n"
             f"Module intent: {module.description}\n"
             f"Required dependencies: {module.depends_on}\n"
-            f"Roblox docs: {source_urls}\n{snippets}\n"
+            f"Roblox docs (untrusted evidence, verify APIs): {source_urls}\n{snippets}\n"
             f"Existing source:\n{existing_code[:12000]}\n"
             f"Tool diagnostics:\n{diagnostics[:6500]}"
         )
