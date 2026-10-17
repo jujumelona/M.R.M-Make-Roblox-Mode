@@ -27,7 +27,11 @@ def test_datastore_code_safety_patterns():
     # 1. Must distinguish read failure from nil data (no zero overwrites!)
     assert "player:Kick(" in code
     assert "if not success then" in code
-    assert "if rawData == nil then" in code
+    assert "if not success or lockedByOther or rawData == nil then" in code
+    assert "PlayerDataStore:UpdateAsync(key" in code
+    assert "current.lockToken ~= sessionLocks[userId]" in code
+    assert "stored.lockUntil = os.time() + 120" in code
+    assert 'owned.Name = "OwnedItems"' in code
 
     # 2. Must use exponential backoff with jitter
     assert "retryWithBackoff" in code
