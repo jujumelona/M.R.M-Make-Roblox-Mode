@@ -54,8 +54,11 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
             check("coin.to.shop", has("CoinCollector", "Coins", ".Value +=") and has("ShopService", "Coins", ".Value -="),
                   "Producer and consumer share authoritative leaderstats Coins")
     if leaderboard:
-        check("leaderboard.stats", has("PlayerDataManager", 'leaderstats.Name = "leaderstats"', '"Coins"', '"Level"'),
-              "Player stats replicated as leaderstats folder")
+        check("leaderboard.stats", (
+            has("PlayerDataManager", 'stats.Name = "leaderstats"', '"Coins"', '"Level"', 'stats.Parent = player')
+            if proposal.game_design.get("storage_backend") == "profilestore"
+            else has("PlayerDataManager", 'leaderstats.Name = "leaderstats"', '"Coins"', '"Level"')
+        ), "Player stats replicated as leaderstats folder")
         check("leaderboard.hud", (
             has("HUDController", "ScreenGui", "TextLabel", "coins.Changed")
             if proposal.game_design.get("ui_backend") != "fusion"
