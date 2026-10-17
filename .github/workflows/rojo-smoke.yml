@@ -1,0 +1,55 @@
+name: Rojo real build smoke
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  compile-generated-game:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Python project
+        run: pip install -e ".[dev]"
+      - name: Install real Roblox toolchain
+        uses: paradoxum-games/setup-rokit@v3
+        with:
+          cache: true
+      - name: Generate source only (release must remain unverified)
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from roblox_mod_ai.api import CompleteRobloxAISession
+          root = Path(".rmm-smoke")
+          session = CompleteRobloxAISession(output_root=root)
+          session.plan("코인 수집, 상점 시스템, 리더보드가 포함된 검투 아레나")
+          result = session.build(source_only=True)
+          assert not result.success, "Source-only is not a release"
+          assert result.analysis_report.passed, result.analysis_report.to_dict()
+          assert result.metadata["acceptance"]["passed"], result.metadata["acceptance"]
+          Path(".rmm-smoke/location.txt").write_text(result.project_dir, encoding="utf-8")
+          PY
+      - name: Run real Wally, StyLua, Rojo
+        shell: bash
+        run: |
+          set -euo pipefail
+          project="$(cat .rmm-smoke/location.txt)"
+          ( cd "$project" && wally install )
+          stylua --check "$project/src"
+          rojo build "$project/default.project.json" -o "$project/compiled.rbxlx"
+          test -s "$project/compiled.rbxlx"
+          ls -lh "$project/compiled.rbxlx"
+      - name: Upload compile evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-roblox-project
+          path: .rmm-smoke/
+          if-no-files-found: error
