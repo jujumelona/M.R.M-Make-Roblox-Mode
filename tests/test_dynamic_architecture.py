@@ -34,7 +34,6 @@ class LocalGameModel:
     def complete(self, prompt, **kwargs):
         self.prompt_history.append(("code",prompt))
         return """--!strict
-local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local remote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("HatchPet")
 local egg = workspace:WaitForChild("PetEggStand")
