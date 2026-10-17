@@ -41,6 +41,9 @@ def _read(addon_dir: Path, project_dir: Path) -> tuple[dict, dict, Path]:
     hashes = manifest.get("sources_sha256")
     if not isinstance(hashes, dict) or not hashes:
         raise ValueError("Addon has no signed-by-content source manifest")
+    discovered = {p.relative_to(addon_dir).as_posix() for p in (addon_dir / "src").rglob("*.luau")}
+    if discovered != set(hashes):
+        raise ValueError("Addon sources and source hashes disagree")
     for name, expected in hashes.items():
         source = _within(addon_dir / name, addon_dir)
         if not source.is_file() or source.is_symlink() or hashlib.sha256(source.read_bytes()).hexdigest() != expected:
@@ -110,6 +113,11 @@ def prepare_owned_addon(addon_dir: Path, project_dir: Path) -> dict:
         existing = remotes.get(name)
         if existing is not None and existing != spec:
             conflicts.append("Existing Remote has incompatible type: " + name)
+    wally = (addon_dir / "wally.toml").read_text(encoding="utf-8")
+    if 'ProfileStore = ' in wally and not (project_dir / "ServerPackages/ProfileStore.lua").is_file():
+        conflicts.append("Missing ProfileStore in owned project Wally packages")
+    if 'Fusion = ' in wally and not (project_dir / "Packages/Fusion.lua").is_file():
+        conflicts.append("Missing Fusion in owned project Wally packages")
     if not (addon_dir / "src").is_dir():
         conflicts.append("No source tree")
     if not additions:
