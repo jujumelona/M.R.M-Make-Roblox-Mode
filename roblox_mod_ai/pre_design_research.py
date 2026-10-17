@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import re
+import inspect
 from typing import Any
 from .model_router import ModelRouter
 
@@ -233,6 +234,36 @@ class RobloxPreDesignResearch:
             entry = {"facet": facet["id"], "query": query,
                      "providers": ["official_docs", "local_api_index"], "status": "pending",
                      "requirement_ids": facet["requirements"]}
+            # Exact first-party generator source can be inspected and reused;
+            # it is NOT proof of compatibility, runtime tests or external licensing.
+            from .code_generator import LuauCodeGenerator
+            method_names = {
+                "shop":("_generate_shop_service","_generate_shop_controller"),
+                "coins":("_generate_coin_collector",),
+                "combat":("_generate_combat_service","_generate_combat_controller"),
+                "obby":("_generate_obby_service",),
+                "tycoon":("_generate_tycoon_service",),
+                "simulator":("_generate_simulator_service",),
+            }.get(facet["id"], ())
+            local_source_count=0
+            for name in method_names[:2]:
+                method=getattr(LuauCodeGenerator,name,None)
+                if method is None: continue
+                try:
+                    body=inspect.getsource(method)
+                except (OSError,TypeError): continue
+                evidence.append({
+                    "facet":facet["id"],
+                    "provider":"local_project_source",
+                    "source_path":"roblox_mod_ai/code_generator.py",
+                    "symbol":name,
+                    "excerpt":body[:1000],
+                    "content_sha256":hashlib.sha256(body.encode("utf-8")).hexdigest(),
+                    "grounding":"inspected_first_party_source_candidate",
+                    "query":query,
+                })
+                local_source_count+=1
+            entry["local_source_matches"]=local_source_count
             # Local source inspection is a candidate, not official live evidence.
             local_api_hits = self.api.search(query, limit=3)
             for hit in local_api_hits:
