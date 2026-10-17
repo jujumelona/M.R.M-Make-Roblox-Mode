@@ -30,6 +30,13 @@ def inspect_compiled_place(proposal: RobloxProposal, compiled: Path) -> dict:
         check("place.root",True)
         for m in proposal.modules:
             check("module."+m.name,m.name in scripts)
+        dynamic=proposal.game_design.get("dynamic_design") or {}
+        for obj in dynamic.get("world_objects", []):
+            check("dynamic.world."+obj["name"],
+                  (obj["name"],obj["class"]) in items)
+        for remote_name, remote_class in dynamic.get("remotes", {}).items():
+            check("dynamic.remote."+remote_name,
+                  (remote_name,remote_class) in items)
         flags=proposal.game_design.get("features",{})
         if flags.get("is_coin_collect"):
             check("world.coins","Coins" in names and any(name.startswith("Coin") for name in names))

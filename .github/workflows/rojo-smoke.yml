@@ -130,6 +130,42 @@ jobs:
           rojo build "$original/default.project.json" -o "$original/owner-addon.rbxlx"
           test -s "$original/owner-addon.rbxlx"
           python tools/audit_rojo_place.py --plan .rmm-addon-stage/proposal.json --place "$original/owner-addon.rbxlx"
+      - name: Compile novel gameplay generated through validated dynamic architect
+        shell: bash
+        env:
+          RMM_ENABLE_MODEL_QUERY_EXPANSION: "0"
+          RMM_ENABLE_DYNAMIC_DESIGN: "1"
+          RMM_ENABLE_MODEL_GENERATION: "1"
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          # Mock LLM = deterministic architecture fixture. REAL Rojo compiles
+          # its novel Luau code and structure; this is not a real-model test.
+          import sys
+          from pathlib import Path
+          sys.path.insert(0,"tests")
+          from test_dynamic_architecture import LocalGameModel
+          from roblox_mod_ai.api import CompleteRobloxAISession
+          sess=CompleteRobloxAISession(output_root=Path(".rmm-dynamic-smoke"))
+          model=LocalGameModel()
+          sess.planner.router=model
+          sess.orchestrator.code_generator.router=model
+          plan=sess.plan("펫 부화")
+          assert plan.ready_to_build
+          assert plan.authored_plan.proposal.game_design["dynamic_design"]
+          build=sess.build(source_only=True)
+          assert not build.success and build.metadata["acceptance"]["passed"], build.metadata
+          root=Path(build.project_dir)
+          assert (root/"src/server/CustomPetHatching.server.luau").is_file()
+          Path(".rmm-dynamic-smoke/location.txt").write_text(str(root),encoding="utf-8")
+          PY
+          project="$(cat .rmm-dynamic-smoke/location.txt)"
+          stylua "$project/src"
+          stylua --check "$project/src"
+          ( cd "$project" && selene src )
+          rojo build "$project/default.project.json" -o "$project/compiled-dynamic.rbxlx"
+          test -s "$project/compiled-dynamic.rbxlx"
+          python tools/audit_rojo_place.py --plan .rmm-dynamic-smoke/proposal.json --place "$project/compiled-dynamic.rbxlx"
       - name: Upload compile evidence
         if: always()
         uses: actions/upload-artifact@v4
