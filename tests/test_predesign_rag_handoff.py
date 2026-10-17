@@ -138,3 +138,35 @@ def test_docs_offline_is_labelled_not_a_real_fetch():
     assert result["status"]=="live_disabled"
     assert not any(x["provider"]=="official_docs" for x in result["evidence"])
     assert any(x["provider"]=="local_api_index" for x in result["evidence"])
+
+
+class QueryOnlyModel:
+    def complete_json(self, prompt, **kwargs):
+        return {"searches":[
+            {"source_span":"펫 부화","english_query":"PathfindingService pet hatching follower"},
+            {"source_span":"unmentioned dungeon","english_query":"Roblox dungeon loot"}]}
+
+def test_small_model_query_rewrite_only_uses_exact_prompt_spans(monkeypatch):
+    monkeypatch.setenv("RMM_ENABLE_MODEL_QUERY_EXPANSION","1")
+    with fake_docs_client() as client:
+        result=RobloxPreDesignResearch(
+            docs=RobloxOfficialDocs(client=client),
+            live_enabled=True,router=QueryOnlyModel()
+        ).research("펫 부화")
+    ids={q["facet"] for q in result["queries"]}
+    assert "pets" in ids
+    assert len([x for x in ids if x.startswith("semantic-")])==1
+    assert "dungeon" not in " ".join(q["query"] for q in result["queries"])
+    assert "pets" in result["ledger"]["unimplemented_facets"]
+
+
+def test_command_exposes_saved_research_without_fabricated_official_docs(tmp_path,monkeypatch):
+    from roblox_mod_ai import cli
+    import sys
+    monkeypatch.setattr(sys,"argv",["rmm","research","코인 상점","--offline",
+                                    "--output",str(tmp_path/"research.json")])
+    cli.main()
+    result=json.loads((tmp_path/"research.json").read_text(encoding="utf-8"))
+    assert result["status"]=="live_disabled"
+    assert result["ledger"]["original_prompt"]=="코인 상점"
+    assert not [x for x in result["evidence"] if x["provider"]=="official_docs"]

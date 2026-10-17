@@ -9,6 +9,8 @@ from pathlib import Path
 from .api import CompleteRobloxAISession
 from .luau_analyzer import LuauStaticAnalyzer
 from .open_cloud import RobloxOpenCloudClient
+from .pre_design_research import RobloxPreDesignResearch
+import json
 
 
 def main() -> None:
@@ -25,6 +27,15 @@ def main() -> None:
     plan_parser.add_argument("--mode", choices=["new_experience", "existing_experience_addon"],
                              default="new_experience", help="New place or additive add-on for an owned Experience")
 
+    # Command: research: execute actual source discovery without generating a place.
+    research_parser = subparsers.add_parser(
+        "research", help="Fetch Roblox official docs and preserve request RAG evidence"
+    )
+    research_parser.add_argument("prompt", type=str)
+    research_parser.add_argument("--output", "-o", type=str, default="rmm-output/pre_design_research.json")
+    research_parser.add_argument("--offline", action="store_true",
+                                 help="Use labelled local catalogue, no live official docs")
+    
     # Command: revise
     revise_parser = subparsers.add_parser("revise", help="Revise an existing saved plan")
     revise_parser.add_argument("feedback", type=str, help="Revision instructions")
@@ -57,6 +68,24 @@ def main() -> None:
         reply = session.plan(args.prompt, project_mode=args.mode)
         print(reply.message)
         print(f"\n[Plan saved to {args.output}/proposal.json]")
+
+    elif args.command == "research":
+        evidence = RobloxPreDesignResearch(live_enabled=not args.offline).research(args.prompt)
+        output = Path(args.output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(evidence, indent=2, ensure_ascii=False), encoding="utf-8")
+        print(json.dumps({
+            "status": evidence["status"],
+            "queries": len(evidence["queries"]),
+            "verified_document_excerpts": sum(
+                x["provider"] == "official_docs" for x in evidence["evidence"]
+            ),
+            "unimplemented": evidence["ledger"]["unimplemented_facets"],
+            "provider_failures": evidence["provider_failures"],
+            "saved_to": str(output),
+        }, indent=2, ensure_ascii=False))
+        if evidence["status"] in ("unresolved", "partial"):
+            sys.exit(2)
 
     elif args.command == "revise":
         session = CompleteRobloxAISession()
