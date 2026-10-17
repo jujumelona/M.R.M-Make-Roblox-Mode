@@ -17,7 +17,7 @@ def test_session_plan_revise_build(tmp_path: Path):
     assert reply.ready_to_build
     assert "Roblox Experience Plan" in reply.message
     assert len(reply.authored_plan.proposal.modules) >= 4
-    assert len(reply.authored_plan.proposal.assets) >= 2
+    assert all(a.verified for a in reply.authored_plan.proposal.assets)  # No guessed fallback IDs
 
     # 2. Checkpoint persistence
     saved_json = output_dir / "proposal.json"
