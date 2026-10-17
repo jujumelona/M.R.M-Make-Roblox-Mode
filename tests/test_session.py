@@ -40,7 +40,9 @@ def test_session_plan_revise_build(tmp_path: Path):
     assert not build_result.success
     assert not build_result.rbxlx_path
     assert not build_result.playtest_report.passed
-    assert (Path(build_result.project_dir) / "src/server/ShopService.server.luau").is_file()
-    assert (Path(build_result.project_dir) / "src/server/CoinCollector.server.luau").is_file()
-    assert build_result.analysis_report.passed
-    assert build_result.metadata["acceptance"]["passed"]
+    # The revision requested MagicAbilities, which must not become a fake stub.
+    # With model generation disabled, source generation fails rather than claiming success.
+    assert build_result.analysis_report.passed is False
+    assert not (Path(build_result.project_dir) / "src/server/MagicAbilities.server.luau").exists()
+    assert any("RMM_ENABLE_MODEL_GENERATION" in message
+               for message in build_result.metadata["errors"])
