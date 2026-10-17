@@ -24,7 +24,7 @@ def test_receipt_binds_release_and_test_hashes(tmp_path: Path):
     release.write_bytes(b"release")
     studio.write_bytes(b"instrumented")
     result = {"runner": "StudioTestService", "checks": {
-        "client_server": True, "coin_pickup": True,
+        "jest_suites": True, "client_server": True, "coin_pickup": True,
         "shop_purchase": True, "datastore_restore": True,
     }}
     output = receipt_from_log(MARKER + " " + json.dumps(result), release, studio)
