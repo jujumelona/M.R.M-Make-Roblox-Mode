@@ -50,7 +50,7 @@ FACETS: tuple[tuple[str, tuple[str, ...], str, str | None], ...] = (
      "Roblox TeleportService TeleportAsync cross place experience", None),
     ("npc", ("npc", "엔피씨", "몬스터", "적 ai", "pathfinding"),
      "Roblox NPC Humanoid PathfindingService AI navigation", None),
-    ("world", ("맵", "지형", "월드", "건축", "terrain", "world", "building"),
+    ("world", ("지형", "월드", "건축", "terrain", "world", "building"),
      "Roblox Terrain procedural models workspace streaming", None),
     ("animation", ("애니메이션", "모션", "animation", "emote"),
      "Roblox Animator AnimationTrack Humanoid animation", None),

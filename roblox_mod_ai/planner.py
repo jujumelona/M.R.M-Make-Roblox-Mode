@@ -88,6 +88,10 @@ class RobloxGameDesignPlanner:
         coin_match = re.search(r"(\d{1,4})\s*(?:개(?:의)?\s*)?(?:코인|동전|coins?)", prompt, re.IGNORECASE)
         if coin_match:
             counts["coins"] = int(coin_match.group(1))
+        else:
+            reverse_coin = re.search(r"(?:코인|동전|coins?)\s*(\d{1,4})\s*개?", prompt, re.IGNORECASE)
+            if reverse_coin:
+                counts["coins"] = int(reverse_coin.group(1))
         if any(n <= 0 or n > 128 for n in counts.values()):
             research["ledger"]["unimplemented_facets"] = sorted(set(
                 research["ledger"]["unimplemented_facets"] + ["requested_count_exceeds_safe_build_limit"]
