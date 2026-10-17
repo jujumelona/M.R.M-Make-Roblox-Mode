@@ -20,7 +20,7 @@ def test_jest_mapped_only_in_test_place(tmp_path):
     result=session.build(source_only=True)
     root=Path(result.project_dir)
     compiled=create_studio_project(root,Path(__file__).resolve().parents[1])
-    testtree=json.loads(compiled.read_text())["tree"]["ReplicatedStorage"]
-    released=json.loads((root/"default.project.json").read_text())["tree"]["ReplicatedStorage"]
+    testtree=json.loads(compiled.read_text(encoding="utf-8"))["tree"]["ReplicatedStorage"]
+    released=json.loads((root/"default.project.json").read_text(encoding="utf-8"))["tree"]["ReplicatedStorage"]
     assert "DevPackages" in testtree and "TestSuites" in testtree
     assert "DevPackages" not in released and "TestSuites" not in released
