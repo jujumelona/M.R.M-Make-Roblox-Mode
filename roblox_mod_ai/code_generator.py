@@ -53,7 +53,7 @@ class LuauCodeGenerator:
 
             code = fixed_code
 
-        return code
+        raise ValueError("Luau source failed static verification: " + "; ".join(d.message for d in errors))
 
     def generate_module_code(self, module: RobloxModuleSpec, proposal: RobloxProposal) -> str:
         """Dispatches Luau code generation to specialized genre and subsystem engines."""
@@ -86,6 +86,8 @@ class LuauCodeGenerator:
             return self._generate_combat_service(module, proposal)
         elif "combat" in name and ("client" in kind or module.file_path.endswith(".client.luau")):
             return self._generate_combat_controller(module, proposal)
+        elif "coincollector" in name:
+            return self._generate_coin_collector(module, proposal)
         elif "hud" in name:
             return self._generate_hud_controller(module, proposal)
         else:
@@ -362,12 +364,41 @@ local function handlePurchase(player: Player, itemId: string): (boolean, string)
     -- Deduct currency server-authoritatively
     coinsVal.Value -= item.price
 
-    -- Deliver purchased tool / gear
-    local tool = Instance.new("Tool")
-    tool.Name = item.name
-    tool.ToolTip = "Purchased from shop"
-    tool.RequiresHandle = false
-    tool.Parent = player.Backpack
+
+    -- Deliver concrete gameplay effects, not empty cosmetic Tools.
+    local character = player.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if itemId == "speed_boots" then
+        if not humanoid then coinsVal.Value += item.price; return false, "Character unavailable" end
+        humanoid.WalkSpeed = math.max(humanoid.WalkSpeed, 24)
+    elseif itemId == "shield" then
+        if not humanoid then coinsVal.Value += item.price; return false, "Character unavailable" end
+        humanoid.MaxHealth += 50
+        humanoid.Health += 50
+    elseif itemId == "health_potion" then
+        if not humanoid then coinsVal.Value += item.price; return false, "Character unavailable" end
+        humanoid.Health = math.min(humanoid.Health + 50, humanoid.MaxHealth)
+    elseif itemId == "magic_staff" then
+        local tool = Instance.new("Tool")
+        tool.Name = item.name
+        tool.RequiresHandle = false
+        local lastCast = 0
+        tool.Activated:Connect(function()
+            if os.clock() - lastCast < 1 then return end
+            lastCast = os.clock()
+            local caster = player.Character
+            local root = caster and caster:FindFirstChild("HumanoidRootPart")
+            if not root or not root:IsA("BasePart") then return end
+            local ray = workspace:Raycast(root.Position, root.CFrame.LookVector * 30)
+            local targetModel = ray and ray.Instance:FindFirstAncestorOfClass("Model")
+            local target = targetModel and targetModel:FindFirstChildOfClass("Humanoid")
+            if target and targetModel ~= caster then target:TakeDamage(20) end
+        end)
+        tool.Parent = player:FindFirstChildOfClass("Backpack")
+    else
+        coinsVal.Value += item.price
+        return false, "Unimplemented item"
+    end
 
     return true, "Successfully purchased " .. item.name .. "!"
 end
@@ -418,7 +449,48 @@ local function bindShopPrompts()
     end
 end
 
-task.defer(bindShopPrompts)
+local gui = Instance.new("ScreenGui")
+gui.Name = "RMMShopGui"
+gui.ResetOnSpawn = false
+gui.Parent = localPlayer:WaitForChild("PlayerGui")
+local panel = Instance.new("Frame")
+panel.Name = "ShopPanel"
+panel.Size = UDim2.fromOffset(300, 290)
+panel.Position = UDim2.new(0.5, -150, 0.5, -145)
+panel.Visible = false
+panel.Parent = gui
+local items = {
+    {"speed_boots", "Speed Boots - 50"},
+    {"magic_staff", "Arcane Staff - 150"},
+    {"shield", "Iron Shield - 100"},
+    {"health_potion", "Health Potion - 25"},
+}
+for index, item in items do
+    local button = Instance.new("TextButton")
+    button.Name = item[1]
+    button.Size = UDim2.new(1, -20, 0, 42)
+    button.Position = UDim2.fromOffset(10, (index - 1) * 50 + 8)
+    button.Text = item[2]
+    button.Parent = panel
+    button.Activated:Connect(function() requestBuy(item[1]) end)
+end
+local close = Instance.new("TextButton")
+close.Name = "Close"
+close.Text = "Close shop"
+close.Position = UDim2.fromOffset(10, 213)
+close.Size = UDim2.new(1, -20, 0, 42)
+close.Parent = panel
+close.Activated:Connect(function() panel.Visible = false end)
+local function connectPrompt(prompt: ProximityPrompt)
+    prompt.Triggered:Connect(function() panel.Visible = true end)
+end
+local shops = workspace:WaitForChild("ShopStalls")
+for _, obj in shops:GetDescendants() do
+    if obj:IsA("ProximityPrompt") then connectPrompt(obj) end
+end
+shops.DescendantAdded:Connect(function(obj)
+    if obj:IsA("ProximityPrompt") then connectPrompt(obj) end
+end)
 """
 
     # 4. Real Obby / Parkour System
@@ -730,6 +802,42 @@ UserInputService.InputBegan:Connect(function(input, processed)
 end)
 """
 
+
+    def _generate_coin_collector(self, module: RobloxModuleSpec, proposal: RobloxProposal) -> str:
+        """Server-owned physical coin pickup; depends on Rojo-created Workspace Coins."""
+        return """--!strict
+local Players = game:GetService("Players")
+local coinsFolder = workspace:WaitForChild("Coins")
+
+local function bindCoin(coin: Instance)
+    if not coin:IsA("BasePart") then return end
+    local available = true
+    coin.Touched:Connect(function(hit: BasePart)
+        if not available then return end
+        local character = hit:FindFirstAncestorOfClass("Model")
+        if not character then return end
+        local player = Players:GetPlayerFromCharacter(character)
+        if not player then return end
+        local leaderstats = player:FindFirstChild("leaderstats")
+        local coins = leaderstats and leaderstats:FindFirstChild("Coins")
+        if not coins or not coins:IsA("IntValue") then return end
+        available = false
+        coins.Value += 10
+        coin.Transparency = 1
+        coin.CanTouch = false
+        task.delay(8, function()
+            if not coin.Parent then return end
+            coin.Transparency = 0
+            coin.CanTouch = true
+            available = true
+        end)
+    end)
+end
+
+for _, coin in coinsFolder:GetChildren() do bindCoin(coin) end
+coinsFolder.ChildAdded:Connect(bindCoin)
+"""
+
     def _generate_hud_controller(self, module: RobloxModuleSpec, proposal: RobloxProposal) -> str:
         return f"""--!strict
 -- Service: StarterPlayerScripts
@@ -742,9 +850,21 @@ local localPlayer = Players.LocalPlayer
 local leaderstats = localPlayer:WaitForChild("leaderstats")
 local coins = leaderstats:WaitForChild("Coins") :: IntValue
 
-coins.Changed:Connect(function(newVal)
-    print("HUD update: Coins = " .. tostring(newVal))
-end)
+local gui = Instance.new("ScreenGui")
+gui.Name = "RMMHUD"
+gui.ResetOnSpawn = false
+gui.Parent = localPlayer:WaitForChild("PlayerGui")
+local label = Instance.new("TextLabel")
+label.Name = "CoinsDisplay"
+label.Size = UDim2.fromOffset(190, 44)
+label.Position = UDim2.fromOffset(16, 16)
+label.TextScaled = true
+label.Parent = gui
+local function updateCoins()
+    label.Text = "Coins: " .. tostring(coins.Value)
+end
+coins.Changed:Connect(updateCoins)
+updateCoins()
 """
 
     def _generate_modding_system(self, module: RobloxModuleSpec, proposal: RobloxProposal) -> str:

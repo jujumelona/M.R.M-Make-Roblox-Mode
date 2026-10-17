@@ -42,6 +42,8 @@ class RobloxGameDesignPlanner:
             "is_simulator": any(w in p for w in ["simulator", "click", "mining", "bag", "시뮬레이터", "클릭", "가방", "채광"]),
             "is_magic": any(w in p for w in ["magic", "spell", "staff", "ability", "마법", "스킬", "지팡이"]),
             "is_combat": any(w in p for w in ["combat", "sword", "arena", "battle", "pvp", "pve", "검투", "아레나", "전투", "배틀", "무기"]),
+            "is_coin_collect": any(w in p for w in ["coin", "coins", "코인", "동전", "수집"]),
+            "is_leaderboard": any(w in p for w in ["leaderboard", "leaderstats", "리더보드", "순위"]),
         }
 
     def plan(self, prompt: str) -> RobloxAuthoredPlan:
@@ -213,6 +215,19 @@ class RobloxGameDesignPlanner:
             )
             discovered_assets.extend(self.creator_store.search("Classic Sword", asset_type="Model", limit=1))
             discovered_assets.extend(self.creator_store.search("Sword Slash Sound", asset_type="Audio", limit=1))
+
+        if features["is_coin_collect"]:
+            modules.append(
+                RobloxModuleSpec(
+                    module_id="mod_coin_collector",
+                    name="CoinCollector",
+                    kind=ModuleKind.SERVER_SCRIPT,
+                    file_path="src/server/CoinCollector.server.luau",
+                    roblox_service=RobloxService.SERVER_SCRIPT_SERVICE,
+                    description="Physical collectible coins grant server-authoritative Coins with debounce and respawn.",
+                    depends_on=["mod_player_data"],
+                )
+            )
 
         # Add HUDController
         modules.append(
