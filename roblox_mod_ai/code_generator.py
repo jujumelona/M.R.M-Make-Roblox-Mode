@@ -491,7 +491,6 @@ for _, player in Players:GetPlayers() do onAdded(player) end
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TweenService = game:GetService("TweenService")
 local SoundService = game:GetService("SoundService")
 
 local localPlayer = Players.LocalPlayer
@@ -509,23 +508,7 @@ local function requestBuy(itemId: string)
     end
 end
 
--- Connect to Workspace ShopStall ProximityPrompts
-local function bindShopPrompts()
-    local shopStalls = workspace:FindFirstChild("ShopStalls")
-    if shopStalls then
-        for _, stall in shopStalls:GetChildren() do
-            local prompt = stall:FindFirstChildWhichIsA("ProximityPrompt", true)
-            if prompt then
-                prompt.Triggered:Connect(function(triggerPlayer)
-                    if triggerPlayer == localPlayer then
-                        requestBuy("speed_boots")
-                    end
-                end)
-            end
-        end
-    end
-end
-
+-- Shop prompt opens the full catalog UI; no implicit purchase.
 local gui = Instance.new("ScreenGui")
 gui.Name = "RMMShopGui"
 gui.ResetOnSpawn = false
@@ -807,7 +790,6 @@ end)
 -- Script: {module.name}
 -- Description: Server-authoritative combat: reach sanity checks, cooldown enforcement, and damage calculation.
 
-local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local remotesFolder = ReplicatedStorage:WaitForChild("Remotes")
