@@ -189,6 +189,12 @@ JestGlobals = "roblox/jest-globals@=3.20.0"
             rojo_path.write_text(json.dumps(rojo_config, indent=2), encoding="utf-8")
             paths_created["rojo_config"] = rojo_path
 
+        research = proposal.game_design.get("pre_design_research")
+        if research:
+            research_path = target_dir / "pre_design_research.json"
+            research_path.write_text(json.dumps(research, indent=2, ensure_ascii=False), encoding="utf-8")
+            paths_created["pre_design_research"] = research_path
+
         # 2. Write wally.toml for package dependencies
         wally_content = self.generate_wally_toml(proposal)
         wally_path = target_dir / "wally.toml"

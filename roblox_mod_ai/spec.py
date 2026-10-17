@@ -126,6 +126,7 @@ class RobloxProposal:
             {
                 "prompt": self.requested_prompt,
                 "game_title": self.game_title,
+                "game_design": self.game_design,
                 "modules": [m.to_dict() for m in self.modules],
                 "assets": [a.to_dict() for a in self.assets],
                 "target": self.target.to_dict(),

@@ -7,6 +7,7 @@ from typing import Any
 
 from .authored_plan import RobloxAuthoredPlan
 from .creator_store import RobloxCreatorStoreCatalog
+from .pre_design_research import RobloxPreDesignResearch
 from .project_modes import validate_mode
 from .model_router import ModelRouter
 from .playtest_runner import RobloxPlaytestRunner
@@ -28,10 +29,12 @@ class RobloxGameDesignPlanner:
         self,
         router: ModelRouter | None = None,
         creator_store: RobloxCreatorStoreCatalog | None = None,
+        pre_design_research: RobloxPreDesignResearch | None = None,
     ) -> None:
         self.router = router or ModelRouter()
         self.creator_store = creator_store or RobloxCreatorStoreCatalog()
         self.test_runner = RobloxPlaytestRunner()
+        self.researcher = pre_design_research or RobloxPreDesignResearch(creator_store=self.creator_store)
 
     def detect_genres_and_features(self, prompt: str) -> dict[str, bool]:
         """Classifies the gameplay genres and subsystems requested in prompt."""
@@ -50,6 +53,8 @@ class RobloxGameDesignPlanner:
     def plan(self, prompt: str, *, project_mode: str = "new_experience") -> RobloxAuthoredPlan:
         """Decompose prompt into functional subsystems, assets, and Luau architecture."""
         validate_mode(project_mode)
+        # MMM request-first contract: retrieve before selecting mechanics/modules.
+        research = self.researcher.research(prompt)
         # 1. Generate Game Title
         title_match = re.search(r"['\"]([^'\"]+)['\"]", prompt)
         if title_match:
@@ -61,11 +66,12 @@ class RobloxGameDesignPlanner:
 
         # 2. Detect requested subsystems dynamically
         features = self.detect_genres_and_features(prompt)
+        # Unsupported gameplay is recorded and fails quality checks at build time.
+        # It must never silently become a generic combat or empty valid world.
         if not any(features.values()):
-            raise ValueError(
-                "No supported Roblox gameplay system found in this request. "
-                "Cannot claim an empty generated world satisfies the prompt."
-            )
+            research["ledger"]["unimplemented_facets"] = sorted(set(
+                research["ledger"]["unimplemented_facets"] + ["unclassified_gameplay"]
+            ))
         import os
         storage_backend = "profilestore" if (
             "profilestore" in prompt.lower() or os.environ.get("RMM_STORAGE_BACKEND") == "profilestore"
@@ -96,7 +102,9 @@ class RobloxGameDesignPlanner:
             ),
         ]
 
-        discovered_assets: list[RobloxAssetSpec] = []
+        discovered_assets: list[RobloxAssetSpec] = [
+            RobloxAssetSpec.from_dict(asset) for asset in research["asset_candidates"]
+        ]
 
         # Add Genre-Specific Subsystems
         if features["is_shop"]:
@@ -122,8 +130,8 @@ class RobloxGameDesignPlanner:
                     depends_on=["mod_network_bridge", "mod_shop_service"],
                 )
             )
-            discovered_assets.extend(self.creator_store.search("Shop NPC", asset_type="Model", limit=1))
-            discovered_assets.extend(self.creator_store.search("Purchase Cash Register Sound", asset_type="Audio", limit=1))
+
+
 
         if features["is_obby"]:
             modules.append(
@@ -148,8 +156,8 @@ class RobloxGameDesignPlanner:
                     depends_on=["mod_network_bridge", "mod_obby_service"],
                 )
             )
-            discovered_assets.extend(self.creator_store.search("Obby Checkpoint Pad", asset_type="Model", limit=1))
-            discovered_assets.extend(self.creator_store.search("Stage Victory Fanfare", asset_type="Audio", limit=1))
+
+
 
         if features["is_tycoon"]:
             modules.append(
@@ -174,8 +182,8 @@ class RobloxGameDesignPlanner:
                     depends_on=["mod_network_bridge", "mod_tycoon_service"],
                 )
             )
-            discovered_assets.extend(self.creator_store.search("Tycoon Conveyor & Dropper", asset_type="Model", limit=1))
-            discovered_assets.extend(self.creator_store.search("Coin Collect Sound", asset_type="Audio", limit=1))
+
+
 
         if features["is_simulator"]:
             modules.append(
@@ -200,11 +208,11 @@ class RobloxGameDesignPlanner:
                     depends_on=["mod_network_bridge", "mod_simulator_service"],
                 )
             )
-            discovered_assets.extend(self.creator_store.search("Simulator Click Tool", asset_type="Model", limit=1))
-            discovered_assets.extend(self.creator_store.search("Coin Collect Sound", asset_type="Audio", limit=1))
 
-        # Default to Combat/Action if combat is requested OR if no other genre was identified
-        if features["is_combat"] or not any(features.values()):
+
+
+        # Only request-proven combat gets a combat system.
+        if features["is_combat"]:
             modules.append(
                 RobloxModuleSpec(
                     module_id="mod_combat_core",
@@ -227,8 +235,8 @@ class RobloxGameDesignPlanner:
                     depends_on=["mod_network_bridge", "mod_combat_core"],
                 )
             )
-            discovered_assets.extend(self.creator_store.search("Classic Sword", asset_type="Model", limit=1))
-            discovered_assets.extend(self.creator_store.search("Sword Slash Sound", asset_type="Audio", limit=1))
+
+
 
         if features["is_coin_collect"]:
             modules.append(
@@ -283,6 +291,7 @@ class RobloxGameDesignPlanner:
                 "project_mode": project_mode,
                 "ui_backend": ui_backend,
                 "networking": "RemoteEvents/RemoteFunctions with server authority & reach checks",
+                "pre_design_research": research,
             },
             modules=modules,
             assets=unique_assets,
@@ -305,6 +314,9 @@ class RobloxGameDesignPlanner:
                 "modules": [m.to_dict() for m in modules],
                 "assets": [a.to_dict() for a in unique_assets],
                 "tests": [t.to_dict() for t in test_specs],
+                "request_ledger": research["ledger"],
+                "research_queries": research["queries"],
+                "research_status": research["status"],
             },
         )
         authored_plan.create_checkpoint(note=f"Initial {primary_genre} plan generation")
@@ -315,7 +327,17 @@ class RobloxGameDesignPlanner:
         proposal = plan.proposal
         proposal.requested_prompt += f" | Revision: {feedback}"
 
+        # Same original request + revision is the search authority for every revision.
+        research = self.researcher.research(proposal.requested_prompt)
+        proposal.game_design["pre_design_research"] = research
+        plan.structured_sections["request_ledger"] = research["ledger"]
+        plan.structured_sections["research_queries"] = research["queries"]
+        plan.structured_sections["research_status"] = research["status"]
         rev_features = self.detect_genres_and_features(feedback)
+        current_features = proposal.game_design.get("features", {})
+        for key, is_requested in rev_features.items():
+            if is_requested:
+                current_features[key] = True
 
         # Dynamically append requested subsystems without duplicating
         if rev_features["is_shop"] and not any(m.name == "ShopService" for m in proposal.modules):
@@ -382,11 +404,32 @@ class RobloxGameDesignPlanner:
             for t in proposal.tests
         )
 
+        pre = proposal.game_design.get("pre_design_research", {})
+        ledger = pre.get("ledger", {})
+        original = ledger.get("original_prompt", proposal.requested_prompt)
+        required_lines = "\\n".join(
+            f"- [{item['id']}] {item['statement']}"
+            for item in ledger.get("requirements", [])
+        ) or "- No requirement details recorded"
+        evidence_lines = "\\n".join(
+            f"- [{item['facet']}] {item['url']} (sha256: {item['content_sha256'][:16]})"
+            for item in pre.get("evidence", [])[:12]
+        ) or "- No official document content fetched; not evidence-grounded"
+        pending = ", ".join(ledger.get("unimplemented_facets", [])) or "none"
         return f"""# 🎮 Roblox Experience Plan: {proposal.game_title} (Genre: {genre})
 
 > **Prompt**: {proposal.requested_prompt}
 > **Target**: Roblox Studio (Luau {proposal.target.luau_version}, Rojo {proposal.target.rojo_version})
 > **Project mode**: {proposal.game_design.get("project_mode", "new_experience")}
+
+## 0. Request-first RAG (before game design)
+- Research status: {pre.get("status", "not_run")} (NOT gameplay verified)
+- Original user request: {original}
+- Unimplemented requested facets: {pending}
+### Original requirement ledger
+{required_lines}
+### Fetched Roblox Creator documentation
+{evidence_lines}
 
 ## 1. Architectural Subsystems (Topological Order)
 {modules_md}

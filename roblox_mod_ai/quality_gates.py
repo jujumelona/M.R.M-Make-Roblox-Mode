@@ -18,6 +18,8 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
     files = {m.name: root / m.file_path for m in proposal.modules}
     features = proposal.game_design.get("features", {})
     prompt = proposal.requested_prompt.lower()
+    pre = proposal.game_design.get("pre_design_research", {})
+    ledger = pre.get("ledger", {})
     checks = []
 
     def check(identifier: str, ok: bool, detail: str) -> None:
@@ -45,6 +47,13 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
     leaderboard = bool(features.get("is_leaderboard")) or any(
         word in prompt for word in ("리더보드", "leaderboard", "leaderstats")
     )
+    if pre:
+        check("planning.ledger", ledger.get("original_prompt") == proposal.requested_prompt
+              and bool(ledger.get("requirements")) and pre.get("schema") == "rmm/pre-design-rag-v1",
+              "Same original request and feature ledger used for pre-design and production")
+        check("planning.request_coverage", not ledger.get("unimplemented_facets")
+              and not ledger.get("unmatched_requirements"),
+              "No known requested gameplay silently omitted from implementation")
     if coin_requested:
         check("coin.world", bool(world.get("Coins", {}).get("Coin1")), "Collectible coin Instances in Rojo Workspace")
         check("coin.touch_award", has("CoinCollector", ".Touched:Connect", "Coins", ".Value +=", "GetPlayerFromCharacter"),
