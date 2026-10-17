@@ -1,7 +1,7 @@
 """Opt-in, upstream-compatible gameplay library adapters.
 
 ProfileStore: lm-loleris/profilestore@1.0.3 (Apache-2.0)
-Fusion: elttob/fusion@0.4.0-dev1 (MIT)
+Fusion: elttob/fusion@0.3.0 (MIT)
 Install via Wally. Never report runtime verified without Studio.
 """
 PROFILESTORE_SERVER = """--!strict
@@ -96,7 +96,7 @@ end)
 """
 
 FUSION_HUD = """--!strict
--- Fusion reactive HUD: Wally elttob/fusion@0.4.0-dev1
+-- Fusion reactive HUD: Wally elttob/fusion@0.3.0
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Fusion = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Fusion"))

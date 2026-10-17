@@ -39,7 +39,7 @@ and uses its native session and autosave API. Do not combine it with the
 legacy DataStore backend for the same saved key. ProfileStore is Apache-2.0.
 
 Set `RMM_UI_BACKEND=fusion` or mention Fusion for the **optional**
-`elttob/fusion@0.4.0-dev1` HUD. Wally installs it in shared Packages.
+`elttob/fusion@0.3.0` HUD. Wally installs it in shared Packages.
 The code imports actual Fusion scoped UI state. Fusion is MIT.
 
 The default built-in generators remain available until real gameplay,

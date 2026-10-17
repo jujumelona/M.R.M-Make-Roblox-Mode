@@ -20,7 +20,7 @@ def test_profilestore_real_wally_mapping_and_api(tmp_path: Path):
     wally=project.generate_wally_toml(proposal)
     assert '[server-dependencies]' in wally
     assert 'ProfileStore = "lm-loleris/profilestore@1.0.3"' in wally
-    assert 'Fusion = "elttob/fusion@0.4.0-dev1"' in wally
+    assert 'Fusion = "elttob/fusion@0.3.0"' in wally
 
 def test_default_existing_backend_preserved(tmp_path: Path):
     proposal=RobloxGameDesignPlanner().plan("코인 상점").proposal
