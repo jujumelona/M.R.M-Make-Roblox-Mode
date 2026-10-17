@@ -190,7 +190,7 @@ class RobloxPlaytestRunner:
             specs.append(RobloxTestSpec(
                 test_id="test_dynamic_structure", name="Novel mechanics Studio instance contract",
                 target_module="DynamicGame", file_path="tests/DynamicStructure.spec.luau",
-                test_code="\\n".join(checks),
+                test_code="\n".join(checks),
             ))
         return specs
 
