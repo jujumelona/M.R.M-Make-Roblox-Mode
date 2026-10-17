@@ -312,7 +312,11 @@ class RobloxGameDesignPlanner:
         # An unsupported request is never mapped to an unrelated template by
         # keyword similarity. Invoke the local architect only if it is configured.
         dynamic_design = None
-        needs_novel = bool(research["ledger"].get("unimplemented_facets") or
+        # With a local model available, do NOT guess that a keyword such as
+        # "combat" proves the entire game is a matching combat prefab. Ask for
+        # the complete architecture and implement it as new gameplay by default.
+        needs_novel = bool(dynamic_design_enabled() or
+                           research["ledger"].get("unimplemented_facets") or
                            research["ledger"].get("unmatched_requirements") or
                            not any(features.values()))
         if needs_novel and dynamic_design_enabled():
@@ -341,6 +345,12 @@ class RobloxGameDesignPlanner:
                 ]
                 research["ledger"]["unmatched_requirements"] = []
             except DynamicDesignError as exc:
+                # Model-enabled design failures cannot silently return a stock
+                # shop, sword or arena and claim the user's custom game was made.
+                research["ledger"]["unimplemented_facets"] = sorted(set(
+                    research["ledger"].get("unimplemented_facets", []) +
+                    ["dynamic_architecture_failed"]
+                ))
                 research.setdefault("provider_failures", []).append({
                     "provider": "local_small_model",
                     "facet": "dynamic_game_design",
