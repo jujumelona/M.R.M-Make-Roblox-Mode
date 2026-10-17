@@ -73,6 +73,17 @@ class RobloxToolchainManager:
             npx_available=self.npx_path is not None,
         )
 
+    def check_tools(self) -> dict[str, bool]:
+        """Returns tool availability dictionary for quick environment diagnostics."""
+        status = self.get_status()
+        return {
+            "Rojo": status.rojo_available,
+            "Wally": status.wally_available,
+            "Selene": status.selene_available,
+            "StyLua": status.stylua_available,
+            "NPX (Studio Bridge)": status.npx_available,
+        }
+
     def generate_rokit_manifest(self) -> str:
         """Generates standard rokit.toml for toolchain installation."""
         return """[tools]

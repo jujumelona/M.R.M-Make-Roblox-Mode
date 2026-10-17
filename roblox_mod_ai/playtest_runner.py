@@ -26,6 +26,14 @@ class PlaytestReport:
     duration_ms: float
     results: list[TestCaseResult] = field(default_factory=list)
 
+    @property
+    def tests_run(self) -> int:
+        return self.total_tests
+
+    @property
+    def tests_passed(self) -> int:
+        return self.passed_count
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "passed": self.passed,

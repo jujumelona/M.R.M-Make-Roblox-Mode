@@ -33,6 +33,7 @@ class RobloxPipelineResult:
     duration_ms: float
     work_receipt: WorkReceipt
     build_mode: str
+    generated_files: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -204,6 +205,7 @@ class RobloxProductionOrchestrator:
             duration_ms=round(total_duration, 2),
             work_receipt=receipt,
             build_mode=build_mode,
+            generated_files=[m.file_path for m in proposal.modules],
             metadata={
                 "modules_count": len(proposal.modules),
                 "assets_count": len(proposal.assets),
