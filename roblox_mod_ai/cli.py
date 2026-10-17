@@ -69,7 +69,10 @@ def main() -> None:
         session = CompleteRobloxAISession(output_root=args.output)
         session.load_plan(args.plan_file)
         result = session.build(source_only=args.source_only)
-        if result.success:
+        if result.metadata.get("addon_prepared"):
+            print("\nExisting-Experience addon sources prepared (NOT verified or published).")
+            print(f"Addon ZIP: {result.project_zip_path}")
+        elif result.success:
             print(f"\n✅ Build complete!")
             if result.rbxlx_path:
                 print(f"🎮 Roblox Place File: {result.rbxlx_path}")
