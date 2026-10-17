@@ -407,11 +407,11 @@ class RobloxGameDesignPlanner:
         pre = proposal.game_design.get("pre_design_research", {})
         ledger = pre.get("ledger", {})
         original = ledger.get("original_prompt", proposal.requested_prompt)
-        required_lines = "\\n".join(
+        required_lines = "\n".join(
             f"- [{item['id']}] {item['statement']}"
             for item in ledger.get("requirements", [])
         ) or "- No requirement details recorded"
-        evidence_lines = "\\n".join(
+        evidence_lines = "\n".join(
             f"- [{item['facet']}] {item['url']} (sha256: {item['content_sha256'][:16]})"
             for item in pre.get("evidence", [])[:12]
         ) or "- No official document content fetched; not evidence-grounded"

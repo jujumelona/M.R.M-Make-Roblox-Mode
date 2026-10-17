@@ -34,6 +34,8 @@ def test_model_loop_returns_nonplaceholder_code(monkeypatch):
     assert router.calls==1
     assert "WaitForChild" in result
 
-def test_unknown_genre_cannot_pass_as_game():
-    with pytest.raises(ValueError):
-        RobloxGameDesignPlanner().plan("Write a fully novel cooking recipe manager")
+def test_unknown_genre_cannot_pass_as_game(monkeypatch):
+    monkeypatch.setenv("RMM_PREDESIGN_LIVE_SEARCH", "0")
+    plan=RobloxGameDesignPlanner().plan("Write a fully novel cooking recipe manager")
+    assert plan.proposal.game_design["pre_design_research"]["ledger"]["unimplemented_facets"]
+    assert "CombatSystem" not in {m.name for m in plan.proposal.modules}

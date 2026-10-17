@@ -10,6 +10,8 @@ on:
 jobs:
   compile-generated-game:
     runs-on: ubuntu-latest
+    env:
+      RMM_PREDESIGN_LIVE_SEARCH: "0"  # CI uses explicit deterministic mocks for network RAG
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4

@@ -130,7 +130,7 @@ def test_no_search_fabrication_when_provider_unavailable():
         assert result["status"]=="unresolved"
         assert not any(x["provider"]=="official_docs" for x in result["evidence"])
         assert result["provider_failures"]
-        assert all(q["status"]=="no_fetched_evidence" for q in result["queries"]) is False
+        assert all(q["status"]=="no_fetched_evidence" for q in result["queries"])
 
 
 def test_docs_offline_is_labelled_not_a_real_fetch():
