@@ -79,6 +79,7 @@ class RobloxModuleSpec:
     roblox_service: str  # e.g., ServerScriptService
     description: str = ""
     depends_on: list[str] = field(default_factory=list)
+    evidence_refs: list[str] = field(default_factory=list)
     code: str = ""
 
     def to_dict(self) -> dict[str, Any]:

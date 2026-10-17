@@ -80,6 +80,19 @@ class RobloxGameDesignPlanner:
             "fusion" in prompt.lower() or os.environ.get("RMM_UI_BACKEND") == "fusion"
         ) else "builtin"
 
+        # Quantitative requirements come from authored text, not hardcoded demo sizes.
+        counts: dict[str, int] = {}
+        stage_match = re.search(r"(\\d{1,4})\\s*(?:단계|스테이지|stages?|checkpoints?)", prompt, re.IGNORECASE)
+        if stage_match:
+            counts["stages"] = int(stage_match.group(1))
+        coin_match = re.search(r"(\\d{1,4})\\s*(?:개(?:의)?\\s*)?(?:코인|동전|coins?)", prompt, re.IGNORECASE)
+        if coin_match:
+            counts["coins"] = int(coin_match.group(1))
+        if any(n <= 0 or n > 128 for n in counts.values()):
+            research["ledger"]["unimplemented_facets"] = sorted(set(
+                research["ledger"]["unimplemented_facets"] + ["requested_count_exceeds_safe_build_limit"]
+            ))
+
         # Base modules required by every safe Roblox project: NetworkRemotes & PlayerDataManager
         modules: list[RobloxModuleSpec] = [
             RobloxModuleSpec(
@@ -289,6 +302,7 @@ class RobloxGameDesignPlanner:
                 "storage": "ProfileStore" if storage_backend == "profilestore" else "DataStoreService with session-locking & exponential backoff pcall",
                 "storage_backend": storage_backend,
                 "project_mode": project_mode,
+                "requested_counts": counts,
                 "ui_backend": ui_backend,
                 "networking": "RemoteEvents/RemoteFunctions with server authority & reach checks",
                 "pre_design_research": research,

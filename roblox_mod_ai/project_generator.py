@@ -41,10 +41,11 @@ class RobloxProjectGenerator:
             remotes_dict[remote_name] = {"$className": class_type}
 
         features = proposal.game_design.get("features", {})
+        counts = proposal.game_design.get("requested_counts", {})
         world: dict[str, Any] = {"$className": "Workspace"}
         if features.get("is_coin_collect"):
             coins: dict[str, Any] = {"$className": "Folder"}
-            for index in range(6):
+            for index in range(max(1, min(int(counts.get("coins", 6)), 128))):
                 coins[f"Coin{index + 1}"] = {
                     "$className": "Part",
                     "$properties": {
@@ -80,7 +81,7 @@ class RobloxProjectGenerator:
             world["CombatArena"] = walls
         if features.get("is_obby"):
             world["Checkpoints"] = {"$className": "Folder"}
-            for stage in range(1, 6):
+            for stage in range(1, max(1, min(int(counts.get("stages", 5)), 128)) + 1):
                 world["Checkpoints"][f"Stage{stage}"] = {"$className": "Part",
                     "$properties": {"Anchored": True, "Size": [8, 1, 8],
                                     "Position": [0, 1 + (stage - 1) * 3, stage * 25]}}

@@ -55,6 +55,10 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
               and not ledger.get("unmatched_requirements"),
               "No known requested gameplay silently omitted from implementation")
     if coin_requested:
+        requested_count = int(proposal.game_design.get("requested_counts", {}).get("coins", 6))
+        actual_count = len([k for k in world.get("Coins", {}) if k.startswith("Coin")])
+        check("coin.requested_count", requested_count <= 128 and actual_count == requested_count,
+              "Generated coin count satisfies authored quantitative request")
         check("coin.world", bool(world.get("Coins", {}).get("Coin1")), "Collectible coin Instances in Rojo Workspace")
         check("coin.touch_award", has("CoinCollector", ".Touched:Connect", "Coins", ".Value +=", "GetPlayerFromCharacter"),
               "Server Touched handler increments Coins")
@@ -96,6 +100,10 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
               "Client submits attack request")
         check("combat.arena", bool(world.get("CombatArena")), "Arena walls in Rojo Workspace")
     if features.get("is_obby"):
+        requested = int(proposal.game_design.get("requested_counts", {}).get("stages", 5))
+        actual = len([key for key in world.get("Checkpoints", {}) if key.startswith("Stage")])
+        check("obby.requested_stages", requested <= 128 and actual == requested,
+              "Checkpoint count matches explicit user request; never silently compress 50 stages to 5")
         check("obby.world", bool(world.get("Checkpoints")), "Checkpoint instances available")
     if features.get("is_tycoon"):
         check("tycoon.world", bool(world.get("TycoonPlots")), "Tycoon parts available")
