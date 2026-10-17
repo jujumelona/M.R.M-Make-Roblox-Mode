@@ -89,7 +89,7 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 
 game:BindToClose(function()
-    for player, profile in profiles do
+    for _, profile in profiles do
         if profile then profile:EndSession() end
     end
 end)
@@ -105,7 +105,7 @@ local localPlayer = Players.LocalPlayer
 local stats = localPlayer:WaitForChild("leaderstats")
 local coins = stats:WaitForChild("Coins") :: IntValue
 local coinState = scope:Value(coins.Value)
-local gui = scope:New("ScreenGui")({
+scope:New("ScreenGui")({
     Name = "RMMHUD",
     ResetOnSpawn = false,
     Parent = localPlayer:WaitForChild("PlayerGui"),
