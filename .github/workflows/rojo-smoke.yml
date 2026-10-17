@@ -54,3 +54,4 @@ jobs:
           name: generated-roblox-project
           path: .rmm-smoke/
           if-no-files-found: error
+          include-hidden-files: true
