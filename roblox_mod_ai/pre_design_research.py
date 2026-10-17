@@ -306,7 +306,10 @@ class RobloxPreDesignResearch:
                 except Exception as exc:
                     failures.append({"facet": "assets", "provider": "creator_store",
                                      "reason": f"{type(exc).__name__}: {str(exc)[:200]}"})
-        covered = {item["facet"] for item in evidence}
+        # Local manually curated signatures are useful hints but NOT proof
+        # that current official documentation was actually fetched.
+        covered = {item["facet"] for item in evidence
+                   if item.get("grounding") == "fetched_official_document"}
         desired = {facet["id"] for facet in ledger["facets"]}
         if not self.live_enabled:
             status = "live_disabled"
