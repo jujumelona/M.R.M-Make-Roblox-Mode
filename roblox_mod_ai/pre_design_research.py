@@ -119,7 +119,7 @@ def build_request_ledger(prompt: str) -> dict[str, Any]:
         "schema": "rmm/request-ledger-v1",
         "original_prompt": original,
         "requirements": requirements,
-        "facets": facets[:_MAX_FACETS],
+        "facets": facets,
         "unmatched_requirements": unresolved_clauses,
         "unimplemented_facets": pending,
         "request_sha256": hashlib.sha256(original.encode("utf-8")).hexdigest(),
@@ -185,7 +185,7 @@ class RobloxPreDesignResearch:
         ledger = build_request_ledger(prompt)
         semantic = self._propose_semantic_searches(prompt,ledger)
         if semantic:
-            ledger["facets"] = (ledger["facets"] + semantic)[:_MAX_FACETS]
+            ledger["facets"] = ledger["facets"] + semantic
             ledger["unimplemented_facets"] = sorted(set(
                 ledger["unimplemented_facets"] + [x["id"] for x in semantic
                     if not any(f.get("implementation_key") for f in ledger["facets"]
@@ -226,7 +226,9 @@ class RobloxPreDesignResearch:
                 })
         seen_urls: set[tuple[str, str]] = set()
 
-        for facet in ledger["facets"]:
+        # Bound transport work, not the user's actual feature ledger.
+        max_live_queries = 8
+        for index, facet in enumerate(ledger["facets"]):
             query = facet["search_query"]
             entry = {"facet": facet["id"], "query": query,
                      "providers": ["official_docs", "local_api_index"], "status": "pending",
@@ -249,6 +251,9 @@ class RobloxPreDesignResearch:
             queries.append(entry)
             if not self.live_enabled:
                 entry["status"] = "live_disabled"
+                continue
+            if index >= max_live_queries:
+                entry["status"] = "deferred_budget"
                 continue
             try:
                 result = self.docs.search(query, limit=_DOC_LIMIT, with_excerpt=True)

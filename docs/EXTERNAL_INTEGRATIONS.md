@@ -99,3 +99,29 @@ instance-presence tests; these are intentionally not a full multiplayer
 behavior or DataStore restore test. Use the separately configured isolated
 test-place Open Cloud workflow and StudioTestService with actual credentials
 to obtain runtime approval.
+
+## MMM-style request-first design RAG
+
+The game plan calls `RobloxPreDesignResearch.research` **before** module selection.
+It preserves the full original request and each separable requirement as a
+ledger, creates Roblox-specific English API queries by requested capability,
+retrieves official `/docs/llms.txt` links and real Markdown excerpts, and stores
+`content_sha256` for every observed passage. The authoring plan, checkpoint
+hash, generated project `pre_design_research.json` and subsequent small-model
+Luau coder reuse the same evidence. A provider outage or skipped search is
+reported as such; local API index matches and Wally package candidates are
+separately labelled and never counted as retrieved official documentation.
+
+Normal use attempts live doc lookup by default. Set
+`RMM_PREDESIGN_LIVE_SEARCH=0` for air-gapped CI/offline work, visibly marked
+`live_disabled`. Set `RMM_ENABLE_MODEL_QUERY_EXPANSION=1` with a working
+small-model router to generate additional English search queries from exact
+text spans in the user's request. The model can suggest queries but **cannot**
+create source references, remove user requirements or certify working code.
+The retrieval budget defers surplus queries without truncating the ledger.
+
+Known reusable ProfileStore and Fusion packages are only *candidates* until
+Wally resolves them and real Studio behavior is tested. An unsupported game
+mechanic remains explicitly unimplemented; source-only builds never become
+false success. This mirrors MMM's authority split without importing
+Minecraft-specific CurseForge, loader, or mod semantics.
