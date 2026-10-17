@@ -21,7 +21,7 @@ from .roblox_api_catalog import RobloxAPICatalog
 FACETS: tuple[tuple[str, tuple[str, ...], str, str | None], ...] = (
     ("shop", ("상점", "구매", "판매", "거래", "shop", "merchant", "trade", "purchase"),
      "Roblox ProximityPrompt RemoteFunction secure shop inventory purchase", "is_shop"),
-    ("coins", ("코인", "동전", "수집", "currency", "collect coins", "coin"),
+    ("coins", ("코인", "동전", "수집", "currency", "collect coins", "coin", "coins"),
      "Roblox BasePart Touched collectible currency server authority", "is_coin_collect"),
     ("combat", ("전투", "검투", "검", "공격", "배틀", "pvp", "combat", "sword", "arena"),
      "Roblox combat RemoteEvent raycasting server validation ContextActionService", "is_combat"),
@@ -31,7 +31,7 @@ FACETS: tuple[tuple[str, tuple[str, ...], str, str | None], ...] = (
      "Roblox tycoon conveyor assembly physics ownership collection", "is_tycoon"),
     ("simulator", ("시뮬레이터", "채광", "클릭", "simulator", "mining", "clicker"),
      "Roblox simulator RemoteEvent server validated increment marketplace", "is_simulator"),
-    ("magic", ("마법", "주문", "스킬", "지팡이", "magic", "spell", "ability"),
+    ("magic", ("마법", "주문", "스킬", "지팡이", "magic", "spell", "ability", "staff"),
      "Roblox spell casting cooldown raycast RemoteEvent VFX", "is_magic"),
     ("leaderboard", ("순위", "리더보드", "leaderstats", "leaderboard"),
      "Roblox player leaderstats DataStoreService OrderedDataStore", "is_leaderboard"),
@@ -151,7 +151,23 @@ class RobloxPreDesignResearch:
         for facet in ledger["facets"]:
             query = facet["search_query"]
             entry = {"facet": facet["id"], "query": query,
-                     "providers": ["official_docs", "local_api_index"], "status": "pending"}
+                     "providers": ["official_docs", "local_api_index"], "status": "pending",
+                     "requirement_ids": facet["requirements"]}
+            # Local source inspection is a candidate, not official live evidence.
+            local_api_hits = self.api.search(query, limit=3)
+            for hit in local_api_hits:
+                evidence.append({
+                    "facet": facet["id"],
+                    "provider": "local_api_index",
+                    "url": "https://create.roblox.com/docs/reference/engine/classes/" + hit["class_name"],
+                    "excerpt": hit["signature"] + " — " + hit["description"],
+                    "content_sha256": hashlib.sha256(
+                        (hit["signature"] + " — " + hit["description"]).encode("utf-8")
+                    ).hexdigest(),
+                    "grounding": "curated_local_reference_not_live_verified",
+                    "query": query,
+                })
+            entry["local_api_matches"] = len(local_api_hits)
             queries.append(entry)
             if not self.live_enabled:
                 entry["status"] = "live_disabled"
