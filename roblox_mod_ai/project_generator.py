@@ -37,12 +37,29 @@ class RobloxProjectGenerator:
             "ClickRequest": "RemoteEvent",
             "ButtonPurchased": "RemoteEvent",
         }
+        dynamic = proposal.game_design.get("dynamic_design") or {}
+        for remote_name, class_type in dynamic.get("remotes", {}).items():
+            if remote_name in declared_remotes and declared_remotes[remote_name] != class_type:
+                raise ValueError("Dynamic Remote cannot override an engine contract: " + remote_name)
+            declared_remotes[remote_name] = class_type
         for remote_name, class_type in declared_remotes.items():
             remotes_dict[remote_name] = {"$className": class_type}
 
         features = proposal.game_design.get("features", {})
         counts = proposal.game_design.get("requested_counts", {})
         world: dict[str, Any] = {"$className": "Workspace"}
+        for instance in dynamic.get("world_objects", []):
+            name = instance["name"]
+            if name in ("Baseplate", "SpawnLocation"):
+                raise ValueError("Dynamic world cannot replace existing spawn/baseplate")
+            world[name] = {
+                "$className": instance["class"],
+                "$properties": {
+                    "Anchored": True,
+                    "Size": instance["size"],
+                    "Position": instance["position"],
+                },
+            }
         if features.get("is_coin_collect"):
             coins: dict[str, Any] = {"$className": "Folder"}
             for index in range(max(1, min(int(counts.get("coins", 6)), 128))):
@@ -101,6 +118,8 @@ class RobloxProjectGenerator:
             world["SellZones"] = {"$className": "Folder",
                 "SellPad": {"$className": "Part", "$properties": {
                     "Anchored": True, "Size": [12, 1, 12], "Position": [30, 0.5, 0]}}}
+        if dynamic and len(world) != len(set(world)):
+            raise ValueError("Generated world object conflict")
         world["Baseplate"] = {"$className": "Part", "$properties": {
             "Anchored": True, "Size": [512, 20, 512], "Position": [0, -10, 0],
         }}

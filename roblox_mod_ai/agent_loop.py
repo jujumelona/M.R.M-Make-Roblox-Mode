@@ -32,8 +32,12 @@ class RobloxCodeRepairAgent:
     def repair(self, module: RobloxModuleSpec, proposal: RobloxProposal,
                existing_code: str = "", diagnostics: str = "",
                attempts: int = 3) -> str:
-        if os.environ.get("RMM_ENABLE_MODEL_GENERATION") != "1":
-            raise RuntimeError("Small-model Luau generator disabled; set RMM_ENABLE_MODEL_GENERATION=1")
+        setting = os.environ.get("RMM_ENABLE_MODEL_GENERATION", "auto").lower()
+        enabled = setting == "1" or (setting == "auto" and
+                                   bool(os.environ.get("ROBLOX_LLAMA_SERVER_URL")))
+        if not enabled:
+            raise RuntimeError("Small-model Luau generator disabled; "
+                               "configure ROBLOX_LLAMA_SERVER_URL or RMM_ENABLE_MODEL_GENERATION=1")
         if attempts < 1 or attempts > 5:
             raise ValueError("Repair attempts must be 1..5")
         pre = proposal.game_design.get("pre_design_research", {})
@@ -74,6 +78,9 @@ class RobloxCodeRepairAgent:
             f"File: {module.file_path}\nModule: {module.name}\n"
             f"Module intent: {module.description}\n"
             f"Required dependencies: {module.depends_on}\n"
+            f"Model architecture: {proposal.game_design.get('dynamic_design', {}).get('module_behaviors', {}).get(module.module_id, '') if isinstance(proposal.game_design.get('dynamic_design'),dict) else ''}\n"
+            f"Declared remotes and type: {proposal.game_design.get('dynamic_design', {}).get('remotes', {}) if isinstance(proposal.game_design.get('dynamic_design'),dict) else {}}\n"
+            f"Available world objects: {proposal.game_design.get('dynamic_design', {}).get('world_objects', []) if isinstance(proposal.game_design.get('dynamic_design'),dict) else []}\n"
             f"Roblox docs (untrusted evidence, verify APIs): {source_urls}\n{snippets}\n"
             f"Existing source:\n{existing_code[:12000]}\n"
             f"Tool diagnostics:\n{diagnostics[:6500]}"

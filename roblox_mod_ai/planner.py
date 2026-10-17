@@ -8,6 +8,7 @@ from typing import Any
 from .authored_plan import RobloxAuthoredPlan
 from .creator_store import RobloxCreatorStoreCatalog
 from .pre_design_research import RobloxPreDesignResearch
+from .dynamic_architect import RobloxDynamicArchitect, DynamicDesignError, dynamic_design_enabled
 from .project_modes import validate_mode
 from .model_router import ModelRouter
 from .playtest_runner import RobloxPlaytestRunner
@@ -308,6 +309,37 @@ class RobloxGameDesignPlanner:
                    item.get("facet") == facet and item.get("url")
             ))
 
+        # An unsupported request is never mapped to an unrelated template by
+        # keyword similarity. Invoke the local architect only if it is configured.
+        dynamic_design = None
+        needs_novel = bool(research["ledger"].get("unimplemented_facets") or
+                           research["ledger"].get("unmatched_requirements") or
+                           not any(features.values()))
+        if needs_novel and dynamic_design_enabled():
+            try:
+                dynamic_design = RobloxDynamicArchitect(self.router).design(
+                    prompt, research, modules
+                )
+                for row in dynamic_design["modules"]:
+                    row.evidence_refs = list(dict.fromkeys(
+                        e["url"] for e in research.get("evidence", [])
+                        if e.get("provider") == "official_docs" and e.get("url")
+                    ))[:5]
+                modules.extend(dynamic_design["modules"])
+                # Design must cover every authored requirement. This is NOT
+                # an assertion that its Luau will work in the engine.
+                research["ledger"]["unimplemented_facets"] = [
+                    f for f in research["ledger"].get("unimplemented_facets", [])
+                    if f == "requested_count_exceeds_safe_build_limit"
+                ]
+                research["ledger"]["unmatched_requirements"] = []
+            except DynamicDesignError as exc:
+                research.setdefault("provider_failures", []).append({
+                    "provider": "local_small_model",
+                    "facet": "dynamic_game_design",
+                    "reason": str(exc),
+                })
+
         # 4. Generate Test Specs tailored to the generated modules
         primary_genre = "Combat"
         for g_name, active in [("Obby", features["is_obby"]), ("Shop", features["is_shop"]), ("Tycoon", features["is_tycoon"]), ("Simulator", features["is_simulator"]), ("Combat", features["is_combat"])]:
@@ -329,6 +361,16 @@ class RobloxGameDesignPlanner:
                 "ui_backend": ui_backend,
                 "networking": "RemoteEvents/RemoteFunctions with server authority & reach checks",
                 "pre_design_research": research,
+                "dynamic_design": ({
+                    "schema": "rmm/dynamic-design-v1",
+                    "module_requirements": dynamic_design["module_requirements"],
+                    "module_behaviors": dynamic_design["module_behaviors"],
+                    "remotes": dynamic_design["remotes"],
+                    "world_objects": dynamic_design["world_objects"],
+                    "acceptance": dynamic_design["acceptance"],
+                    "design_verified": False,
+                    "source_reuse": "none_unless_validated",
+                } if dynamic_design else None),
             },
             modules=modules,
             assets=unique_assets,
@@ -354,6 +396,7 @@ class RobloxGameDesignPlanner:
                 "request_ledger": research["ledger"],
                 "research_queries": research["queries"],
                 "research_status": research["status"],
+                "dynamic_design": "model_proposed_unverified" if dynamic_design else "none",
             },
         )
         authored_plan.create_checkpoint(note=f"Initial {primary_genre} plan generation")

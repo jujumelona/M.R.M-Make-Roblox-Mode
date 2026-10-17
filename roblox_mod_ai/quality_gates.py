@@ -124,6 +124,33 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
     if features.get("is_magic"):
         check("magic.ability", has("MagicAbilities", "OnServerEvent", "Raycast", "cooldown"),
               "Requested magic may not be replaced with a generic stub")
+    dyn = proposal.game_design.get("dynamic_design") or {}
+    if dyn:
+        requirements = set(dyn.get("acceptance", {}))
+        assignments = dyn.get("module_requirements", {})
+        model_modules = [m for m in proposal.modules if m.module_id.startswith("dyn_")]
+        covered = {req for m in model_modules for req in assignments.get(m.module_id, [])}
+        check("dynamic.requirements", requirements and requirements == covered,
+              "Each user requirement has assigned novel implementation and observable acceptance case")
+        for module in model_modules:
+            body = source.get(module.name, "")
+            check("dynamic.code." + module.name,
+                  bool(body.strip()) and len(body) >= 75
+                  and not any(token in body.lower() for token in
+                      ("todo", "placeholder", "not implemented", "loadstring("))
+                  and has(module.name, "--!strict"),
+                  "Novel gameplay must contain actual saved Luau source; no placeholder or empty table")
+        for name, remote_type in dyn.get("remotes", {}).items():
+            check("dynamic.remote." + name,
+                  (not addon_mode and (root / "default.project.json").exists()
+                   and json.loads((root / "default.project.json").read_text(encoding="utf-8"))
+                   ["tree"]["ReplicatedStorage"]["Remotes"].get(name, {}).get("$className") == remote_type)
+                  or (addon_mode and manifest.get("remote_additions", {}).get(name, {}).get("$className") == remote_type),
+                  "Model-proposed Remotes must be instantiated in Rojo, not merely discussed")
+        for item in dyn.get("world_objects", []):
+            check("dynamic.world." + item["name"],
+                  world.get(item["name"], {}).get("$className") == item["class"],
+                  "Model-declared 3D objects materialized in real Rojo tree")
     check("network.remotes", remotes_present,
           "Declared network Remotes in new Place or additive owner-only overlay")
     if addon_mode:

@@ -59,6 +59,12 @@ class LuauCodeGenerator:
 
     def generate_module_code(self, module: RobloxModuleSpec, proposal: RobloxProposal) -> str:
         """Dispatches Luau code generation to specialized genre and subsystem engines."""
+        # Authored novel mechanics must NEVER be dispatched to same-name
+        # first-party templates whose behavior was not contract-matched.
+        if module.module_id.startswith("dyn_"):
+            return RobloxCodeRepairAgent(router=self.router).repair(
+                module, proposal,
+            )
         name = module.name.lower()
         kind = module.kind.lower()
 
