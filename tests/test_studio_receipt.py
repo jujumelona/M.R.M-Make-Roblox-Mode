@@ -11,7 +11,7 @@ def test_receipt_cannot_turn_failed_checks_into_success(tmp_path: Path):
     release.write_text("release", encoding="utf-8")
     studio.write_text("instrumented", encoding="utf-8")
     result = {"runner": "StudioTestService", "checks": {
-        "client_server": True, "coin_pickup": True,
+        "jest_suites": True, "client_server": True, "coin_pickup": True,
         "shop_purchase": True, "datastore_restore": False,
     }}
     with pytest.raises(ValueError):

@@ -18,6 +18,7 @@ def create_studio_project(project_dir: Path, repo_root: Path) -> Path:
     shared = repo_root / "studio_tests"
     for service, name, source in (
         ("ServerScriptService", "RMMStudioServer", "RMMStudioServer.server.luau"),
+        ("ServerScriptService", "RMMJestRunner", "RMMJestRunner.server.luau"),
         ("StarterPlayer", "RMMStudioClient", "RMMStudioClient.client.luau"),
     ):
         if service == "ServerScriptService":

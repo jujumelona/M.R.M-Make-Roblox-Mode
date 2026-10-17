@@ -68,3 +68,15 @@ local model with `RMM_ENABLE_MODEL_GENERATION=1` plus a working
 `ROBLOX_LLAMA_SERVER_URL` to attempt bounded, docs-grounded Luau
 generation. Missing model or repeated syntax failures cause build failure.
 The agent never silently falls back to a fake game.
+
+## Real Jest execution in Studio
+
+The generated structural Jest specs are only mounted into the separate
+`studio-tests.project.json` project. When StudioTestService starts a
+two-client `RMM_E2E_V1` play phase, `RMMJestRunner.server.luau` calls the
+actual `Jest.runCLI` API and reports PASSED/FAILED via a server attribute.
+The multiplayer E2E test refuses to pass if Jest never ran or failed.
+The Studio receipt requires a separate `jest_suites=true` evidence bit.
+
+Python tests, Wally dependency install and Rojo compilation validate only
+that the runner was included, not that a real Studio environment executed it.

@@ -57,6 +57,15 @@ if args.phase == "restore" then
 end
 
 if args.phase ~= "play" then finish({ok=false, reason="Unknown phase"}); return end
+-- Jest must genuinely execute in Roblox and report its own result.
+local jestDeadline = os.clock() + 90
+while ReplicatedStorage:GetAttribute("RMM_JEST_STATUS") == nil and os.clock() < jestDeadline do
+    task.wait(0.25)
+end
+if ReplicatedStorage:GetAttribute("RMM_JEST_STATUS") ~= "PASSED" then
+    finish({ok=false, reason="Real Jest Roblox structural tests missing or failed"})
+    return
+end
 if not workspace:FindFirstChild("Coins") or not workspace:FindFirstChild("ShopStalls") then
     finish({ok=false, reason="Missing coin/shop world"})
     return
@@ -153,6 +162,7 @@ until os.clock() > deadline
 local saved = persisted and persisted.coins == expectedCoins and table.find(persisted.inventory or {}, "speed_boots") ~= nil
 finish({
     ok = saved == true,
+    jest_suites = ReplicatedStorage:GetAttribute("RMM_JEST_STATUS") == "PASSED",
     client_server = ok and independentSecondClient,
     coin_pickup = beforePurchaseCoins - startingCoins >= 50,
     shop_purchase = chargedCorrectly and effectOnServer and ownedOnServer,

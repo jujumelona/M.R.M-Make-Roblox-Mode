@@ -24,9 +24,11 @@ button.Click:Connect(function()
         if type(second) ~= "table" or not second.ok then
             error("Same-user restore run failed: " .. HttpService:JSONEncode(second))
         end
+        if not first.jest_suites then error("Jest suites were not verified in Studio") end
         return {
             runner = "StudioTestService",
             checks = {
+                jest_suites = first.jest_suites == true,
                 client_server = first.client_server == true,
                 coin_pickup = first.coin_pickup == true,
                 shop_purchase = first.shop_purchase == true,

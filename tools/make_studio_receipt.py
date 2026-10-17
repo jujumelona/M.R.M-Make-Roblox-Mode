@@ -20,7 +20,7 @@ def receipt_from_log(log: str, release_place: Path, test_place: Path) -> dict:
     if not matches:
         raise ValueError("No StudioTestService result marker found in supplied log")
     payload = json.loads(matches[-1])
-    required = ("client_server", "coin_pickup", "shop_purchase", "datastore_restore")
+    required = ("jest_suites", "client_server", "coin_pickup", "shop_purchase", "datastore_restore")
     if payload.get("runner") != "StudioTestService" or any(
         payload.get("checks", {}).get(name) is not True for name in required
     ):

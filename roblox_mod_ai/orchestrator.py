@@ -253,7 +253,7 @@ class RobloxProductionOrchestrator:
             return {"passed": False, "reason": "StudioTestService multiplayer receipt unavailable"}
         try:
             data = json.loads(Path(path).read_text(encoding="utf-8"))
-            required = {"client_server", "coin_pickup", "shop_purchase", "datastore_restore"}
+            required = {"jest_suites", "client_server", "coin_pickup", "shop_purchase", "datastore_restore"}
             ok = (data.get("runner") == "StudioTestService"
                   and data.get("evidence_type") == "local_studio_output"
                   and isinstance(data.get("studio_test_place_sha256"), str)
