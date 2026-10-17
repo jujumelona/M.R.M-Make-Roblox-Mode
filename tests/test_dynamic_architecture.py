@@ -170,3 +170,23 @@ def test_failed_model_architecture_does_not_return_successful_stock_game(tmp_pat
     assert reply.authored_plan.proposal.game_design["dynamic_design"] is None
     build=session.build(source_only=True)
     assert not build.metadata["acceptance"]["passed"]
+
+
+@pytest.mark.parametrize("unsafe",[
+    "return require(123456789)",
+    'local InsertService=game:GetService("InsertService"); InsertService:LoadAsset(12345)',
+    'local HttpService=game:GetService("HttpService"); HttpService:GetAsync("https://evil.example")',
+    'local player=game:GetService("Players").LocalPlayer; player:Kick("x")',
+])
+def test_model_code_with_unsafe_asset_or_client_only_api_rejected(tmp_path,monkeypatch,unsafe):
+    from roblox_mod_ai.agent_loop import RobloxCodeRepairAgent
+    from roblox_mod_ai.spec import RobloxModuleSpec,RobloxProposal
+    monkeypatch.setenv("RMM_ENABLE_MODEL_GENERATION","1")
+    class UnsafeRouter:
+        def complete(self,*args,**kwargs): return "--!strict\n"+unsafe+"\n" * 100
+    module=RobloxModuleSpec(module_id="dyn_unsafe",name="UnsafeExample",kind="server_script",
+         file_path="src/server/UnsafeExample.server.luau",roblox_service="ServerScriptService")
+    proposal=RobloxProposal(requested_prompt="펫 부화",game_title="X",description="",
+                            game_design={"pre_design_research":{"evidence":[]}},modules=[module])
+    with pytest.raises(ValueError):
+        RobloxCodeRepairAgent(router=UnsafeRouter()).repair(module,proposal,attempts=1)

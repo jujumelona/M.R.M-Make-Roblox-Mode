@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 from typing import Any
@@ -150,9 +151,9 @@ def _clean_model_json(response: dict[str, Any], ledger: dict[str, Any],
         names.add(name)
         pos, size = item.get("position"), item.get("size")
         if not (isinstance(pos,list) and len(pos)==3 and
-                all(type(x) in (int,float) and abs(x) <= 4000 for x in pos) and
+                all(type(x) in (int,float) and math.isfinite(x) and abs(x) <= 4000 for x in pos) and
                 isinstance(size,list) and len(size)==3 and
-                all(type(x) in (int,float) and 0.1 <= x <= 512 for x in size)):
+                all(type(x) in (int,float) and math.isfinite(x) and 0.1 <= x <= 512 for x in size)):
             raise DynamicDesignError("Geometry outside bounded Roblox Studio limits")
         objects.append({"name":name,"class":item["class"],
                         "position":pos,"size":size})

@@ -101,6 +101,18 @@ class RobloxCodeRepairAgent:
                 errors.append("Placeholder code is prohibited")
             if re.search(r"\b(?:loadstring|getfenv|setfenv)\s*\(",candidate):
                 errors.append("Unsafe dynamic code")
+            if re.search(r"\brequire\s*\(\s*\d{5,}\s*\)",candidate):
+                errors.append("External numeric asset require is forbidden until source/license inspection")
+            if re.search(r"\bInsertService\b|:LoadAsset\s*\(",candidate):
+                errors.append("Dynamic third-party asset loading is forbidden")
+            if re.search(r"\b(?:HttpService|http)\s*[:.]\s*(?:GetAsync|PostAsync|RequestAsync)\s*\(",candidate):
+                errors.append("Unexpected outbound network code in generated gameplay")
+            if module.file_path.endswith(".server.luau") and re.search(
+                    r"\bLocalPlayer\b|:FireServer\s*\(",candidate):
+                errors.append("Server source contains client-only API")
+            if module.file_path.endswith(".client.luau") and re.search(
+                    r"\bDataStoreService\b|\bOnServerEvent\b|\bOnServerInvoke\b",candidate):
+                errors.append("Client source contains server-only API")
             if not errors:
                 return candidate
             prompt+="\nRETRY; previous code failed: "+("; ".join(errors[:8]))
