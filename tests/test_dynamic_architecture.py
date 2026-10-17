@@ -16,15 +16,20 @@ class LocalGameModel:
     def complete_json(self, prompt, **kwargs):
         self.prompt_history.append(("plan",prompt))
         # The architecture is tied to exact authored clause ids.
+        facets = ["pets", "shop"] if "상점" in prompt else ["pets"]
         return {
             "modules":[{"name":"CustomPetHatching",
                         "role":"server",
                         "requirement_ids":["req-001"],
+                        "facet_ids":facets,
                         "behavior":"Server checks egg distance, handles hatching and writes player owned items."}],
             "remotes":[{"name":"HatchPet","type":"RemoteEvent"}],
             "world_objects":[{"name":"PetEggStand","class":"Part","position":[9,2,0],"size":[3,3,3]}],
             "acceptance":[{"requirement_id":"req-001",
                            "observable_result":"Nearby players can hatch an egg, distant players cannot."}],
+            "acceptance_facets":[{"facet_id":f,"observable_result":
+                                  "Server implements the requested "+f+" gameplay interaction."}
+                                 for f in facets],
         }
     def complete(self, prompt, **kwargs):
         self.prompt_history.append(("code",prompt))
@@ -119,3 +124,11 @@ def test_reuse_requires_verified_license_exact_source_and_capability():
     assert not choose_reuse("shop_purchase", ["pet purchases"], "RemoteEvent",license_confirmed=True)["reuse"]
     assert not choose_reuse("shop_purchase", ["boots"], "OnServerInvoke Coins EconomyRules",
                             license_confirmed=False)["reuse"]
+
+
+def test_model_may_not_ignore_part_of_multi_feature_request():
+    raw=LocalGameModel().complete_json("")
+    ledger={"requirements":[{"id":"req-001","statement":"펫 부화와 펫 상점"}],
+            "facets":[{"id":"pets"},{"id":"shop"}]}
+    with pytest.raises(DynamicDesignError, match="Unimplemented gameplay facets"):
+        _clean_model_json(raw,ledger,{"NetworkRemotes","PlayerDataManager"})

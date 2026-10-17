@@ -372,6 +372,8 @@ class RobloxGameDesignPlanner:
                     "schema": "rmm/dynamic-design-v1",
                     "module_requirements": dynamic_design["module_requirements"],
                     "module_behaviors": dynamic_design["module_behaviors"],
+                    "module_facets": dynamic_design["module_facets"],
+                    "acceptance_facets": dynamic_design["acceptance_facets"],
                     "remotes": dynamic_design["remotes"],
                     "world_objects": dynamic_design["world_objects"],
                     "acceptance": dynamic_design["acceptance"],

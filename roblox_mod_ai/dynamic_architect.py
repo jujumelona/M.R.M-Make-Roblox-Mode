@@ -77,9 +77,12 @@ def _clean_model_json(response: dict[str, Any], ledger: dict[str, Any],
     records = response.get("modules")
     if not isinstance(records, list) or not records or len(records) > _MAX_NEW_MODULES:
         raise DynamicDesignError("One to sixteen implementable Luau modules required")
+    required_facets = {str(f["id"]) for f in ledger.get("facets", [])
+                       if isinstance(f,dict) and f.get("id")}
     modules: list[RobloxModuleSpec] = []
     chosen: set[str] = set(existing_names)
     assignment: dict[str, list[str]] = {}
+    facet_assignment: dict[str, list[str]] = {}
     purposes: dict[str, str] = {}
     for i, row in enumerate(records):
         if not isinstance(row, dict): raise DynamicDesignError("Invalid module")
@@ -93,6 +96,10 @@ def _clean_model_json(response: dict[str, Any], ledger: dict[str, Any],
         purpose = row.get("behavior")
         if not isinstance(ids, list) or not ids or any(x not in required_ids for x in ids):
             raise DynamicDesignError("Module must reference actual requirement IDs")
+        facets = row.get("facet_ids", [])
+        if not isinstance(facets, list) or (
+                required_facets and (not facets or any(x not in required_facets for x in facets))):
+            raise DynamicDesignError("Module must cover actual requested gameplay facets")
         if not isinstance(purpose, str) or len(purpose.strip()) < 24:
             raise DynamicDesignError("Provide substantive behavior and authority contract")
         if re.search(r"\b(?:todo|placeholder|stub|implement later)\b", purpose, re.I):
@@ -103,11 +110,16 @@ def _clean_model_json(response: dict[str, Any], ledger: dict[str, Any],
            file_path=path.format(name=name),roblox_service=service,
            description=purpose,depends_on=["mod_network_bridge"] if role != "shared" else []))
         assignment[module_id] = list(dict.fromkeys(ids))
+        facet_assignment[module_id] = list(dict.fromkeys(facets))
         purposes[module_id] = purpose
     covered = {req for refs in assignment.values() for req in refs}
     # Require EVERY authored clause, not just the names the model chose to support.
     if covered != required_ids:
         raise DynamicDesignError("Uncovered original requirements: " + ", ".join(sorted(required_ids - covered)))
+    assigned_facets = {facet for refs in facet_assignment.values() for facet in refs}
+    if required_facets and assigned_facets != required_facets:
+        raise DynamicDesignError("Unimplemented gameplay facets: " +
+                                 ", ".join(sorted(required_facets - assigned_facets)))
 
     raw_remotes = response.get("remotes", [])
     if not isinstance(raw_remotes, list) or len(raw_remotes) > _MAX_NEW_REMOTES:
@@ -156,11 +168,23 @@ def _clean_model_json(response: dict[str, Any], ledger: dict[str, Any],
         accepted[item["requirement_id"]] = behavior
     if set(accepted) != required_ids:
         raise DynamicDesignError("Acceptance coverage incomplete")
+    accepted_facets = {}
+    for item in response.get("acceptance_facets", []):
+        if not isinstance(item, dict) or item.get("facet_id") not in required_facets:
+            raise DynamicDesignError("Acceptance references invalid capability facet")
+        observable = item.get("observable_result")
+        if not isinstance(observable,str) or len(observable.strip()) < 18:
+            raise DynamicDesignError("Each capability requires observable behavior")
+        accepted_facets[item["facet_id"]] = observable
+    if required_facets and set(accepted_facets) != required_facets:
+        raise DynamicDesignError("Capability-level acceptance cases incomplete")
     return {
         "schema": "rmm/dynamic-design-v1",
         "modules": modules,
         "module_requirements": assignment,
+        "module_facets": facet_assignment,
         "module_behaviors": purposes,
+        "acceptance_facets": accepted_facets,
         "remotes": remotes,
         "world_objects": objects,
         "acceptance": accepted,
@@ -191,16 +215,18 @@ class RobloxDynamicArchitect:
             "All player rewards, purchases, damage and progression MUST be "
             "server authoritative. Luau scripts are to be written separately. "
             "Return JSON object with modules:[{name,role(server|client|shared),"
-            "requirement_ids:[req-001],behavior}], remotes:[{name,type}], "
+            "requirement_ids:[req-001],facet_ids:[pets],behavior}], remotes:[{name,type}], "
             "world_objects:[{name,class(Part|SpawnLocation),position:[0,0,0],"
-            "size:[3,1,3]}], acceptance:[{requirement_id,observable_result}]. "
+            "size:[3,1,3]}], acceptance:[{requirement_id,observable_result}], "
+            "acceptance_facets:[{facet_id,observable_result}]. "
             "Module names must be unique PascalCase, 3-58 alphanumeric. Each "
-            "original requirement must be assigned a module and an observable "
-            "acceptance case. Do not include existing modules. "
+            "original requirement AND EVERY gameplay facet must be assigned "
+            "a module and have an observable acceptance case. Do not include existing modules. "
             "For large environments prefer a server procedural world builder. "
             "Do not output completed Luau here. Do not invent details about docs.\n"
             + json.dumps({"original_prompt":prompt,
                           "requirements":reqs,
+                          "facets":ledger.get("facets", []),
                           "known_existing_modules":[m.name for m in existing_modules],
                           "official_docs":excerpts,
                           "existing_capabilities":research.get("reuse_candidates",[])},

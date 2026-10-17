@@ -134,6 +134,12 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
         assignments = dyn.get("module_requirements", {})
         model_modules = [m for m in proposal.modules if m.module_id.startswith("dyn_")]
         covered = {req for m in model_modules for req in assignments.get(m.module_id, [])}
+        authored_facets = {item["id"] for item in ledger.get("facets", [])}
+        implemented_facets = {facet for m in model_modules for facet in
+                              dyn.get("module_facets", {}).get(m.module_id, [])}
+        check("dynamic.facets", implemented_facets == authored_facets
+              and set(dyn.get("acceptance_facets", {})) == authored_facets,
+              "Every requested gameplay capability has implementation ownership and acceptance criteria")
         check("dynamic.requirements", requirements and requirements == covered,
               "Each user requirement has assigned novel implementation and observable acceptance case")
         for module in model_modules:
