@@ -115,73 +115,16 @@ end
         return specs
 
     def run_headless_playtest(self, proposal: RobloxProposal) -> PlaytestReport:
-        """Runs a headless simulated Roblox Studio playtest verifying the experience mechanics."""
-        start_time = time.perf_counter()
-        results: list[TestCaseResult] = []
+        """Legacy API: never misreport structural inspection as an actual Roblox run.
 
-        # 1. Test Player Spawn & Leaderstats Initialization
-        t0 = time.perf_counter()
-        sim_has_leaderstats = any("PlayerDataManager" in m.name or "data" in m.kind for m in proposal.modules)
-        t_duration = (time.perf_counter() - t0) * 1000 + 1.2
-        results.append(
-            TestCaseResult(
-                name="[Playtest] PlayerAdded leaderstats binding",
-                passed=sim_has_leaderstats,
-                duration_ms=round(t_duration, 2),
-                message="Successfully verified player leaderstats initialization on join."
-                if sim_has_leaderstats
-                else "Warning: PlayerDataManager not found in module set.",
-            )
+        Actual engine checks are OpenCloudRuntimeVerifier + StudioTestService receipts.
+        """
+        case = TestCaseResult(
+            name="[NOT RUN] Roblox Studio / Open Cloud",
+            passed=False, duration_ms=0,
+            message="Headless simulation is not a Roblox engine playtest. Use isolated test place and StudioTestService.",
         )
-
-        # 2. Test RemoteEvents Registration
-        t0 = time.perf_counter()
-        has_remotes = any("remote" in m.kind or "Remotes" in m.code for m in proposal.modules)
-        t_duration = (time.perf_counter() - t0) * 1000 + 0.8
-        results.append(
-            TestCaseResult(
-                name="[Playtest] RemoteEvent replication in ReplicatedStorage",
-                passed=has_remotes,
-                duration_ms=round(t_duration, 2),
-                message="RemoteEvents (AttackRequest, DamageEvent) properly scoped and isolated.",
-            )
-        )
-
-        # 3. Test Anti-Cheat Distance & Rate Limit Sanity
-        t0 = time.perf_counter()
-        has_combat = any("combat" in m.name.lower() or "attack" in m.name.lower() for m in proposal.modules)
-        t_duration = (time.perf_counter() - t0) * 1000 + 1.5
-        results.append(
-            TestCaseResult(
-                name="[Playtest] Server-authoritative distance sanity checks",
-                passed=True,
-                duration_ms=round(t_duration, 2),
-                message="Server strictly enforces max attack reach and rate limit.",
-            )
-        )
-
-        # 4. Test DataStore pcall Safety
-        t0 = time.perf_counter()
-        datastore_safe = all("pcall" in m.code for m in proposal.modules if "data" in m.name.lower())
-        t_duration = (time.perf_counter() - t0) * 1000 + 0.9
-        results.append(
-            TestCaseResult(
-                name="[Playtest] DataStoreService error boundary & retry pcall",
-                passed=datastore_safe,
-                duration_ms=round(t_duration, 2),
-                message="DataStore calls are safely wrapped inside pcall blocks.",
-            )
-        )
-
-        total_duration = (time.perf_counter() - start_time) * 1000
-        passed_count = sum(1 for r in results if r.passed)
-        failed_count = len(results) - passed_count
-
         return PlaytestReport(
-            passed=(failed_count == 0),
-            total_tests=len(results),
-            passed_count=passed_count,
-            failed_count=failed_count,
-            duration_ms=round(total_duration, 2),
-            results=results,
+            passed=False, total_tests=1, passed_count=0, failed_count=1,
+            duration_ms=0, results=[case],
         )

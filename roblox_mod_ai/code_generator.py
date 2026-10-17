@@ -165,6 +165,7 @@ type PlayerData = {{
     inventory: {{ string }},
     lockToken: string?,
     lastSaved: number,
+    lockUntil: number?,
 }}
 
 local sessionData: {{ [number]: PlayerData }} = {{}}
@@ -199,37 +200,33 @@ local function onPlayerAdded(player: Player)
     local key = getPlayerKey(userId)
     local sessionToken = HttpService:GenerateGUID(false)
 
-    -- Step 1: Read saved data with backoff
+    -- Atomically acquire a lease. An existing active owner blocks this session.
+    local lockedByOther = false
     local success, rawData, err = retryWithBackoff(function()
-        return PlayerDataStore:GetAsync(key)
+        return PlayerDataStore:UpdateAsync(key, function(current)
+            if current and current.lockToken and current.lockToken ~= sessionToken
+                and (current.lockUntil or 0) > os.time() then
+                lockedByOther = true
+                return nil
+            end
+            lockedByOther = false
+            current = current or {{
+                coins = 0, level = 1, stage = 1, clicks = 0,
+                inventory = {{}}, lastSaved = os.time(),
+            }}
+            current.lockToken = sessionToken
+            current.lockUntil = os.time() + 120
+            return current
+        end)
     end, 4)
-
-    -- Crucial Safety Rule: Distinguish read failure from brand-new player!
-    if not success then
-        warn("CRITICAL: Failed to load DataStore for player " .. player.Name .. " (" .. userId .. "): " .. tostring(err))
-        -- Kick player to prevent overwriting saved data with zero on leave
-        player:Kick("Your game data could not be safely loaded from Roblox servers. Please rejoin.")
+    if not success or lockedByOther or rawData == nil then
+        warn("DataStore unavailable or profile locked for " .. player.Name .. ": " .. tostring(err))
+        player:Kick("Profile is unavailable or active on another server. Please rejoin later.")
         return
     end
-
-    local data: PlayerData
-    if rawData == nil then
-        -- Brand new player: initialize fresh state
-        data = {{
-            coins = 0,
-            level = 1,
-            stage = 1,
-            clicks = 0,
-            inventory = {{}},
-            lockToken = sessionToken,
-            lastSaved = os.time(),
-        }}
-    else
-        data = rawData :: PlayerData
-        -- Session locking: acquire ownership of this session
-        data.lockToken = sessionToken
-        data.lastSaved = os.time()
-    end
+    local data: PlayerData = rawData :: PlayerData
+    data.lockToken = sessionToken
+    data.lastSaved = os.time()
 
     sessionData[userId] = data
     sessionLocks[userId] = sessionToken
@@ -243,6 +240,18 @@ local function onPlayerAdded(player: Player)
     coinsVal.Name = "Coins"
     coinsVal.Value = data.coins
     coinsVal.Parent = leaderstats
+
+    local owned = Instance.new("Folder")
+    owned.Name = "OwnedItems"
+    owned.Parent = player
+    for _, id in data.inventory or {{}} do
+        if type(id) == "string" then
+            local marker = Instance.new("StringValue")
+            marker.Name = id
+            marker.Value = id
+            marker.Parent = owned
+        end
+    end
 
     local levelVal = Instance.new("IntValue")
     levelVal.Name = "Level"
@@ -274,14 +283,33 @@ local function savePlayerData(player: Player): boolean
         if stage then data.stage = stage.Value end
     end
 
+    local owned = player:FindFirstChild("OwnedItems")
+    if owned then
+        data.inventory = {{}}
+        for _, marker in owned:GetChildren() do
+            if marker:IsA("StringValue") then
+                table.insert(data.inventory, marker.Name)
+            end
+        end
+    end
     data.lastSaved = os.time()
     local key = getPlayerKey(userId)
 
-    local success, _, err = retryWithBackoff(function()
-        PlayerDataStore:SetAsync(key, data)
-        return true
+    local success, savedData, err = retryWithBackoff(function()
+        return PlayerDataStore:UpdateAsync(key, function(current)
+            if not current or current.lockToken ~= sessionLocks[userId] then
+                return nil -- never overwrite another server's profile
+            end
+            data.lockToken = nil
+            data.lockUntil = nil
+            return data
+        end)
     end, 4)
 
+    if success and savedData == nil then
+        success = false
+        err = "Session lease ownership lost"
+    end
     isSaving[userId] = false
 
     if not success then
@@ -361,6 +389,11 @@ local function handlePurchase(player: Player, itemId: string): (boolean, string)
         return false, "Insufficient coins! You need " .. item.price .. " coins."
     end
 
+    local owned = player:FindFirstChild("OwnedItems")
+    if itemId ~= "health_potion" and owned and owned:FindFirstChild(itemId) then
+        return false, "Already owned"
+    end
+
     -- Deduct currency server-authoritatively
     coinsVal.Value -= item.price
 
@@ -400,10 +433,35 @@ local function handlePurchase(player: Player, itemId: string): (boolean, string)
         return false, "Unimplemented item"
     end
 
+    if itemId ~= "health_potion" then
+        local inventory = owned or Instance.new("Folder")
+        inventory.Name = "OwnedItems"
+        inventory.Parent = player
+        local marker = Instance.new("StringValue")
+        marker.Name = itemId
+        marker.Value = itemId
+        marker.Parent = inventory
+    end
     return true, "Successfully purchased " .. item.name .. "!"
 end
 
 purchaseFunction.OnServerInvoke = handlePurchase
+
+local function restoreEquipment(player: Player, character: Model)
+    local owned = player:WaitForChild("OwnedItems", 10)
+    local humanoid = character:WaitForChild("Humanoid", 10)
+    if not owned or not humanoid then return end
+    if owned:FindFirstChild("speed_boots") then humanoid.WalkSpeed = 24 end
+    if owned:FindFirstChild("shield") then
+        humanoid.MaxHealth += 50
+        humanoid.Health += 50
+    end
+end
+local function onAdded(player: Player)
+    player.CharacterAdded:Connect(function(char) restoreEquipment(player, char) end)
+end
+Players.PlayerAdded:Connect(onAdded)
+for _, player in Players:GetPlayers() do onAdded(player) end
 """
 
     def _generate_shop_controller(self, module: RobloxModuleSpec, proposal: RobloxProposal) -> str:

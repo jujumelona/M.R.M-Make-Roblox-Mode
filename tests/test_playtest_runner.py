@@ -32,6 +32,6 @@ def test_playtest_runner_execution():
     )
 
     report = runner.run_headless_playtest(proposal)
-    assert report.passed
-    assert report.passed_count == report.total_tests
-    assert report.duration_ms > 0
+    assert not report.passed
+    assert report.failed_count == report.total_tests
+    assert "NOT RUN" in report.results[0].name
