@@ -182,6 +182,7 @@ class RobloxProductionOrchestrator:
                 "module_remotes": design.get("module_remotes", {}),
                 "host_actions": design.get("host_actions", {}),
                 "host_client_actions": design.get("host_client_actions", {}),
+                "host_world_actions": design.get("host_world_actions", {}),
                 "module_requirements": design.get("module_requirements", {}),
                 "module_behaviors": design.get("module_behaviors", {}),
                 "evidence": [{
