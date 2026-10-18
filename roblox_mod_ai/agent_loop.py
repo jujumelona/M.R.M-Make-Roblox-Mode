@@ -149,7 +149,7 @@ class RobloxCodeRepairAgent:
                         "containing the COMPLETE Luau script as a string. "
                         "Start its value with --!strict and include actual "
                         "functional statements; no TODO or explanation.",
-                        role="coder", temperature=0.1,
+                        role="coder", temperature=0.1, max_tokens=6000,
                         system_prompt="Write complete runnable Roblox Luau in the JSON field 'luau'.",
                     )
                     raw_code = (model_output.get("luau", "")
