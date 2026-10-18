@@ -224,3 +224,95 @@ def test_atomic_doc_queries_drop_unrequested_generic_api_terms(monkeypatch):
     assert entry["retrieval_query"] == "Roblox Implement pet collection and hatching"
     assert docs.calls[0] == entry["retrieval_query"]
     assert "DataStoreService" in entry["query"]
+
+
+def test_failed_whole_request_recovers_every_original_source_chunk(monkeypatch):
+    """A 9B model that omits a long compound clause must classify every local part."""
+    import json
+    from roblox_mod_ai.source_decomposition import source_chunks
+    calls = []
+    class PartlyReliableModel:
+        def complete_json(self, prompt, **kwargs):
+            calls.append(prompt)
+            if "Decompose EACH compound Roblox" in prompt:
+                return {"behaviors": []}  # reproduces user's repeated failure
+            batch = json.loads(prompt[prompt.index('{"chunks"'):])["chunks"]
+            return {"behaviors": [
+                {"chunk_id": c["chunk_id"],
+                 "intent": "Implement the gameplay action from " + c["source_span"],
+                 "english_query": "Roblox API for gameplay chunk " + c["chunk_id"]}
+                for c in batch
+            ]}
+    monkeypatch.setenv("RMM_ENABLE_MODEL_DECOMPOSITION", "1")
+    monkeypatch.setenv("RMM_ENABLE_MODEL_QUERY_EXPANSION", "1")
+    clauses = source_chunks(SPACE_REQUEST)
+    assert len(clauses) >= 5
+    assert span_coverage(SPACE_REQUEST, clauses) >= .99
+    assert " ".join(clauses) == SPACE_REQUEST
+    researched = RobloxPreDesignResearch(
+        router=PartlyReliableModel(), live_enabled=False).research(SPACE_REQUEST)
+    ledger = researched["ledger"]
+    assert ledger["decomposition_pending"] == []
+    assert ledger["decomposition_strategy"] == "source_chunk_model_classification"
+    assert len(ledger["atomic_intents"]) == len(clauses)
+    assert len(ledger["requirements"]) == len(clauses)
+    assert "semantic_decomposition_required" not in ledger["unimplemented_facets"]
+    assert not any(f["id"].startswith("semantic-") for f in ledger["facets"])
+    structural = dict(ledger, unimplemented_facets=[], unmatched_requirements=[])
+    assert ledger_complete(SPACE_REQUEST, structural)
+    assert len(calls) >= 2
+
+
+def test_model_omitting_only_one_chunk_gets_targeted_retry(monkeypatch):
+    import json
+    original = ATOMIC_REQUEST
+    recorded = []
+    class Model:
+        def complete_json(self, prompt, **kwargs):
+            if "Decompose EACH compound Roblox" in prompt:
+                return {"behaviors": []}
+            batch = json.loads(prompt[prompt.index('{"chunks"'):])["chunks"]
+            recorded.append([c["chunk_id"] for c in batch])
+            if len(recorded) == 1:
+                batch = batch[:-1]
+            return {"behaviors": [
+                {"chunk_id": c["chunk_id"], "intent": "Implement the source mechanic",
+                 "english_query": "Roblox source implementation " + c["chunk_id"]}
+                for c in batch
+            ]}
+    monkeypatch.setenv("RMM_ENABLE_MODEL_DECOMPOSITION", "1")
+    monkeypatch.setenv("RMM_ENABLE_MODEL_QUERY_EXPANSION", "0")
+    ledger = RobloxPreDesignResearch(
+        router=Model(), live_enabled=False).research(original)["ledger"]
+    assert ledger["decomposition_pending"] == []
+    assert len(recorded) >= 2 and len(recorded[1]) == 1
+    assert ledger_complete(original, dict(
+        ledger, unimplemented_facets=[], unmatched_requirements=[]))
+
+
+def test_failed_chunk_classifier_never_claims_omitted_gameplay(monkeypatch):
+    class BrokenModel:
+        def complete_json(self, prompt, **kwargs):
+            return {"behaviors": []}
+    monkeypatch.setenv("RMM_ENABLE_MODEL_DECOMPOSITION", "1")
+    monkeypatch.setenv("RMM_ENABLE_MODEL_QUERY_EXPANSION", "1")
+    result = RobloxPreDesignResearch(
+        router=BrokenModel(), live_enabled=False).research(SPACE_REQUEST)
+    ledger = result["ledger"]
+    assert ledger["decomposition_pending"]
+    assert "semantic_decomposition_required" in ledger["unimplemented_facets"]
+    # Optional semantic query expansion must NOT produce extra fake obligations.
+    assert not any(f["id"].startswith("semantic-") for f in ledger["facets"])
+    assert any(x["facet"] == "semantic_decomposition" for x in
+               result["provider_failures"])
+
+
+def test_chunk_partition_never_invents_or_drops_request_words():
+    from roblox_mod_ai.source_decomposition import source_chunks
+    for statement in (
+        ATOMIC_REQUEST, SPACE_REQUEST, "우주선 구매해서 조립하고 우주로 간다",
+        "Build a spaceship then visit a planet and discover minerals",
+    ):
+        chunks = source_chunks(statement)
+        assert " ".join(chunks) == statement
+        assert span_coverage(statement, chunks) >= .99
