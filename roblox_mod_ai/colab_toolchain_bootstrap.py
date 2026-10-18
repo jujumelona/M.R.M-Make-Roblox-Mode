@@ -78,7 +78,7 @@ def _extract_executable(archive: Path, name: str, target: Path) -> None:
         candidates = [
             item for item in file.infolist()
             if not item.is_dir() and Path(item.filename).name == name
-            and not (item.external_attr >> 16) & stat.S_IFMT(0o170000) == stat.S_IFLNK
+            and stat.S_IFMT(item.external_attr >> 16) != stat.S_IFLNK
         ]
         if len(candidates) != 1:
             raise ToolchainInstallError(
