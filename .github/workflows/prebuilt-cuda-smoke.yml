@@ -20,6 +20,8 @@ jobs:
           python-version: "3.11"
       - name: Install MRM Python dependencies
         run: python -m pip install -e .
+      - name: Install CUDA 12.8 runtime-only wheel (no GPU required for ELF inspection)
+        run: python -m pip install --no-deps nvidia-cuda-runtime-cu12==12.8.90
       - name: Verify pinned release asset and extract real runtime
         run: |
           python - <<'PY'
@@ -54,6 +56,22 @@ jobs:
               result = subprocess.run(["file", str(binary)], capture_output=True, text=True, check=True)
               print(result.stdout.strip(), flush=True)
               assert "ELF 64-bit" in result.stdout
+              # CUDA 12 runtime is shipped in the Python NVIDIA wheel, not
+              # necessarily in /usr/local/cuda/lib64. Verify our linker resolver.
+              from roblox_mod_ai.colab_model_runtime import (
+                  _cuda_env, _ldd_missing_libraries,
+              )
+              env = _cuda_env(binary)
+              print("CUDA runtime search path:", env.get("LD_LIBRARY_PATH", ""), flush=True)
+              assert any((Path(p) / "libcudart.so.12").is_file()
+                         for p in env["LD_LIBRARY_PATH"].split(os.pathsep))
+              missing = _ldd_missing_libraries(binary, env)
+              print("Other unresolved ELF dependencies on CPU CI runner:",
+                    sorted(missing), flush=True)
+              assert "libcudart.so.12" not in missing, (
+                  "CUDA runtime wheel was installed but llama-server still "
+                  "cannot resolve libcudart.so.12"
+              )
               # A GPU runner is unavailable here. Do not misrepresent this as a
               # Colab/T4 inference test. The actual archive is verified, however.
           PY
