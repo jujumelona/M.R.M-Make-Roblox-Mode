@@ -171,7 +171,7 @@ def inspect_dynamic_remote_wiring(proposal: RobloxProposal) -> dict[str, Any]:
                     lookup in code and gateway_method in code
                     and 'service.handleAction(player, services, ...)' in code
                     and bool(re.search(
-                        r"\\bfunction\\s+[A-Za-z_]\\w*\\.handleAction\\s*\\(",
+                        r"\bfunction\s+[A-Za-z_]\w*\.handleAction\s*\(",
                         _mask_strings(_without_comments(target.code)),
                     ))
                 )
