@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from .creator_store import RobloxCreatorStoreCatalog
+from .request_traceability import build_request_traceability
 from .project_modes import EXISTING_ADDON, write_addon_manifest
 from .spec import RobloxAssetSpec, RobloxModuleSpec, RobloxProposal
 
@@ -212,6 +213,13 @@ JestGlobals = "roblox/jest-globals@=3.20.0"
             research_path = target_dir / "pre_design_research.json"
             research_path.write_text(json.dumps(research, indent=2, ensure_ascii=False), encoding="utf-8")
             paths_created["pre_design_research"] = research_path
+
+        # Persist a source-aware ledger alongside the Rojo project. Planned
+        # modules cannot masquerade as executed Roblox gameplay.
+        trace_path = target_dir / "request_traceability.json"
+        trace_path.write_text(json.dumps(build_request_traceability(proposal),
+                                         indent=2, ensure_ascii=False), encoding="utf-8")
+        paths_created["request_traceability"] = trace_path
 
         # 2. Write wally.toml for package dependencies
         wally_content = self.generate_wally_toml(proposal)
