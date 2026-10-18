@@ -10,7 +10,7 @@ MiMo-V2.6-Distill-Qwen-9B Q4 model can produce a finished Roblox experience.
 2. `_design_by_facets`: for each immutable source facet, return a JSON
    object with `modules`, `remotes`, `world_objects`,
    `acceptance`, `acceptance_facets`, and per-module `uses_remotes`.
-   llama.cpp is given a JSON Schema; **maximum 5000 output tokens per facet**.
+   llama.cpp is given a JSON Schema; **maximum 2600 output tokens per facet**.
 3. `RobloxCodeRepairAgent.repair`: for each generated Luau file, return
    **plain Luau source**. **Maximum 6000 output tokens per attempt**.
    A malformed, nonempty or visibly truncated source is re-requested as
