@@ -17,6 +17,7 @@ from typing import Any
 from .spec import ModuleKind, RobloxModuleSpec, RobloxService
 from .model_router import ModelRouter
 from .request_contract import implementation_facets
+from .host_architecture import SEMANTIC_FACET_SCHEMA, expand_semantic_facet
 
 _VALID_NAME = re.compile(r"^[A-Z][A-Za-z0-9]{2,58}$")
 _VALID_REMOTE = re.compile(r"^[A-Z][A-Za-z0-9]{2,55}$")
@@ -646,6 +647,9 @@ class RobloxDynamicArchitect:
         # implementation. Invalid/tampered drafts are strictly revalidated.
         signature = hashlib.sha256(json.dumps({
             "policy_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            "host_policy_sha256": hashlib.sha256(
+                (Path(__file__).parent / "host_architecture.py").read_bytes()
+            ).hexdigest(),
             "original_prompt": prompt, "ledger": ledger,
             "reserved_modules": sorted(reserved_modules),
             "reference_hashes": [
@@ -700,32 +704,34 @@ class RobloxDynamicArchitect:
                        "existing_remote_names": sorted(reserved_remotes),
                        "existing_world_object_names": sorted(reserved_objects),
                        "official_references": excerpts}
+            # Ask the 9B model ONLY for game-specific behavior. The host
+            # owns Roblox role allocation, instance hierarchy, IDs, remote
+            # names/kinds, world coordinates and acceptance source binding.
             task = (
-                "Design ONLY this one feature of a Roblox game, as a small, "
-                "complete JSON object with keys: modules, remotes, "
-                "world_objects, acceptance, acceptance_facets. "
-                "modules are [{name,role,requirement_ids,facet_ids,behavior,uses_remotes}]; "
-                "role is server, client, or shared. "
-                "remotes are [{name,type}] where type is exactly "
-                "RemoteEvent or RemoteFunction. "
-                "world_objects are [{name,class,position,size}], with "
-                "class Part or SpawnLocation. "
-                "acceptance entries are [{requirement_id,observable_result}]; "
-                "acceptance_facets entries are [{facet_id,observable_result}]. "
-                "Use the exact supplied requirement and facet IDs, no others. "
-                "Include real client UI/input scripts AND server handlers "
-                "when using remotes. Each module MUST have uses_remotes listing "
-                "ONLY its actual Remote endpoints (empty [] if none). Every "
-                "remote must belong to a client and a server module. "
-                "No client-owned rewards or damage. "
-                "Avoid every already-reserved module/remote/object name. "
-                "Each module's behavior must be implementable Luau, not TODO. "
-                "Do not design unrelated features, reuse third-party code, "
-                "or return the entire game's architecture. Do not invent "
-                "fac-001/fac-002 identifiers. All behaviors, names and "
-                "remotes must serve ONLY source_requirements for this slice. "
-                "Other game features are separate host-orchestrated tasks. JSON ONLY.\n"
-                + json.dumps(payload, ensure_ascii=False)
+                "Describe ONLY the requested Roblox GAMEPLAY mechanic as JSON. "
+                "Return {systems:[{name,server_behavior,client_behavior,"
+                "interaction,observable_result,world_entities}]}. "
+                "Each system has concrete server-owned rules, including "
+                "validation of any player actions. interaction is: "
+                "none (server-only), event (player action without direct "
+                "return), or request_response (player request needing result). "
+                "If interaction is none, client_behavior must be empty. "
+                "If interaction needs player input, describe its actual "
+                "UI/input and visible response in client_behavior. "
+                "world_entities is an array of semantic objects (e.g. OreNode); "
+                "empty if no static world object is needed. Do NOT provide "
+                "Luau code, Remote names/types, JSON source IDs, module roles, "
+                "file paths, Roblox coordinates, geometries, template scripts "
+                "or generic engine boilerplate. The host generates those. "
+                "Each system MUST directly implement the user's single "
+                "source_requirements clause. No unrelated systems. "
+                "Do not claim a world has been built or gameplay tested. "
+                "JSON ONLY.\\n"
+                + json.dumps({
+                    "source_requirements": subset,
+                    "game_context": {"scope": "only_this_source_clause"},
+                    "official_references": excerpts,
+                }, ensure_ascii=False)
             )
             previous_error = ""
             draft: dict[str, Any] | None = None
@@ -783,10 +789,23 @@ class RobloxDynamicArchitect:
                         )
                         draft = self.router.complete_json(
                             query, role="planner", temperature=0.1,
-                            max_tokens=5000, json_schema=_FACET_OUTPUT_SCHEMA,
+                            max_tokens=2600, json_schema=SEMANTIC_FACET_SCHEMA,
                         )
                     if not isinstance(draft, dict):
                         raise DynamicDesignError("Facet architecture must be JSON object")
+                    # New default: the model chooses only gameplay semantics.
+                    # Old saved plans and deterministic CI transports use
+                    # explicit modules; validate that legacy contract exactly
+                    # as before rather than silently breaking existing files.
+                    if "systems" in draft:
+                        draft = expand_semantic_facet(
+                            draft, facet_id=facet_id,
+                            requirement_ids=owned_ids,
+                            source_requirements=subset,
+                            reserved_modules=reserved_modules,
+                            reserved_remotes=reserved_remotes,
+                            reserved_objects=reserved_objects,
+                        )
                     # Source IDs are host-owned, not model-generated. One
                     # scoped task equals one canonical source facet.
                     draft, id_binding = _bind_scoped_feature_ids(
