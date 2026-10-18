@@ -203,6 +203,33 @@ def _clean_model_json(response: dict[str, Any], ledger: dict[str, Any],
         raise DynamicDesignError("Unimplemented gameplay facets: " +
                                  ", ".join(sorted(required_facets - assigned_facets)))
 
+    # IDs alone do not prove a requirement is implemented. In the actual
+    # uploaded space plan, "외게인과 싸움" was marked fully covered by a
+    # HostileMineral module and a FightMineral remote: the model had changed
+    # fighting aliens into fighting rocks. Validate the independently named
+    # combat target directly against the untouched original user request.
+    original_request = str(ledger.get("original_prompt", ""))
+    explicitly_alien_combat = bool(
+        re.search(r"외[계게]인|\\balien(?:s)?\\b|\\bextraterrestrial", original_request, re.I)
+        and re.search(r"싸움|싸우|전투|\\bfight|\\bcombat|\\bbattle", original_request, re.I)
+    )
+    if explicitly_alien_combat:
+        found_alien_enemy = any(
+            re.search(r"외[계게]인|\\balien(?:s)?\\b|\\bextraterrestrial|\\bNPC\\b|\\benem(?:y|ies)\\b",
+                      (m.name + " " + m.description), re.I)
+            and re.search(r"싸움|싸우|전투|\\bcombat|\\bfight|\\bdamage|\\battack|\\bhealth|\\bdefeat",
+                          (m.name + " " + m.description), re.I)
+            for m in modules
+        )
+        if not found_alien_enemy:
+            raise DynamicDesignError(
+                "Original user explicitly requested combat with ALIEN ENEMIES "
+                "(외계인/외게인), NOT hostile minerals. Keep the separate "
+                "special-mineral extraction mechanic and add a real alien NPC "
+                "combat server subsystem, corresponding input/Remote behavior "
+                "and player-visible acceptance without removing other mechanics."
+            )
+
     remote_rows, unresolved_remotes = _normalize_remote_rows(response.get("remotes", []))
     if unresolved_remotes:
         raise DynamicDesignError(
