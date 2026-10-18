@@ -7,7 +7,7 @@ local process = require("@lune/process")
 
 local project = process.env.RMM_PET_E2E_PROJECT
 assert(type(project) == "string" and #project > 0, "RMM_PET_E2E_PROJECT not set")
-local serverSource = fs.readFile(project .. "/src/server/CustomPetHatching.server.luau")
+local serverSource = fs.readFile(project .. "/src/server/CustomPetHatching.luau")
 local clientSource = fs.readFile(project .. "/src/client/PetHatchController.client.luau")
 assert(#serverSource > 100 and #clientSource > 100, "Missing generated gameplay sources")
 
@@ -104,7 +104,10 @@ local enum = {
 local environment = {
     game = gameMock, workspace = workspaceMock, Instance = instanceMock, Enum = enum,
 }
-luau.load(serverSource, { environment = environment, injectGlobals = true })()
+local serverModule = luau.load(serverSource, { environment = environment, injectGlobals = true })()
+assert(type(serverModule) == "table", "Expected loadable server ModuleScript")
+assert(type(serverModule.start) == "function", "Expected server module startup function")
+serverModule.start({})
 luau.load(clientSource, { environment = environment, injectGlobals = true })()
 
 assert(type(context.callback) == "function", "Missing client input action")
