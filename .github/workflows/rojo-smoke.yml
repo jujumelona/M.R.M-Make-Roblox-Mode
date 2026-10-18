@@ -166,11 +166,18 @@ jobs:
           rojo build "$project/default.project.json" -o "$project/compiled-dynamic.rbxlx"
           test -s "$project/compiled-dynamic.rbxlx"
           python tools/audit_rojo_place.py --plan .rmm-dynamic-smoke/proposal.json --place "$project/compiled-dynamic.rbxlx"
+      - name: Actual orchestrator E2E with real Luau and Rojo tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/verify_code_e2e.py
       - name: Upload compile evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: generated-roblox-project
-          path: .rmm-smoke/
+          path: |
+            .rmm-smoke/
+            .rmm-code-e2e/
           if-no-files-found: error
           include-hidden-files: true
