@@ -175,7 +175,7 @@ def build_notebook() -> None:
             "\n"
             "creator_catalog = RobloxCreatorStoreCatalog()\n"
 
-            'print(f"Roblox Creator Store 카탈로그 연동 확인: \'sword\' 검색 시 {len(sample_models)}개 에셋 매칭")\n'
+            'print("Creator Store searches use actual prompt intent; no forced asset queries")\n'
             "\n"
             "toolchain = RobloxToolchainManager()\n"
             "tool_status = toolchain.check_tools()\n"
