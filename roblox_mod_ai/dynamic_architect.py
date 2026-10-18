@@ -721,7 +721,7 @@ class RobloxDynamicArchitect:
                 "If interaction is none, client_behavior must be empty. "
                 "If interaction needs player input, describe its actual "
                 "UI/input and visible response in client_behavior. "
-                "world_entities is an array of semantic objects (e.g. OreNode); "
+                "world_entities is an array of gameplay-specific object names; "
                 "empty if no static world object is needed. Do NOT provide "
                 "Luau code, Remote names/types, JSON source IDs, module roles, "
                 "file paths, Roblox coordinates, geometries, template scripts "
