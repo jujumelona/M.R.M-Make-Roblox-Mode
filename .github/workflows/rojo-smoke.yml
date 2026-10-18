@@ -182,7 +182,8 @@ jobs:
           build=sess.build(source_only=True)
           assert not build.success and build.metadata["acceptance"]["passed"], build.metadata
           root=Path(build.project_dir)
-          assert (root/"src/server/CustomPetHatching.server.luau").is_file()
+          assert (root/"src/server/CustomPetHatching.luau").is_file()
+          assert (root/"src/server/RMMServerBootstrap.server.luau").is_file()
           Path(".rmm-dynamic-smoke/location.txt").write_text(str(root),encoding="utf-8")
           PY
           project="$(cat .rmm-dynamic-smoke/location.txt)"
