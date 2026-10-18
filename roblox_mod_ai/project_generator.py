@@ -267,7 +267,7 @@ JestGlobals = "roblox/jest-globals@=3.20.0"
         # Jest Roblox discovery config for engine-side structural tests.
         jest_config = target_dir / "tests" / "jest.config.lua"
         jest_config.parent.mkdir(parents=True, exist_ok=True)
-        jest_config.write_text('return { testMatch = {"**/*.spec"} }\\n', encoding="utf-8")
+        jest_config.write_text('return { testMatch = {"**/*.spec"} }\n', encoding="utf-8")
         paths_created["jest_config"] = jest_config
 
         if proposal.game_design.get("project_mode") == EXISTING_ADDON:

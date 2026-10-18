@@ -103,3 +103,15 @@ def test_modding_system_generation():
     assert "importModFromJSON" in code
     assert "damageMultiplier" in code
 
+
+
+def test_generated_jest_config_contains_real_newline(tmp_path):
+    from roblox_mod_ai.spec import RobloxProposal
+    from roblox_mod_ai.project_generator import RobloxProjectGenerator
+    proposal=RobloxProposal(requested_prompt="demo",game_title="Demo",description="",
+        game_design={})
+    project=tmp_path/"sample"
+    RobloxProjectGenerator(tmp_path).materialize_project_tree(proposal,project)
+    source=(project/"tests/jest.config.lua").read_text(encoding="utf-8")
+    assert source == 'return { testMatch = {"**/*.spec"} }\n'
+    assert r"\n" not in source
