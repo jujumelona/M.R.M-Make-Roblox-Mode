@@ -88,3 +88,95 @@ def test_trajectory_keeps_all_observations_and_failure_zip(tmp_path):
     assert failure.exists()
     saved = json.loads(log.path.read_text(encoding="utf-8"))
     assert [step["passed"] for step in saved["steps"]] == [False, True]
+
+
+
+def test_static_repair_routes_exact_error_to_model_and_revalidates(tmp_path, monkeypatch):
+    """Actual failed acceptance check is supplied to the agent, not discarded."""
+    from types import SimpleNamespace
+    from roblox_mod_ai import dynamic_repair
+
+    module = make_module(
+        "dyn_mining", "MiningService", "src/server/MiningService.server.luau",
+        "--!strict\nprint('not mining')\n")
+    proposal = RobloxProposal(
+        requested_prompt="Mine planetary ore", game_title="Test",
+        description="test", game_design={"dynamic_design": {"remotes": {}}},
+        modules=[module])
+    dest = tmp_path / module.file_path
+    dest.parent.mkdir(parents=True)
+    dest.write_text(module.code, encoding="utf-8")
+    diagnostics = SimpleNamespace(passed=True, diagnostics=[], error_count=0)
+    failed = {"passed": False, "checks": [
+        {"id": "dynamic.code.MiningService", "passed": False,
+         "detail": "Missing validated ore depletion and reward logic"}
+    ]}
+    seen = []
+
+    class FakeRepairAgent:
+        def __init__(self, router):
+            self.router = router
+        def repair(self, module, proposal, existing_code, diagnostics, attempts):
+            seen.append((module.name, diagnostics, existing_code))
+            return "--!strict\nlocal mineral = 1\nprint('mining rewards', mineral)\n"
+
+    monkeypatch.setattr(dynamic_repair, "RobloxCodeRepairAgent", FakeRepairAgent)
+
+    def recheck():
+        output = dest.read_text(encoding="utf-8")
+        passed = "mining rewards" in output
+        return diagnostics, {"passed": passed, "checks": [
+            {"id": "dynamic.code.MiningService", "passed": passed,
+             "detail": "Validation of mining logic"}
+        ]}
+
+    journal = AgentTrajectory(tmp_path / "journal")
+    analysis, acceptance, passed = dynamic_repair.repair_static_failures(
+        proposal, tmp_path, diagnostics, failed, object(), recheck,
+        trajectory=journal)
+    assert passed and acceptance["passed"]
+    assert module.code == dest.read_text(encoding="utf-8")
+    assert seen and "Missing validated ore" in seen[0][1]
+    assert any(x["action"] == "revalidate source and acceptance" and x["passed"]
+               for x in journal.events)
+
+
+def test_static_repair_rolls_back_when_acceptance_regresses(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from roblox_mod_ai import dynamic_repair
+
+    original = "--!strict\nprint('existing valid mechanic')\n"
+    module = make_module("dyn_module", "SpaceService",
+                         "src/server/SpaceService.server.luau", original)
+    proposal = RobloxProposal(
+        requested_prompt="Build a spaceship", game_title="Test", description="",
+        game_design={"dynamic_design": {}}, modules=[module])
+    dest = tmp_path / module.file_path
+    dest.parent.mkdir(parents=True)
+    dest.write_text(original, encoding="utf-8")
+    analyzer = SimpleNamespace(passed=True, diagnostics=[], error_count=0)
+    failed = {"passed": False, "checks": [
+        {"id": "dynamic.code.SpaceService", "passed": False, "detail": "Missing new behavior"},
+        {"id": "existing.passed", "passed": True, "detail": "Do not regress"}
+    ]}
+
+    class DestructiveAgent:
+        def __init__(self, router): pass
+        def repair(self, *args, **kwargs):
+            return "--!strict\nprint('regressive replacement')\n"
+
+    monkeypatch.setattr(dynamic_repair, "RobloxCodeRepairAgent", DestructiveAgent)
+
+    def recheck():
+        if "regressive" in dest.read_text(encoding="utf-8"):
+            return analyzer, {"passed": False, "checks": [
+                {"id": "dynamic.code.SpaceService", "passed": True, "detail": "Resolved"},
+                {"id": "existing.passed", "passed": False, "detail": "Regressed"}
+            ]}
+        return analyzer, failed
+
+    _, _, success = dynamic_repair.repair_static_failures(
+        proposal, tmp_path, analyzer, failed, object(), recheck)
+    assert not success
+    assert module.code == original
+    assert dest.read_text(encoding="utf-8") == original
