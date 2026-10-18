@@ -69,6 +69,15 @@ def test_space_request_without_separators_is_not_a_complete_shop(monkeypatch, tm
     assert reply.authored_plan.proposal.game_design["pre_design_research"]["ledger"]["decomposition_pending"]
 
 
+def test_short_compound_purchase_does_not_hide_crafting_and_travel():
+    prompt = "우주선 구매해서 조립하고 우주로 간다"
+    ledger = build_request_ledger(prompt)
+    assert is_composite(prompt)
+    assert "shop" in {f["id"] for f in ledger["facets"]}
+    assert ledger["decomposition_pending"] == ["req-001"]
+    assert not ledger_complete(prompt, ledger)
+
+
 def test_simple_shop_request_can_still_use_builtin():
     ledger = build_request_ledger("상점에서 아이템 구매")
     assert ledger_complete("상점에서 아이템 구매", ledger)
@@ -88,9 +97,7 @@ def test_compound_atomic_source_spans_are_individually_tracked(monkeypatch):
     assert len(ledger["requirements"]) == len(ATOMS)
     assert len(ledger["atomic_intents"]) == len(ATOMS)
     assert span_coverage(ATOMIC_REQUEST, ATOMS) >= .78
-    assert {"shop", "intent-"} and any(
-        x["id"].startswith("intent-") for x in ledger["facets"]
-    )
+    assert any(x["id"].startswith("intent-") for x in ledger["facets"])
     assert all(x["facet_id"] in ledger["unimplemented_facets"]
                for x in ledger["atomic_intents"])
     structural = dict(ledger, unimplemented_facets=[], unmatched_requirements=[])
