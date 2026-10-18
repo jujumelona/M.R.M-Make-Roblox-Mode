@@ -180,3 +180,93 @@ def test_static_repair_rolls_back_when_acceptance_regresses(tmp_path, monkeypatc
     assert not success
     assert module.code == original
     assert dest.read_text(encoding="utf-8") == original
+
+
+
+def test_generation_failure_is_fed_to_model_and_work_continues(tmp_path, monkeypatch):
+    """A failed Luau generation is an observation, not an immediate run abort."""
+    from roblox_mod_ai import orchestrator as pipeline
+    workspace = RobloxProductionOrchestrator(tmp_path)
+    proposal = RobloxProposal(
+        requested_prompt="Build a space ship", game_title="RepairGeneration",
+        description="test", game_design={},
+        modules=[make_module("dyn_ship", "ShipAssembly",
+                             "src/server/ShipAssembly.server.luau")],
+    )
+    monkeypatch.setattr(workspace.code_generator, "generate_with_self_correction",
+                        lambda *args: (_ for _ in ()).throw(
+                            ValueError("Luau syntax error: expected end on line 17")))
+    received = []
+    class FakeModelRepair:
+        def __init__(self, router): pass
+        def repair(self, module, proposal, existing_code, diagnostics, attempts):
+            received.append((module.file_path, diagnostics, existing_code))
+            return "--!strict\nlocal function assemble(player)\n    return player ~= nil\nend\nprint(assemble)\n"
+    monkeypatch.setattr(pipeline, "RobloxCodeRepairAgent", FakeModelRepair)
+    result = workspace.execute(proposal, "fixed", source_only=True)
+    assert not result.success  # Source-only still cannot claim engine verification.
+    assert received and "expected end on line 17" in received[0][1]
+    actual = Path(result.project_dir) / proposal.modules[0].file_path
+    assert actual.is_file()
+    trace = json.loads((Path(result.project_dir) / "agent_trajectory.json").read_text())
+    assert any(step["action"].startswith("recover") and step["passed"]
+               for step in trace["steps"])
+    assert all(stage["stage"] != "generate_code" or stage["success"]
+               for stage in result.work_receipt.to_dict()["stages"]
+               if isinstance(stage, dict))
+
+
+def test_unlocated_tool_error_uses_model_selected_real_file(tmp_path, monkeypatch):
+    from roblox_mod_ai import dynamic_repair
+    module = make_module("dyn_mining", "MiningController",
+                         "src/server/MiningController.server.luau",
+                         "--!strict\nprint('draft')\n")
+    proposal = RobloxProposal(
+        requested_prompt="Mine ores", game_title="Space", description="test",
+        game_design={}, modules=[module],
+    )
+    dest = tmp_path / module.file_path
+    dest.parent.mkdir(parents=True)
+    dest.write_text(module.code)
+    calls = []
+    class FakeRouter:
+        def complete_json(self, prompt, **kwargs):
+            calls.append(prompt)
+            return {"files": [module.file_path]}
+    class FakeAgent:
+        def __init__(self, router): pass
+        def repair(self, module, proposal, existing_code, diagnostics, attempts):
+            assert "unexpected token" in diagnostics
+            return "--!strict\nlocal miningEnabled = true\nprint(miningEnabled)\n"
+    monkeypatch.setattr(dynamic_repair, "RobloxCodeRepairAgent", FakeAgent)
+    def retry_tool():
+        return {"success": "miningEnabled" in dest.read_text(),
+                "executed": True, "stdout": "", "stderr": ""}
+    recovered = dynamic_repair.repair_tool_diagnostics(
+        proposal, tmp_path, "selene",
+        {"success": False, "executed": True,
+         "stderr": "stdin:1: unexpected token"},
+        retry_tool, None, FakeRouter(),
+    )
+    assert recovered["passed"] and recovered["repaired"] == [module.file_path]
+    assert "model diagnostic triage" in str(recovered["history"])
+    assert calls
+    assert retry_tool()["success"]
+
+
+def test_model_triage_rejects_invented_file_and_wrong_type():
+    from roblox_mod_ai.dynamic_repair import model_triage_modules
+    module = make_module("dyn_mining", "MiningServer",
+                         "src/server/MiningServer.server.luau", "--!strict\nprint(1)\n")
+    proposal = RobloxProposal(
+        requested_prompt="Mine ore", game_title="Test", description="",
+        game_design={}, modules=[module],
+    )
+    class Model:
+        def __init__(self, files): self.files = files
+        def complete_json(self, *args, **kwargs): return {"files": self.files}
+    assert model_triage_modules(proposal, "missing receiver", Model(["../../outside"])) == []
+    assert model_triage_modules(proposal, "missing receiver",
+                               Model([module.file_path] * 2)) == []
+    assert model_triage_modules(proposal, "missing receiver",
+                               Model([module.file_path])) == [module]
