@@ -12,8 +12,11 @@ from tools import generate_colab_notebook as notebook_generator
 
 def _clean_env(monkeypatch):
     for key in ("RMM_MODEL_BASE_URL", "ROBLOX_LLAMA_SERVER_URL",
-                "RMM_MODEL_API_KEY", "RMM_MODEL_ID", "RMM_LLAMA_SERVER_BIN"):
-        monkeypatch.delenv(key, raising=False)
+                "RMM_MODEL_API_KEY", "RMM_MODEL_ID", "RMM_LLAMA_SERVER_BIN",
+                "ROBLOX_MOD_AI_ALLOW_OFFLINE_FALLBACK"):
+        # Record a reversible change even if the key was initially absent;
+        # ensure_model_runtime sets os.environ directly during the test.
+        monkeypatch.setenv(key, "")
 
 
 def test_managed_colab_model_is_started_before_plan(monkeypatch, tmp_path):
