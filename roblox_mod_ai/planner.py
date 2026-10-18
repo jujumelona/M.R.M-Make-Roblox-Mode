@@ -360,6 +360,13 @@ class RobloxGameDesignPlanner:
                         and e.get("facet") in owned_facets and e.get("url")
                     ))[:5]
                 modules.extend(dynamic_design["modules"])
+                # Known host-owned server primitives must be requireable by
+                # later gameplay Scripts, not auto-running standalone Scripts.
+                from .economy_core import normalize_economy_ledger
+                temp = RobloxProposal(requested_prompt=prompt, game_title=game_title,
+                                      description="", game_design={"dynamic_design": dynamic_design},
+                                      modules=modules)
+                normalize_economy_ledger(temp)
                 # Design must cover every authored requirement. This is NOT
                 # an assertion that its Luau will work in the engine.
                 research["ledger"]["unimplemented_facets"] = [
@@ -421,6 +428,7 @@ class RobloxGameDesignPlanner:
                     "module_requirements": dynamic_design["module_requirements"],
                     "module_behaviors": dynamic_design["module_behaviors"],
                     "module_facets": dynamic_design["module_facets"],
+                    "module_remotes": dynamic_design.get("module_remotes", {}),
                     "acceptance_facets": dynamic_design["acceptance_facets"],
                     "remotes": dynamic_design["remotes"],
                     "world_objects": dynamic_design["world_objects"],
