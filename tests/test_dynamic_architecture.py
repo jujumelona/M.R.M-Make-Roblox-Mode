@@ -223,12 +223,14 @@ def test_missing_client_to_server_remote_connection_must_fail(tmp_path, monkeypa
         return result
     fake.complete_json = server_only
     reply = session.plan("펫 부화")
-    assert reply.ready_to_build  # Architecture itself is only a proposal.
-    built = session.build(source_only=True)
-    failed = {c["id"] for c in built.metadata["acceptance"]["checks"] if not c["passed"]}
-    assert "wiring.HatchPet" in failed
-    assert not built.metadata["acceptance"]["passed"]
-    assert not built.success
+    # The agent now catches this structurally impossible server-only remote
+    # BEFORE wasting GPU tokens generating Luau, and preserves the diagnosis.
+    assert not reply.ready_to_build
+    research = reply.authored_plan.proposal.game_design["pre_design_research"]
+    assert "dynamic_architecture_failed" in research["ledger"]["unimplemented_facets"]
+    assert any("no client Luau controller" in x.get("reason", "")
+               for x in research["provider_failures"])
+    assert (tmp_path / "plan_failure_logs.zip").is_file()
 
 
 def test_disconnected_client_string_reference_is_not_remote_sender(tmp_path, monkeypatch):
