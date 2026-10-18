@@ -103,7 +103,9 @@ class LlamaCppAdapter(ModelAdapter):
         except (httpx.ConnectError, httpx.TimeoutException) as exc:
             # If local llama-server is not running or unreachable,
             # allow fallback simulator mode for tests and offline usage
-            allow_fallback = os.environ.get("ROBLOX_MOD_AI_ALLOW_OFFLINE_FALLBACK", "1") == "1"
+            # Production must never fabricate LLM output when no server is running.
+            # Simulated responses are restricted to explicit test opt-in.
+            allow_fallback = os.environ.get("ROBLOX_MOD_AI_ALLOW_OFFLINE_FALLBACK", "0") == "1"
             if allow_fallback:
                 return self._simulate_fallback_response(request)
             raise ModelBackendError(
