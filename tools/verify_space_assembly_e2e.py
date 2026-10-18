@@ -100,7 +100,7 @@ def main() -> None:
                 f"function {identifier}.start(_services)\n"
                 "    -- Gameplay state initialization; no network binding.\n"
                 "end\n"
-                f"function {identifier}.handleAction(player, services, ...)\n"
+                f"function {identifier}.handleAction(player, _services, ...)\n"
                 "    if player.Parent ~= game:GetService('Players') then return false end\n"
                 "    return true\n"
                 "end\n"
@@ -149,7 +149,7 @@ def main() -> None:
             (root / "receipt.json").write_text(
                 json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
             raise AssertionError("Real seven-facet compilation failed: " +
-                                 repr(command) + "\n" + check.stderr[-2000:])
+                                 repr(command) + "\n" + check.stdout[-3000:] + "\n" + check.stderr[-3000:])
 
     place = project / "compiled-space.rbxlx"
     assert place.is_file() and place.stat().st_size > 2000
