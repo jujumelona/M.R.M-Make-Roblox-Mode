@@ -436,6 +436,7 @@ class RobloxGameDesignPlanner:
                     "module_remotes": dynamic_design.get("module_remotes", {}),
                     "host_actions": dynamic_design.get("host_actions", {}),
                     "host_client_actions": dynamic_design.get("host_client_actions", {}),
+                    "host_world_actions": dynamic_design.get("host_world_actions", {}),
                     "acceptance_facets": dynamic_design["acceptance_facets"],
                     "remotes": dynamic_design["remotes"],
                     "world_objects": dynamic_design["world_objects"],
