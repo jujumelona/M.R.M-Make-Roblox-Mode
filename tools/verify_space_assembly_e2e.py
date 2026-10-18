@@ -92,16 +92,17 @@ def main() -> None:
             )
         elif module.file_path.startswith("src/server/"):
             identifier = module.name
+            # No model-generated Remote listener! Only the host bootstrap
+            # checks player identity, enforces cooldown and owns the connection.
             module.code = (
                 "--!strict\n"
-                "local ReplicatedStorage = game:GetService('ReplicatedStorage')\n"
                 f"local {identifier} = {{}}\n"
                 f"function {identifier}.start(_services)\n"
-                f"    local remote = ReplicatedStorage:WaitForChild('Remotes'):WaitForChild('{remote}')\n"
-                "    remote.OnServerEvent:Connect(function(player)\n"
-                "        if typeof(player) ~= 'Instance' or not player:IsA('Player') then return end\n"
-                "        if player.Parent ~= game:GetService('Players') then return end\n"
-                "    end)\n"
+                "    -- Gameplay state initialization; no network binding.\n"
+                "end\n"
+                f"function {identifier}.handleAction(player, services, ...)\n"
+                "    if player.Parent ~= game:GetService('Players') then return false end\n"
+                "    return true\n"
                 "end\n"
                 f"return {identifier}\n"
             )
