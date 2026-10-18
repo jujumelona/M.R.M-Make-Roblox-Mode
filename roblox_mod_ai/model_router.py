@@ -90,6 +90,7 @@ class ModelRouter:
         system_prompt: str = "You are an expert Roblox experience architect. Output valid JSON only.",
         role: str = "planner",
         temperature: float = 0.1,
+        max_tokens: int = 4096,
     ) -> dict[str, Any]:
         raw = self.complete(
             prompt=prompt,
@@ -97,6 +98,7 @@ class ModelRouter:
             role=role,
             temperature=temperature,
             response_format="json",
+            max_tokens=max_tokens,
         )
         try:
             return json.loads(raw)
