@@ -9,6 +9,8 @@ from typing import Any
 
 import httpx
 
+from ..code_output_guard import LiveCodeRepetitionGuard, RepeatedCodeOutput
+
 from .base import (
     GenerationRequest,
     GenerationResponse,
@@ -78,6 +80,22 @@ class LlamaCppAdapter(ModelAdapter):
                 "schema": request.response_format,
             }
 
+        # llama.cpp supports native repeat penalties on its chat endpoint.
+        # These settings apply only to local, unstructured CODER output.
+        # No global output-token cap is lowered; pathological loops are
+        # terminated by observing their actual generated text.
+        guarded_code = (
+            is_local_llama and request.metadata.get("generation_role") == "coder"
+            and request.response_format is None
+        )
+        if guarded_code:
+            payload["repeat_penalty"] = float(
+                os.environ.get("RMM_CODE_REPEAT_PENALTY", "1.17"))
+            payload["repeat_last_n"] = 256
+            payload["frequency_penalty"] = 0.35
+            payload["temperature"] = max(0.25, request.temperature)
+            payload["stream"] = True
+
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.api_key}",
@@ -85,6 +103,59 @@ class LlamaCppAdapter(ModelAdapter):
 
         try:
             with httpx.Client(timeout=self.timeout_seconds) as client:
+                if guarded_code:
+                    guard = LiveCodeRepetitionGuard()
+                    fragments: list[str] = []
+                    total_chars = 0
+                    finish_reason = "unknown"
+                    usage: dict[str, Any] = {}
+                    model = self.model_name
+                    with client.stream("POST", endpoint, json=payload,
+                                       headers=headers) as streamed:
+                        if streamed.status_code != 200:
+                            raise ModelBackendError(
+                                "llama.cpp stream HTTP " + str(streamed.status_code) +
+                                ": " + streamed.read().decode("utf-8", "replace")[:1500])
+                        for raw_line in streamed.iter_lines():
+                            line = (raw_line.decode("utf-8", "replace")
+                                    if isinstance(raw_line, bytes) else raw_line)
+                            if not line.startswith("data:"):
+                                continue
+                            body = line[5:].strip()
+                            if body == "[DONE]":
+                                break
+                            if not body:
+                                continue
+                            event = json.loads(body)
+                            model = event.get("model", model)
+                            usage = event.get("usage") or usage
+                            choices = event.get("choices") or []
+                            if not choices:
+                                continue
+                            choice = choices[0]
+                            finish_reason = choice.get("finish_reason") or finish_reason
+                            delta = choice.get("delta") or {}
+                            piece = delta.get("content") or ""
+                            if not isinstance(piece, str):
+                                continue
+                            if piece:
+                                total_chars += len(piece)
+                                if total_chars > 400_000:
+                                    raise ModelBackendError(
+                                        "Unbounded Luau output; source exceeded 400000 characters")
+                                guard.feed(piece)  # closes stream when stuck (before 6000 tokens)
+                                fragments.append(piece)
+                    content = "".join(fragments)
+                    if not content.strip():
+                        raise ModelBackendError(
+                            "llama.cpp streamed empty visible Luau; finish_reason=" +
+                            finish_reason + "; usage=" + str(usage))
+                    return GenerationResponse(
+                        content=content, model=model,
+                        prompt_tokens=usage.get("prompt_tokens", 0),
+                        completion_tokens=usage.get("completion_tokens", 0),
+                        finish_reason=finish_reason,
+                    )
                 resp = client.post(endpoint, json=payload, headers=headers)
                 if resp.status_code != 200:
                     raise ModelBackendError(
@@ -126,6 +197,10 @@ class LlamaCppAdapter(ModelAdapter):
                     completion_tokens=usage.get("completion_tokens", 0),
                     finish_reason=choice.get("finish_reason", "stop"),
                 )
+        except RepeatedCodeOutput:
+            # Preserve the exact partial source as a typed observation rather
+            # than stripping its content in a generic backend exception.
+            raise
         except (httpx.ConnectError, httpx.TimeoutException) as exc:
             # If local llama-server is not running or unreachable,
             # allow fallback simulator mode for tests and offline usage
