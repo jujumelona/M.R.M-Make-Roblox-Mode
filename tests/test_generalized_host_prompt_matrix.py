@@ -141,6 +141,8 @@ def test_unseen_genres_and_variable_size_use_same_host_architect(
         assert "file paths, Roblox coordinates" in request
         assert fid in request
         assert '"modules"' not in request.split("\n")[-1]
+        assert "e.g. OreNode" not in request
+        assert "mine/trade/fight/colonize" not in request.lower()
 
 
 def test_permutation_does_not_change_covered_mechanics_or_role_counts(monkeypatch):
@@ -190,3 +192,62 @@ def test_only_server_work_has_no_fabricated_client_or_remote(monkeypatch):
     assert plan["remotes"] == {}
     assert plan.get("host_actions") == {}
     assert not any(m.file_path.endswith(".client.luau") for m in plan["modules"])
+
+
+def test_unrelated_weather_module_coder_never_receives_pet_or_currency_examples(
+        monkeypatch):
+    from roblox_mod_ai.spec import RobloxProposal, RobloxModuleSpec
+    from roblox_mod_ai.server_modules import normalize_dynamic_server_modules
+    from tools.profile_generation_prompts import capture
+
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    monkeypatch.delenv("RMM_LEGACY_ARCHITECTURE_PROTOCOL", raising=False)
+    entries = [
+        ("weather-only-1", "r-weather", "WeatherCycle",
+         "Change rainfall and daylight based only on server simulation", "none")
+    ]
+    router = ArbitraryPromptSemanticTransport(entries)
+    statement = entries[0][3]
+    ledger = {
+        "original_prompt": statement,
+        "requirements": [{"id": "r-weather", "statement": statement,
+                          "source": "user_prompt"}],
+        "facets": [{"id": "weather-only-1",
+                    "requirements": ["r-weather"],
+                    "source_span": statement}],
+    }
+    designed = RobloxDynamicArchitect(router).design(
+        statement, {"ledger": ledger, "evidence": []}, [])
+    proposal = RobloxProposal(
+        requested_prompt=statement,
+        game_title="WeatherSimulation",
+        description="A server-only simulated environment",
+        game_design={
+            "pre_design_research": {"ledger": ledger},
+            "dynamic_design": {k: v for k, v in designed.items()
+                               if k != "modules"},
+        },
+        modules=list(designed["modules"]),
+    )
+    normalize_dynamic_server_modules(proposal)
+    profile = capture(proposal)
+    assert profile["module_count"] == 1
+    assert not profile["requirements_leak_detected"]
+    assert profile["modules"][0]["has_declared_own_requirement"]
+    class Recorder:
+        def __init__(self):
+            self.prompts = []
+        def complete(self, prompt, **kwargs):
+            self.prompts.append(prompt)
+            raise RuntimeError("recorded only")
+    from roblox_mod_ai.agent_loop import RobloxCodeRepairAgent, LuauGenerationError
+    recorded = Recorder()
+    server = next(m for m in proposal.modules if m.module_id.startswith("dyn_"))
+    with pytest.raises(LuauGenerationError):
+        RobloxCodeRepairAgent(recorded).repair(server, proposal, attempts=1)
+    assert len(recorded.prompts) == 1
+    code_prompt = recorded.prompts[0]
+    assert statement in code_prompt
+    for unrelated in ("EconomyLedger", "PetEggStand", "OreNode",
+                      "mining/trading/combat/colonization"):
+        assert unrelated not in code_prompt
