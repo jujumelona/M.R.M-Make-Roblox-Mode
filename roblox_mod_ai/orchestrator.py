@@ -62,6 +62,8 @@ class RobloxPipelineResult:
         }
 
 
+from .economy_core import normalize_economy_ledger
+
 class RobloxProductionOrchestrator:
     """Coordinates end-to-end production of a Roblox experience via topological work graph."""
 
@@ -91,6 +93,7 @@ class RobloxProductionOrchestrator:
         """
         start = time.perf_counter()
         proposal = candidate.proposal if isinstance(candidate, RobloxAuthoredPlan) else candidate
+        normalize_economy_ledger(proposal)
         addon_mode = proposal.game_design.get("project_mode") == "existing_experience_addon"
         output_dir = self.workspace_root / run_name / proposal.game_title
         output_dir.mkdir(parents=True, exist_ok=True)
