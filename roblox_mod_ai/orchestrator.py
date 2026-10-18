@@ -149,7 +149,7 @@ class RobloxProductionOrchestrator:
         # checkpoints without deleting the user's prior run evidence.
         generation_components = (
             "orchestrator.py", "agent_loop.py", "code_generator.py",
-            "module_prompt_scope.py", "server_modules.py", "economy_core.py",
+            "module_prompt_scope.py", "server_modules.py", "economy_core.py", "host_client.py",
         )
         component_fingerprints = {
             component: hashlib.sha256(
@@ -181,6 +181,7 @@ class RobloxProductionOrchestrator:
                 "module_facets": design.get("module_facets", {}),
                 "module_remotes": design.get("module_remotes", {}),
                 "host_actions": design.get("host_actions", {}),
+                "host_client_actions": design.get("host_client_actions", {}),
                 "module_requirements": design.get("module_requirements", {}),
                 "module_behaviors": design.get("module_behaviors", {}),
                 "evidence": [{
