@@ -25,7 +25,13 @@ def clauses(prompt: str) -> list[str]:
 def is_composite(statement: str) -> bool:
     """Conservative uncertainty detector, not a game-genre keyword taxonomy."""
     text = clean(statement)
-    return (len(text) >= 85 or
+    # Short requests can also combine separate actions without punctuation:
+    # "구매해서 조립하고 우주로 간다" must NOT be certified by "구매".
+    action_connectors = re.findall(
+        r"[가-힣]{2,}(?:해서|하고|하며|으며|면서|거나|고|며)(?=\s|$)",
+        text,
+    )
+    return (len(text) >= 85 or len(action_connectors) >= 2 or
             (len(text) >= 52 and bool(re.search(
                 r"(?:할\s*수\s*있고|할\s*수\s*있으며|하(?:고|면서)|그러고|그렇게해서|그리고|및|등으로|and|then)",
                 text, flags=re.IGNORECASE))))
