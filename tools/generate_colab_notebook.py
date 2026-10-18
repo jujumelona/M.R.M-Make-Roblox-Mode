@@ -133,6 +133,7 @@ def build_notebook() -> None:
             "    in_colab=IN_COLAB,\n"
             ")\n"
             "print(\"[setup] Tools ready:\", INSTALLED_TOOLCHAIN, flush=True)\n"
+            "os.environ[\"RMM_REQUIRE_REAL_LUAU_PARSER\"] = \"1\"\n"
             "\n"
             "print(\"[setup] Preparing real GGUF model...\", flush=True)\n"
             "MODEL_READY = None\n"
