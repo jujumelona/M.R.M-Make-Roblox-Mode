@@ -319,7 +319,16 @@ class RobloxGameDesignPlanner:
         # An available LLM is a capability, not evidence that existing tested
         # templates should be replaced. Keep exact stock gameplay when the
         # audited request ledger has no unsupported requirement.
-        needs_novel = bool(os.environ.get("RMM_ENABLE_DYNAMIC_DESIGN", "auto").lower() == "1" or
+        explicit_dynamic_required = os.environ.get("RMM_ENABLE_DYNAMIC_DESIGN", "auto").lower() == "1"
+        # Explicit model-only mode is a build obligation. Even when all keywords
+        # happen to match stock templates, never accept them if model design was
+        # requested but not completed (or cannot run).
+        if explicit_dynamic_required:
+            research["ledger"]["unimplemented_facets"] = sorted(set(
+                research["ledger"].get("unimplemented_facets", []) +
+                ["dynamic_architecture_required"]
+            ))
+        needs_novel = bool(explicit_dynamic_required or
                            research["ledger"].get("unimplemented_facets") or
                            research["ledger"].get("unmatched_requirements") or
                            research["ledger"].get("decomposition_pending") or
