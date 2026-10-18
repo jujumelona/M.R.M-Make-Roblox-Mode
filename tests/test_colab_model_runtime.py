@@ -102,12 +102,14 @@ def test_notebook_generator_bootstraps_before_first_ai_plan(monkeypatch, tmp_pat
     notebook_generator.build_notebook()
     data = json.loads(dest.read_text(encoding="utf-8"))
     source = [str("".join(cell["source"])) for cell in data["cells"]]
-    assert "ensure_model_runtime(" in source[4]
-    assert "MODEL_READY = ensure_model_runtime" in source[4]
+    assert "setup_colab_toolchain(" in source[2]
+    assert "MODEL_READY = ensure_model_runtime" in source[2]
+    assert "ensure_model_runtime(" not in source[4]
+    assert "setup_colab_toolchain(" not in source[4]
     assert "CompleteRobloxAISession(" in source[5]
     assert "if RUN_MODE == \"Execute\" and FINAL_PLAN_REPLY is not None" in source[5]
     assert "if not FINAL_PLAN_REPLY.ready_to_build:" in source[6]
-    assert source[4].index("ensure_model_runtime(") < len(source[4])
+    assert source[2].index("setup_colab_toolchain(") < source[2].index("ensure_model_runtime(")
     assert "sample_models" not in source[4]
 
 
