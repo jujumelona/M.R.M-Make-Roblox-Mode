@@ -113,7 +113,7 @@ def module_bootstrap_contract(module: RobloxModuleSpec, proposal: RobloxProposal
         "SERVER MODULE CONTRACT: file ends in .luau and is a server-only "
         "ModuleScript, NOT a .server.luau auto-running Script. Return a table "
         "of callable functions at the end. For event handlers/init, expose "
-        "function Service.start(services) that connects declared remotes or 
+        "function Service.start(services) that connects declared remotes or "
         "world/PlayerAdded events. Bootstrap requires all modules first and "
         "calls each exported .start(services) once. The services table holds "
         "the actual exported APIs by their exact names; available keys: "
