@@ -189,8 +189,26 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
                 on_disk if on_disk is not None else body)
             check("dynamic.api." + module.name, not api_faults,
                   "Invalid Roblox methods detected: " + "; ".join(api_faults))
+            # Some Roblox service names occur inside the string argument to
+            # GetService, so a correctly string-masked scan cannot match them
+            # directly. Accept the name only when the GetService call prefix
+            # exists as real code at the same offset, not in comments/strings.
+            stripped = _without_comments(on_disk if on_disk is not None else body)
+            forbidden_service = False
+            if is_client:
+                for match in re.finditer(
+                    r'\\bgame\\s*:\\s*GetService\\s*\\(\\s*([\\x27\\x22])'
+                    r'(?:DataStoreService|ServerStorage|ServerScriptService)'
+                    r'\\1\\s*\\)', stripped,
+                ):
+                    if re.match(r'\\bgame\\s*:\\s*GetService\\s*\\(',
+                                active_source[match.start():]):
+                        forbidden_service = True
+                        break
+            invalid_realm = bool(forbidden and re.search(
+                forbidden, active_source)) or forbidden_service
             check("dynamic.realm." + module.name,
-                  not forbidden or not re.search(forbidden, active_source),
+                  not invalid_realm,
                   "Client-only/server-only Roblox APIs must not cross Luau realms")
             check("dynamic.code." + module.name,
                   bool(body.strip()) and len(body) >= 75
