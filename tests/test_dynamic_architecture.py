@@ -574,6 +574,7 @@ def test_server_only_space_game_with_remotes_is_repaired_before_luau_generation(
     """User's proposal(3).json had eleven server modules, sixteen remotes and no client."""
     from roblox_mod_ai.dynamic_architect import RobloxDynamicArchitect
     monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    monkeypatch.setenv("RMM_LEGACY_ARCHITECTURE_PROTOCOL", "1")
     class RoleRepairModel:
         def __init__(self): self.calls = []
         def complete_json(self, prompt, **kwargs):
