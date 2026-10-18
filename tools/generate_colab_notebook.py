@@ -181,8 +181,25 @@ def build_notebook() -> None:
             "tool_status = toolchain.check_tools()\n"
             'print("Roblox Toolchain 상태:")\n'
             "for tool_name, available in tool_status.items():\n"
-            '    icon = "사용 가능" if available else "미설치 (내장 폴백 동작)"\n'
+            '    icon = "사용 가능" if available else "미설치 (필수 빌드는 실패)"\n'
             '    print(f"  - {tool_name}: {icon}")\n'
+            "\n"
+            "# A profile is not a loaded model. Startup must complete BEFORE constructing\n"
+            "# the session/model router, which snapshots server URL and model ID.\n"
+            "from roblox_mod_ai.colab_model_runtime import ensure_model_runtime\n"
+            "MODEL_READY = None\n"
+            "if RUN_MODE != \"Audit\":\n"
+            "    MODEL_READY = ensure_model_runtime(\n"
+            "        profile=MODEL_PROFILE,\n"
+            "        remote_base_url=REMOTE_BASE_URL,\n"
+            "        api_key=REMOTE_API_KEY,\n"
+            "        cache_root=OUTPUT_ROOT.parent / \"rmm-model\",\n"
+            "        in_colab=IN_COLAB,\n"
+            "    )\n"
+            "    print(\"AI 상태:\", MODEL_READY[\"status\"])\n"
+            "    if MODEL_READY[\"url\"]:\n"
+            "        print(\"검증된 실제 모델:\", MODEL_READY[\"model_id\"])\n"
+            "        print(\"LLM API:\", MODEL_READY[\"url\"])\n"
         ),
         id="registry",
     )
@@ -231,6 +248,16 @@ def build_notebook() -> None:
             "\n"
             'SAVED_PLAN_PATH = OUTPUT_ROOT / "proposal.json"\n'
             'print(f"계획 저장 경로: {SAVED_PLAN_PATH}")\n'
+            "\n"
+            "# Execute of an old, incomplete proposal must refresh its entire design,\n"
+            "# not repeatedly build the same semantic_decomposition_required checkpoint.\n"
+            "if RUN_MODE == \"Execute\" and FINAL_PLAN_REPLY is not None and not FINAL_PLAN_REPLY.ready_to_build:\n"
+            "    old_proposal = FINAL_PLAN_REPLY.authored_plan.proposal\n"
+            "    print(\"기존 계획은 미완성입니다. 원문 기준으로 다시 분석·설계합니다.\")\n"
+            "    FINAL_PLAN_REPLY = session.plan(\n"
+            "        old_proposal.requested_prompt,\n"
+            "        project_mode=old_proposal.game_design.get(\"project_mode\", \"new_experience\"),\n"
+            "    )\n"
         ),
         id="plan",
     )
@@ -264,6 +291,17 @@ def build_notebook() -> None:
             "else:\n"
             "    if FINAL_PLAN_REPLY is None:\n"
             '        raise RuntimeError("빌드할 계획이 없습니다. 5번 셀(플랜 준비)을 먼저 실행해 주세요.")\n'
+            "\n"
+            "    if not FINAL_PLAN_REPLY.ready_to_build:\n"
+            "        research = FINAL_PLAN_REPLY.authored_plan.proposal.game_design.get(\n"
+            "            \"pre_design_research\", {})\n"
+            "        missing = research.get(\"ledger\", {}).get(\"unimplemented_facets\", [])\n"
+            "        failures = research.get(\"provider_failures\", [])\n"
+            "        raise RuntimeError(\n"
+            "            \"실제 모델을 호출했지만 게임 설계 검증을 통과하지 못했습니다. \"\n"
+            "            + \"누락: \" + str(missing)\n"
+            "            + \"; 모델 오류: \" + str(failures)\n"
+            "        )\n"
             "\n"
             '    print("빌드 시작: Luau 코드 생성 -> 정적 분석 -> TestEZ 플레이테스트 -> .rbxlx / ZIP 컴파일")\n'
             "    BUILD_RESULT = session.build(FINAL_PLAN_REPLY, run_name=ROBLOX_EXPERIENCE_NAME)\n"
