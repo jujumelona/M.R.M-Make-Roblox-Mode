@@ -10,7 +10,8 @@ from typing import Any
 
 from .authored_plan import RobloxAuthoredPlan
 from .code_generator import LuauCodeGenerator
-from .dynamic_repair import repair_tool_diagnostics
+from .dynamic_repair import repair_tool_diagnostics, repair_static_failures
+from .agent_trajectory import AgentTrajectory
 from .quality_gates import acceptance_obligations, make_artifact_manifest
 from .request_traceability import build_request_traceability
 from .runtime_verification import OpenCloudRuntimeVerifier
@@ -91,6 +92,7 @@ class RobloxProductionOrchestrator:
         addon_mode = proposal.game_design.get("project_mode") == "existing_experience_addon"
         output_dir = self.workspace_root / run_name / proposal.game_title
         output_dir.mkdir(parents=True, exist_ok=True)
+        trajectory = AgentTrajectory(output_dir)
         receipt = WorkReceipt(task_id=f"rmm_{proposal.game_title}_{int(time.time())}", overall_success=False)
         errors: list[str] = []
         tool_results: dict[str, dict] = {}
@@ -116,12 +118,14 @@ class RobloxProductionOrchestrator:
                     errors=[] if passed else [str(details.get("error", "stage not verified"))]))
                 if not passed:
                     errors.append(f"{stage_id.value}: {details.get('error', 'not verified')}")
+                trajectory.record(stage_id.value, 'validate stage', details, passed=passed)
                 return passed
             except Exception as exc:
                 msg = f"{type(exc).__name__}: {exc}"
                 receipt.stages.append(StageReceipt(stage=stage_id, success=False,
                     duration_ms=(time.perf_counter() - began) * 1000, errors=[msg]))
                 errors.append(f"{stage_id.value}: {msg}")
+                trajectory.record(stage_id.value, "exception", msg, passed=False)
                 return False
 
         def resolve():
@@ -129,8 +133,28 @@ class RobloxProductionOrchestrator:
             return {"module_order": [m.name for m in proposal.modules]}
 
         def generate():
-            proposal.modules = self.code_generator.generate_all_modules(proposal)
-            return {"generated_count": len(proposal.modules)}
+            completed = 0
+            for module in proposal.modules:
+                try:
+                    if not module.code:
+                        module.code = self.code_generator.generate_with_self_correction(
+                            module, proposal)
+                    path = output_dir / module.file_path
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text(module.code, encoding="utf-8")
+                    (output_dir / "proposal_partial.json").write_text(
+                        json.dumps(proposal.to_dict(), indent=2, ensure_ascii=False),
+                        encoding="utf-8")
+                    completed += 1
+                    trajectory.record("generation", "save " + module.file_path,
+                                      {"source_bytes": len(module.code)}, passed=True)
+                except Exception as exc:
+                    message = type(exc).__name__ + ": " + str(exc)
+                    trajectory.record("generation", "generate " + module.file_path,
+                                      message, passed=False)
+                    return {"success": False, "generated_count": completed,
+                            "failed_module": module.name, "error": message}
+            return {"generated_count": completed, "success": True}
 
         def materialize():
             created = self.project_generator.materialize_project_tree(proposal, output_dir)
@@ -147,20 +171,43 @@ class RobloxProductionOrchestrator:
                         raise RuntimeError(f"{name} failed or skipped: {result}")
             return {"created_files": len(created), "success": True}
 
-        def lint():
-            nonlocal analysis_report, acceptance
+        def check_static():
             source_map = {m.file_path: (output_dir / m.file_path).read_text(encoding="utf-8")
                           for m in proposal.modules}
-            analysis_report = self.analyzer.analyze_files(source_map)
-            acceptance = acceptance_obligations(proposal, output_dir)
+            checked_analysis = self.analyzer.analyze_files(source_map)
+            checked_acceptance = acceptance_obligations(proposal, output_dir)
             (output_dir / "request_traceability.json").write_text(
-                json.dumps(build_request_traceability(proposal, acceptance=acceptance, source_root=output_dir),
-                           indent=2, ensure_ascii=False), encoding="utf-8")
-            if not analysis_report.passed:
-                return {"passed": False, "error": f"Luau static errors: {analysis_report.error_count}"}
-            if not acceptance["passed"]:
-                missing = [x["id"] for x in acceptance["checks"] if not x["passed"]]
-                return {"passed": False, "error": "Missing acceptance evidence: " + ", ".join(missing)}
+                json.dumps(build_request_traceability(
+                    proposal, acceptance=checked_acceptance, source_root=output_dir),
+                    indent=2, ensure_ascii=False), encoding="utf-8")
+            return checked_analysis, checked_acceptance
+
+        def lint():
+            nonlocal analysis_report, acceptance
+            analysis_report, acceptance = check_static()
+            if not analysis_report.passed or not acceptance["passed"]:
+                trajectory.record("static", "initial source and acceptance checks", {
+                    "analysis": analysis_report.to_dict(),
+                    "failed_checks": [x for x in acceptance["checks"] if not x["passed"]],
+                }, passed=False)
+                if proposal.game_design.get("dynamic_design"):
+                    analysis_report, acceptance, recovered = repair_static_failures(
+                        proposal, output_dir, analysis_report, acceptance,
+                        self.router, recheck=check_static,
+                        format_sources=(lambda: self.toolchain.run_stylua(output_dir))
+                        if not source_only else None, trajectory=trajectory)
+                    if recovered:
+                        trajectory.record("static", "self-repair verified",
+                                          {"remaining_failures": 0}, passed=True)
+                if not analysis_report.passed or not acceptance["passed"]:
+                    missing = [x["id"] for x in acceptance["checks"] if not x["passed"]]
+                    return {"passed": False,
+                            "error": "Static repair unsuccessful; Lua errors: " +
+                                     str(analysis_report.error_count) +
+                                     "; missing checks: " + ", ".join(missing),
+                            "analysis": analysis_report.to_dict(),
+                            "failed_checks": [x for x in acceptance["checks"] if not x["passed"]]}
+
             if not source_only:
                 for name, action in [
                     ("selene", lambda: self.toolchain.run_selene(output_dir)),
@@ -193,6 +240,8 @@ class RobloxProductionOrchestrator:
                                 recovery = {"passed":False,
                                             "reason":type(exc).__name__ + ": " + str(exc)[:400]}
                             tool_results[name + "_repair"] = recovery
+                            trajectory.record("tool", "repair " + name, recovery,
+                                              passed=bool(recovery.get("passed")))
                             if recovery.get("passed"):
                                 # Re-evaluate source/semantic acceptance after edits.
                                 revised_source={m.file_path:(output_dir/m.file_path).read_text(
@@ -226,7 +275,27 @@ class RobloxProductionOrchestrator:
             result = self.toolchain.run_rojo_build(output_dir / "default.project.json", place)
             tool_results["rojo"] = result
             if not result.get("success") or not result.get("executed") or not place.is_file() or place.stat().st_size == 0:
-                return {"passed": False, "error": f"Rojo build failed (no XML fallback): {result}"}
+                if result.get("executed") and proposal.game_design.get("dynamic_design"):
+                    try:
+                        recovery = repair_tool_diagnostics(
+                            proposal, output_dir, "rojo", result,
+                            retry_tool=lambda: self.toolchain.run_rojo_build(
+                                output_dir / "default.project.json", place),
+                            format_sources=lambda: self.toolchain.run_stylua(output_dir),
+                            router=self.router)
+                    except Exception as exc:
+                        recovery = {"passed": False, "reason": type(exc).__name__ + ": " + str(exc)}
+                    tool_results["rojo_repair"] = recovery
+                    trajectory.record("tool", "repair Rojo build", recovery,
+                                      passed=bool(recovery.get("passed")))
+                    if recovery.get("passed"):
+                        checked_analysis, checked_acceptance = check_static()
+                        if not checked_analysis.passed or not checked_acceptance["passed"]:
+                            return {"passed": False, "error": "Rojo repair regressed static acceptance"}
+                        result = recovery["retried_tool"]
+                        tool_results["rojo"] = result
+                if not result.get("success") or not place.is_file() or place.stat().st_size == 0:
+                    return {"passed": False, "error": f"Rojo build failed after repair: {result}"}
             structural = inspect_compiled_place(proposal, place, source_root=output_dir)
             tool_results["compiled_structure"] = structural
             if not structural["passed"]:
@@ -283,6 +352,15 @@ class RobloxProductionOrchestrator:
             )
         receipt.overall_success = bool(ready and not source_only and not addon_mode)
         (output_dir / "work_receipt.json").write_text(json.dumps(receipt.to_dict(), indent=2), encoding="utf-8")
+        failure_logs_zip = ""
+        if not receipt.overall_success:
+            failure_logs_zip = str(trajectory.failure_bundle(
+                "; ".join(errors) or "Engine verification evidence missing",
+                receipt=receipt.to_dict(), tool_results=tool_results))
+            print("[RMM agent] failure logs: " + failure_logs_zip, flush=True)
+        else:
+            trajectory.record("result", "verified release",
+                              {"place": rbxlx_path}, passed=True)
         elapsed_ms = (time.perf_counter() - start) * 1000
         return RobloxPipelineResult(
             success=receipt.overall_success,
@@ -294,6 +372,8 @@ class RobloxProductionOrchestrator:
             build_mode=build_mode, generated_files=[m.file_path for m in proposal.modules],
             metadata={"acceptance": acceptance, "runtime": runtime, "tool_results": tool_results,
                       "errors": errors, "source_only": source_only,
+                      "agent_trajectory": str(trajectory.path),
+                      "failure_logs_zip": failure_logs_zip,
                       "project_mode": proposal.game_design.get("project_mode", "new_experience"),
                       "addon_prepared": bool(addon_mode and ready)},
         )
