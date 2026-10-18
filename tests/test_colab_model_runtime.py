@@ -109,3 +109,34 @@ def test_notebook_generator_bootstraps_before_first_ai_plan(monkeypatch, tmp_pat
     assert "if not FINAL_PLAN_REPLY.ready_to_build:" in source[6]
     assert source[4].index("ensure_model_runtime(") < len(source[4])
     assert "sample_models" not in source[4]
+
+
+def test_session_boots_real_model_for_older_colab_notebook(monkeypatch, tmp_path):
+    from roblox_mod_ai.api import CompleteRobloxAISession
+
+    called = []
+    monkeypatch.setattr(CompleteRobloxAISession, "_is_colab_runtime",
+                        staticmethod(lambda: True))
+
+    def bootstrap(**kwargs):
+        called.append(kwargs)
+        return {"status": "verified_existing",
+                "url": "http://127.0.0.1:8910/v1", "model_id": "local-gguf"}
+
+    monkeypatch.setattr(runtime, "ensure_model_runtime", bootstrap)
+    session = CompleteRobloxAISession(output_root=tmp_path, model_profile="t4_local")
+    assert len(called) == 1
+    assert called[0]["in_colab"] is True
+    assert session.model_runtime["status"] == "verified_existing"
+
+
+def test_fast_test_session_never_downloads_model(monkeypatch, tmp_path):
+    from roblox_mod_ai.api import CompleteRobloxAISession
+
+    monkeypatch.setattr(CompleteRobloxAISession, "_is_colab_runtime",
+                        staticmethod(lambda: True))
+    monkeypatch.setattr(runtime, "ensure_model_runtime",
+                        lambda **kwargs: pytest.fail("test profile started production GGUF"))
+    session = CompleteRobloxAISession(output_root=tmp_path,
+                                      model_profile="fast_test", fast_mode=True)
+    assert session.model_runtime is None
