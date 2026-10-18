@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import re
+from typing import Any
 
 from .official_docs import RobloxOfficialDocs
 from .code_output_guard import LiveCodeRepetitionGuard, RepeatedCodeOutput
@@ -19,10 +20,14 @@ from .spec import RobloxModuleSpec, RobloxProposal
 class LuauGenerationError(ValueError):
     """Model generation exhausted; carry the actual source and validator output."""
 
-    def __init__(self, module: str, candidate: str, diagnostics: list[str]):
+    def __init__(self, module: str, candidate: str, diagnostics: list[str],
+                 history: list[dict[str, Any]] | None = None):
         self.module = module
         self.candidate = candidate
         self.diagnostics = list(diagnostics)
+        # Preserve EACH model response, diagnostic and generation mode, not
+        # just the last candidate that failed. This reaches failure ZIP.
+        self.history = list(history or [])
         super().__init__(
             "Luau generation failed for " + module + ": " +
             "; ".join(self.diagnostics[:12])
@@ -138,6 +143,7 @@ class RobloxCodeRepairAgent:
         )
         candidate = existing_code
         errors: list[str] = []
+        attempt_history: list[dict[str, Any]] = []
         degenerate_attempt = False
         syntax_failed = False
         for attempt in range(attempts):
@@ -228,6 +234,14 @@ class RobloxCodeRepairAgent:
                     degenerate_attempt = True
                     candidate = exc.partial_output
                     errors.insert(0, "Streaming repetition aborted before token budget exhaustion")
+                attempt_history.append({
+                    "attempt": attempt + 1,
+                    "mode": "structured_json" if json_fallback else "plain_luau",
+                    "error": type(exc).__name__ + ": " + str(exc),
+                    "diagnostics": list(errors),
+                    "candidate": candidate,
+                    "model_runtime": runtime_observation,
+                })
                 print("[RMM coder] " + module.name + " attempt " +
                       str(attempt + 1) + ": " + errors[0][:600], flush=True)
                 continue
@@ -238,6 +252,12 @@ class RobloxCodeRepairAgent:
             except RepeatedCodeOutput as loop:
                 degenerate_attempt = True
                 errors = ["Generated source is stuck in repeated statements: " + str(loop)]
+                attempt_history.append({
+                    "attempt": attempt + 1,
+                    "mode": "structured_json" if json_fallback else "plain_luau",
+                    "diagnostics": list(errors), "candidate": candidate,
+                    "model_runtime": getattr(self.router, "last_generation_report", {}),
+                })
                 print("[RMM coder] " + module.name + " attempt " +
                       str(attempt + 1) + ": " + errors[0][:600], flush=True)
                 continue
@@ -285,6 +305,14 @@ class RobloxCodeRepairAgent:
             runtime_info = getattr(self.router, "last_generation_report", None)
             if isinstance(runtime_info, dict) and runtime_info:
                 errors.append("Runtime completion: " + str(runtime_info)[:700])
+            attempt_history.append({
+                "attempt": attempt + 1,
+                "mode": "structured_json" if json_fallback else "plain_luau",
+                "diagnostics": list(errors),
+                "candidate": candidate,
+                "model_runtime": runtime_info or {},
+            })
             print("[RMM coder] " + module.name + " attempt " + str(attempt + 1) +
                   " invalid: " + "; ".join(errors[:5])[:700], flush=True)
-        raise LuauGenerationError(module.name, candidate, errors)
+        raise LuauGenerationError(module.name, candidate, errors,
+                                  history=attempt_history)
