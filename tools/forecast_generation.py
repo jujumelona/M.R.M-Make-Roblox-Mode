@@ -16,7 +16,9 @@ from pathlib import Path
 from roblox_mod_ai.generation_forecast import forecast_generation
 
 
-def forecast_proposal(path: Path) -> dict:
+def forecast_proposal(path: Path, *,
+                      receipts: list[dict] | None = None,
+                      fingerprint: str | None = None) -> dict:
     proposal = json.loads(path.read_text(encoding="utf-8"))
     design = proposal.get("game_design", {})
     research = design.get("pre_design_research") or {}
@@ -28,6 +30,8 @@ def forecast_proposal(path: Path) -> dict:
         requested_prompt=proposal["requested_prompt"],
         ledger=ledger, modules=proposal.get("modules", []),
         remotes=dynamic.get("remotes") or {},
+        observed_model_runs=receipts,
+        expected_input_fingerprint=fingerprint,
     )
 
 
@@ -35,8 +39,22 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--proposal", required=True, type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--model-run-receipt", type=Path, action="append",
+                        default=[], help="A real_model_e2e_receipt.json from MiMo execution")
+    parser.add_argument("--input-fingerprint",
+                        help="Require exactly the same prompt/model/decoding settings "
+                             "for every measured run; read it from a model receipt")
     args = parser.parse_args()
-    result = forecast_proposal(args.proposal)
+    if args.model_run_receipt and not args.input_fingerprint:
+        parser.error("--input-fingerprint is required to compare actual model runs")
+    observations = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in args.model_run_receipt
+    ]
+    result = forecast_proposal(
+        args.proposal,
+        receipts=observations, fingerprint=args.input_fingerprint,
+    )
     if args.output is not None:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(
