@@ -245,3 +245,23 @@ def test_disconnected_client_string_reference_is_not_remote_sender(tmp_path, mon
     failures = {x["id"] for x in built.metadata["acceptance"]["checks"] if not x["passed"]}
     assert "wiring.HatchPet" in failures
 
+
+
+def test_dynamic_doc_refs_are_bound_to_owned_facets(tmp_path, monkeypatch):
+    from roblox_mod_ai.pre_design_research import build_request_ledger
+    session, _ = _session(tmp_path, monkeypatch)
+    ledger = build_request_ledger("펫 부화")
+    research = {
+        "ledger": ledger, "status": "partial", "queries": [],
+        "evidence": [
+            {"facet": "shop", "provider": "official_docs", "url": "https://create.roblox.com/docs/en-us/shop.md"},
+            {"facet": "pets", "provider": "official_docs", "url": "https://create.roblox.com/docs/en-us/pets.md"},
+        ],
+        "asset_candidates": [], "reuse_candidates": [], "provider_failures": [],
+    }
+    monkeypatch.setattr(session.planner.researcher, "research", lambda prompt: research)
+    reply = session.plan("펫 부화")
+    assert reply.ready_to_build
+    for module in reply.authored_plan.proposal.modules:
+        if module.module_id.startswith("dyn_"):
+            assert module.evidence_refs == ["https://create.roblox.com/docs/en-us/pets.md"]
