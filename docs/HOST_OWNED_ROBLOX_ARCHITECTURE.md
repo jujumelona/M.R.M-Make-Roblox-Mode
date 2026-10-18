@@ -64,6 +64,37 @@ The default architect requests the same semantic-only format for **every positiv
 }
 ```
 
+## Native world interactions: Roblox ProximityPrompt needs no client Lua or Remote
+
+When the semantic planner declares `input_mode: "world_prompt"`,
+`interaction: "event"` and **exactly one** `world_entities` target, the
+host compiles a native, anchored Part with a `ProximityPrompt` child.
+`RMMServerBootstrap` connects `ProximityPrompt.Triggered(player)` on the
+server and verifies valid Player membership, living Humanoid, server-side
+distance, and per-player/per-action cooldown before delegating to
+`Service.handleAction(player, services, targetPart)`.
+
+For these actions the host produces **zero client modules and zero Remotes**.
+A single simple world action can therefore require only one source-facet
+semantic planning call and one game-specific server Lua generation call,
+instead of one planner + server + client writer. A server-only world prompt
+still needs a gameplay handler that checks permissions, item ownership and
+state transitions; the greybox Part is not a finished model.
+
+`input_mode: "world_prompt"` is rejected for server-only periodic
+tasks, synchronous request-response, no world object, or multiple target
+objects requiring selection. It does not silently turn arbitrary user
+games into a proximity-based clicker.
+
+Roblox references:
+- https://create.roblox.com/docs/reference/engine/classes/ProximityPrompt
+- https://create.roblox.com/docs/scripting/security/client-server-boundary
+
+CI: `tests/test_host_world_prompt.py` and
+`NativeWorldPrompt` in `tools/verify_diverse_host_assembly_e2e.py`.
+The latter compiles the server-only Part + Prompt through real Rojo,
+without calling the coder to author client Lua.
+
 ## New reduction: host-generated cross-platform input without another LLM call
 
 The semantic-only model can now declare **`input_mode: "host_button"`**
