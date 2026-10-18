@@ -68,6 +68,7 @@ def forecast_generation(
     modules: list[dict[str, Any]],
     remotes: dict[str, Any] | None = None,
     observed_model_runs: list[dict[str, Any]] | None = None,
+    expected_input_fingerprint: str | None = None,
 ) -> dict[str, Any]:
     """Return a source-derived size report and *unfitted* scenario sensitivity.
 
@@ -95,7 +96,8 @@ def forecast_generation(
             "source_only_not_studio_verified",
         }
         and row.get("complete_game_verified") in {True, False}
-        and row.get("input_fingerprint")  # input must be traceable
+        and expected_input_fingerprint is not None
+        and row.get("input_fingerprint") == expected_input_fingerprint
     ]
     # Full-game success requires a real Studio result. The CI cannot
     # establish the completion probability without these matched-run data.
@@ -137,6 +139,7 @@ def forecast_generation(
         "measured_full_game_model_runs": {
             "count": len(confirmed),
             "verified_completed": completed,
+            "matching_input_fingerprint": expected_input_fingerprint,
             "empirical_completion_rate": (
                 completed / len(confirmed) if confirmed else None),
             "limitations": ("Not an accuracy estimate without matching "
