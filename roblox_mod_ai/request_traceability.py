@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+from pathlib import Path
 from typing import Any
 
 from .spec import RobloxProposal
@@ -22,7 +23,8 @@ _BUILTIN_FACET_MODULES = {
 
 
 def build_request_traceability(proposal: RobloxProposal,
-                               *, acceptance: dict[str, Any] | None = None) -> dict[str, Any]:
+                               *, acceptance: dict[str, Any] | None = None,
+                               source_root: str | Path | None = None) -> dict[str, Any]:
     """Report *planned* and *saved-source* evidence, never invent actual gameplay proof."""
     research = proposal.game_design.get("pre_design_research") or {}
     ledger = research.get("ledger") or {}
@@ -51,13 +53,21 @@ def build_request_traceability(proposal: RobloxProposal,
                 for name in _BUILTIN_FACET_MODULES.get(facet["id"], ()):
                     if name in source_modules:
                         owned[name] = source_modules[name]
-        files = [{
-            "module": module.name,
-            "path": module.file_path,
-            "source_present": bool(module.code.strip()),
-            "source_sha256": (hashlib.sha256(module.code.encode("utf-8")).hexdigest()
-                              if module.code.strip() else None),
-        } for module in owned.values()]
+        files = []
+        for module in owned.values():
+            # The produced file is authoritative: Windows may write CRLF
+            # while module.code is LF. Hash bytes actually packaged into ZIP.
+            saved = Path(source_root) / module.file_path if source_root is not None else None
+            data = (saved.read_bytes() if saved is not None and saved.is_file()
+                    else module.code.encode("utf-8"))
+            exists = saved is None or saved.is_file()
+            files.append({
+                "module": module.name,
+                "path": module.file_path,
+                "source_present": exists and bool(data.strip()),
+                "source_sha256": (hashlib.sha256(data).hexdigest()
+                                  if exists and data.strip() else None),
+            })
         blocked = rid in unresolved or rid in pending or bool(relevant_ids & unimplemented)
         acceptance_text = dynamic.get("acceptance", {}).get(rid) if dynamic else None
         if blocked or not files:
