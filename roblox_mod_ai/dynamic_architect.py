@@ -214,6 +214,23 @@ def _clean_model_json(response: dict[str, Any], ledger: dict[str, Any],
     remotes: dict[str, str] = {
         item["name"]: item["type"] for item in remote_rows
     }
+    # A RemoteEvent/RemoteFunction is a client<->server transport. A model
+    # which declares remotes but proposes only server scripts cannot possibly
+    # satisfy the static connectivity gate, even when its JSON is well formed.
+    # Catch the impossible architecture HERE and ask the model to add the
+    # missing role, before spending GPU time writing eleven unusable scripts.
+    if remotes:
+        roles = {m.kind for m in modules}
+        if ModuleKind.CLIENT_SCRIPT not in roles:
+            raise DynamicDesignError(
+                "Declared " + str(len(remotes)) +
+                " client/server Remotes but no client Luau controller. "
+                "Add one or more real client modules that own UI/input and "
+                "use each remote consistently with a server handler.")
+        if ModuleKind.SERVER_SCRIPT not in roles:
+            raise DynamicDesignError(
+                "Declared client/server Remotes but no server Luau handler. "
+                "Add a server-authoritative module for each remote.")
 
     raw_objects = response.get("world_objects", [])
     if not isinstance(raw_objects, list) or len(raw_objects) > _MAX_NEW_OBJECTS:
