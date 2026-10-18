@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 import zipfile
 
+import pytest
+
 from roblox_mod_ai.agent_trajectory import AgentTrajectory
 from roblox_mod_ai.api import CompleteRobloxAISession
 from roblox_mod_ai.orchestrator import RobloxProductionOrchestrator
@@ -270,3 +272,57 @@ def test_model_triage_rejects_invented_file_and_wrong_type():
                                Model([module.file_path] * 2)) == []
     assert model_triage_modules(proposal, "missing receiver",
                                Model([module.file_path])) == [module]
+
+
+
+def test_exhausted_codegen_keeps_exact_failed_code_and_analyzer_feedback(tmp_path, monkeypatch):
+    from roblox_mod_ai import orchestrator as pipeline
+    from roblox_mod_ai.agent_loop import LuauGenerationError
+    workspace = RobloxProductionOrchestrator(tmp_path)
+    proposal = RobloxProposal(
+        requested_prompt="Spaceship with weapons", game_title="ExactError",
+        description="test", game_design={},
+        modules=[make_module("dyn_weapons", "WeaponsServer",
+                             "src/server/WeaponsServer.server.luau")],
+    )
+    failed_code = "--!strict\nlocal weapon = nil -- TODO fix actual weapon damage code\n"
+    monkeypatch.setattr(workspace.code_generator, "generate_with_self_correction",
+                        lambda *a: (_ for _ in ()).throw(LuauGenerationError(
+                            "WeaponsServer", failed_code,
+                            ["line 2: unexpected token near weapon", "No validated damage handler"])))
+    seen = []
+    class Repair:
+        def __init__(self, router): pass
+        def repair(self, module, proposal, existing_code, diagnostics, attempts):
+            seen.append((existing_code, diagnostics))
+            return "--!strict\nlocal function validDamage(player)\n    return player ~= nil\nend\nprint(validDamage)\n"
+    monkeypatch.setattr(pipeline, "RobloxCodeRepairAgent", Repair)
+    result = workspace.execute(proposal, "repair", source_only=True)
+    project = Path(result.project_dir)
+    broken = project / "failed_candidates/src/server/WeaponsServer.server.luau"
+    assert broken.read_text(encoding="utf-8") == failed_code
+    assert seen and seen[0][0] == failed_code
+    assert "unexpected token near weapon" in seen[0][1]
+    assert "No validated damage handler" in seen[0][1]
+    assert "validDamage" in (project / proposal.modules[0].file_path).read_text()
+    with zipfile.ZipFile(result.metadata["failure_logs_zip"]) as zipped:
+        assert "failed_candidates/src/server/WeaponsServer.server.luau" in zipped.namelist()
+
+
+def test_codegen_agent_retains_last_model_source_on_exhaustion(monkeypatch):
+    from roblox_mod_ai.agent_loop import RobloxCodeRepairAgent, LuauGenerationError
+    monkeypatch.setenv("RMM_ENABLE_MODEL_GENERATION", "1")
+    class Stub:
+        def complete(self, *args, **kwargs):
+            return "--!strict\n-- TODO: ship damage handler\n"
+    module = make_module("dyn_damage", "ShipDamage",
+                         "src/server/ShipDamage.server.luau")
+    proposal = RobloxProposal(
+        requested_prompt="Ship damage", game_title="Test", description="",
+        game_design={"pre_design_research": {"evidence": []}},
+        modules=[module],
+    )
+    with pytest.raises(LuauGenerationError) as issue:
+        RobloxCodeRepairAgent(router=Stub()).repair(module, proposal, attempts=2)
+    assert "TODO" in issue.value.candidate
+    assert "Placeholder code is prohibited" in issue.value.diagnostics
