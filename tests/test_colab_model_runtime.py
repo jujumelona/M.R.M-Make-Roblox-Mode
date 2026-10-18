@@ -43,7 +43,7 @@ def test_managed_colab_model_is_started_before_plan(monkeypatch, tmp_path):
     def start(b, m, root):
         events.append(("start", b, m))
         started["value"] = True
-        return "http://127.0.0.1:8910/v1"
+        return "http://127.0.0.1:8910/v1", "local-gguf"
 
     monkeypatch.setattr(runtime, "_model_probe", probe)
     monkeypatch.setattr(runtime, "_ensure_llama_server_binary", binary)
