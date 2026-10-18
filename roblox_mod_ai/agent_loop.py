@@ -176,6 +176,9 @@ class RobloxCodeRepairAgent:
                 errors.append("Client source contains server-only API")
             if not errors:
                 return candidate
+            runtime_info = getattr(self.router, "last_generation_report", None)
+            if isinstance(runtime_info, dict) and runtime_info:
+                errors.append("Runtime completion: " + str(runtime_info)[:700])
             print("[RMM coder] " + module.name + " attempt " + str(attempt + 1) +
                   " invalid: " + "; ".join(errors[:5])[:700], flush=True)
         raise LuauGenerationError(module.name, candidate, errors)
