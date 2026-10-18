@@ -85,6 +85,8 @@ def _clean_model_json(response: dict[str, Any], ledger: dict[str, Any],
     # not additional independent requests. Keep all unmatched facets mandatory.
     required_facets = {str(f["id"]) for f in implementation_facets(ledger)
                        if f.get("id")}
+    all_declared_facets = {str(f["id"]) for f in ledger.get("facets", [])
+                           if isinstance(f, dict) and f.get("id")}
     modules: list[RobloxModuleSpec] = []
     chosen: set[str] = set(existing_names)
     assignment: dict[str, list[str]] = {}
@@ -104,7 +106,7 @@ def _clean_model_json(response: dict[str, Any], ledger: dict[str, Any],
             raise DynamicDesignError("Module must reference actual requirement IDs")
         facets = row.get("facet_ids", [])
         if not isinstance(facets, list) or (
-                required_facets and (not facets or any(x not in required_facets for x in facets))):
+                required_facets and (not facets or any(x not in all_declared_facets for x in facets))):
             raise DynamicDesignError("Module must cover actual requested gameplay facets")
         if not isinstance(purpose, str) or len(purpose.strip()) < 24:
             raise DynamicDesignError("Provide substantive behavior and authority contract")
@@ -116,7 +118,11 @@ def _clean_model_json(response: dict[str, Any], ledger: dict[str, Any],
            file_path=path.format(name=name),roblox_service=service,
            description=purpose,depends_on=["mod_network_bridge"] if role != "shared" else []))
         assignment[module_id] = list(dict.fromkeys(ids))
-        facet_assignment[module_id] = list(dict.fromkeys(facets))
+        # Accept an optional generic tag (e.g. 'shop') for compatibility
+        # with existing model JSON, but do not count it as a second independent
+        # gameplay obligation when its exact source is already atom-owned.
+        facet_assignment[module_id] = list(dict.fromkeys(
+            facet for facet in facets if facet in required_facets))
         purposes[module_id] = purpose
     covered = {req for refs in assignment.values() for req in refs}
     # Require EVERY authored clause, not just the names the model chose to support.
@@ -176,12 +182,13 @@ def _clean_model_json(response: dict[str, Any], ledger: dict[str, Any],
         raise DynamicDesignError("Acceptance coverage incomplete")
     accepted_facets = {}
     for item in response.get("acceptance_facets", []):
-        if not isinstance(item, dict) or item.get("facet_id") not in required_facets:
+        if not isinstance(item, dict) or item.get("facet_id") not in all_declared_facets:
             raise DynamicDesignError("Acceptance references invalid capability facet")
         observable = item.get("observable_result")
         if not isinstance(observable,str) or len(observable.strip()) < 18:
             raise DynamicDesignError("Each capability requires observable behavior")
-        accepted_facets[item["facet_id"]] = observable
+        if item["facet_id"] in required_facets:
+            accepted_facets[item["facet_id"]] = observable
     if required_facets and set(accepted_facets) != required_facets:
         raise DynamicDesignError("Capability-level acceptance cases incomplete")
     return {
