@@ -782,6 +782,7 @@ def test_compound_game_architecture_shards_and_repairs_without_reprinting_game(m
                 "role": role,
                 "requirement_ids": [f"req-{index:03}"],
                 "facet_ids": [facet],
+                "uses_remotes": [f"RequestFeature{index}"],
                 "behavior": (
                     "Client displays controls, sends request and shows a visible result."
                     if role == "client" else
@@ -825,3 +826,37 @@ def test_scoped_failure_does_not_claim_a_partial_game_as_complete(monkeypatch):
     assert not research["architecture_subplans"]
     assert len(research["architecture_attempts"]) == 3
     assert all(not item["passed"] for item in research["architecture_attempts"])
+
+
+def test_explicit_scoped_remotes_require_both_endpoints():
+    from roblox_mod_ai.dynamic_architect import _clean_model_json
+    ledger = {
+        "requirements": [{"id": "req-001", "statement": "Trade resources"}],
+        "facets": [{"id": "trade", "requirements": ["req-001"]}],
+    }
+    modules = [
+        {"name": "TradeServer", "role": "server",
+         "requirement_ids": ["req-001"], "facet_ids": ["trade"],
+         "uses_remotes": ["BuyResource"],
+         "behavior": "Validate a player's credit balance and confirm resource purchase."},
+        {"name": "TradeClient", "role": "client",
+         "requirement_ids": ["req-001"], "facet_ids": ["trade"],
+         "uses_remotes": [],
+         "behavior": "Present a trade window and send validated shopping requests."},
+    ]
+    plan = {
+        "modules": modules,
+        "remotes": [{"name": "BuyResource", "type": "RemoteFunction"}],
+        "world_objects": [],
+        "acceptance": [{"requirement_id": "req-001",
+                        "observable_result": "Players can purchase a resource."}],
+        "acceptance_facets": [{"facet_id": "trade",
+                               "observable_result": "Trade inventory changes after purchase."}],
+    }
+    with pytest.raises(DynamicDesignError, match="needs explicit client and server"):
+        _clean_model_json(plan, ledger, set())
+    plan["modules"][1]["uses_remotes"] = ["BuyResource"]
+    accepted = _clean_model_json(plan, ledger, set())
+    assert accepted["module_remotes"]
+    assert all(names == ["BuyResource"]
+               for names in accepted["module_remotes"].values())
