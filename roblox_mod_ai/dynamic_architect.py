@@ -415,6 +415,82 @@ def _clean_model_json(response: dict[str, Any], ledger: dict[str, Any],
     }
 
 
+
+def _bind_scoped_feature_ids(
+    draft: dict[str, Any],
+    *,
+    facet_id: str,
+    owned_ids: list[str],
+    all_facet_ids: set[str],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Attach authoritative source-ledger IDs to a ONE-facet model plan.
+
+    Models reliably generate local aliases such as fac-001 instead of the
+    source-anchored intent hash (proposal 12 failed all 3 attempts this way).
+    Local labels have no authority: only the host knows the original source.
+    This binding never changes module behavior, role, remote declarations or
+    gameplay acceptance prose. The normal semantic/remote/world validator still
+    runs after binding, and cross-facet IDs and missing acceptance are rejected.
+    """
+    if not isinstance(draft, dict):
+        raise DynamicDesignError("Scoped architecture must be JSON object")
+    modules = draft.get("modules")
+    if not isinstance(modules, list) or not modules:
+        raise DynamicDesignError("Scoped architecture has no modules")
+    accepted = draft.get("acceptance_facets")
+    if not isinstance(accepted, list) or not accepted:
+        raise DynamicDesignError("Scoped architecture has no facet acceptance")
+    allowed_reqs = set(owned_ids)
+    if not allowed_reqs:
+        raise DynamicDesignError("Scoped feature has no original requirement IDs")
+    response = dict(draft)
+    bound_modules = []
+    aliases: set[str] = set()
+    for row in modules:
+        if not isinstance(row, dict):
+            raise DynamicDesignError("Invalid scoped module record")
+        refs = row.get("requirement_ids")
+        if not isinstance(refs, list) or not refs or not set(refs) <= allowed_reqs:
+            raise DynamicDesignError("Scoped module has foreign or missing source requirement")
+        raw_ids = row.get("facet_ids")
+        if not isinstance(raw_ids, list) or not raw_ids or any(
+            not isinstance(i, str) or not i.strip() for i in raw_ids
+        ):
+            raise DynamicDesignError("Scoped module must declare its feature ownership")
+        foreign = (set(raw_ids) & all_facet_ids) - {facet_id}
+        if foreign:
+            raise DynamicDesignError("Scoped module references different original feature: " +
+                                     ", ".join(sorted(foreign)))
+        aliases.update(raw_ids)
+        bound_modules.append(dict(row, facet_ids=[facet_id]))
+    results = []
+    for item in accepted:
+        if not isinstance(item, dict):
+            raise DynamicDesignError("Invalid scoped acceptance")
+        original = item.get("facet_id")
+        if not isinstance(original, str) or not original.strip():
+            raise DynamicDesignError("Scoped acceptance lacks feature identity")
+        if original in all_facet_ids and original != facet_id:
+            raise DynamicDesignError("Acceptance references another original feature")
+        observable = item.get("observable_result")
+        if not isinstance(observable, str) or len(observable.strip()) < 18:
+            raise DynamicDesignError("Scoped acceptance lacks observable behavior")
+        aliases.add(original)
+        if observable not in results:
+            results.append(observable)
+    response["modules"] = bound_modules
+    # Multiple invented local subfeature labels all belong to this one source
+    # span. Preserve the testable observations, not their fabricated identities.
+    response["acceptance_facets"] = [{
+        "facet_id": facet_id,
+        "observable_result": " ".join(results),
+    }]
+    return response, {"source_facet": facet_id,
+                      "model_aliases": sorted(aliases - {facet_id}),
+                      "source_requirements": sorted(allowed_reqs)}
+
+
+
 class RobloxDynamicArchitect:
     def __init__(self, router: ModelRouter | None = None) -> None:
         self.router = router or ModelRouter()
@@ -656,6 +732,12 @@ class RobloxDynamicArchitect:
                         )
                     if not isinstance(draft, dict):
                         raise DynamicDesignError("Facet architecture must be JSON object")
+                    # Source IDs are host-owned, not model-generated. One
+                    # scoped task equals one canonical source facet.
+                    draft, id_binding = _bind_scoped_feature_ids(
+                        draft, facet_id=facet_id, owned_ids=owned_ids,
+                        all_facet_ids={str(f["id"]) for f in facets},
+                    )
                     draft = self._resolve_remote_declarations(draft)
                     rows, _ = _normalize_remote_rows(draft.get("remotes", []))
                     overlap = reserved_remotes.intersection(r["name"] for r in rows)
@@ -682,10 +764,12 @@ class RobloxDynamicArchitect:
                         "module_names": [m.name for m in part["modules"]],
                         "remote_names": list(part["remotes"]),
                         "validated": True,
+                        "id_binding": id_binding,
                     })
                     observations.append({
                         "facet_id": facet_id, "attempt": attempt + 1,
                         "passed": True, "validator": "scoped feature validated",
+                        "id_binding": id_binding,
                     })
                     successful = True
                     break
