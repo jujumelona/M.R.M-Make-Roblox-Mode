@@ -728,6 +728,8 @@ class RobloxDynamicArchitect:
                 "Do not claim a world has been built or gameplay tested. "
                 "JSON ONLY.\n"
                 + json.dumps({
+                    "feature_id": facet_id,
+                    "feature": facet,
                     "source_requirements": subset,
                     "game_context": {"scope": "only_this_source_clause"},
                     "official_references": excerpts,
