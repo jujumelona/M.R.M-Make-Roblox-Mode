@@ -94,13 +94,18 @@ def _module_sources(proposal: RobloxProposal) -> None:
             )
         elif module.file_path.startswith("src/server/"):
             name = module.name
+            host_world_targets = {
+                world for world, binding
+                in (dynamic.get("host_world_actions") or {}).items()
+                if binding["service"] == name
+            }
             code = (
                 "--!strict\n"
                 f"local {name} = {{}}\n"
                 f"function {name}.start(_services)\n"
                 "end\n"
             )
-            if remote_names:
+            if remote_names or host_world_targets:
                 code += (
                     f"function {name}.handleAction(player, _services)\n"
                     '    if player.Parent ~= game:GetService("Players") then return false end\n'
@@ -161,6 +166,7 @@ def run_case(name: str, rows, root: Path, router_cls) -> dict:
         "generated_remote_count": len(design["remotes"]),
         "host_action_count": len(design.get("host_actions", {})),
         "host_client_count": len(design.get("host_client_actions", {})),
+        "host_world_prompt_count": len(design.get("host_world_actions", {})),
         "model": "DETERMINISTIC SEMANTIC MOCK - NOT REAL MIMO",
         "studio_gameplay_tested": False,
         "tools": [],
@@ -218,6 +224,18 @@ def main() -> None:
         ("host-status", "req-status", "ServerStatus",
          "Refresh server status without any target or parameters", "request_response"),
     ]
+    class NativeWorldPromptRouter(ArbitraryPromptSemanticTransport):
+        def complete_json(self, prompt, **kwargs):
+            reply = super().complete_json(prompt, **kwargs)
+            reply["systems"][0]["input_mode"] = "world_prompt"
+            reply["systems"][0]["interaction"] = "event"
+            reply["systems"][0]["world_entities"] = ["DoorPart"]
+            return reply
+
+    prompt_rows = [
+        ("host-vault", "req-vault", "VaultDoor",
+         "Use Roblox native world interaction to unlock a server-controlled vault", "event"),
+    ]
     long_rows, _ = _sample(47, 9)
     cases = {
         "ServerOnly": server_only,
@@ -228,10 +246,12 @@ def main() -> None:
     root.mkdir(parents=True, exist_ok=True)
     receipts = []
     cases["HostButtonsTwo"] = button_rows
+    cases["NativeWorldPrompt"] = prompt_rows
     for name, rows in cases.items():
         receipt = run_case(
             name, rows, root,
             ButtonsOnlyRouter if name == "HostButtonsTwo"
+            else NativeWorldPromptRouter if name == "NativeWorldPrompt"
             else ArbitraryPromptSemanticTransport)
         receipts.append(receipt)
         print("GENERIC ROBLOX HOST COMPILE PASS", name,
@@ -240,8 +260,11 @@ def main() -> None:
               receipt["generated_remote_count"], "remotes")
     assert receipts[0]["generated_remote_count"] == 0
     assert receipts[1]["generated_remote_count"] == 2
-    assert receipts[-1]["host_client_count"] == 2
-    assert receipts[-1]["generated_remote_count"] == 2
+    assert receipts[-2]["host_client_count"] == 2
+    assert receipts[-2]["generated_remote_count"] == 2
+    assert receipts[-1]["host_world_prompt_count"] == 1
+    assert receipts[-1]["generated_remote_count"] == 0
+    assert receipts[-1]["generated_module_count"] == 1
     summary = {
         "schema": "rmm/generic-host-assembly-v1",
         "cases_passed": len(receipts),
