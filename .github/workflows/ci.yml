@@ -45,7 +45,7 @@ jobs:
 
       - name: Run Test Suite (pytest)
         run: |
-          python -m pytest tests -v --cov=roblox_mod_ai --cov-report=term-missing --cov-report=xml:coverage.xml
+          python -m pytest tests -v --cov=roblox_mod_ai --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=75
 
       - name: Upload exact coverage evidence
         if: always()
