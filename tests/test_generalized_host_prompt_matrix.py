@@ -251,3 +251,20 @@ def test_unrelated_weather_module_coder_never_receives_pet_or_currency_examples(
     for unrelated in ("EconomyLedger", "PetEggStand", "OreNode",
                       "mining/trading/combat/colonization"):
         assert unrelated not in code_prompt
+
+
+def test_unknown_unparsed_request_never_falls_back_to_a_stock_game(monkeypatch):
+    from roblox_mod_ai.dynamic_architect import DynamicDesignError
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    monkeypatch.delenv("RMM_LEGACY_ARCHITECTURE_PROTOCOL", raising=False)
+    class MustNotInfer:
+        def complete_json(self, prompt, **kwargs):
+            pytest.fail("No verified feature IDs; should not contact model for blind architecture")
+    prompt = "Make an unusual game with unexplained custom mechanics"
+    research = {"ledger": {
+        "original_prompt": prompt,
+        "requirements": [{"id": "req-1", "statement": prompt}],
+        "facets": [],
+    }, "evidence": []}
+    with pytest.raises(DynamicDesignError, match="no implementation facets"):
+        RobloxDynamicArchitect(MustNotInfer()).design(prompt, research, [])
