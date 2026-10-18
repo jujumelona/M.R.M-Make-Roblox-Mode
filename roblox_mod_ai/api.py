@@ -65,7 +65,8 @@ class CompleteRobloxAISession:
             )
 
         self.router = ModelRouter(profile=model_profile)
-        self.planner = RobloxGameDesignPlanner(router=self.router)
+        self.planner = RobloxGameDesignPlanner(
+            router=self.router, output_root=self.output_root)
         self.orchestrator = RobloxProductionOrchestrator(
             workspace_root=self.output_root,
             router=self.router,
