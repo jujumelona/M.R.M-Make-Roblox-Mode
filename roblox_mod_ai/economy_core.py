@@ -68,7 +68,10 @@ local function getCoins(player: Player): IntValue?
         return nil
     end
     local stats = player:FindFirstChild("leaderstats")
-    local coins = if stats then stats:FindFirstChild("Coins") else nil
+    local coins = nil
+    if stats then
+        coins = stats:FindFirstChild("Coins")
+    end
     if coins and coins:IsA("IntValue") then
         return coins
     end
@@ -85,7 +88,10 @@ end
 
 function EconomyLedger.GetBalance(player: Player): number?
     local coins = getCoins(player)
-    return if coins then coins.Value else nil
+    if coins then
+        return coins.Value
+    end
+    return nil
 end
 
 -- All balance changes are server-side synchronous and cannot yield.
