@@ -58,6 +58,8 @@ ContextActionService:SetTitle("HatchPetAction", "Hatch")
 """
         return """--!strict
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local PetHatching = {}
+function PetHatching.start(_services)
 local remote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("HatchPet")
 local egg = workspace:WaitForChild("PetEggStand")
 remote.OnServerEvent:Connect(function(player)
@@ -73,6 +75,8 @@ remote.OnServerEvent:Connect(function(player)
     pet.Value = "Pet"
     pet.Parent = inventory
 end)
+end
+return PetHatching
 """
 
 def _session(tmp_path,monkeypatch):
@@ -105,7 +109,8 @@ def test_generic_pet_game_generates_custom_luau_world_and_remote(tmp_path,monkey
     assert result.metadata["acceptance"]["passed"], result.metadata["acceptance"]
     assert result.success is False # No Roblox engine used.
     root=Path(result.project_dir)
-    generated=(root/"src/server/CustomPetHatching.server.luau").read_text(encoding="utf-8")
+    generated=(root/"src/server/CustomPetHatching.luau").read_text(encoding="utf-8")
+    assert (root/"src/server/RMMServerBootstrap.server.luau").is_file()
     assert "HatchPet" in generated and "OwnedItems" in generated
     client=(root/"src/client/PetHatchController.client.luau").read_text(encoding="utf-8")
     assert "FireServer" in client and "BindAction" in client
