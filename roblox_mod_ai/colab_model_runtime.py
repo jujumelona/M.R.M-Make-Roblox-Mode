@@ -21,6 +21,8 @@ MODEL_FILE = "MiMo-V2.6-Distill-Qwen-9B-Q4_K_M.gguf"
 LLAMA_CPP_REF = "b10964"
 MODEL_ALIAS = "local-gguf"
 DEFAULT_PORT = 8910
+_READY_LOCAL_RUNTIME: dict[str, str] = {}
+
 
 
 class ModelStartupError(RuntimeError):
@@ -290,6 +292,18 @@ def ensure_model_runtime(*, profile: str, remote_base_url: str = "",
     if profile == "fast_test":
         return {"status": "test_mode", "url": "", "model_id": ""}
     user_url = remote_base_url.strip()
+    # A freshly verified model in THIS Python kernel need not perform a second
+    # costly first-token completion when cell 5 constructs the session.
+    cached = dict(_READY_LOCAL_RUNTIME)
+    if (cached and cached.get("url", "").startswith("http://127.0.0.1:")
+            and (not user_url or user_url.rstrip("/") == cached.get("url"))
+            and _health_ready(cached["url"])):
+        os.environ["ROBLOX_LLAMA_SERVER_URL"] = cached["url"]
+        os.environ["RMM_MODEL_BASE_URL"] = cached["url"]
+        os.environ["RMM_MODEL_ID"] = cached["model_id"]
+        print("[RMM model] reusing healthy, already verified model from setup cell",
+              flush=True)
+        return cached
     env_url = (os.environ.get("ROBLOX_LLAMA_SERVER_URL")
                or os.environ.get("RMM_MODEL_BASE_URL") or "").strip()
     if user_url:
@@ -333,4 +347,8 @@ def ensure_model_runtime(*, profile: str, remote_base_url: str = "",
     os.environ["RMM_MODEL_ID"] = model_id
     if api_key:
         os.environ["RMM_MODEL_API_KEY"] = api_key
-    return {"status": status, "url": url, "model_id": model_id}
+    record = {"status": status, "url": url, "model_id": model_id}
+    if url.startswith("http://127.0.0.1:"):
+        _READY_LOCAL_RUNTIME.clear()
+        _READY_LOCAL_RUNTIME.update(record)
+    return record
