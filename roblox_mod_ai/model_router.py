@@ -50,7 +50,7 @@ class ModelRouter:
         role: str = "planner",
         temperature: float = 0.2,
         max_tokens: int = 4096,
-        response_format: str | None = None,
+        response_format: str | dict[str, Any] | None = None,
     ) -> str:
         adapter = self.get_adapter_for_role(role)
         messages = [
@@ -91,15 +91,25 @@ class ModelRouter:
         role: str = "planner",
         temperature: float = 0.1,
         max_tokens: int = 4096,
+        json_schema: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        structured_format = (
+            {"type": "json_schema", "schema": json_schema}
+            if json_schema is not None and self.profile != "openai"
+            else "json"
+        )
         raw = self.complete(
             prompt=prompt,
             system_prompt=system_prompt,
             role=role,
             temperature=temperature,
-            response_format="json",
+            response_format=structured_format,
             max_tokens=max_tokens,
         )
+        report = getattr(self, "last_generation_report", {})
+        if isinstance(report, dict) and report.get("finish_reason") == "length":
+            raise ValueError("Model JSON completion truncated (finish_reason=length); "
+                             "request a smaller scoped output instead of reparsing it")
         try:
             return json.loads(raw)
         except json.JSONDecodeError:
