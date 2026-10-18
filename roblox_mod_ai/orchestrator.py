@@ -146,13 +146,6 @@ class RobloxProductionOrchestrator:
             research = proposal.game_design.get("pre_design_research") or {}
             contract = {
                 "request": proposal.requested_prompt,
-                # Existing ZIP checkpoints contain an unrelated generic
-                # NetworkRemotes bridge. Invalidate ONLY that built-in file
-                # after adopting exact dynamic Rojo Remote definitions.
-                "builtin_generator_revision": (
-                    "custom-network-contract-v2"
-                    if module.module_id == "mod_network_bridge" else None
-                ),
                 "module": {k: v for k, v in module.to_dict().items() if k != "code"},
                 "all_modules": [{
                     "module_id": m.module_id, "name": m.name,
@@ -166,6 +159,11 @@ class RobloxProductionOrchestrator:
                     "sha": e.get("content_sha256"),
                 } for e in research.get("evidence", [])],
             }
+            # Keep previous hashes for already successful AI-generated
+            # modules and PlayerDataManager. Only the built-in Remote bridge
+            # implementation changed and must be regenerated.
+            if module.module_id == "mod_network_bridge":
+                contract["builtin_generator_revision"] = "custom-network-contract-v2"
             return hashlib.sha256(json.dumps(
                 contract, ensure_ascii=False, sort_keys=True, default=str
             ).encode("utf-8")).hexdigest()
