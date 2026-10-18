@@ -146,6 +146,13 @@ class RobloxProductionOrchestrator:
             research = proposal.game_design.get("pre_design_research") or {}
             contract = {
                 "request": proposal.requested_prompt,
+                # Existing ZIP checkpoints contain an unrelated generic
+                # NetworkRemotes bridge. Invalidate ONLY that built-in file
+                # after adopting exact dynamic Rojo Remote definitions.
+                "builtin_generator_revision": (
+                    "custom-network-contract-v2"
+                    if module.module_id == "mod_network_bridge" else None
+                ),
                 "module": {k: v for k, v in module.to_dict().items() if k != "code"},
                 "all_modules": [{
                     "module_id": m.module_id, "name": m.name,
