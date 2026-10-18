@@ -301,9 +301,9 @@ class RobloxCodeRepairAgent:
                 # shared service module. Reject it before project packaging.
                 if not re.search(r"\breturn\s+[A-Za-z_]\w*\s*$", candidate):
                     errors.append("Server ModuleScript must return its service table")
-                if scoped_remotes and not re.search(
+                if not re.search(
                         r"\bfunction\s+[A-Za-z_]\w*\.start\s*\(", candidate):
-                    errors.append("Remote-owning server ModuleScript needs .start(services)")
+                    errors.append("Server ModuleScript needs an actual .start(services) entry point")
             if not candidate:
                 errors.append("Model returned no visible Luau implementation")
             if not candidate.strip() or len(candidate)<75:
