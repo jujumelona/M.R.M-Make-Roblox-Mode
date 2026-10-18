@@ -128,6 +128,28 @@ def render_dynamic_server_bootstrap(proposal: RobloxProposal) -> str:
         "    actionsForPlayer[actionName] = now\n"
         "    return true\n"
         "end\n"
+        "-- Bound common transport payloads before game-specific processing.\n"
+        "-- Game permissions, amounts, ownership and target class remain in the domain handler.\n"
+        "local function safeWireArgs(...)\n"
+        '    local count = select("#", ...)\n'
+        "    if count > 16 then return false end\n"
+        "    for index = 1, count do\n"
+        "        local value = select(index, ...)\n"
+        "        local kind = typeof(value)\n"
+        '        if kind == "number" then\n'
+        "            if value ~= value or value == math.huge or value == -math.huge then return false end\n"
+        '        elseif kind == "string" then\n'
+        "            if #value > 16384 then return false end\n"
+        '        elseif kind == "table" then\n'
+        "            local entries = 0\n"
+        "            for _key in pairs(value) do\n"
+        "                entries += 1\n"
+        "                if entries > 128 then return false end\n"
+        "            end\n"
+        "        end\n"
+        "    end\n"
+        "    return true\n"
+        "end\n"
     )
     names_by_id = {
         m.name for m in modules if m.kind == ModuleKind.SERVER_MODULE
@@ -161,6 +183,7 @@ def render_dynamic_server_bootstrap(proposal: RobloxProposal) -> str:
             source += (
                 "    remote.OnServerEvent:Connect(function(player, ...)\n"
                 f"        if not allowAction(player, {remote}) then return end\n"
+                "        if not safeWireArgs(...) then return end\n"
                 + ("        if select(\"#\", ...) ~= 0 then return end\n"
                    if no_args else "")
                 + "        service.handleAction(player, services, ...)\n"
@@ -170,6 +193,7 @@ def render_dynamic_server_bootstrap(proposal: RobloxProposal) -> str:
             source += (
                 "    remote.OnServerInvoke = function(player, ...)\n"
                 f"        if not allowAction(player, {remote}) then return nil end\n"
+                "        if not safeWireArgs(...) then return nil end\n"
                 + ("        if select(\"#\", ...) ~= 0 then return nil end\n"
                    if no_args else "")
                 + "        return service.handleAction(player, services, ...)\n"
