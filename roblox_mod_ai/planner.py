@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import os
 from typing import Any
 
 from .authored_plan import RobloxAuthoredPlan
@@ -318,7 +319,8 @@ class RobloxGameDesignPlanner:
         # An available LLM is a capability, not evidence that existing tested
         # templates should be replaced. Keep exact stock gameplay when the
         # audited request ledger has no unsupported requirement.
-        needs_novel = bool(research["ledger"].get("unimplemented_facets") or
+        needs_novel = bool(os.environ.get("RMM_ENABLE_DYNAMIC_DESIGN", "auto").lower() == "1" or
+                           research["ledger"].get("unimplemented_facets") or
                            research["ledger"].get("unmatched_requirements") or
                            research["ledger"].get("decomposition_pending") or
                            not any(features.values()))
