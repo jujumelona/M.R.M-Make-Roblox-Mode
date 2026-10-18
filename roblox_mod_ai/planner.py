@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import os
+from pathlib import Path
 from typing import Any
 
 from .authored_plan import RobloxAuthoredPlan
@@ -32,8 +33,10 @@ class RobloxGameDesignPlanner:
         router: ModelRouter | None = None,
         creator_store: RobloxCreatorStoreCatalog | None = None,
         pre_design_research: RobloxPreDesignResearch | None = None,
+        output_root: Path | str | None = None,
     ) -> None:
         self.router = router or ModelRouter()
+        self.output_root = output_root
         self.creator_store = creator_store or RobloxCreatorStoreCatalog()
         self.test_runner = RobloxPlaytestRunner()
         self.researcher = pre_design_research or RobloxPreDesignResearch(creator_store=self.creator_store, router=self.router)
@@ -343,7 +346,9 @@ class RobloxGameDesignPlanner:
                 # these even when one keyword also matches.
                 infrastructure = {"NetworkRemotes", "PlayerDataManager"}
                 existing = [m for m in modules if m.name in infrastructure]
-                dynamic_design = RobloxDynamicArchitect(self.router).design(
+                dynamic_design = RobloxDynamicArchitect(
+                    self.router, checkpoint_dir=self.output_root
+                ).design(
                     prompt, research, existing
                 )
                 modules = existing
