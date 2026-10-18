@@ -651,7 +651,7 @@ class RobloxDynamicArchitect:
                         for e in docs if e.get("facet") == facet_id][:2]
             payload = {"feature_id": facet_id, "feature": facet,
                        "source_requirements": subset,
-                       "overall_game_context": prompt[:1700],
+                       "game_context": {"scope": "only_this_source_clause"},
                        "existing_module_names": sorted(reserved_modules),
                        "existing_remote_names": sorted(reserved_remotes),
                        "existing_world_object_names": sorted(reserved_objects),
@@ -677,7 +677,10 @@ class RobloxDynamicArchitect:
                 "Avoid every already-reserved module/remote/object name. "
                 "Each module's behavior must be implementable Luau, not TODO. "
                 "Do not design unrelated features, reuse third-party code, "
-                "or return the entire game's architecture. JSON ONLY.\n"
+                "or return the entire game's architecture. Do not invent "
+                "fac-001/fac-002 identifiers. All behaviors, names and "
+                "remotes must serve ONLY source_requirements for this slice. "
+                "Other game features are separate host-orchestrated tasks. JSON ONLY.\\n"
                 + json.dumps(payload, ensure_ascii=False)
             )
             previous_error = ""
