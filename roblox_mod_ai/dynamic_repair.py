@@ -187,10 +187,19 @@ def repair_static_failures(proposal: RobloxProposal, output_dir: Path,
                         check_id + ": " + detail)
             if check_id.startswith("wiring."):
                 remote = check_id.removeprefix("wiring.")
-                for module in path_to_module.values():
-                    if (remote in module.code or remote in module.description):
-                        errors_by_path.setdefault(module.file_path, []).append(
-                            check_id + ": " + detail)
+                # When the CLIENT has no remote call, only the SERVER source
+                # mentions the name. Editing server-only code cannot repair a
+                # missing client sender. Let the model locate the absent side.
+                selected = model_triage_modules(
+                    proposal, check_id + ": " + detail, router)
+                for module in selected:
+                    errors_by_path.setdefault(module.file_path, []).append(
+                        check_id + ": " + detail)
+                if not selected:
+                    for module in path_to_module.values():
+                        if remote in module.code or remote in module.description:
+                            errors_by_path.setdefault(module.file_path, []).append(
+                                check_id + ": " + detail)
         if not errors_by_path:
             # General acceptance checks may not mention a file (e.g. wiring
             # with a missing client sender). Ask the model to select ONLY known
