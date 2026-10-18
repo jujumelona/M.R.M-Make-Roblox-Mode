@@ -121,6 +121,34 @@ def build_notebook() -> None:
             "\n"
             "OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)\n"
             'print(f"Output directory initialized at: {OUTPUT_ROOT}")\n'
+            "\n"
+            "\n"
+            "# Install third-party CLI tools and start the model HERE, not in the status cell.\n"
+            "from roblox_mod_ai.colab_toolchain_bootstrap import setup_colab_toolchain\n"
+            "from roblox_mod_ai.colab_model_runtime import ensure_model_runtime\n"
+            "\n"
+            "print(\"[setup] Installing Rojo, Wally, Selene and StyLua...\", flush=True)\n"
+            "INSTALLED_TOOLCHAIN = setup_colab_toolchain(\n"
+            "    install_dir=OUTPUT_ROOT.parent / \"rmm-tools\" / \"bin\",\n"
+            "    in_colab=IN_COLAB,\n"
+            ")\n"
+            "print(\"[setup] Tools ready:\", INSTALLED_TOOLCHAIN, flush=True)\n"
+            "\n"
+            "print(\"[setup] Preparing real GGUF model...\", flush=True)\n"
+            "MODEL_READY = None\n"
+            "if RUN_MODE != \"Audit\":\n"
+            "    MODEL_READY = ensure_model_runtime(\n"
+            "        profile=MODEL_PROFILE,\n"
+            "        remote_base_url=REMOTE_BASE_URL,\n"
+            "        api_key=REMOTE_API_KEY,\n"
+            "        cache_root=OUTPUT_ROOT.parent / \"rmm-model\",\n"
+            "        in_colab=IN_COLAB,\n"
+            "    )\n"
+            "    print(\"[setup] Model status:\", MODEL_READY[\"status\"], flush=True)\n"
+            "    print(\"[setup] Model:\", MODEL_READY[\"model_id\"], flush=True)\n"
+            "    print(\"[setup] API:\", MODEL_READY[\"url\"], flush=True)\n"
+            "print(\"[setup] Environment setup complete.\", flush=True)\n"
+
         ),
         id="setup",
     )
@@ -184,22 +212,6 @@ def build_notebook() -> None:
             '    icon = "사용 가능" if available else "미설치 (필수 빌드는 실패)"\n'
             '    print(f"  - {tool_name}: {icon}")\n'
             "\n"
-            "# A profile is not a loaded model. Startup must complete BEFORE constructing\n"
-            "# the session/model router, which snapshots server URL and model ID.\n"
-            "from roblox_mod_ai.colab_model_runtime import ensure_model_runtime\n"
-            "MODEL_READY = None\n"
-            "if RUN_MODE != \"Audit\":\n"
-            "    MODEL_READY = ensure_model_runtime(\n"
-            "        profile=MODEL_PROFILE,\n"
-            "        remote_base_url=REMOTE_BASE_URL,\n"
-            "        api_key=REMOTE_API_KEY,\n"
-            "        cache_root=OUTPUT_ROOT.parent / \"rmm-model\",\n"
-            "        in_colab=IN_COLAB,\n"
-            "    )\n"
-            "    print(\"AI 상태:\", MODEL_READY[\"status\"])\n"
-            "    if MODEL_READY[\"url\"]:\n"
-            "        print(\"검증된 실제 모델:\", MODEL_READY[\"model_id\"])\n"
-            "        print(\"LLM API:\", MODEL_READY[\"url\"])\n"
         ),
         id="registry",
     )
