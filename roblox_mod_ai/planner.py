@@ -349,9 +349,15 @@ class RobloxGameDesignPlanner:
                 modules = existing
                 features = {key: False for key in features}
                 for row in dynamic_design["modules"]:
+                    # Bind evidence ONLY to this module's owned capabilities.
+                    # An unrelated document is not evidence for its gameplay.
+                    owned_facets = set(dynamic_design["module_facets"].get(
+                        row.module_id, []
+                    ))
                     row.evidence_refs = list(dict.fromkeys(
                         e["url"] for e in research.get("evidence", [])
-                        if e.get("provider") == "official_docs" and e.get("url")
+                        if e.get("provider") == "official_docs"
+                        and e.get("facet") in owned_facets and e.get("url")
                     ))[:5]
                 modules.extend(dynamic_design["modules"])
                 # Design must cover every authored requirement. This is NOT
