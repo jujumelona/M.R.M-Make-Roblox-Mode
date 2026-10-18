@@ -940,6 +940,9 @@ class RobloxDynamicArchitect:
                             or binding.get("argument_count") != 0):
                         raise DynamicDesignError(
                             "Host UI route not backed by exact no-argument Remote")
+                    # One zero-argument UI route cannot be used to reach an
+                    # arbitrary server handler with fabricated payloads.
+                    host_actions[remote]["max_args"] = 0
                     host_client_actions[client_name] = binding
             if host_client_actions:
                 result["host_client_actions"] = host_client_actions
