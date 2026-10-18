@@ -210,14 +210,14 @@ def _clean_model_json(response: dict[str, Any], ledger: dict[str, Any],
     # combat target directly against the untouched original user request.
     original_request = str(ledger.get("original_prompt", ""))
     explicitly_alien_combat = bool(
-        re.search(r"외[계게]인|\\balien(?:s)?\\b|\\bextraterrestrial", original_request, re.I)
-        and re.search(r"싸움|싸우|전투|\\bfight|\\bcombat|\\bbattle", original_request, re.I)
+        re.search(r"외[계게]인|\balien(?:s)?\b|\bextraterrestrial", original_request, re.I)
+        and re.search(r"싸움|싸우|전투|\bfight|\bcombat|\bbattle", original_request, re.I)
     )
     if explicitly_alien_combat:
         found_alien_enemy = any(
-            re.search(r"외[계게]인|\\balien(?:s)?\\b|\\bextraterrestrial|\\bNPC\\b|\\benem(?:y|ies)\\b",
+            re.search(r"외[계게]인|\balien(?:s)?\b|\bextraterrestrial|\bNPC\b|\benem(?:y|ies)\b",
                       (m.name + " " + m.description), re.I)
-            and re.search(r"싸움|싸우|전투|\\bcombat|\\bfight|\\bdamage|\\battack|\\bhealth|\\bdefeat",
+            and re.search(r"싸움|싸우|전투|\bcombat|\bfight|\bdamage|\battack|\bhealth|\bdefeat",
                           (m.name + " " + m.description), re.I)
             for m in modules
         )
