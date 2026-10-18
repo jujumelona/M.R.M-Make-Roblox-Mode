@@ -103,9 +103,10 @@ def render_dynamic_server_bootstrap(proposal: RobloxProposal) -> str:
     # The host handles ENGINE transport and universal first-line safety, not
     # a 9B model. Game-specific permission, proximity, item ownership and
     # transaction checks remain mandatory in the exported handler.
-    actions = (proposal.game_design.get("dynamic_design") or {}).get(
-        "host_actions") or {}
-    if not actions:
+    design = proposal.game_design.get("dynamic_design") or {}
+    actions = design.get("host_actions") or {}
+    world_actions = design.get("host_world_actions") or {}
+    if not actions and not world_actions:
         return source
     source += (
         "\n-- Host-owned Remote ingress. AI never wires OnServerEvent itself.\n"
@@ -175,6 +176,48 @@ def render_dynamic_server_bootstrap(proposal: RobloxProposal) -> str:
                 "    end\n"
             )
         source += "end\n"
+
+    # Native Roblox ProximityPrompt input already supplies user-facing
+    # keyboard/gamepad/touch interaction. Bind on the SERVER: no client
+    # transport, no Remote, and no model-written OnServerEvent.
+    declared_world = {
+        row["name"]: row for row in design.get("world_objects", [])
+    }
+    for world_name, binding in sorted(world_actions.items()):
+        if not isinstance(binding, dict):
+            raise ValueError("Invalid host world action mapping")
+        service_name = binding.get("service")
+        entity = declared_world.get(world_name)
+        if (service_name not in names_by_id
+                or not isinstance(entity, dict)
+                or entity.get("class") != "Part"):
+            raise ValueError("Host world prompt refers to unknown world Part/service")
+        part_id = json.dumps(world_name, ensure_ascii=False)
+        service_id = json.dumps(service_name, ensure_ascii=False)
+        source += (
+            "do\n"
+            f"    local part = workspace:WaitForChild({part_id})\n"
+            '    if not part:IsA("BasePart") then error("Expected prompt world Part") end\n'
+            '    local prompt = part:FindFirstChild("RMMInteract")\n'
+            '    if not prompt or not prompt:IsA("ProximityPrompt") then\n'
+            '        error("Expected host ProximityPrompt")\n'
+            "    end\n"
+            f"    local service = services[{service_id}]\n"
+            '    if type(service) ~= "table" or type(service.handleAction) ~= "function" then\n'
+            '        error("Host prompt missing domain service handleAction")\n'
+            "    end\n"
+            "    prompt.Triggered:Connect(function(player)\n"
+            f"        if not allowAction(player, {part_id}) then return end\n"
+            "        local character = player.Character\n"
+            '        local humanoid = character and character:FindFirstChildOfClass("Humanoid")\n'
+            '        local root = character and character:FindFirstChild("HumanoidRootPart")\n'
+            "        if not humanoid or humanoid.Health <= 0 or not root then return end\n"
+            "        if (root.Position - part.Position).Magnitude > "
+            "prompt.MaxActivationDistance + 2 then return end\n"
+            "        service.handleAction(player, services, part)\n"
+            "    end)\n"
+            "end\n"
+        )
     return source
 
 
@@ -213,6 +256,22 @@ def module_bootstrap_contract(module: RobloxModuleSpec, proposal: RobloxProposal
             "host_actions") or {}).items()
         if isinstance(binding, dict) and binding.get("service") == module.name
     }
+    world_routes = {
+        name: binding for name, binding
+        in ((proposal.game_design.get("dynamic_design") or {}).get(
+            "host_world_actions") or {}).items()
+        if isinstance(binding, dict) and binding.get("service") == module.name
+    }
+    if world_routes:
+        contract += (
+            " HOST-OWNED PROXIMITY: bootstrap binds ProximityPrompt.Triggered,"
+            " authenticates active Player, checks living character and "
+            "measures distance to anchored target. Do not create your own "
+            "ProximityPrompt event or Remote. Export "
+            "Service.handleAction(player, services, targetPart) and verify "
+            "your own game-specific target permissions/state. "
+            "World actions: " + json.dumps(world_routes)
+        )
     if action_routes:
         contract += (
             " HOST-OWNED NETWORK: bootstrap handles all RemoteEvent/"
