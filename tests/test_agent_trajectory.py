@@ -326,3 +326,61 @@ def test_codegen_agent_retains_last_model_source_on_exhaustion(monkeypatch):
         RobloxCodeRepairAgent(router=Stub()).repair(module, proposal, attempts=2)
     assert "TODO" in issue.value.candidate
     assert "Placeholder code is prohibited" in issue.value.diagnostics
+
+
+
+def test_missing_client_sender_is_repaired_not_just_existing_server(tmp_path, monkeypatch):
+    """Concrete previous defect: a server references Remote but client has no sender."""
+    from types import SimpleNamespace
+    from roblox_mod_ai import dynamic_repair
+    server = make_module(
+        "dyn_ship_server", "ShipServer", "src/server/ShipServer.server.luau",
+        '--!strict\nlocal remote = game.ReplicatedStorage.Remotes:WaitForChild("LaunchShip")\n'
+        'remote.OnServerEvent:Connect(function(player) print(player) end)\n',
+    )
+    client = RobloxModuleSpec(
+        module_id="dyn_ship_client", name="ShipController",
+        kind=ModuleKind.CLIENT_SCRIPT,
+        roblox_service=RobloxService.STARTER_PLAYER_SCRIPTS,
+        file_path="src/client/ShipController.client.luau",
+        code="--!strict\nprint('launch UI created')\n",
+    )
+    proposal = RobloxProposal(
+        requested_prompt="Launch assembled spaceship", game_title="WiringRepair",
+        description="test",
+        game_design={"dynamic_design": {"remotes": {"LaunchShip": "RemoteEvent"}}},
+        modules=[server, client],
+    )
+    for m in proposal.modules:
+        p = tmp_path / m.file_path
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(m.code, encoding="utf-8")
+    diagnostic = SimpleNamespace(passed=True, diagnostics=[], error_count=0)
+    def recheck():
+        from roblox_mod_ai.dynamic_wiring import inspect_dynamic_remote_wiring
+        checks = inspect_dynamic_remote_wiring(proposal)["checks"]
+        return diagnostic, {"passed": all(x["passed"] for x in checks),
+                            "checks": checks}
+    before_analysis, failed = recheck()
+    assert not failed["passed"]
+    repair_calls = []
+    class Router:
+        def complete_json(self, prompt, **kwargs):
+            assert "LaunchShip" in prompt
+            return {"files": [client.file_path]}
+    class Repair:
+        def __init__(self, router): pass
+        def repair(self, module, proposal, existing_code, diagnostics, attempts):
+            repair_calls.append(module.name)
+            assert module == client
+            assert "wiring.LaunchShip" in diagnostics
+            return ('--!strict\nlocal remote = game.ReplicatedStorage.Remotes:'
+                    'WaitForChild("LaunchShip")\nremote:FireServer()\n')
+    monkeypatch.setattr(dynamic_repair, "RobloxCodeRepairAgent", Repair)
+    analysis, acceptance, recovered = dynamic_repair.repair_static_failures(
+        proposal, tmp_path, before_analysis, failed,
+        Router(), recheck, max_rounds=2)
+    assert recovered and acceptance["passed"]
+    assert repair_calls == ["ShipController"]
+    assert server.code == (tmp_path / server.file_path).read_text(encoding="utf-8")
+    assert "FireServer" in client.code
