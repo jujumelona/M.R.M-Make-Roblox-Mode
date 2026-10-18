@@ -82,7 +82,7 @@ def test_actual_streaming_http_closes_early_and_reports_partial_source(monkeypat
     assert "lastColonizeId" in error.value.partial_output
 
 
-def test_coder_aborted_repetition_uses_json_recovery_without_echoing_junk(monkeypatch):
+def test_coder_aborted_repetition_uses_fresh_plain_source_without_echoing_junk(monkeypatch):
     from roblox_mod_ai.model_adapters.base import ModelBackendError
     from roblox_mod_ai.spec import RobloxModuleSpec, RobloxProposal
     monkeypatch.setenv("RMM_ENABLE_MODEL_GENERATION", "1")
@@ -92,17 +92,19 @@ def test_coder_aborted_repetition_uses_json_recovery_without_echoing_junk(monkey
             self.text_calls = 0
             self.json_calls = 0
             self.last_generation_report = {}
-        def complete(self, *args, **kwargs):
+        def complete(self, prompt, **kwargs):
             self.text_calls += 1
-            raise RepeatedCodeOutput("self.lastColonizeId = nil", 8, bad)
+            if self.text_calls == 1:
+                raise RepeatedCodeOutput("self.lastColonizeId = nil", 8, bad)
+            assert "Previous invalid Luau source:" not in prompt
+            assert "self.lastColonizeId = nil" not in prompt
+            return ("--!strict\nlocal function phaseTransition(player, nextPhase)\n"
+                    "    if player == nil then return false end\n"
+                    "    if nextPhase == 'Space' then return true end\n"
+                    "    return false\nend\nprint(phaseTransition)\n")
         def complete_json(self, prompt, **kwargs):
             self.json_calls += 1
-            assert "723" not in prompt
-            assert "Previous invalid Luau source:" not in prompt
-            return {"luau": "--!strict\nlocal function phaseTransition(player, nextPhase)\n"
-                            "    if player == nil then return false end\n"
-                            "    if nextPhase == 'Space' then return true end\n"
-                            "    return false\nend\nprint(phaseTransition)\n"}
+            raise AssertionError("Malformed/repeated Luau must not be re-encoded as a giant JSON string")
     mod = RobloxModuleSpec(
         module_id="dyn_space", name="SpaceModeManager",
         kind="server_script", file_path="src/server/SpaceModeManager.server.luau",
@@ -116,8 +118,8 @@ def test_coder_aborted_repetition_uses_json_recovery_without_echoing_junk(monkey
     model = Router()
     result = RobloxCodeRepairAgent(router=model).repair(mod, proposal, attempts=3)
     assert "phaseTransition" in result
-    assert model.text_calls == 1
-    assert model.json_calls == 1
+    assert model.text_calls == 2
+    assert model.json_calls == 0
 
 
 def test_previous_repeated_source_is_not_priming_next_model_with_bad_lines(monkeypatch):
