@@ -233,10 +233,16 @@ class RobloxCodeRepairAgent:
                         "finish_reason=length" in str(last_report.get("error", ""))
                     )
                 )
+                # JSON wrapping is a transport workaround for ZERO/near-zero
+                # visible Luau, never a cure for a large, truncated source.
+                # Actual SpaceModeManager/EconomyLedger failures spent 6000
+                # tokens on unclosed code/JSON. Re-escaping the full source
+                # into JSON after nonempty truncation only increases pressure.
+                no_visible_source = len(candidate.strip()) < 75
                 json_fallback = (
                     attempt >= 1 and hasattr(self.router, "complete_json") and
-                    (ran_out_thinking or
-                     (len(candidate.strip()) < 75 and attempt >= 2))
+                    no_visible_source and
+                    (ran_out_thinking or attempt >= 2)
                 )
                 if json_fallback:
                     model_output = self.router.complete_json(
