@@ -154,7 +154,7 @@ class RobloxProductionOrchestrator:
             analysis_report = self.analyzer.analyze_files(source_map)
             acceptance = acceptance_obligations(proposal, output_dir)
             (output_dir / "request_traceability.json").write_text(
-                json.dumps(build_request_traceability(proposal, acceptance=acceptance),
+                json.dumps(build_request_traceability(proposal, acceptance=acceptance, source_root=output_dir),
                            indent=2, ensure_ascii=False), encoding="utf-8")
             if not analysis_report.passed:
                 return {"passed": False, "error": f"Luau static errors: {analysis_report.error_count}"}
@@ -200,7 +200,7 @@ class RobloxProductionOrchestrator:
                                 analysis_report=self.analyzer.analyze_files(revised_source)
                                 acceptance=acceptance_obligations(proposal, output_dir)
                                 (output_dir / "request_traceability.json").write_text(
-                                    json.dumps(build_request_traceability(proposal, acceptance=acceptance),
+                                    json.dumps(build_request_traceability(proposal, acceptance=acceptance, source_root=output_dir),
                                                indent=2, ensure_ascii=False), encoding="utf-8")
                                 if not analysis_report.passed or not acceptance["passed"]:
                                     return {"passed":False,
