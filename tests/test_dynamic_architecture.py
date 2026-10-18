@@ -755,18 +755,18 @@ def test_compound_game_architecture_shards_and_repairs_without_reprinting_game(m
             facet = payload["feature_id"]
             self.calls.append(("facet", facet))
             self.attempts[facet] += 1
-            if facet == "intent-1" and self.attempts[facet] == 1:
+            if facet == "intent-2" and self.attempts[facet] == 1:
                 raise ValueError("JSONDecodeError: model output was truncated")
             index = int(facet.removeprefix("intent-"))
             modules = [self.module(facet, "server")]
-            if facet != "intent-0":
+            if facet != "intent-1":
                 modules.append(self.module(facet, "client"))
             return {
                 "modules": modules,
                 "remotes": [{"name": f"RequestFeature{index}",
                              "type": "RemoteFunction"}],
                 "world_objects": [],
-                "acceptance": [{"requirement_id": f"req-{index+1:03}",
+                "acceptance": [{"requirement_id": f"req-{index:03}",
                                 "observable_result":
                                 "Player can use the requested feature in the game."}],
                 "acceptance_facets": [{"facet_id": facet,
@@ -780,7 +780,7 @@ def test_compound_game_architecture_shards_and_repairs_without_reprinting_game(m
             return {
                 "name": f"Feature{index}{'ClientUI' if role == 'client' else 'Server'}",
                 "role": role,
-                "requirement_ids": [f"req-{index+1:03}"],
+                "requirement_ids": [f"req-{index:03}"],
                 "facet_ids": [facet],
                 "behavior": (
                     "Client displays controls, sends request and shows a visible result."
@@ -798,11 +798,11 @@ def test_compound_game_architecture_shards_and_repairs_without_reprinting_game(m
     assert len(answer["remotes"]) == 7
     assert sum(x["passed"] for x in research["architecture_attempts"]) == 7
     assert sum(not x["passed"] for x in research["architecture_attempts"]) == 2
-    assert router.calls.count(("facet", "intent-0")) == 1
-    assert router.calls.count(("client-patch", "intent-0")) == 1
-    assert router.calls.count(("facet", "intent-1")) == 2
+    assert router.calls.count(("facet", "intent-1")) == 1
+    assert router.calls.count(("client-patch", "intent-1")) == 1
+    assert router.calls.count(("facet", "intent-2")) == 2
     assert all(router.calls.count(("facet", f"intent-{n}")) == 1
-               for n in (0, 2, 3, 4, 5, 6))
+               for n in (1, 3, 4, 5, 6, 7))
     assert len(research["architecture_subplans"]) == 7
     assert research["architecture_assembly"]["validated"] is True
     assert research["architecture_assembly"]["gameplay_verified"] is False
@@ -820,7 +820,7 @@ def test_scoped_failure_does_not_claim_a_partial_game_as_complete(monkeypatch):
             raise ValueError("malformed or unavailable JSON")
 
     research = {"ledger": ledger, "evidence": [], "reuse_candidates": []}
-    with pytest.raises(DynamicDesignError, match="Feature intent-0"):
+    with pytest.raises(DynamicDesignError, match="Feature intent-1"):
         RobloxDynamicArchitect(Router()).design("a space game", research, [])
     assert not research["architecture_subplans"]
     assert len(research["architecture_attempts"]) == 3
