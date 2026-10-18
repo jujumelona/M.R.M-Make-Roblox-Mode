@@ -103,8 +103,9 @@ def _command_version(path: Path) -> str:
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise ToolchainInstallError(f"{path.name} binary cannot start: {exc}") from exc
     message = (result.stdout or result.stderr).strip()
-    if result.returncode != 0 and not message:
-        raise ToolchainInstallError(f"{path.name} --version exited {result.returncode}")
+    if result.returncode != 0:
+        raise ToolchainInstallError(f"{path.name} --version exited "
+                                    f"{result.returncode}: {message[:150]}")
     return message.splitlines()[0][:180] or "version output unavailable"
 
 
@@ -135,6 +136,11 @@ def setup_colab_toolchain(install_dir: str | Path = "/content/rmm-tools/bin",
             else:
                 _log(f"reusing installed {name}")
             version = _command_version(destination)
+            expected_version = tag.removeprefix("v")
+            if expected_version not in version:
+                raise ToolchainInstallError(
+                    f"Version mismatch for {name}: expected {expected_version}; got {version}"
+                )
             installed[name] = str(destination)
             _log(f"{name}: {version}")
     checks = RobloxToolchainManager().check_tools()
