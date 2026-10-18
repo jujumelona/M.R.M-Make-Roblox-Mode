@@ -14,6 +14,7 @@ from .official_docs import RobloxOfficialDocs
 from .code_output_guard import LiveCodeRepetitionGuard, RepeatedCodeOutput
 from .module_prompt_scope import relevant_remotes
 from .server_modules import module_bootstrap_contract
+from .luau_api_sanity import invalid_luau_apis
 from .model_router import ModelRouter
 from .luau_analyzer import LuauStaticAnalyzer
 from .spec import RobloxModuleSpec, RobloxProposal
@@ -318,6 +319,8 @@ class RobloxCodeRepairAgent:
                 if not re.search(
                         r"\bfunction\s+[A-Za-z_]\w*\.start\s*\(", candidate):
                     errors.append("Server ModuleScript needs an actual .start(services) entry point")
+            for observation in invalid_luau_apis(candidate):
+                errors.append("ROBLOX_API_INVALID: " + observation)
             if not candidate:
                 errors.append("Model returned no visible Luau implementation")
             if not candidate.strip() or len(candidate)<75:
