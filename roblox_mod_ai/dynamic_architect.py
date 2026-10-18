@@ -920,6 +920,29 @@ class RobloxDynamicArchitect:
                         "kind": result["remotes"][remote],
                     }
             result["host_actions"] = host_actions
+            host_client_actions: dict[str, dict[str, Any]] = {}
+            client_names = {
+                m.name for m in result["modules"]
+                if m.file_path.endswith(".client.luau")
+            }
+            for part in accepted_parts:
+                for client_name, binding in part.get(
+                        "_host_client_actions", {}).items():
+                    if client_name not in client_names:
+                        raise DynamicDesignError(
+                            "Host UI requires existing client module: " +
+                            str(client_name))
+                    remote = binding.get("remote")
+                    if (client_name in host_client_actions
+                            or remote not in host_actions
+                            or binding.get("kind") != host_actions[remote]["kind"]
+                            or binding.get("input_mode") != "host_button"
+                            or binding.get("argument_count") != 0):
+                        raise DynamicDesignError(
+                            "Host UI route not backed by exact no-argument Remote")
+                    host_client_actions[client_name] = binding
+            if host_client_actions:
+                result["host_client_actions"] = host_client_actions
         research["architecture_assembly"] = {
             "strategy": "source_anchored_scoped_feature_contracts",
             "feature_count": len(facets),
