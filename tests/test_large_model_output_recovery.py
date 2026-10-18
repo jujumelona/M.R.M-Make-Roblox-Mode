@@ -133,7 +133,7 @@ def test_rojo_remote_map_and_shared_bridge_match_custom_game(tmp_path):
     assert "StageChanged" not in emitted
 
 
-def test_truncated_6000_token_plaintext_pivots_to_structured_code(monkeypatch):
+def test_truncated_6000_token_visible_source_pivots_to_fresh_plain_repair(monkeypatch):
     monkeypatch.setenv("RMM_ENABLE_MODEL_GENERATION", "1")
     plan, _, module = _plan()
     class Model:
@@ -142,17 +142,22 @@ def test_truncated_6000_token_plaintext_pivots_to_structured_code(monkeypatch):
             self.last_generation_report = {}
         def complete(self, prompt, **kwargs):
             self.plain += 1
-            self.last_generation_report = {"finish_reason": "length",
-                                           "completion_tokens": 6000}
-            return "--!strict\nlocal unfinished = function()\n" + "print('more code')\n" * 120
-        def complete_json(self, prompt, **kwargs):
-            self.structured += 1
+            if self.plain == 1:
+                self.last_generation_report = {"finish_reason": "length",
+                                               "completion_tokens": 6000}
+                return "--!strict\nlocal unfinished = function()\n" + "print('more code')\n" * 120
             assert "Previous invalid Luau source" not in prompt
-            return {"luau": "--!strict\n"
+            assert "print('more code')" not in prompt
+            self.last_generation_report = {"finish_reason": "stop",
+                                           "completion_tokens": 102}
+            return ("--!strict\n"
                     "local function getSpaceState(player: Player): string\n"
                     "    return player:GetAttribute('SpacePhase') or 'LaunchPad'\n"
-                    "end\nprint(getSpaceState)\n"}
+                    "end\nprint(getSpaceState)\n")
+        def complete_json(self, prompt, **kwargs):
+            self.structured += 1
+            raise AssertionError("Never JSON wrap an oversized visible source")
     model = Model()
     result = RobloxCodeRepairAgent(router=model).repair(module, plan, attempts=3)
     assert "getSpaceState" in result
-    assert model.plain == 1 and model.structured == 1
+    assert model.plain == 2 and model.structured == 0
