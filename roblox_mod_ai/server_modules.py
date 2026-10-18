@@ -109,12 +109,12 @@ def render_dynamic_server_bootstrap(proposal: RobloxProposal) -> str:
         return source
     source += (
         "\n-- Host-owned Remote ingress. AI never wires OnServerEvent itself.\n"
-        "local ReplicatedStorage = game:GetService(\\"ReplicatedStorage\\")\n"
-        "local Players = game:GetService(\\"Players\\")\n"
-        "local remotes = ReplicatedStorage:WaitForChild(\\"Remotes\\")\n"
-        "local lastAction = setmetatable({}, {__mode = \\"k\\"})\n"
+        "local ReplicatedStorage = game:GetService(\"ReplicatedStorage\")\n"
+        "local Players = game:GetService(\"Players\")\n"
+        "local remotes = ReplicatedStorage:WaitForChild(\"Remotes\")\n"
+        "local lastAction = setmetatable({}, {__mode = \"k\"})\n"
         "local function allowAction(player, actionName)\n"
-        "    if typeof(player) ~= \\"Instance\\" or not player:IsA(\\"Player\\") then return false end\n"
+        "    if typeof(player) ~= \"Instance\" or not player:IsA(\"Player\") then return false end\n"
         "    if player.Parent ~= Players then return false end\n"
         "    local now = os.clock()\n"
         "    local actionsForPlayer = lastAction[player]\n"
@@ -146,10 +146,10 @@ def render_dynamic_server_bootstrap(proposal: RobloxProposal) -> str:
         source += (
             "do\n"
             f"    local remote = remotes:WaitForChild({remote})\n"
-            f"    if not remote:IsA({json.dumps(kind)}) then error(\\"Wrong Remote class for {remote_name}\\") end\n"
+            f"    if not remote:IsA({json.dumps(kind)}) then error(\"Wrong Remote class for {remote_name}\") end\n"
             f"    local service = services[{service}]\n"
-            "    if type(service) ~= \\"table\\" or type(service.handleAction) ~= \\"function\\" then\n"
-            f"        error(\\"Missing server action handler for {remote_name}\\")\n"
+            "    if type(service) ~= \"table\" or type(service.handleAction) ~= \"function\" then\n"
+            f"        error(\"Missing server action handler for {remote_name}\")\n"
             "    end\n"
         )
         if kind == "RemoteEvent":
