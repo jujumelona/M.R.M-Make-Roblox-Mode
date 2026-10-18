@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .spec import RobloxProposal
 from .dynamic_wiring import inspect_dynamic_remote_wiring
+from .request_contract import ledger_complete
 
 
 def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict:
@@ -52,8 +53,7 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
         check("planning.ledger", ledger.get("original_prompt") == proposal.requested_prompt
               and bool(ledger.get("requirements")) and pre.get("schema") == "rmm/pre-design-rag-v1",
               "Same original request and feature ledger used for pre-design and production")
-        check("planning.request_coverage", not ledger.get("unimplemented_facets")
-              and not ledger.get("unmatched_requirements"),
+        check("planning.request_coverage", ledger_complete(proposal.requested_prompt, ledger),
               "No known requested gameplay silently omitted from implementation")
     if coin_requested:
         requested_count = int(proposal.game_design.get("requested_counts", {}).get("coins", 6))
