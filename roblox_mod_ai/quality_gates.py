@@ -9,6 +9,7 @@ import re
 from .spec import RobloxProposal
 from .dynamic_wiring import inspect_dynamic_remote_wiring, _mask_strings, _without_comments
 from .server_interface_audit import inspect_dynamic_server_interfaces
+from .luau_api_sanity import invalid_luau_apis
 from .request_contract import ledger_complete, implementation_facets
 
 
@@ -184,6 +185,10 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
                  r"|\bFireClient\s*\(|\bFireAllClients\s*\(")
                 if is_client else ""
             )
+            api_faults = invalid_luau_apis(
+                on_disk if on_disk is not None else body)
+            check("dynamic.api." + module.name, not api_faults,
+                  "Invalid Roblox methods detected: " + "; ".join(api_faults))
             check("dynamic.realm." + module.name,
                   not forbidden or not re.search(forbidden, active_source),
                   "Client-only/server-only Roblox APIs must not cross Luau realms")
