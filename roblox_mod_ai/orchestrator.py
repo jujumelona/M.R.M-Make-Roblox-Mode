@@ -180,6 +180,7 @@ class RobloxProductionOrchestrator:
                 "world_objects": design.get("world_objects", []),
                 "module_facets": design.get("module_facets", {}),
                 "module_remotes": design.get("module_remotes", {}),
+                "host_actions": design.get("host_actions", {}),
                 "module_requirements": design.get("module_requirements", {}),
                 "module_behaviors": design.get("module_behaviors", {}),
                 "evidence": [{
