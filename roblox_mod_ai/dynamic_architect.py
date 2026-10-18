@@ -32,6 +32,68 @@ _ALLOWED_OBJECTS = {"Part", "SpawnLocation"}
 # arbitrary 16-module/16-remote quotas. Complex user games may legitimately
 # require more, and the old quota discarded complete small-model designs.
 
+# Keep JSON grammar small: the host enforces coverage, names and semantics.
+# Schema-constrained decoding prevents malformed/truncated-looking JSON syntax,
+# but it does NOT prove that a proposed gameplay system is implemented.
+_FACET_MODULE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "name": {"type": "string"},
+        "role": {"type": "string", "enum": ["server", "client", "shared"]},
+        "requirement_ids": {"type": "array", "items": {"type": "string"}},
+        "facet_ids": {"type": "array", "items": {"type": "string"}},
+        "behavior": {"type": "string"},
+    },
+    "required": ["name", "role", "requirement_ids", "facet_ids", "behavior"],
+}
+_FACET_OUTPUT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "modules": {"type": "array", "items": _FACET_MODULE_SCHEMA},
+        "remotes": {"type": "array", "items": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "type": {"type": "string", "enum": ["RemoteEvent", "RemoteFunction"]},
+            },
+            "required": ["name", "type"],
+        }},
+        "world_objects": {"type": "array", "items": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "class": {"type": "string", "enum": ["Part", "SpawnLocation"]},
+                "position": {"type": "array", "items": {"type": "number"}},
+                "size": {"type": "array", "items": {"type": "number"}},
+            },
+            "required": ["name", "class", "position", "size"],
+        }},
+        "acceptance": {"type": "array", "items": {
+            "type": "object",
+            "properties": {
+                "requirement_id": {"type": "string"},
+                "observable_result": {"type": "string"},
+            },
+            "required": ["requirement_id", "observable_result"],
+        }},
+        "acceptance_facets": {"type": "array", "items": {
+            "type": "object",
+            "properties": {
+                "facet_id": {"type": "string"},
+                "observable_result": {"type": "string"},
+            },
+            "required": ["facet_id", "observable_result"],
+        }},
+    },
+    "required": ["modules", "remotes", "world_objects",
+                 "acceptance", "acceptance_facets"],
+}
+_CLIENT_PATCH_SCHEMA = {
+    "type": "object",
+    "properties": {"modules": {"type": "array", "items": _FACET_MODULE_SCHEMA}},
+    "required": ["modules"],
+}
+
 # These are inspected first-party *code templates*, not third-party libraries.
 # A candidate can be reused only when its behavior is an exact request match.
 _BUILTIN_CONTRACTS = {
@@ -533,6 +595,7 @@ class RobloxDynamicArchitect:
                                 "reserved_names": sorted(reserved_modules),
                             }, ensure_ascii=False),
                             role="planner", temperature=0.0, max_tokens=2600,
+                            json_schema=_CLIENT_PATCH_SCHEMA,
                         )
                         extra = patch.get("modules") if isinstance(patch, dict) else None
                         if not isinstance(extra, list) or not extra or any(
@@ -549,7 +612,7 @@ class RobloxDynamicArchitect:
                         )
                         draft = self.router.complete_json(
                             query, role="planner", temperature=0.1,
-                            max_tokens=5000,
+                            max_tokens=5000, json_schema=_FACET_OUTPUT_SCHEMA,
                         )
                     if not isinstance(draft, dict):
                         raise DynamicDesignError("Facet architecture must be JSON object")
