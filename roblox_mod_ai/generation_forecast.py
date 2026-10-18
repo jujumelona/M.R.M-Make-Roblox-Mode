@@ -61,6 +61,21 @@ def scenario_success(facet_count: int, code_module_count: int,
     )
 
 
+def wilson_95_interval(successes: int, attempts: int) -> tuple[float, float] | None:
+    """Approximate 95% binomial interval, to expose low-sample uncertainty."""
+    if attempts == 0:
+        return None
+    if attempts < 0 or successes < 0 or successes > attempts:
+        raise ValueError("Invalid binomial counts")
+    z = 1.959963984540054
+    p = successes / attempts
+    d = 1 + z * z / attempts
+    center = (p + z * z / (2 * attempts)) / d
+    half = (z / d * math.sqrt(
+        p * (1 - p) / attempts + z * z / (4 * attempts * attempts)))
+    return max(0.0, center - half), min(1.0, center + half)
+
+
 def forecast_generation(
     *,
     requested_prompt: str,
@@ -142,6 +157,9 @@ def forecast_generation(
             "matching_input_fingerprint": expected_input_fingerprint,
             "empirical_completion_rate": (
                 completed / len(confirmed) if confirmed else None),
+            "approximate_95pct_wilson_interval": (
+                list(wilson_95_interval(completed, len(confirmed)))
+                if confirmed else None),
             "limitations": ("Not an accuracy estimate without matching "
                             "identical prompt, model, quantization, runtime and toolchain. "
                             "A single run or CI fixture is not statistically reliable."),
