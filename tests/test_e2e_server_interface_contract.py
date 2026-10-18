@@ -111,11 +111,11 @@ def test_broken_cross_service_call_repairs_owning_caller_in_real_loop(
             model_calls.append(prompt)
             assert "service.call.MiningSystem.EconomyLedger.FakeGrant" in prompt
             assert "EconomyLedger.FakeGrant" in prompt
-            return ("--!strict\\n"
-                    "local MiningSystem = {}\\n"
-                    "function MiningSystem.start(services)\\n"
-                    "    services.EconomyLedger.Grant(nil, 10)\\n"
-                    "end\\nreturn MiningSystem\\n")
+            return ("--!strict\n"
+                    "local MiningSystem = {}\n"
+                    "function MiningSystem.start(services)\n"
+                    "    services.EconomyLedger.Grant(nil, 10)\n"
+                    "end\nreturn MiningSystem\n")
 
     analysis = SimpleNamespace(passed=True, diagnostics=[])
     def recheck():
