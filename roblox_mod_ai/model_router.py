@@ -116,7 +116,7 @@ class ModelRouter:
             # Retain the REAL malformed output excerpt, not a stale prior
             # successful dict. This diagnosis reaches the plan-failure report.
             import re
-            match = re.search(r"```(?:json)?\\s*(\\{.*?\\})\\s*```", raw, re.DOTALL)
+            match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
             if match:
                 try:
                     return json.loads(match.group(1))
