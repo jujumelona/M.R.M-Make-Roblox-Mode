@@ -209,6 +209,20 @@ jobs:
         run: |
           set -euo pipefail
           python tools/test_gameplay_mutations.py
+      - name: Execute generated economy service and reject six unsafe mutations
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/verify_economy_e2e.py
+          test -s .rmm-economy-e2e/receipt.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          receipt=json.loads(Path(".rmm-economy-e2e/receipt.json").read_text())
+          assert receipt["baseline_passed"], receipt
+          assert receipt["mutations_survived"]==0, receipt
+          assert receipt["mutations_killed"]==6, receipt
+          PY
       - name: Upload compile evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -217,5 +231,7 @@ jobs:
           path: |
             .rmm-smoke/
             .rmm-code-e2e/
+            .rmm-economy-e2e/
+            .rmm-dynamic-smoke/
           if-no-files-found: error
           include-hidden-files: true
