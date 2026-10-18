@@ -340,9 +340,15 @@ class RobloxPreDesignResearch:
                 })
         seen_urls: set[tuple[str, str]] = set()
 
-        # Bound transport work, not the user's actual feature ledger.
+        # Bound transport work, not the user's actual feature ledger. Newly
+        # extracted actions are most informative: a generic shop query must not
+        # exhaust the live-docs budget before custom ship/mining/travel actions.
         max_live_queries = 8
-        for index, facet in enumerate(ledger["facets"]):
+        prioritized_facets = sorted(ledger["facets"], key=lambda facet: (
+            not bool(facet.get("source_span")),
+            facet.get("id", ""),
+        ))
+        for index, facet in enumerate(prioritized_facets):
             query = facet["search_query"]
             entry = {"facet": facet["id"], "query": query,
                      "providers": ["official_docs", "local_api_index"], "status": "pending",
