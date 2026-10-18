@@ -100,7 +100,7 @@ def main() -> None:
                 f"function {identifier}.start(_services)\n"
                 "    -- Gameplay state initialization; no network binding.\n"
                 "end\n"
-                f"function {identifier}.handleAction(player, _services, ...)\n"
+                f"function {identifier}.handleAction(player, _services)\n"
                 "    if player.Parent ~= game:GetService('Players') then return false end\n"
                 "    return true\n"
                 "end\n"
