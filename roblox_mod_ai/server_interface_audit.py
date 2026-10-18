@@ -64,6 +64,26 @@ def inspect_dynamic_server_interfaces(proposal: RobloxProposal) -> dict[str, Any
                 "passed": "start" in methods,
                 "detail": "Bootstrap must call an exported start method",
             })
+        host_routed = [
+            remote for remote, action in
+            (dynamic.get("host_actions") or {}).items()
+            if isinstance(action, dict) and action.get("service") == name
+        ]
+        if host_routed:
+            checks.append({
+                "id": "service.handleAction." + name,
+                "passed": "handleAction" in methods,
+                "detail": "Host gateway invokes exported handleAction; "
+                          "routes: " + ", ".join(sorted(host_routed)),
+            })
+            source_without_comments = _mask_strings(_without_comments(module.code))
+            checks.append({
+                "id": "service.hostGatewayNoManualBinding." + name,
+                "passed": not bool(re.search(
+                    r"\\bOnServerEvent\\b|\\bOnServerInvoke\\b",
+                    source_without_comments)),
+                "detail": "Domain service must not duplicate bootstrap's Remote listeners",
+            })
 
     for caller in proposal.modules:
         if not caller.module_id.startswith("dyn_"):
