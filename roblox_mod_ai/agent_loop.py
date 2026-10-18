@@ -13,6 +13,7 @@ from typing import Any
 from .official_docs import RobloxOfficialDocs
 from .code_output_guard import LiveCodeRepetitionGuard, RepeatedCodeOutput
 from .module_prompt_scope import relevant_remotes
+from .server_modules import module_bootstrap_contract
 from .model_router import ModelRouter
 from .luau_analyzer import LuauStaticAnalyzer
 from .spec import RobloxModuleSpec, RobloxProposal
@@ -111,6 +112,7 @@ class RobloxCodeRepairAgent:
                 source_urls=[item["url"] for item in references["results"]]
                 snippets="\n".join(item.get("excerpt","")[:450] for item in references["results"])
         scoped_remotes = relevant_remotes(module, design)
+        server_contract = module_bootstrap_contract(module, proposal)
         # A previous degenerate generated source is diagnostic evidence,
         # not a useful few-shot example for the model. Never copy hundreds
         # of repeated declarations into its next generation prompt.
@@ -141,6 +143,7 @@ class RobloxCodeRepairAgent:
             f"File: {module.file_path}\nModule: {module.name}\n"
             f"Module intent: {module.description}\n"
             f"Required dependencies: {module.depends_on}\n"
+            f"{server_contract}\n"
             f"Model architecture: {proposal.game_design.get('dynamic_design', {}).get('module_behaviors', {}).get(module.module_id, '') if isinstance(proposal.game_design.get('dynamic_design'),dict) else ''}\n"
             f"Relevant remotes for THIS module only: {scoped_remotes}\n"
             f"Available world objects: {proposal.game_design.get('dynamic_design', {}).get('world_objects', []) if isinstance(proposal.game_design.get('dynamic_design'),dict) else []}\n"
@@ -173,6 +176,7 @@ class RobloxCodeRepairAgent:
                     f"User request: {proposal.requested_prompt[:1000]}\n"
                     f"File: {module.file_path}\n"
                     f"Required behavior: {module.description}\n"
+                    f"{server_contract}\n"
                     f"Relevant remotes for THIS module only: {scoped_remotes}\n"
                     "Previous validator errors: " +
                     ("Previous candidate repeated identical source statements; "
@@ -292,6 +296,14 @@ class RobloxCodeRepairAgent:
                     "do not copy the oversized truncated source. Generate ONLY "
                     "the module's assigned gameplay behavior."
                 )
+            if module_bootstrap_contract(module, proposal):
+                # A syntactically valid auto-running Script is NOT a usable
+                # shared service module. Reject it before project packaging.
+                if not re.search(r"\breturn\s+[A-Za-z_]\w*\s*$", candidate):
+                    errors.append("Server ModuleScript must return its service table")
+                if scoped_remotes and not re.search(
+                        r"\bfunction\s+[A-Za-z_]\w*\.start\s*\(", candidate):
+                    errors.append("Remote-owning server ModuleScript needs .start(services)")
             if not candidate:
                 errors.append("Model returned no visible Luau implementation")
             if not candidate.strip() or len(candidate)<75:
