@@ -143,3 +143,70 @@ def test_parser_failure_switches_to_structured_output_and_discards_bad_source(mo
     result = RobloxCodeRepairAgent(router=Router()).repair(module, plan)
     assert call_modes == ["plain", "json"]
     assert "function debit" in result
+
+
+
+def test_generator_exception_keeps_every_model_attempt_with_source_and_parser_error(monkeypatch):
+    from roblox_mod_ai.agent_loop import LuauGenerationError
+    _fake_stylua(monkeypatch)
+    monkeypatch.setenv("RMM_ENABLE_MODEL_GENERATION", "1")
+
+    class Router:
+        last_generation_report = {"finish_reason": "stop", "completion_tokens": 752}
+        def complete(self, prompt, **kwargs):
+            return BAD_SOURCE
+
+    module, proposal = _plan()
+    with pytest.raises(LuauGenerationError) as failure:
+        RobloxCodeRepairAgent(router=Router()).repair(module, proposal, attempts=2)
+    history = failure.value.history
+    assert len(history) == 2
+    assert [x["attempt"] for x in history] == [1, 2]
+    assert all("function validateCredit(player)" in x["candidate"] for x in history)
+    assert all(any("line 3, column 33" in d for d in x["diagnostics"])
+               for x in history)
+    assert history[0]["model_runtime"]["completion_tokens"] == 752
+
+
+def test_failure_zip_contains_both_original_and_recovery_model_attempts(tmp_path, monkeypatch):
+    import json
+    import zipfile
+
+    from roblox_mod_ai import orchestrator as pipeline
+    from roblox_mod_ai.agent_loop import LuauGenerationError
+    from roblox_mod_ai.orchestrator import RobloxProductionOrchestrator
+
+    module, proposal = _plan()
+    workspace = RobloxProductionOrchestrator(tmp_path)
+    initial = [{"attempt": 1, "mode": "plain_luau",
+                "candidate": BAD_SOURCE,
+                "diagnostics": ["LUAU_PARSER_SYNTAX at line 3"]}]
+    recovery = [{"attempt": 1, "mode": "structured_json",
+                 "candidate": BAD_SOURCE + "-- second attempt",
+                 "diagnostics": ["LUAU_PARSER_SYNTAX at line 5"]}]
+
+    def fail_generator(*args):
+        raise LuauGenerationError(
+            "EconomyLedger", BAD_SOURCE, ["parser rejected line 3"], history=initial)
+
+    class StubRepair:
+        def __init__(self, router):
+            pass
+        def repair(self, *args, **kwargs):
+            raise LuauGenerationError(
+                "EconomyLedger", BAD_SOURCE,
+                ["parser rejected line 5"], history=recovery)
+
+    monkeypatch.setattr(workspace.code_generator,
+                        "generate_with_self_correction", fail_generator)
+    monkeypatch.setattr(pipeline, "RobloxCodeRepairAgent", StubRepair)
+    result = workspace.execute(proposal, "failed-recovery", source_only=True)
+    assert not result.success
+    path = result.project_dir + "/failed_candidates/" + module.file_path + ".attempts.json"
+    data = json.loads(open(path, encoding="utf-8").read())
+    assert data["initial_generation_attempts"] == initial
+    assert data["recovery_attempts"] == recovery
+    with zipfile.ZipFile(result.metadata["failure_logs_zip"]) as bundle:
+        in_zip = "failed_candidates/" + module.file_path + ".attempts.json"
+        assert in_zip in bundle.namelist()
+        assert json.loads(bundle.read(in_zip))["recovery_attempts"] == recovery
