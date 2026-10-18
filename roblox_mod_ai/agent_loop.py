@@ -236,7 +236,8 @@ class RobloxCodeRepairAgent:
             errors = [d.message for d in self.analyzer.analyze_source(candidate,module.file_path)
                       if d.severity=="ERROR"]
             runtime_info = getattr(self.router, "last_generation_report", {})
-            if isinstance(runtime_info, dict) and runtime_info.get("finish_reason") == "length":
+            if (not json_fallback and isinstance(runtime_info, dict)
+                    and runtime_info.get("finish_reason") == "length"):
                 errors.append(
                     "Model ran out of output tokens before completing this module; "
                     "do not copy the oversized truncated source. Generate ONLY "
