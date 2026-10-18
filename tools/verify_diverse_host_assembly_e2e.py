@@ -22,6 +22,7 @@ from roblox_mod_ai.server_modules import (
 from roblox_mod_ai.project_generator import RobloxProjectGenerator
 from roblox_mod_ai.rbxlx_inspector import inspect_compiled_place
 from roblox_mod_ai.spec import RobloxModuleSpec, RobloxProposal
+from roblox_mod_ai.code_generator import LuauCodeGenerator
 
 
 def check_tool(command: tuple[str, ...], cwd: Path | None = None) -> dict:
@@ -66,7 +67,14 @@ def _module_sources(proposal: RobloxProposal) -> None:
             raise AssertionError("Unexpected module: " + module.module_id)
         remote_names = dynamic["module_remotes"].get(module.module_id, [])
         assert len(remote_names) <= 1
-        if module.file_path.endswith(".client.luau"):
+        if (module.file_path.endswith(".client.luau")
+                and module.name in dynamic.get("host_client_actions", {})):
+            class NoCoder:
+                def complete(self, *args, **kwargs):
+                    raise AssertionError("Built-in client UI must not call the model")
+            module.code = LuauCodeGenerator(router=NoCoder()).generate_module_code(
+                module, proposal)
+        elif module.file_path.endswith(".client.luau"):
             assert len(remote_names) == 1
             remote = remote_names[0]
             kind = dynamic["remotes"][remote]
@@ -152,6 +160,7 @@ def run_case(name: str, rows, root: Path, router_cls) -> dict:
         "generated_module_count": len(design["modules"]),
         "generated_remote_count": len(design["remotes"]),
         "host_action_count": len(design.get("host_actions", {})),
+        "host_client_count": len(design.get("host_client_actions", {})),
         "model": "DETERMINISTIC SEMANTIC MOCK - NOT REAL MIMO",
         "studio_gameplay_tested": False,
         "tools": [],
@@ -196,6 +205,19 @@ def main() -> None:
         ("mix-3", "req-003", "WorldWeather",
          "Synchronize a global storm cycle without client commands", "none"),
     ]
+    class ButtonsOnlyRouter(ArbitraryPromptSemanticTransport):
+        def complete_json(self, prompt, **kwargs):
+            reply = super().complete_json(prompt, **kwargs)
+            reply["systems"][0]["input_mode"] = "host_button"
+            reply["systems"][0]["world_entities"] = []
+            return reply
+
+    button_rows = [
+        ("host-clock", "req-clock", "ToggleClock",
+         "Toggle global world clock without selecting any target", "event"),
+        ("host-status", "req-status", "ServerStatus",
+         "Refresh server status without any target or parameters", "request_response"),
+    ]
     long_rows, _ = _sample(47, 9)
     cases = {
         "ServerOnly": server_only,
@@ -205,9 +227,12 @@ def main() -> None:
     root = Path(".rmm-general-assembly").resolve()
     root.mkdir(parents=True, exist_ok=True)
     receipts = []
+    cases["HostButtonsTwo"] = button_rows
     for name, rows in cases.items():
         receipt = run_case(
-            name, rows, root, ArbitraryPromptSemanticTransport)
+            name, rows, root,
+            ButtonsOnlyRouter if name == "HostButtonsTwo"
+            else ArbitraryPromptSemanticTransport)
         receipts.append(receipt)
         print("GENERIC ROBLOX HOST COMPILE PASS", name,
               receipt["source_facet_count"], "features",
@@ -215,6 +240,8 @@ def main() -> None:
               receipt["generated_remote_count"], "remotes")
     assert receipts[0]["generated_remote_count"] == 0
     assert receipts[1]["generated_remote_count"] == 2
+    assert receipts[-1]["host_client_count"] == 2
+    assert receipts[-1]["generated_remote_count"] == 2
     summary = {
         "schema": "rmm/generic-host-assembly-v1",
         "cases_passed": len(receipts),
