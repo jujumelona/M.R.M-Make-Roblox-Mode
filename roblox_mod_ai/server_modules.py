@@ -75,11 +75,14 @@ def render_dynamic_server_bootstrap(proposal: RobloxProposal) -> str:
     if any(m.name == _BOOTSTRAP_NAME for m in modules):
         raise ValueError("Reserved bootstrap module name collision")
     table_rows = "\n".join("    " + json.dumps(m.name) + "," for m in modules)
+    active_rows = "\n".join("    " + json.dumps(m.name) + "," for m in modules
+                           if m.kind == ModuleKind.SERVER_MODULE)
     return (
         "--!strict\n"
         "-- Host-generated startup. Modules share the same server-only registry.\n"
         "local ServerScriptService = game:GetService(\"ServerScriptService\")\n"
         "local names = {\n" + table_rows + "\n}\n"
+        "local active = {\n" + active_rows + "\n}\n"
         "local services: {[string]: any} = {}\n"
         "for _, name in names do\n"
         "    local scriptModule = ServerScriptService:WaitForChild(name)\n"
@@ -88,11 +91,12 @@ def render_dynamic_server_bootstrap(proposal: RobloxProposal) -> str:
         "    end\n"
         "    services[name] = require(scriptModule)\n"
         "end\n"
-        "for _, name in names do\n"
+        "for _, name in active do\n"
         "    local service = services[name]\n"
-        "    if type(service) == \"table\" and type(service.start) == \"function\" then\n"
-        "        service.start(services)\n"
+        "    if type(service) ~= \"table\" or type(service.start) ~= \"function\" then\n"
+        "        error(\"Missing server service start(): \" .. name)\n"
         "    end\n"
+        "    service.start(services)\n"
         "end\n"
     )
 
@@ -109,7 +113,7 @@ def module_bootstrap_contract(module: RobloxModuleSpec, proposal: RobloxProposal
         "SERVER MODULE CONTRACT: file ends in .luau and is a server-only "
         "ModuleScript, NOT a .server.luau auto-running Script. Return a table "
         "of callable functions at the end. For event handlers/init, expose "
-        "function Service.start(services) that connects declared remotes or "
+        "function Service.start(services) that connects declared remotes or 
         "world/PlayerAdded events. Bootstrap requires all modules first and "
         "calls each exported .start(services) once. The services table holds "
         "the actual exported APIs by their exact names; available keys: "
