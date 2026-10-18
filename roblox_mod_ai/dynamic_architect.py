@@ -324,25 +324,62 @@ class RobloxDynamicArchitect:
                          ensure_ascii=False)
         )
         last_error = ""
-        for attempt in range(3):
+        raw: Any = None
+        observations = research.setdefault("architecture_attempts", [])
+        for attempt in range(4):
             try:
-                query = (prompt_text + ("\nPrevious design invalid: " + last_error +
-                         "\nFix the stated contract issue; return FULL JSON."
-                         if attempt else ""))
-                raw = self.router.complete_json(
+                if attempt and isinstance(raw, dict):
+                    # Aider-style feedback: keep working from the previous edit,
+                    # rather than repeatedly asking the small model to rebuild
+                    # the entire game architecture from scratch.
+                    query = (
+                        "Design NEW Roblox Luau modules: repair ONLY the invalid "
+                        "fields in the previous architecture. Keep valid module "
+                        "names, behaviors, requirement_ids, facet_ids, remotes, "
+                        "world_objects and acceptance unchanged. Return the entire "
+                        "corrected JSON object; do not remove user gameplay. "
+                        "Validator observation: " + last_error + "\n"
+                        "Required source obligations: " +
+                        json.dumps({"requirements": reqs,
+                                    "facets": implementation_facets(ledger)},
+                                   ensure_ascii=False) + "\n"
+                        "Previous JSON:\n" + json.dumps(raw, ensure_ascii=False)[:20000]
+                    )
+                else:
+                    query = prompt_text + (
+                        "\nPrevious validator observation: " + last_error +
+                        "\nCorrect that error without losing any requirement."
+                        if attempt else ""
+                    )
+                proposed = self.router.complete_json(
                     query, role="planner", temperature=0.1)
-                # A malformed remote *type* must not discard an otherwise valid
-                # architecture and force the model to regenerate everything.
-                # Fix that field on the existing design, retaining all modules,
-                # facets, acceptance cases, and object definitions.
-                raw = self._resolve_remote_declarations(raw)
-                return _clean_model_json(raw, ledger, {m.name for m in existing_modules})
+                if isinstance(proposed, dict):
+                    raw = proposed
+                else:
+                    raw = None
+                    raise DynamicDesignError("Model output must be a JSON object")
+                # Repair a malformed remote *type* without regenerating
+                # otherwise correct modules and acceptance tests.
+                canonical = self._resolve_remote_declarations(raw)
+                validated = _clean_model_json(
+                    canonical, ledger, {m.name for m in existing_modules})
+                observations.append({"attempt": attempt + 1, "passed": True,
+                                     "validator": "all architecture obligations assigned"})
+                return validated
             except Exception as exc:
-                last_error = type(exc).__name__ + ": " + str(exc)[:220]
+                last_error = type(exc).__name__ + ": " + str(exc)[:420]
+                observations.append({
+                    "attempt": attempt + 1, "passed": False,
+                    "validator_error": last_error,
+                    # Store exact prior model output for postmortem; hard cap.
+                    "model_response": raw if isinstance(raw, dict)
+                        and len(json.dumps(raw, ensure_ascii=False)) <= 40000
+                        else "unavailable_or_too_large",
+                })
                 print("[RMM architect] attempt " + str(attempt + 1) +
                       " failed: " + last_error, flush=True)
-        raise DynamicDesignError("Small-model architecture failed after validation retries: "
-                                 + last_error)
+        raise DynamicDesignError("Architecture self-repair failed; " +
+                                 str(len(observations)) + " attempts: " + last_error)
 
     def _resolve_remote_declarations(self, raw: Any) -> Any:
         if not isinstance(raw, dict) or "remotes" not in raw:
