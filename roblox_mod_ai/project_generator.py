@@ -55,6 +55,12 @@ class RobloxProjectGenerator:
         features = proposal.game_design.get("features", {})
         counts = proposal.game_design.get("requested_counts", {})
         world: dict[str, Any] = {"$className": "Workspace"}
+        host_world_actions = dynamic.get("host_world_actions") or {}
+        declared_world_names = {
+            instance["name"] for instance in dynamic.get("world_objects", [])
+        }
+        if set(host_world_actions) - declared_world_names:
+            raise ValueError("Host world prompt references undeclared Part")
         for instance in dynamic.get("world_objects", []):
             name = instance["name"]
             if name in ("Baseplate", "SpawnLocation"):
@@ -67,6 +73,22 @@ class RobloxProjectGenerator:
                     "Position": instance["position"],
                 },
             }
+            if name in host_world_actions:
+                route = host_world_actions[name]
+                if (instance["class"] != "Part"
+                        or not isinstance(route, dict)
+                        or not isinstance(route.get("action_text"), str)
+                        or not route["action_text"].strip()):
+                    raise ValueError("ProximityPrompt must attach to supported world Part")
+                world[name]["RMMInteract"] = {
+                    "$className": "ProximityPrompt",
+                    "$properties": {
+                        "ActionText": route["action_text"][:44],
+                        "ObjectText": name,
+                        "MaxActivationDistance": 10,
+                        "RequiresLineOfSight": True,
+                    },
+                }
         if features.get("is_coin_collect"):
             coins: dict[str, Any] = {"$className": "Folder"}
             for index in range(max(1, min(int(counts.get("coins", 6)), 128))):
