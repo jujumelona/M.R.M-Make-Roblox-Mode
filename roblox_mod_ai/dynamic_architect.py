@@ -15,6 +15,7 @@ from typing import Any
 
 from .spec import ModuleKind, RobloxModuleSpec, RobloxService
 from .model_router import ModelRouter
+from .request_contract import implementation_facets
 
 _VALID_NAME = re.compile(r"^[A-Z][A-Za-z0-9]{2,58}$")
 _VALID_REMOTE = re.compile(r"^[A-Z][A-Za-z0-9]{2,55}$")
@@ -79,8 +80,11 @@ def _clean_model_json(response: dict[str, Any], ledger: dict[str, Any],
     records = response.get("modules")
     if not isinstance(records, list) or not records or len(records) > _MAX_NEW_MODULES:
         raise DynamicDesignError("One to sixteen implementable Luau modules required")
-    required_facets = {str(f["id"]) for f in ledger.get("facets", [])
-                       if isinstance(f,dict) and f.get("id")}
+    # Source-anchored atomic intents represent the user's gameplay.
+    # Genre keyword matches for the same source (e.g. shop) are search hints,
+    # not additional independent requests. Keep all unmatched facets mandatory.
+    required_facets = {str(f["id"]) for f in implementation_facets(ledger)
+                       if f.get("id")}
     modules: list[RobloxModuleSpec] = []
     chosen: set[str] = set(existing_names)
     assignment: dict[str, list[str]] = {}
@@ -228,7 +232,7 @@ class RobloxDynamicArchitect:
             "Do not output completed Luau here. Do not invent details about docs.\n"
             + json.dumps({"original_prompt":prompt,
                           "requirements":reqs,
-                          "facets":ledger.get("facets", []),
+                          "facets":implementation_facets(ledger),
                           "known_existing_modules":[m.name for m in existing_modules],
                           "official_docs":excerpts,
                           "existing_capabilities":research.get("reuse_candidates",[])},
