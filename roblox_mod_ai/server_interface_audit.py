@@ -80,7 +80,7 @@ def inspect_dynamic_server_interfaces(proposal: RobloxProposal) -> dict[str, Any
             checks.append({
                 "id": "service.hostGatewayNoManualBinding." + name,
                 "passed": not bool(re.search(
-                    r"\\bOnServerEvent\\b|\\bOnServerInvoke\\b",
+                    r"\bOnServerEvent\b|\bOnServerInvoke\b",
                     source_without_comments)),
                 "detail": "Domain service must not duplicate bootstrap's Remote listeners",
             })
