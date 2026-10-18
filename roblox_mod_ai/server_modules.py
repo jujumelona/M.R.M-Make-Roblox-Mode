@@ -129,8 +129,8 @@ def render_dynamic_server_bootstrap(proposal: RobloxProposal) -> str:
     )
     if actions:
         source += (
-            'local ReplicatedStorage = game:GetService("ReplicatedStorage")\\n'
-            'local remotes = ReplicatedStorage:WaitForChild("Remotes")\\n'
+            'local ReplicatedStorage = game:GetService("ReplicatedStorage")\n'
+            'local remotes = ReplicatedStorage:WaitForChild("Remotes")\n'
         "-- Bound common transport payloads before game-specific processing.\n"
         "-- Game permissions, amounts, ownership and target class remain in the domain handler.\n"
         "local function safeWireArgs(...)\n"
