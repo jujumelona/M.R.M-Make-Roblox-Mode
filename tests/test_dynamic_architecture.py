@@ -341,3 +341,76 @@ def test_keyword_facet_still_required_when_no_source_anchored_atom_owns_it():
     }
     # Buying is not atom-owned, so the host cannot silently drop shopping.
     assert {f["id"] for f in implementation_facets(ledger)} == {"shop", "intent-fight"}
+
+
+def test_planner_accepts_source_covered_trade_without_redundant_shop_model_label(monkeypatch):
+    """Exercise full request->architect handoff, not only the JSON validator."""
+    from roblox_mod_ai.planner import RobloxGameDesignPlanner
+    from roblox_mod_ai.pre_design_research import _ledger_with_requirements
+
+    prompt = "우주선 거래 구매 그리고 외계인 전투"
+    requirements = [
+        {"id": "req-001", "statement": "우주선 거래 구매", "source": "user_prompt"},
+        {"id": "req-002", "statement": "외계인 전투", "source": "user_prompt"},
+    ]
+    atomic_intents = [
+        {"facet_id": "intent-purchase", "requirement_id": "req-001",
+         "source_span": "우주선 거래 구매",
+         "intent": "Purchase spaceship parts for credits",
+         "english_query": "Roblox server trade and purchases"},
+        {"facet_id": "intent-combat", "requirement_id": "req-002",
+         "source_span": "외계인 전투",
+         "intent": "Fight alien enemies",
+         "english_query": "Roblox alien combat server authority"},
+    ]
+    ledger = _ledger_with_requirements(prompt, requirements, atomic_intents=atomic_intents)
+    assert "shop" in {f["id"] for f in ledger["facets"]}
+    research = {
+        "ledger": ledger,
+        "schema": "rmm/pre-design-rag-v1",
+        "status": "live_disabled", "queries": [], "evidence": [],
+        "asset_candidates": [], "reuse_candidates": [], "provider_failures": [],
+    }
+    class ArchitectRouter:
+        def complete_json(self, query, **kwargs):
+            # The architect should send exactly the source-backed obligations,
+            # not duplicate generic taxonomy from its keyword classifier.
+            payload = json.loads(query[query.index('{"original_prompt"'):])
+            facets = {f["id"] for f in payload["facets"]}
+            assert facets == {"intent-purchase", "intent-combat"}
+            modules = []
+            for i, (req, facet) in enumerate(zip(requirements, atomic_intents)):
+                modules.append({
+                    "name": f"GameplaySystem{i+1}",
+                    "role": "server", "requirement_ids": [req["id"]],
+                    "facet_ids": [facet["facet_id"]],
+                    "behavior": "Server validates and commits gameplay actions for " + req["statement"],
+                })
+            return {
+                "modules": modules, "remotes": [], "world_objects": [],
+                "acceptance": [
+                    {"requirement_id": req["id"],
+                     "observable_result": "Players can perform requested " + req["statement"]}
+                    for req in requirements
+                ],
+                "acceptance_facets": [
+                    {"facet_id": facet["facet_id"],
+                     "observable_result": "Players can perform the assigned " + facet["intent"]}
+                    for facet in atomic_intents
+                ],
+            }
+    class Research:
+        def research(self, actual_prompt):
+            assert actual_prompt == prompt
+            return research
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    plan = RobloxGameDesignPlanner(
+        router=ArchitectRouter(), pre_design_research=Research()
+    ).plan(prompt)
+    dyn = plan.proposal.game_design["dynamic_design"]
+    assert dyn is not None
+    assert set(dyn["acceptance_facets"]) == {"intent-purchase", "intent-combat"}
+    assert "shop" not in dyn["acceptance_facets"]
+    assert {x.name for x in plan.proposal.modules if x.module_id.startswith("dyn_")} == {
+        "GameplaySystem1", "GameplaySystem2"
+    }
