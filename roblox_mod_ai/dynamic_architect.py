@@ -523,6 +523,7 @@ class RobloxDynamicArchitect:
                 observations.append({
                     "attempt": attempt + 1, "passed": False,
                     "validator_error": last_error,
+                    "model_runtime": getattr(self.router, "last_generation_report", {}),
                     # Store exact prior model output for postmortem; hard cap.
                     "model_response": raw if isinstance(raw, dict)
                         and len(json.dumps(raw, ensure_ascii=False)) <= 40000
@@ -693,6 +694,7 @@ class RobloxDynamicArchitect:
                     observations.append({
                         "facet_id": facet_id, "attempt": attempt + 1,
                         "passed": False, "validator_error": previous_error,
+                        "model_runtime": getattr(self.router, "last_generation_report", {}),
                         "model_response": draft if isinstance(draft, dict)
                             and len(json.dumps(draft, ensure_ascii=False)) <= 16000
                             else "unavailable_or_too_large",
