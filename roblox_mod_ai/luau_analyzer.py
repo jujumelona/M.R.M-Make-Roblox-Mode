@@ -49,6 +49,8 @@ class LuauAnalysisReport:
         }
 
 
+from .dynamic_wiring import _mask_strings, _without_comments
+
 class LuauStaticAnalyzer:
     """Performs static checks, type assertions, and linter passes on Luau code."""
 
@@ -160,7 +162,9 @@ class LuauStaticAnalyzer:
                 continue
 
             # Strip single line comments
-            code_line = re.sub(r"--.*$", "", line)
+            # Quoted Lua strings may contain words such as "function" or
+            # "end". Never treat them as syntax-block tokens.
+            code_line = _mask_strings(_without_comments(line))
 
             # Rule 3: Deprecated legacy globals (wait, spawn, delay)
             if re.search(r"(?<![.\w:])wait\s*\(", code_line):
