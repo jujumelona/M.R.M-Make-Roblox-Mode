@@ -103,8 +103,9 @@ class RobloxCodeRepairAgent:
         try:
             LiveCodeRepetitionGuard.inspect(existing_code)
         except RepeatedCodeOutput as loop:
-            diagnostics += ("\nPrevious source had pathological repeated lines: " +
-                            str(loop))
+            diagnostics += ("\nPrevious source had " + str(loop.count) +
+                            " consecutive duplicate Luau statements. "
+                            "The failed source is excluded from the repair prompt.")
             existing_code = ""
         prompt=(
             "Implement a complete Luau Roblox gameplay module. Output only code.\n"
@@ -140,7 +141,10 @@ class RobloxCodeRepairAgent:
                     f"File: {module.file_path}\n"
                     f"Required behavior: {module.description}\n"
                     f"Remote types: {design.get('remotes', {})}\n"
-                    "Previous validator errors: " + "; ".join(errors[:10]) + "\n"
+                    "Previous validator errors: " +
+                    ("Previous candidate repeated identical source statements; "
+                     "rewrite with functions and new implementation structure."
+                     if degenerate_attempt else "; ".join(errors[:10])) + "\n"
                 )
                 if candidate and len(candidate) > 75 and not degenerate_attempt:
                     compact += "Previous invalid Luau source:\n" + candidate[:9000] + "\n"
