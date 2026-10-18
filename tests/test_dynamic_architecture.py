@@ -714,8 +714,10 @@ def test_large_design_cannot_hide_missing_user_gameplay_or_duplicate_remote():
     ledger, raw = _space_game_size_regression()
     missing = copy.deepcopy(raw)
     for module in missing["modules"]:
-        module["facet_ids"] = [x for x in module["facet_ids"]
-                               if x != "intent-4"]
+        if "intent-4" in module["facet_ids"]:
+            # Reassign rather than leaving an empty module declaration:
+            # simulate a plausibly formed model answer omitting one mechanic.
+            module["facet_ids"] = ["intent-3"]
     with pytest.raises(DynamicDesignError, match="Unimplemented gameplay facets"):
         _clean_model_json(missing, ledger, set())
     duplicate = copy.deepcopy(raw)
