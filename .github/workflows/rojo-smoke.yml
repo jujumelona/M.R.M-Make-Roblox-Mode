@@ -213,6 +213,21 @@ jobs:
           set -euo pipefail
           python tools/verify_space_assembly_e2e.py
           test -s .rmm-space-assembly/receipt.json
+          python tools/forecast_generation.py \
+            --proposal .rmm-space-assembly/proposal.json \
+            --output .rmm-space-assembly/generation_forecast.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report=json.loads(Path(".rmm-space-assembly/generation_forecast.json").read_text())
+          counts=report["source_counts"]
+          assert counts["feature_count"]==7, counts
+          assert counts["generated_module_count"]==14, counts
+          assert counts["remote_count"]==7, counts
+          assert counts["minimum_sequential_model_completions"]==21, counts
+          assert report["measured_full_game_model_runs"]["empirical_completion_rate"] is None
+          assert all(0 < row["single_attempt_through_static_build"] < 1 for row in report["scenarios"])
+          PY
       - name: Actual orchestrator E2E with real Luau and Rojo tools
         shell: bash
         run: |
