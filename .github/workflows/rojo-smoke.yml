@@ -216,6 +216,9 @@ jobs:
           python tools/forecast_generation.py \
             --proposal .rmm-space-assembly/proposal.json \
             --output .rmm-space-assembly/generation_forecast.json
+          python tools/profile_generation_prompts.py \
+            --proposal .rmm-space-assembly/proposal.json \
+            --output .rmm-space-assembly/coder_prompt_profile.json
           python - <<'PY'
           import json
           from pathlib import Path
@@ -226,6 +229,11 @@ jobs:
           assert counts["remote_count"]==7, counts
           assert counts["minimum_sequential_model_completions"]==21, counts
           assert report["measured_full_game_model_runs"]["empirical_completion_rate"] is None
+          profile=json.loads(Path(".rmm-space-assembly/coder_prompt_profile.json").read_text())
+          assert profile["module_count"]==14, profile
+          assert not profile["requirements_leak_detected"], profile
+          assert all(r["has_remote_contract"] and r["has_module_file_path"]
+                     and r["has_declared_own_requirement"] for r in profile["modules"])
           assert all(0 < row["single_attempt_through_static_build"] < 1 for row in report["scenarios"])
           PY
       - name: Actual orchestrator E2E with real Luau and Rojo tools
