@@ -35,7 +35,7 @@ SEMANTIC_FACET_SCHEMA = {
                     "interaction": {"type": "string", "enum": [
                         "none", "event", "request_response"]},
                     "input_mode": {"type": "string", "enum": [
-                        "custom", "host_button"]},
+                        "custom", "host_button", "world_prompt"]},
                     "observable_result": {"type": "string"},
                     "world_entities": {"type": "array", "items": {
                         "type": "string"}},
@@ -91,6 +91,7 @@ def expand_semantic_facet(
     modules: list[dict[str, Any]] = []
     remotes: list[dict[str, str]] = []
     objects: list[dict[str, Any]] = []
+    host_world_actions: dict[str, dict[str, str]] = {}
     results: list[str] = []
     used_modules = set(reserved_modules)
     used_remotes = set(reserved_remotes)
@@ -114,8 +115,11 @@ def expand_semantic_facet(
             raise HostArchitectureError("Gameplay system needs observable result")
         if re.search(r"\b(TODO|stub|placeholder|implement later)\b", server, re.I):
             raise HostArchitectureError("Unimplemented gameplay cannot pass host plan")
-        if input_mode not in {"custom", "host_button"}:
+        if input_mode not in {"custom", "host_button", "world_prompt"}:
             raise HostArchitectureError("Unknown input mode")
+        if input_mode == "world_prompt" and interaction != "event":
+            raise HostArchitectureError(
+                "ProximityPrompt is a one-way world interaction, not a response Remote")
         if input_mode == "host_button" and interaction == "none":
             raise HostArchitectureError("Server-only behavior cannot have a button")
         if interaction not in {"none", "event", "request_response"}:
@@ -123,6 +127,9 @@ def expand_semantic_facet(
         if not isinstance(client, str) or (
                 interaction != "none" and len(client.strip()) < 24):
             raise HostArchitectureError("Client interaction needs a real UI/input behavior")
+        if input_mode == "world_prompt" and len(world) != 1:
+            raise HostArchitectureError(
+                "Host world prompt must attach to exactly one semantic world Part")
         if input_mode == "host_button" and world:
             # Clicking a generic button with zero arguments must not
             # masquerade as choosing a mineable node or combat target.
@@ -140,7 +147,7 @@ def expand_semantic_facet(
         server_name = root + "Server"
         client_name = root + "Client"
         remote_name = root + "Action"
-        assigned_remotes = [remote_name] if interaction != "none" else []
+        assigned_remotes = [remote_name] if interaction != "none" and input_mode != "world_prompt" else []
         module_names = [server_name] + ([client_name] if assigned_remotes else [])
         if used_modules.intersection(module_names):
             raise HostArchitectureError("Generated module name collision")
@@ -180,6 +187,10 @@ def expand_semantic_facet(
             # Global placement slot includes already accepted facets, so
             # separate semantic systems do not spawn Parts on top of each other.
             slot = len(used_objects) - 1
+            if input_mode == "world_prompt":
+                host_world_actions[object_name] = {
+                    "service": server_name, "action_text": name.strip()[:44],
+                }
             objects.append({
                 "name": object_name, "class": "Part",
                 # Deterministic starter geometry only; game-specific authored
@@ -198,6 +209,7 @@ def expand_semantic_facet(
         for rid in requirement_ids
     ]
     return {
+        "_host_world_actions": host_world_actions,
         "_host_client_actions": {
             modules_row["name"]: {
                 "remote": modules_row["uses_remotes"][0],
