@@ -12,6 +12,7 @@ from .authored_plan import RobloxAuthoredPlan
 from .code_generator import LuauCodeGenerator
 from .dynamic_repair import repair_tool_diagnostics
 from .quality_gates import acceptance_obligations, make_artifact_manifest
+from .request_traceability import build_request_traceability
 from .runtime_verification import OpenCloudRuntimeVerifier
 from .rbxlx_inspector import inspect_compiled_place
 import hashlib
@@ -152,6 +153,9 @@ class RobloxProductionOrchestrator:
                           for m in proposal.modules}
             analysis_report = self.analyzer.analyze_files(source_map)
             acceptance = acceptance_obligations(proposal, output_dir)
+            (output_dir / "request_traceability.json").write_text(
+                json.dumps(build_request_traceability(proposal, acceptance=acceptance),
+                           indent=2, ensure_ascii=False), encoding="utf-8")
             if not analysis_report.passed:
                 return {"passed": False, "error": f"Luau static errors: {analysis_report.error_count}"}
             if not acceptance["passed"]:
@@ -195,6 +199,9 @@ class RobloxProductionOrchestrator:
                                     encoding="utf-8") for m in proposal.modules}
                                 analysis_report=self.analyzer.analyze_files(revised_source)
                                 acceptance=acceptance_obligations(proposal, output_dir)
+                                (output_dir / "request_traceability.json").write_text(
+                                    json.dumps(build_request_traceability(proposal, acceptance=acceptance),
+                                               indent=2, ensure_ascii=False), encoding="utf-8")
                                 if not analysis_report.passed or not acceptance["passed"]:
                                     return {"passed":False,
                                             "error":"Post-repair static/contract check failed"}
