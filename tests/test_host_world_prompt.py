@@ -15,6 +15,14 @@ from roblox_mod_ai.server_modules import (
     module_bootstrap_contract,
 )
 from roblox_mod_ai.server_interface_audit import inspect_dynamic_server_interfaces
+@pytest.fixture(autouse=True)
+def _fixture_uses_explicit_local_semantic_transport(monkeypatch):
+    # CI has no running llama.cpp model. It intentionally supplies a
+    # deterministic semantic transport, never the real model endpoint.
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    monkeypatch.delenv("RMM_LEGACY_ARCHITECTURE_PROTOCOL", raising=False)
+
+
 from roblox_mod_ai.spec import RobloxProposal
 
 
