@@ -75,10 +75,9 @@ class LlamaCppAdapter(ModelAdapter):
         if request.response_format == "json":
             payload["response_format"] = {"type": "json_object"}
         elif isinstance(request.response_format, dict):
-            payload["response_format"] = {
-                "type": "json_object",
-                "schema": request.response_format,
-            }
+            # Preserve the exact JSON Schema response_format accepted by
+            # llama.cpp; wrapping it in json_object invalidates the schema.
+            payload["response_format"] = request.response_format
 
         # llama.cpp supports native repeat penalties on its chat endpoint.
         # These settings apply only to local, unstructured CODER output.
