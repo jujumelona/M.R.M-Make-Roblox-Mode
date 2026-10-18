@@ -30,7 +30,8 @@ jobs:
             tests/test_ci_luau_api_failure_corpus.py \
             tests/test_ci_real_e2e_receipts.py \
             tests/test_e2e_server_interface_contract.py \
-            tests/test_space_seven_facets_e2e.py
+            tests/test_space_seven_facets_e2e.py \
+            tests/test_generalized_host_prompt_matrix.py
       - name: Install real Roblox toolchain
         uses: paradoxum-games/setup-rokit@v3
         with:
@@ -236,6 +237,16 @@ jobs:
                      and r["has_declared_own_requirement"] for r in profile["modules"])
           assert all(0 < row["single_attempt_through_static_build"] < 1 for row in report["scenarios"])
           PY
+      - name: Compile diverse non-space host architectures with real Rojo
+        shell: bash
+        env:
+          RMM_ENABLE_DYNAMIC_DESIGN: "1"
+          RMM_PREDESIGN_LIVE_SEARCH: "0"
+        run: |
+          set -euo pipefail
+          python tools/verify_diverse_host_assembly_e2e.py
+          test -s .rmm-general-assembly/summary.json
+
       - name: Actual orchestrator E2E with real Luau and Rojo tools
         shell: bash
         run: |
@@ -276,6 +287,7 @@ jobs:
             .rmm-code-e2e/
             .rmm-economy-e2e/
             .rmm-space-assembly/
+            .rmm-general-assembly/
             .rmm-dynamic-smoke/
           if-no-files-found: error
           include-hidden-files: true
