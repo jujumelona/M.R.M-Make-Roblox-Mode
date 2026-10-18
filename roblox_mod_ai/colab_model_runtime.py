@@ -65,7 +65,9 @@ def _model_probe(url: str, api_key: str = "") -> str | None:
                     "model": model_id,
                     "messages": [{"role": "user", "content": "Reply with the single word READY."}],
                     "temperature": 0,
-                    "max_tokens": 160,
+                    # A reasoning model can exhaust a small completion budget
+                    # before emitting its final answer.
+                    "max_tokens": 512,
                     "stream": False,
                 },
             )
@@ -506,7 +508,7 @@ def _prepare_cuda_linker_environment(binary: Path, cache_root: Path) -> dict[str
     return env
 
 
-def _start_managed_server(binary: Path, model: Path, cache_root: Path) -> str:
+def _start_managed_server(binary: Path, model: Path, cache_root: Path) -> tuple[str, str]:
     if not model.is_file() or model.stat().st_size < 1_000_000_000:
         raise ModelStartupError("Downloaded GGUF missing or unexpectedly small: " + str(model))
     port = next((p for p in range(DEFAULT_PORT, DEFAULT_PORT + 12)
@@ -546,9 +548,10 @@ def _start_managed_server(binary: Path, model: Path, cache_root: Path) -> str:
             )
         if _health_ready(url):
             print("[RMM model] weights loaded; testing real chat completion", flush=True)
-            if _probe_with_progress(url):
+            verified_id = _probe_with_progress(url)
+            if verified_id:
                 print("[RMM model] real chat completion verified", flush=True)
-                return url
+                return url, verified_id
             process.terminate()
             raise ModelStartupError(
                 "Server became healthy but failed a real chat completion. Log: " +
@@ -619,10 +622,9 @@ def ensure_model_runtime(*, profile: str, remote_base_url: str = "",
             binary = _ensure_llama_server_binary(root)
             print("[RMM model] checking/downloading GGUF weights", flush=True)
             model = _download_gguf(root)
-            url = _start_managed_server(binary, model, root)
-            model_id = _probe_with_progress(url) or ""
-            if not model_id:
-                raise ModelStartupError("Managed model produced no chat response.")
+            # The startup path already performed a real chat completion and
+            # returned its verified model ID. Do not repeat expensive inference.
+            url, model_id = _start_managed_server(binary, model, root)
             status = "managed_colab"
     os.environ["ROBLOX_LLAMA_SERVER_URL"] = url
     os.environ["RMM_MODEL_BASE_URL"] = url
