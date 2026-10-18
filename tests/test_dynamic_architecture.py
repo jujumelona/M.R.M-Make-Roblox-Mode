@@ -503,3 +503,56 @@ def test_remote_type_unrepairable_cannot_silently_become_event():
     with pytest.raises(DynamicDesignError, match="Cannot determine"):
         RobloxDynamicArchitect(router=BadRouter())._resolve_remote_declarations(
             {"remotes":[{"name":"BuyPart","type":"Remote"}]})
+
+
+
+def test_full_architect_recovers_ambiguous_remote_without_rebuilding_valid_modules(monkeypatch):
+    """Regression: the complete plan API keeps the first architecture after targeted repair."""
+    from roblox_mod_ai.dynamic_architect import RobloxDynamicArchitect
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    class TwoStepModel:
+        def __init__(self):
+            self.calls = []
+        def complete_json(self, prompt, **kwargs):
+            self.calls.append(prompt)
+            if "Choose exact Roblox transport semantics" in prompt:
+                return {"remotes": [{"name": "TradePurchase", "type": "RemoteFunction"}]}
+            assert "Design NEW Roblox Luau modules" in prompt
+            if len([p for p in self.calls if "Design NEW" in p]) > 1:
+                pytest.fail("Complete architecture should NOT be regenerated")
+            return {
+                "modules": [
+                    {"name": "TradeService", "role": "server",
+                     "requirement_ids": ["req-001"], "facet_ids": ["intent-trade"],
+                     "behavior": "Server validates credits and commits atomic shop purchases."},
+                    {"name": "TradeController", "role": "client",
+                     "requirement_ids": ["req-001"], "facet_ids": ["intent-trade"],
+                     "behavior": "Client purchase menu invokes server and shows returned result."}
+                ],
+                "remotes": [{"name": "TradePurchase", "type": "Remote"}],
+                "world_objects": [{"name": "TradingTerminal", "class": "Part",
+                                   "position": [0, 3, 0], "size": [2, 4, 2]}],
+                "acceptance": [{"requirement_id": "req-001",
+                                "observable_result": "Player purchases debit credits exactly once."}],
+                "acceptance_facets": [{"facet_id": "intent-trade",
+                                       "observable_result": "Players purchase a ship part with sufficient credits."}],
+            }
+    router = TwoStepModel()
+    result = RobloxDynamicArchitect(router=router).design(
+        "우주선 부품 거래", {
+            "ledger": {
+                "requirements": [{"id": "req-001", "statement": "우주선 부품 거래"}],
+                "facets": [{"id": "intent-trade", "requirements": ["req-001"],
+                            "source_span": "우주선 부품 거래"}],
+                "atomic_intents": [
+                    {"requirement_id": "req-001", "facet_id": "intent-trade",
+                     "source_span": "우주선 부품 거래"}
+                ],
+                "decomposition_method": "source_anchored_model",
+            },
+            "evidence": [], "reuse_candidates": []
+        }, []
+    )
+    assert result["remotes"] == {"TradePurchase": "RemoteFunction"}
+    assert {m.name for m in result["modules"]} == {"TradeService", "TradeController"}
+    assert len(router.calls) == 2
