@@ -144,9 +144,20 @@ class RobloxCodeRepairAgent:
                             " consecutive duplicate Luau statements. "
                             "The failed source is excluded from the repair prompt.")
             existing_code = ""
+        has_economy = any(
+            m.name == "EconomyLedger"
+            and m.file_path.startswith("src/server/")
+            for m in proposal.modules
+        )
+        economy_guidance = (
+            "When handling credits, use the existing server-only "
+            "EconomyLedger.GetBalance/TrySpend/Grant contract rather than "
+            "creating a new currency balance.\\n"
+            if has_economy and module.name != "EconomyLedger" else ""
+        )
         prompt=(
-            "Implement ONLY the requested ONE Luau module. Output code, never Markdown.\n"
-            "Do not implement other modules' mining/trading/combat/colonization systems.\n"
+            "Implement ONLY the requested ONE Luau module. Output code, never Markdown.\\n"
+            "Do not implement features assigned to other modules.\\n"
             "If a dependency owns another mechanic, use its declared interface; "
             "do not duplicate it inside this source.\n"
             "Do not repeat identical assignments or statements in a loop; "
@@ -160,10 +171,7 @@ class RobloxCodeRepairAgent:
             "game-specific state transitions, permissions and validation. "
             "Never use Players.LocalPlayer on server, game.GetPlayers(), "
             "os.now(), type.isinteger(), or invented APIs.\n"
-            "When this game has a shared EconomyLedger ModuleScript, server "
-            "purchase/mining handlers must use "
-            "require(game:GetService('ServerScriptService'):WaitForChild('EconomyLedger')) "
-            "and its GetBalance, TrySpend, Grant methods, not an invented ledger.\n"
+            f"{economy_guidance}"
             f"Owned user requirement: {scoped_user_request}\n"
             f"File: {module.file_path}\nModule: {module.name}\n"
             f"Module intent: {module.description}\n"
