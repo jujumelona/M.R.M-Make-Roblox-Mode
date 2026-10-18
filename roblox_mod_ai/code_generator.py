@@ -27,7 +27,13 @@ class LuauCodeGenerator:
         """Generates Luau code for each module in the proposal with self-correction feedback loop."""
         completed_modules: list[RobloxModuleSpec] = []
         for mod in proposal.modules:
-            if not mod.code:
+            dynamic = proposal.game_design.get("dynamic_design") or {}
+            host_owned = (
+                mod.module_id == "mod_dynamic_server_bootstrap"
+                or (mod.module_id.startswith("dyn_")
+                    and mod.name in dynamic.get("host_client_actions", {}))
+            )
+            if host_owned or not mod.code:
                 code = self.generate_with_self_correction(mod, proposal)
                 mod.code = code
             completed_modules.append(mod)
