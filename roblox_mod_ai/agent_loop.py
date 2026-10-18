@@ -113,6 +113,20 @@ class RobloxCodeRepairAgent:
                 snippets="\n".join(item.get("excerpt","")[:450] for item in references["results"])
         scoped_remotes = relevant_remotes(module, design)
         server_contract = module_bootstrap_contract(module, proposal)
+        # The model is hired for ONE feature, not for the whole 7-feature
+        # space game. Original user clauses remain binding via source IDs.
+        ledger = pre.get("ledger", {}) if isinstance(pre, dict) else {}
+        owned_requirements = set(design.get("module_requirements", {}).get(
+            module.module_id, []))
+        source_clauses = [
+            str(req.get("statement", ""))
+            for req in ledger.get("requirements", [])
+            if isinstance(req, dict) and req.get("id") in owned_requirements
+        ]
+        scoped_user_request = (
+            " | ".join(source_clauses)
+            if source_clauses else proposal.requested_prompt
+        )
         # A previous degenerate generated source is diagnostic evidence,
         # not a useful few-shot example for the model. Never copy hundreds
         # of repeated declarations into its next generation prompt.
@@ -139,7 +153,7 @@ class RobloxCodeRepairAgent:
             "purchase/mining handlers must use "
             "require(game:GetService('ServerScriptService'):WaitForChild('EconomyLedger')) "
             "and its GetBalance, TrySpend, Grant methods, not an invented ledger.\n"
-            f"User request: {proposal.requested_prompt}\n"
+            f"Owned user requirement: {scoped_user_request}\n"
             f"File: {module.file_path}\nModule: {module.name}\n"
             f"Module intent: {module.description}\n"
             f"Required dependencies: {module.depends_on}\n"
@@ -173,7 +187,7 @@ class RobloxCodeRepairAgent:
                     "Never invent Roblox APIs (no Players.LocalPlayer in server "
                     "scripts, no os.now(), no type.isinteger()). "
                     "Prefer an explicit small service contract to verbose source.\n"
-                    f"User request: {proposal.requested_prompt[:1000]}\n"
+                    f"Owned user requirement: {scoped_user_request[:1000]}\n"
                     f"File: {module.file_path}\n"
                     f"Required behavior: {module.description}\n"
                     f"{server_contract}\n"
