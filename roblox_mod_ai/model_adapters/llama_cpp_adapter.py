@@ -64,7 +64,7 @@ class LlamaCppAdapter(ModelAdapter):
         is_local_llama = self.base_url.lower().startswith((
             "http://127.0.0.1:", "http://localhost:", "http://[::1]:"))
         no_reasoning = (
-            (request.response_format == "json" and
+            (request.response_format is not None and
              os.environ.get("RMM_JSON_ENABLE_THINKING", "0") != "1")
             or (request.metadata.get("generation_role") == "coder" and
                 os.environ.get("RMM_CODE_ENABLE_THINKING", "0") != "1")
