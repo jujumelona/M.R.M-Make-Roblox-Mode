@@ -79,52 +79,70 @@ def _wordmatch(needle: str, haystack: str) -> bool:
 
 
 def _fragments(prompt: str) -> list[str]:
-    # Split only visibly separable clauses; keep the unmodified prompt separately.
-    fragments = re.split(r"(?:\s*[,;，；\n]\s*|\s+(?:그리고|및|또한|and)\s+)", prompt)
-    return [part for item in fragments if (part := _clean(item))]
+    from .request_contract import clauses
+    return clauses(prompt)
 
 
-def build_request_ledger(prompt: str) -> dict[str, Any]:
-    original = str(prompt)
-    if not original.strip():
-        raise ValueError("Cannot research an empty Roblox request")
-    text = original.casefold()
-    clauses = _fragments(original) or [_clean(original)]
-    requirements = [
-        {
-            "id": f"req-{index:03d}",
-            "statement": statement,
-            "source": "user_prompt",
-        }
-        for index, statement in enumerate(clauses, 1)
-    ]
+def _ledger_with_requirements(original: str, requirements: list[dict[str, Any]],
+                              atomic_intents: list[dict[str, str]] | None = None,
+                              decomposition_pending: list[str] | None = None) -> dict[str, Any]:
+    from .request_contract import clean
+    intents = atomic_intents or []
+    pending_clauses = decomposition_pending or []
     facets: list[dict[str, Any]] = []
     for name, aliases, query, implementation_key in FACETS:
         matches = [entry["id"] for entry in requirements
                    if any(_wordmatch(alias, entry["statement"].casefold()) for alias in aliases)]
-        # Clauses can contain multiple feature concepts. Never discard any clause.
         if matches:
             facets.append({
-                "id": name,
-                "requirements": matches,
-                "search_query": query,
-                "implementation_key": implementation_key,
+                "id": name, "requirements": matches,
+                "search_query": query, "implementation_key": implementation_key,
                 "implemented_by_builtin": implementation_key is not None,
             })
-    covered = {key for facet in facets for key in facet["requirements"]}
-    unresolved_clauses = [r["id"] for r in requirements if r["id"] not in covered]
-    # A known feature in one clause does not hide an unrelated unsupported feature.
+    # Every model-extracted behavior is a distinct, NOT-yet-implemented gameplay
+    # obligation. A 'shop' keyword in the same span cannot certify the behavior.
+    for intent in intents:
+        facets.append({
+            "id": intent["facet_id"],
+            "requirements": [intent["requirement_id"]],
+            "search_query": "Roblox " + clean(intent["english_query"])[:150],
+            "implementation_key": None,
+            "implemented_by_builtin": False,
+            "source_span": intent["source_span"],
+        })
+    covered = {rid for facet in facets for rid in facet["requirements"]}
+    unmatched = [r["id"] for r in requirements if r["id"] not in covered]
     pending = sorted({f["id"] for f in facets if f["implementation_key"] is None
                       and f["id"] not in {"persistence", "interface"}})
+    if pending_clauses:
+        pending.append("semantic_decomposition_required")
     return {
         "schema": "rmm/request-ledger-v1",
         "original_prompt": original,
         "requirements": requirements,
         "facets": facets,
-        "unmatched_requirements": unresolved_clauses,
-        "unimplemented_facets": pending,
+        "unmatched_requirements": unmatched,
+        "unimplemented_facets": sorted(set(pending)),
+        "decomposition_pending": pending_clauses,
+        "decomposition_method": "source_anchored_model" if intents else "not_required",
+        "atomic_intents": intents,
         "request_sha256": hashlib.sha256(original.encode("utf-8")).hexdigest(),
     }
+
+
+def build_request_ledger(prompt: str) -> dict[str, Any]:
+    from .request_contract import is_composite
+    original = str(prompt)
+    if not original.strip():
+        raise ValueError("Cannot research an empty Roblox request")
+    clauses = _fragments(original) or [_clean(original)]
+    requirements = [
+        {"id": f"req-{index:03d}", "statement": statement, "source": "user_prompt"}
+        for index, statement in enumerate(clauses, 1)
+    ]
+    uncertain = [item["id"] for item in requirements if is_composite(item["statement"])]
+    return _ledger_with_requirements(original, requirements,
+                                     decomposition_pending=uncertain)
 
 
 class RobloxPreDesignResearch:
@@ -144,6 +162,79 @@ class RobloxPreDesignResearch:
                              if live_enabled is None else live_enabled)
         self.api = RobloxAPICatalog()
         self.model_query_error: str | None = None
+        self.decomposition_error: str | None = None
+
+    def _decompose_compound(self, prompt: str, ledger: dict[str, Any]) -> dict[str, Any]:
+        """LLM proposes atoms; host verifies exact source spans and full clause coverage."""
+        from .request_contract import validate_model_behaviors, clean
+        pending = set(ledger.get("decomposition_pending", []))
+        if not pending:
+            return ledger
+        setting = os.environ.get("RMM_ENABLE_MODEL_DECOMPOSITION", "auto").lower()
+        enabled = setting == "1" or (setting == "auto"
+                  and bool(os.environ.get("ROBLOX_LLAMA_SERVER_URL")
+                           or os.environ.get("RMM_MODEL_BASE_URL")))
+        if not enabled or self.router is None:
+            self.decomposition_error = "Compound request requires a configured local model"
+            return ledger
+        try:
+            raw = self.router.complete_json(
+                "Decompose EACH compound Roblox game request clause into distinct "
+                "atomic gameplay behaviors. Return JSON object "
+                "{behaviors:[{clause_id,source_span,intent,english_query}]}. "
+                "source_span MUST be an exact, SHORT, contiguous quote from its clause; "
+                "cover at least 80 percent of each compound clause with multiple "
+                "distinct spans. Include resource gathering, crafting, travel, "
+                "progression, enemies, and other requested mechanics ONLY when present "
+                "in the original text; never invent gameplay. "
+                "Do NOT combine different mechanics merely because they use a shop. "
+                "A query must describe the specific implementation and Roblox APIs. "
+                "Translate intent into a concrete English verb phrase. "
+                "Maximum 24 behaviors per clause.\n"
+                + json.dumps({"original_prompt": prompt, "clauses": [
+                    item for item in ledger["requirements"]
+                    if item["id"] in pending]}, ensure_ascii=False),
+                role="planner", temperature=0.1
+            )
+            rows = raw.get("behaviors", []) if isinstance(raw, dict) else []
+            if not isinstance(rows, list) or len(rows) > 48:
+                raise ValueError("Invalid model decomposition response size")
+            new_requirements: list[dict[str, str]] = []
+            atomic_intents: list[dict[str, str]] = []
+            for clause in ledger["requirements"]:
+                parts = [x for x in rows if isinstance(x, dict)
+                         and x.get("clause_id") == clause["id"]]
+                if clause["id"] in pending:
+                    if not validate_model_behaviors(clause["statement"], parts):
+                        raise ValueError("Model omitted or merged mechanics in " + clause["id"])
+                else:
+                    parts = [{"source_span": clause["statement"], "intent": "",
+                              "english_query": ""}]
+                for part in parts:
+                    rid = f"req-{len(new_requirements)+1:03d}"
+                    span = clean(part["source_span"])
+                    new_requirements.append({"id": rid, "statement": span, "source": "user_prompt"})
+                    if clause["id"] in pending:
+                        fid = "intent-" + hashlib.sha256((rid + span).encode("utf-8")).hexdigest()[:10]
+                        atomic_intents.append({
+                            "facet_id": fid, "requirement_id": rid, "source_span": span,
+                            "intent": clean(part["intent"]),
+                            "english_query": clean(part["english_query"])
+                        })
+            result = _ledger_with_requirements(prompt, new_requirements,
+                                                atomic_intents=atomic_intents)
+            # Independently verify that a valid decomposition of the ENTIRE request
+            # survives, not just that the model supplied plausible JSON.
+            from .request_contract import ledger_complete
+            # Pending novel implementation is legitimate at design time; only this
+            # structural check temporarily excludes implementation coverage fields.
+            structural = dict(result, unimplemented_facets=[], unmatched_requirements=[])
+            if not ledger_complete(prompt, structural):
+                raise ValueError("Atomic source spans did not cover the original prompt")
+            return result
+        except Exception as exc:
+            self.decomposition_error = type(exc).__name__ + ": " + str(exc)[:220]
+            return ledger
 
     def _propose_semantic_searches(self, prompt: str, ledger: dict) -> list[dict]:
         """Model proposes queries only, never source evidence or game success."""
@@ -191,14 +282,16 @@ class RobloxPreDesignResearch:
 
     def research(self, prompt: str) -> dict[str, Any]:
         self.model_query_error = None
-        ledger = build_request_ledger(prompt)
-        semantic = self._propose_semantic_searches(prompt,ledger)
+        self.decomposition_error = None
+        ledger = self._decompose_compound(prompt, build_request_ledger(prompt))
+        # A source-anchored atomic decomposition already supplies its own exact,
+        # feature-specific searches. Query expansion cannot supersede it.
+        semantic = ([] if ledger.get("atomic_intents") else
+                    self._propose_semantic_searches(prompt, ledger))
         if semantic:
             ledger["facets"] = ledger["facets"] + semantic
             ledger["unimplemented_facets"] = sorted(set(
-                ledger["unimplemented_facets"] + [x["id"] for x in semantic
-                    if not any(f.get("implementation_key") for f in ledger["facets"]
-                       if set(f["requirements"]) & set(x["requirements"]))]
+                ledger["unimplemented_facets"] + [x["id"] for x in semantic]
             ))
             covered={rid for f in ledger["facets"] for rid in f["requirements"]}
             ledger["unmatched_requirements"] = [r["id"] for r in ledger["requirements"]
@@ -221,6 +314,9 @@ class RobloxPreDesignResearch:
         if self.model_query_error:
             failures.append({"facet":"model_query_expansion", "provider":"local_small_model",
                              "reason":self.model_query_error})
+        if self.decomposition_error:
+            failures.append({"facet": "semantic_decomposition",
+                             "provider": "local_small_model", "reason": self.decomposition_error})
         asset_candidates: list[dict[str, Any]] = []
         reuse_candidates: list[dict[str, str]] = []
         requested={facet["id"] for facet in ledger["facets"]}
