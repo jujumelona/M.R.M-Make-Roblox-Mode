@@ -91,7 +91,7 @@ def test_failure_on_seventh_feature_resumes_six_without_new_model_calls(
 
     class OfflineOnLast(FakeLocalModel):
         def complete_json(self, prompt, **kwargs):
-            if json.loads(prompt.split("\n")[-1])["feature_id"] == "intent-colony":
+            if '"feature_id": "intent-colony"' in prompt:
                 self.calls.append(prompt)
                 raise ConnectionError("local MiMo backend unavailable")
             return super().complete_json(prompt, **kwargs)
