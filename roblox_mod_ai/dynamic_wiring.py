@@ -141,6 +141,49 @@ def inspect_dynamic_remote_wiring(proposal: RobloxProposal) -> dict[str, Any]:
                             and module.file_path.endswith(".luau")
                             and re.search(server_pattern.format(v=var),masked)):
                         endpoints[direction]["server"].append(module.file_path)
+        # Semantic architecture owns the transport at the HOST bootstrap.
+        # Server feature modules only export gameplay handleAction and must
+        # never invent/duplicate OnServerEvent listeners. Verify the gateway
+        # source and target before crediting the server endpoint.
+        host_actions = dynamic.get("host_actions") or {}
+        binding = host_actions.get(name)
+        host_ready = False
+        if isinstance(binding, dict):
+            target = next((
+                m for m in proposal.modules if
+                m.module_id.startswith("dyn_") and
+                m.name == binding.get("service") and
+                m.file_path.startswith("src/server/")
+            ), None)
+            bootstrap = next((
+                m for m in proposal.modules
+                if m.module_id == "mod_dynamic_server_bootstrap"
+            ), None)
+            if (target is not None and bootstrap is not None
+                    and binding.get("kind") == kind):
+                code = _without_comments(bootstrap.code)
+                # Each action is generated with a separately scoped do block
+                # and named binding; verify both explicit literal references.
+                lookup = 'remotes:WaitForChild("' + name + '")'
+                gateway_method = ("OnServerEvent" if kind == "RemoteEvent"
+                                  else "OnServerInvoke")
+                host_ready = (
+                    lookup in code and gateway_method in code
+                    and 'service.handleAction(player, services, ...)' in code
+                    and bool(re.search(
+                        r"\\bfunction\\s+[A-Za-z_]\\w*\\.handleAction\\s*\\(",
+                        _mask_strings(_without_comments(target.code)),
+                    ))
+                )
+                if host_ready:
+                    endpoints["client_to_server"]["server"].append(
+                        bootstrap.file_path)
+            checks.append({
+                "id": "wiring.hostGateway." + name,
+                "passed": host_ready,
+                "detail": "Host bootstrap must bind the exact declared Remote "
+                          "and delegate to this service's exported handler",
+            })
         valid=any(e["client"] and e["server"] for e in endpoints.values())
         checks.append({"id":"wiring."+name,"passed":bool(valid),
                        "detail":{"endpoints":endpoints,"scope":"static_source_only"}})
@@ -160,6 +203,9 @@ def inspect_dynamic_remote_wiring(proposal: RobloxProposal) -> dict[str, Any]:
                 group[required_role] and module.file_path in group[required_role]
                 for group in endpoints.values()
             )
+            if (required_role == "server" and isinstance(binding, dict)
+                    and binding.get("service") == module.name):
+                owns_endpoint = host_ready
             checks.append({
                 "id": "wiring.owner." + module.name + "." + name,
                 "passed": owns_endpoint,
