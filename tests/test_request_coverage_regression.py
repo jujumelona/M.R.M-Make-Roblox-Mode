@@ -66,6 +66,7 @@ def test_space_request_without_separators_is_not_a_complete_shop(monkeypatch, tm
     assert not reply.ready_to_build
     assert reply.authored_plan.proposal.game_design["genre"] == "Custom"
     assert reply.authored_plan.proposal.game_design["dynamic_design"] is None
+    assert {m.name for m in reply.authored_plan.proposal.modules} == {"NetworkRemotes", "PlayerDataManager"}
     assert reply.authored_plan.proposal.game_design["pre_design_research"]["ledger"]["decomposition_pending"]
 
 
