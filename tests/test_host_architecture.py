@@ -106,14 +106,18 @@ def test_host_rejects_empty_or_unverifiable_gameplay(mutation):
 
 def test_rejected_host_name_collision_and_unique_cross_feature_geometry():
     first = _convert()
-    second = _convert(
-        _semantic(),
-        names={x["name"] for x in first["modules"]},
-        remotes={x["name"] for x in first["remotes"]},
-        objects={x["name"] for x in first["world_objects"]},
+    with pytest.raises(HostArchitectureError, match="module name collision"):
+        _convert(_semantic(),
+                 names={x["name"] for x in first["modules"]})
+    different = expand_semantic_facet(
+        _semantic(), facet_id="intent-second", requirement_ids=["req-002"],
+        source_requirements=[{"id": "req-002", "statement": "Mine other ore"}],
+        reserved_modules={x["name"] for x in first["modules"]},
+        reserved_remotes={x["name"] for x in first["remotes"]},
+        reserved_objects={x["name"] for x in first["world_objects"]},
     )
-    # Exact same source facet cannot generate distinct worlds twice.
-    assert second["modules"][0]["name"] != first["modules"][0]["name"] if False else True
+    assert first["world_objects"][0]["name"] != different["world_objects"][0]["name"]
+    assert first["world_objects"][0]["position"] != different["world_objects"][0]["position"]
 
 
 class SemanticOnlySevenFeatureModel:
