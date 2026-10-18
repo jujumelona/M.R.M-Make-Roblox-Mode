@@ -144,5 +144,70 @@ def inspect_dynamic_remote_wiring(proposal: RobloxProposal) -> dict[str, Any]:
         valid=any(e["client"] and e["server"] for e in endpoints.values())
         checks.append({"id":"wiring."+name,"passed":bool(valid),
                        "detail":{"endpoints":endpoints,"scope":"static_source_only"}})
+        # A valid endpoint elsewhere does not justify a module's claimed
+        # ownership. Check every explicit source-anchored owner independently.
+        declared_owners = dynamic.get("module_remotes") or {}
+        for module in proposal.modules:
+            if not module.module_id.startswith("dyn_"):
+                continue
+            if name not in declared_owners.get(module.module_id, []):
+                continue
+            is_client = module.file_path.endswith(".client.luau")
+            is_server = module.file_path.startswith("src/server/") and (
+                module.file_path.endswith(".luau"))
+            required_role = "client" if is_client else "server" if is_server else ""
+            owns_endpoint = bool(required_role) and any(
+                group[required_role] and module.file_path in group[required_role]
+                for group in endpoints.values()
+            )
+            checks.append({
+                "id": "wiring.owner." + module.name + "." + name,
+                "passed": owns_endpoint,
+                "detail": "Declared owner must actually invoke or receive its Remote "
+                          + "using a valid " + kind + " method",
+            })
+        # Even if the proper sender and receiver exist, an additional invalid
+        # remote method in another module is still a guaranteed Roblox runtime
+        # error (RemoteEvent:InvokeServer, RemoteFunction:FireServer, etc).
+        allowed = {
+            "RemoteEvent": {
+                "client": {"FireServer", "OnClientEvent"},
+                "server": {"OnServerEvent", "FireClient", "FireAllClients"},
+            },
+            "RemoteFunction": {
+                "client": {"InvokeServer", "OnClientInvoke"},
+                "server": {"OnServerInvoke", "InvokeClient"},
+            },
+        }
+        methods = ("FireServer", "InvokeServer", "FireClient", "FireAllClients",
+                   "InvokeClient", "OnServerEvent", "OnClientEvent",
+                   "OnServerInvoke", "OnClientInvoke")
+        for module in proposal.modules:
+            if not module.module_id.startswith("dyn_"):
+                continue
+            side = ("client" if module.file_path.endswith(".client.luau")
+                    else "server" if module.file_path.startswith("src/server/")
+                    else "")
+            if not side:
+                continue
+            source = _without_comments(module.code)
+            masked = _mask_strings(source)
+            variables = _variables(source, name)
+            invalid_methods = set()
+            for variable in variables:
+                var = re.escape(variable)
+                for method in methods:
+                    delimiter = r"\\s*\\.\\s*" if method.startswith("On") else r"\\s*:\\s*"
+                    pattern = r"\\b" + var + delimiter + method + r"\\b"
+                    if (re.search(pattern, masked) and
+                            method not in allowed[kind][side]):
+                        invalid_methods.add(method)
+            if invalid_methods:
+                checks.append({
+                    "id": "wiring.method." + module.name + "." + name,
+                    "passed": False,
+                    "detail": "Invalid " + kind + " methods on " + side +
+                              ": " + ", ".join(sorted(invalid_methods)),
+                })
     return {"passed":all(c["passed"] for c in checks),"checks":checks,
             "scope":"static_remote_wiring_not_gameplay_execution"}
