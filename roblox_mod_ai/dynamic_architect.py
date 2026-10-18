@@ -726,7 +726,7 @@ class RobloxDynamicArchitect:
                 "Each system MUST directly implement the user's single "
                 "source_requirements clause. No unrelated systems. "
                 "Do not claim a world has been built or gameplay tested. "
-                "JSON ONLY.\\n"
+                "JSON ONLY.\n"
                 + json.dumps({
                     "source_requirements": subset,
                     "game_context": {"scope": "only_this_source_clause"},
