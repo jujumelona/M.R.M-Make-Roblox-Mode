@@ -43,8 +43,10 @@ _FACET_MODULE_SCHEMA = {
         "requirement_ids": {"type": "array", "items": {"type": "string"}},
         "facet_ids": {"type": "array", "items": {"type": "string"}},
         "behavior": {"type": "string"},
+        "uses_remotes": {"type": "array", "items": {"type": "string"}},
     },
-    "required": ["name", "role", "requirement_ids", "facet_ids", "behavior"],
+    "required": ["name", "role", "requirement_ids", "facet_ids",
+                 "behavior", "uses_remotes"],
 }
 _FACET_OUTPUT_SCHEMA = {
     "type": "object",
@@ -224,6 +226,10 @@ def _clean_model_json(response: dict[str, Any], ledger: dict[str, Any],
     assignment: dict[str, list[str]] = {}
     facet_assignment: dict[str, list[str]] = {}
     purposes: dict[str, str] = {}
+    explicit_remote_map = any(isinstance(row, dict) and "uses_remotes" in row
+                              for row in records)
+    module_remotes: dict[str, list[str]] = {}
+    module_roles: dict[str, str] = {}
     for i, row in enumerate(records):
         if not isinstance(row, dict): raise DynamicDesignError("Invalid module")
         name, role = row.get("name"), row.get("role")
@@ -256,6 +262,15 @@ def _clean_model_json(response: dict[str, Any], ledger: dict[str, Any],
         facet_assignment[module_id] = list(dict.fromkeys(
             facet for facet in facets if facet in required_facets))
         purposes[module_id] = purpose
+        module_roles[module_id] = role
+        if explicit_remote_map:
+            names = row.get("uses_remotes")
+            if not isinstance(names, list) or any(
+                not isinstance(name, str) for name in names
+            ):
+                raise DynamicDesignError(
+                    "Every module needs a list of uses_remotes for explicit wiring")
+            module_remotes[module_id] = list(dict.fromkeys(names))
     covered = {req for refs in assignment.values() for req in refs}
     # Require EVERY authored clause, not just the names the model chose to support.
     if covered != required_ids:
@@ -301,6 +316,24 @@ def _clean_model_json(response: dict[str, Any], ledger: dict[str, Any],
     remotes: dict[str, str] = {
         item["name"]: item["type"] for item in remote_rows
     }
+    if explicit_remote_map:
+        for module_id, used_names in module_remotes.items():
+            unknown = set(used_names) - set(remotes)
+            if unknown:
+                raise DynamicDesignError(
+                    "Module uses undeclared Remotes: " +
+                    ", ".join(sorted(unknown)))
+        for name in remotes:
+            clients = [mid for mid, names in module_remotes.items()
+                       if name in names and module_roles[mid] == "client"]
+            servers = [mid for mid, names in module_remotes.items()
+                       if name in names and module_roles[mid] == "server"]
+            if not clients or not servers:
+                raise DynamicDesignError(
+                    "Remote " + name + " needs explicit client and server "
+                    "module owners in uses_remotes; missing: " +
+                    ("client " if not clients else "") +
+                    ("server" if not servers else ""))
     # A RemoteEvent/RemoteFunction is a client<->server transport. A model
     # which declares remotes but proposes only server scripts cannot possibly
     # satisfy the static connectivity gate, even when its JSON is well formed.
@@ -371,6 +404,7 @@ def _clean_model_json(response: dict[str, Any], ledger: dict[str, Any],
         "module_requirements": assignment,
         "module_facets": facet_assignment,
         "module_behaviors": purposes,
+        "module_remotes": module_remotes,
         "acceptance_facets": accepted_facets,
         "remotes": remotes,
         "world_objects": objects,
@@ -548,7 +582,7 @@ class RobloxDynamicArchitect:
                 "Design ONLY this one feature of a Roblox game, as a small, "
                 "complete JSON object with keys: modules, remotes, "
                 "world_objects, acceptance, acceptance_facets. "
-                "modules are [{name,role,requirement_ids,facet_ids,behavior}]; "
+                "modules are [{name,role,requirement_ids,facet_ids,behavior,uses_remotes}]; "
                 "role is server, client, or shared. "
                 "remotes are [{name,type}] where type is exactly "
                 "RemoteEvent or RemoteFunction. "
@@ -558,7 +592,10 @@ class RobloxDynamicArchitect:
                 "acceptance_facets entries are [{facet_id,observable_result}]. "
                 "Use the exact supplied requirement and facet IDs, no others. "
                 "Include real client UI/input scripts AND server handlers "
-                "when using remotes. No client-owned rewards or damage. "
+                "when using remotes. Each module MUST have uses_remotes listing "
+                "ONLY its actual Remote endpoints (empty [] if none). Every "
+                "remote must belong to a client and a server module. "
+                "No client-owned rewards or damage. "
                 "Avoid every already-reserved module/remote/object name. "
                 "Each module's behavior must be implementable Luau, not TODO. "
                 "Do not design unrelated features, reuse third-party code, "
@@ -586,8 +623,9 @@ class RobloxDynamicArchitect:
                             "Do not regenerate server modules, remotes, objects "
                             "or acceptance cases. Each module must have name, "
                             "role=client, requirement_ids, facet_ids, behavior "
-                            "(at least 24 characters). Use ONLY the supplied "
-                            "source IDs. Use new names.\n"
+                            "(at least 24 characters), and uses_remotes "
+                            "listing each invoked Remote name. Use ONLY the "
+                            "supplied source IDs. Use new names.\n"
                             + json.dumps({
                                 "feature": facet, "requirements": subset,
                                 "existing_modules": draft["modules"],
