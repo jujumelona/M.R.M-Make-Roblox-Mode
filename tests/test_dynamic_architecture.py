@@ -80,6 +80,8 @@ return PetHatching
 """
 
 def _session(tmp_path,monkeypatch):
+    # This fixture explicitly verifies backwards compatibility of old full-JSON model.
+    monkeypatch.setenv("RMM_LEGACY_ARCHITECTURE_PROTOCOL","1")
     monkeypatch.setenv("RMM_PREDESIGN_LIVE_SEARCH","0")
     monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN","1")
     monkeypatch.setenv("RMM_ENABLE_MODEL_GENERATION","1")
@@ -411,6 +413,7 @@ def test_planner_accepts_source_covered_trade_without_redundant_shop_model_label
             assert actual_prompt == prompt
             return research
     monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    monkeypatch.setenv("RMM_LEGACY_ARCHITECTURE_PROTOCOL", "1")
     plan = RobloxGameDesignPlanner(
         router=ArchitectRouter(), pre_design_research=Research()
     ).plan(prompt)
@@ -517,6 +520,7 @@ def test_full_architect_recovers_ambiguous_remote_without_rebuilding_valid_modul
     """Regression: the complete plan API keeps the first architecture after targeted repair."""
     from roblox_mod_ai.dynamic_architect import RobloxDynamicArchitect
     monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    monkeypatch.setenv("RMM_LEGACY_ARCHITECTURE_PROTOCOL", "1")
     class TwoStepModel:
         def __init__(self):
             self.calls = []
