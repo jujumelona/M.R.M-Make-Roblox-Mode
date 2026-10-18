@@ -136,16 +136,86 @@ class RobloxProductionOrchestrator:
             proposal.modules = self.work_graph.topological_sort_modules(proposal.modules)
             return {"module_order": [m.name for m in proposal.modules]}
 
+        checkpoint_file = output_dir / "generation_checkpoint.json"
+
+        def checkpoint_signature(module):
+            # Resume ONLY the same authored gameplay and module interfaces.
+            # Exclude mutable generated code; include the entire module layout
+            # and grounded evidence hashes so a new design invalidates old code.
+            design = proposal.game_design.get("dynamic_design") or {}
+            research = proposal.game_design.get("pre_design_research") or {}
+            contract = {
+                "request": proposal.requested_prompt,
+                "module": {k: v for k, v in module.to_dict().items() if k != "code"},
+                "all_modules": [{
+                    "module_id": m.module_id, "name": m.name,
+                    "file_path": m.file_path, "description": m.description,
+                } for m in proposal.modules],
+                "remotes": design.get("remotes", {}),
+                "world_objects": design.get("world_objects", []),
+                "module_facets": design.get("module_facets", {}),
+                "evidence": [{
+                    "facet": e.get("facet"), "url": e.get("url"),
+                    "sha": e.get("content_sha256"),
+                } for e in research.get("evidence", [])],
+            }
+            return hashlib.sha256(json.dumps(
+                contract, ensure_ascii=False, sort_keys=True, default=str
+            ).encode("utf-8")).hexdigest()
+
         def generate():
             completed = 0
+            # Persist checkpoints per completed module; never assume an
+            # unrelated old file belongs to this game or trust a corrupt file.
+            try:
+                manifest = json.loads(checkpoint_file.read_text(encoding="utf-8"))
+                if manifest.get("schema") != "rmm/codegen-checkpoint-v1":
+                    manifest = {}
+            except (OSError, ValueError, TypeError):
+                manifest = {}
+            entries = manifest.get("modules", {})
+            if not isinstance(entries, dict):
+                entries = {}
+
+            def save_checkpoint(module):
+                content = module.code
+                if not content or not self.analyzer.analyze_source(
+                        content, file_path=module.file_path).passed:
+                    return
+                entries[module.file_path] = {
+                    "input_sha256": checkpoint_signature(module),
+                    "source_sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+                }
+                staging = checkpoint_file.with_suffix(".json.tmp")
+                staging.write_text(json.dumps({
+                    "schema": "rmm/codegen-checkpoint-v1", "modules": entries,
+                }, indent=2, ensure_ascii=False), encoding="utf-8")
+                staging.replace(checkpoint_file)
+
             for module in proposal.modules:
                 try:
+                    path = output_dir / module.file_path
+                    fingerprint = checkpoint_signature(module)
+                    stored = entries.get(module.file_path, {})
+                    if (not module.code and path.is_file()
+                            and isinstance(stored, dict)
+                            and stored.get("input_sha256") == fingerprint):
+                        previous = path.read_text(encoding="utf-8")
+                        if (hashlib.sha256(previous.encode("utf-8")).hexdigest() ==
+                                stored.get("source_sha256")
+                                and self.analyzer.analyze_source(
+                                    previous, file_path=module.file_path).passed):
+                            module.code = previous
+                            trajectory.record("generation", "resume " + module.file_path,
+                                              {"source_bytes": len(previous),
+                                               "source_sha256": stored["source_sha256"]},
+                                              passed=True)
                     if not module.code:
                         module.code = self.code_generator.generate_with_self_correction(
                             module, proposal)
-                    path = output_dir / module.file_path
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_text(module.code, encoding="utf-8")
+                    save_checkpoint(module)
                     (output_dir / "proposal_partial.json").write_text(
                         json.dumps(proposal.to_dict(), indent=2, ensure_ascii=False),
                         encoding="utf-8")
@@ -186,6 +256,7 @@ class RobloxProductionOrchestrator:
                         path = output_dir / module.file_path
                         path.parent.mkdir(parents=True, exist_ok=True)
                         path.write_text(replacement, encoding="utf-8")
+                        save_checkpoint(module)
                         (output_dir / "proposal_partial.json").write_text(
                             json.dumps(proposal.to_dict(), indent=2, ensure_ascii=False),
                             encoding="utf-8")
