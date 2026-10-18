@@ -25,6 +25,22 @@ def _http_adapter(monkeypatch, *, visible="--!strict\nlocal n = 1\nprint(n)\n",
             return {"model": "local-gguf", "choices": [
                 {"finish_reason": finish_reason, "message": {"content": visible}}
             ], "usage": {"prompt_tokens": 300, "completion_tokens": completion_tokens}}
+    class StreamResponse:
+        status_code = 200
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def iter_lines(self):
+            # mimic llama.cpp OpenAI streaming chat chunks
+            for part in visible.splitlines(keepends=True):
+                yield "data: " + json.dumps({
+                    "model": "local-gguf",
+                    "choices": [{"delta": {"content": part},
+                                 "finish_reason": None}]})
+            yield "data: " + json.dumps({
+                "choices": [{"delta": {}, "finish_reason": finish_reason}],
+                "usage": {"prompt_tokens": 300,
+                          "completion_tokens": completion_tokens}})
+            yield "data: [DONE]"
     class Client:
         def __init__(self, **kwargs): pass
         def __enter__(self): return self
@@ -32,6 +48,10 @@ def _http_adapter(monkeypatch, *, visible="--!strict\nlocal n = 1\nprint(n)\n",
         def post(self, url, json, headers):
             seen.append((url, json))
             return Response()
+        def stream(self, method, url, json, headers):
+            assert method == "POST"
+            seen.append((url, json))
+            return StreamResponse()
     monkeypatch.setattr(llama_cpp_adapter.httpx, "Client", Client)
     return LlamaCppAdapter(base_url="http://127.0.0.1:8910/v1"), seen
 
