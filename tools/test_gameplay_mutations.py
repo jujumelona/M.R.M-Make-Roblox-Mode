@@ -15,7 +15,7 @@ def main() -> None:
     root=Path(".rmm-code-e2e").resolve()
     original=Path((root/"location.txt").read_text(encoding="utf-8").strip())
     assert original.is_dir(),original
-    relative_server="src/server/CustomPetHatching.server.luau"
+    relative_server="src/server/CustomPetHatching.luau"
     relative_client="src/client/PetHatchController.client.luau"
     source={
         relative_server:(original/relative_server).read_text(encoding="utf-8"),
