@@ -11,6 +11,7 @@ from .authored_plan import RobloxAuthoredPlan
 from .model_router import ModelRouter
 from .orchestrator import RobloxPipelineResult, RobloxProductionOrchestrator
 from .planner import RobloxGameDesignPlanner
+from .request_contract import ledger_complete
 from .spec import RobloxProposal
 
 
@@ -26,8 +27,7 @@ class CompleteChatReply:
     def ready_to_build(self) -> bool:
         research = self.authored_plan.proposal.game_design.get("pre_design_research", {})
         ledger = research.get("ledger", {})
-        return (not ledger.get("unimplemented_facets")
-                and not ledger.get("unmatched_requirements")
+        return (ledger_complete(self.authored_plan.proposal.requested_prompt, ledger)
                 and (any(self.authored_plan.proposal.game_design.get("features", {}).values())
                      or bool(self.authored_plan.proposal.game_design.get("dynamic_design"))))
 
