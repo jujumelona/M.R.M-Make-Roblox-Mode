@@ -230,6 +230,20 @@ class RobloxProductionOrchestrator:
 
             for module in proposal.modules:
                 try:
+                    # Host-owned source is regenerated from the authoritative
+                    # contract, even when an imported proposal already has
+                    # stale or model-written code. No saved module may override
+                    # the host Remote ingress or no-argument client UI.
+                    dynamic_contract = proposal.game_design.get("dynamic_design") or {}
+                    is_host_generated = (
+                        module.module_id == "mod_dynamic_server_bootstrap"
+                        or (module.module_id.startswith("dyn_")
+                            and module.name in
+                            dynamic_contract.get("host_client_actions", {}))
+                    )
+                    if is_host_generated:
+                        module.code = self.code_generator.generate_module_code(
+                            module, proposal)
                     path = output_dir / module.file_path
                     fingerprint = checkpoint_signature(module)
                     stored = entries.get(module.file_path, {})
