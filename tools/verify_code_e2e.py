@@ -76,6 +76,7 @@ def main():
         "compiled_place_sha256":hashlib.sha256(compiled.read_bytes()).hexdigest(),
         "stages":stages,
     }
+    (root/"location.txt").write_text(str(project),encoding="utf-8")
     out=root/"code_e2e_receipt.json"
     out.write_text(json.dumps(report,indent=2,ensure_ascii=False),encoding="utf-8")
     print("CODE E2E PASS; actual Roblox Studio not executed; receipt="+str(out))

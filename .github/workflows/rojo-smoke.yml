@@ -171,6 +171,12 @@ jobs:
         run: |
           set -euo pipefail
           python tools/verify_code_e2e.py
+      - name: Execute generated Luau gameplay via Lune with mocked Roblox APIs
+        shell: bash
+        run: |
+          set -euo pipefail
+          export RMM_PET_E2E_PROJECT="$(cat .rmm-code-e2e/location.txt)"
+          lune run tests/pet_gameplay_e2e
       - name: Upload compile evidence
         if: always()
         uses: actions/upload-artifact@v4
