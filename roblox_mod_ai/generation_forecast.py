@@ -82,6 +82,7 @@ def forecast_generation(
     ledger: dict[str, Any],
     modules: list[dict[str, Any]],
     remotes: dict[str, Any] | None = None,
+    host_client_actions: dict[str, Any] | None = None,
     observed_model_runs: list[dict[str, Any]] | None = None,
     expected_input_fingerprint: str | None = None,
 ) -> dict[str, Any]:
@@ -95,6 +96,14 @@ def forecast_generation(
     facet_count = len(facets)
     code_modules = [m for m in modules if str(m.get("module_id", "")).startswith("dyn_")]
     code_count = len(code_modules)
+    host_client_actions = host_client_actions or {}
+    declared_client_names = {
+        str(m.get("name")) for m in code_modules
+        if str(m.get("file_path", "")).endswith(".client.luau")
+    }
+    host_client_count = len(
+        set(host_client_actions).intersection(declared_client_names))
+    actual_model_code_count = code_count - host_client_count
     client = sum(str(m.get("file_path", "")).endswith(".client.luau")
                  for m in code_modules)
     server = sum(str(m.get("file_path", "")).startswith("src/server/")
@@ -120,13 +129,13 @@ def forecast_generation(
     warnings: list[str] = []
     if facet_count == 0:
         warnings.append("no_source_anchored_facets")
-    if code_count == 0:
+    if actual_model_code_count == 0:
         warnings.append("no_model_authored_code_modules")
     if remotes and (client == 0 or server == 0):
         warnings.append("remote_without_client_or_server_role")
     if len(remotes) > max(code_count, 1):
         warnings.append("many_remotes_relative_to_modules")
-    if code_count >= 14:
+    if actual_model_code_count >= 14:
         warnings.append("many_sequential_model_outputs_compound_risk")
     if any(m.get("file_path", "").endswith(".server.luau")
            for m in code_modules):
@@ -141,12 +150,14 @@ def forecast_generation(
         "source_counts": {
             "feature_count": facet_count,
             "generated_module_count": code_count,
+            "host_rendered_client_module_count": host_client_count,
+            "estimated_model_code_completions": actual_model_code_count,
             "generated_server_count": server,
             "generated_client_count": client,
             "remote_count": len(remotes),
-            "minimum_sequential_model_completions": facet_count + code_count,
+            "minimum_sequential_model_completions": facet_count + actual_model_code_count,
             "maximum_if_each_planner_and_coder_task_retries_three_times":
-                3 * (facet_count + code_count),
+                3 * (facet_count + actual_model_code_count),
             "planner_output_token_cap_per_facet": 5000,
             "coder_output_token_cap_per_module": 6000,
         },
@@ -170,9 +181,9 @@ def forecast_generation(
                 "assumed_pass_per_module": row.per_module_code,
                 "assumed_assembly_static_pass": row.assembly_and_static,
                 "single_attempt_through_static_build": scenario_success(
-                    facet_count, code_count, row),
+                    facet_count, actual_model_code_count, row),
                 "optimistic_if_all_three_attempts_were_independent": scenario_success(
-                    facet_count, code_count, row, independent_retry_attempts=3),
+                    facet_count, actual_model_code_count, row, independent_retry_attempts=3),
             }
             for row in SCENARIOS
         ],
