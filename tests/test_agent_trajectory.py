@@ -384,3 +384,85 @@ def test_missing_client_sender_is_repaired_not_just_existing_server(tmp_path, mo
     assert repair_calls == ["ShipController"]
     assert server.code == (tmp_path / server.file_path).read_text(encoding="utf-8")
     assert "FireServer" in client.code
+
+
+
+def test_failed_33_module_run_resumes_completed_sources_without_regenerating(tmp_path, monkeypatch):
+    """Previous user's 24-minute failed run generated two valid files then stopped."""
+    import copy
+    orchestrator = RobloxProductionOrchestrator(tmp_path)
+    proposal = RobloxProposal(
+        requested_prompt="Mine, trade and assemble a spaceship",
+        game_title="Recovery", description="test", game_design={},
+        modules=[
+            make_module("dyn_money", "EconomyLedger",
+                        "src/server/EconomyLedger.server.luau"),
+            make_module("dyn_trade", "TradeServer",
+                        "src/server/TradeServer.server.luau"),
+            make_module("dyn_assembly", "AssemblyServer",
+                        "src/server/AssemblyServer.server.luau"),
+        ],
+    )
+    clean_plan = copy.deepcopy(proposal.to_dict())
+    calls = []
+    phase = [1]
+    def generator(module, plan):
+        calls.append((phase[0], module.name))
+        if phase[0] == 1 and module.name == "AssemblyServer":
+            raise RuntimeError("simulated model generated no visible code")
+        return ("--!strict\nlocal function perform(): number\n"
+                "    return 42\nend\nprint(perform())\n")
+    monkeypatch.setattr(orchestrator.code_generator,
+                        "generate_with_self_correction", generator)
+    first = orchestrator.execute(proposal, "resume", source_only=True)
+    root = Path(first.project_dir)
+    assert not first.success
+    checkpoint = json.loads((root / "generation_checkpoint.json").read_text())
+    assert set(checkpoint["modules"]) == {
+        "src/server/EconomyLedger.server.luau",
+        "src/server/TradeServer.server.luau",
+    }
+    phase[0] = 2
+    # Rebuild from the ORIGINAL empty-code proposal, not the mutated first.
+    second = orchestrator.execute(
+        RobloxProposal.from_dict(clean_plan), "resume", source_only=True)
+    assert not second.success  # still source-only, not Roblox engine verified
+    assert calls.count((1, "EconomyLedger")) == 1
+    assert calls.count((1, "TradeServer")) == 1
+    assert (2, "EconomyLedger") not in calls
+    assert (2, "TradeServer") not in calls
+    assert (2, "AssemblyServer") in calls
+    trail = json.loads((root / "agent_trajectory.json").read_text())
+    assert sum(x["action"].startswith("resume ") for x in trail["steps"]) == 2
+
+
+def test_codegen_resume_rejects_changed_contract_and_corrupted_file(tmp_path, monkeypatch):
+    from copy import deepcopy
+    orchestrator = RobloxProductionOrchestrator(tmp_path)
+    proposal = RobloxProposal(
+        requested_prompt="Harvest one space ore node",
+        game_title="CheckpointGuard", description="test", game_design={},
+        modules=[make_module("dyn_ore", "OreHarvest",
+                             "src/server/OreHarvest.server.luau")],
+    )
+    clean = deepcopy(proposal.to_dict())
+    calls = []
+    def generate(module, proposal):
+        calls.append(module.description)
+        return "--!strict\nlocal result = 12\nprint(result)\n"
+    monkeypatch.setattr(orchestrator.code_generator,
+                        "generate_with_self_correction", generate)
+    first = orchestrator.execute(proposal, "integrity", source_only=True)
+    root = Path(first.project_dir)
+    second = orchestrator.execute(RobloxProposal.from_dict(clean), "integrity",
+                                  source_only=True)
+    assert len(calls) == 1, "Unchanged verified source must be resumed"
+    source_path = root / clean["modules"][0]["file_path"]
+    source_path.write_text("--!strict\nprint('tampered')\n")
+    third = orchestrator.execute(RobloxProposal.from_dict(clean), "integrity",
+                                 source_only=True)
+    assert len(calls) == 2, "Changed source hash must never be resumed"
+    altered = RobloxProposal.from_dict(clean)
+    altered.modules[0].description = "Mine a newly added toxic mineral with player protection"
+    fourth = orchestrator.execute(altered, "integrity", source_only=True)
+    assert len(calls) == 3, "Changed authored behavior invalidates checkpoint"
