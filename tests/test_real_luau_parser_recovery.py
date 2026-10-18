@@ -119,7 +119,7 @@ def test_missing_real_parser_is_not_silent_success_in_colab(monkeypatch):
 
 
 
-def test_parser_failure_switches_to_structured_output_and_discards_bad_source(monkeypatch):
+def test_parser_failure_switches_to_scoped_plain_repair_without_json_loop(monkeypatch):
     """The uploaded failure stopped normally with 752 tokens but invalid Luau."""
     _fake_stylua(monkeypatch)
     monkeypatch.setenv("RMM_ENABLE_MODEL_GENERATION", "1")
@@ -129,19 +129,20 @@ def test_parser_failure_switches_to_structured_output_and_discards_bad_source(mo
         last_generation_report = {"finish_reason": "stop"}
         def complete(self, prompt, **kwargs):
             call_modes.append("plain")
-            return BAD_SOURCE
-        def complete_json(self, prompt, **kwargs):
-            call_modes.append("json")
+            if len(call_modes) == 1:
+                return BAD_SOURCE
             assert "line 3, column 33" in prompt
             assert "Previous invalid Luau source:" not in prompt
             assert "function validateCredit(player): void?" not in prompt
-            return {"luau": "--!strict\n"
-                            "local function debit(balance: number, amount: number): number\n"
-                            "    return math.max(0, balance - amount)\n"
-                            "end\nprint(debit)\n"}
+            return ("--!strict\n"
+                    "local function debit(balance: number, amount: number): number\n"
+                    "    return math.max(0, balance - amount)\n"
+                    "end\nprint(debit)\n")
+        def complete_json(self, prompt, **kwargs):
+            raise AssertionError("A syntax error must not trigger JSON re-encoding")
     module, plan = _plan()
     result = RobloxCodeRepairAgent(router=Router()).repair(module, plan)
-    assert call_modes == ["plain", "json"]
+    assert call_modes == ["plain", "plain"]
     assert "function debit" in result
 
 
