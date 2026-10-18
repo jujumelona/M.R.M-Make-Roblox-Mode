@@ -112,10 +112,22 @@ class ModelRouter:
                              "request a smaller scoped output instead of reparsing it")
         try:
             return json.loads(raw)
-        except json.JSONDecodeError:
-            # Try finding json block inside markdown ```json ... ```
+        except json.JSONDecodeError as first_error:
+            # Retain the REAL malformed output excerpt, not a stale prior
+            # successful dict. This diagnosis reaches the plan-failure report.
             import re
-            match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
+            match = re.search(r"```(?:json)?\\s*(\\{.*?\\})\\s*```", raw, re.DOTALL)
             if match:
-                return json.loads(match.group(1))
+                try:
+                    return json.loads(match.group(1))
+                except json.JSONDecodeError:
+                    pass
+            report = getattr(self, "last_generation_report", None)
+            if isinstance(report, dict):
+                report["json_parse_error"] = (
+                    f"{first_error.msg} at line {first_error.lineno} "
+                    f"column {first_error.colno}, char {first_error.pos}")
+                report["malformed_output_head"] = raw[:2500]
+                report["malformed_output_tail"] = raw[-2500:]
+                report["malformed_output_length"] = len(raw)
             raise
