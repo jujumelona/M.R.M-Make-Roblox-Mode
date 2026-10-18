@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -54,6 +55,9 @@ class LuauStaticAnalyzer:
     def __init__(self) -> None:
         self.has_luau_analyze = shutil.which("luau-analyze") is not None
         self.has_selene = shutil.which("selene") is not None
+        # StyLua is already installed by MRM's Colab bootstrap, but the old
+        # analyzer never used it when validating an individual model response.
+        self.has_stylua = shutil.which("stylua") is not None
 
     def analyze_source(self, code: str, file_path: str = "script.luau") -> list[LuauDiagnostic]:
         """Perform comprehensive static analysis on a single Luau source string."""
@@ -73,6 +77,63 @@ class LuauStaticAnalyzer:
                 )
             )
 
+        # Real Luau grammar validation MUST precede hand-written lint rules.
+        # StyLua parses the original source without changing it (stdin mode).
+        # Unlike keyword counting, it reports malformed types, function
+        # declarations, expressions, comments and missing block terminators.
+        # In Colab, RMM_REQUIRE_REAL_LUAU_PARSER=1 prevents a silent downgrade
+        # to the inadequate balance heuristic when the binary is missing.
+        stylua_path = shutil.which("stylua")
+        real_parser_used = False
+        if stylua_path:
+            try:
+                parsed = subprocess.run(
+                    [stylua_path, "--syntax", "luau", "--stdin-filepath",
+                     file_path, "-"],
+                    input=code, text=True, capture_output=True, timeout=12,
+                    check=False,
+                )
+                real_parser_used = True
+                if parsed.returncode != 0:
+                    detail = (parsed.stderr or parsed.stdout or
+                              "StyLua rejected Luau source")
+                    detail = re.sub(r"\x1b\[[0-9;]*m", "", detail).strip()
+                    numbers = re.search(
+                        r"(?i)(?:line\s*|:\s*)(\d+)(?::\d+)?", detail)
+                    line_no = int(numbers.group(1)) if numbers else 1
+                    diagnostics.append(LuauDiagnostic(
+                        file_path=file_path, line_number=line_no,
+                        rule="LUAU_PARSER_SYNTAX", severity="ERROR",
+                        message=detail[:5000],
+                        suggestion="Repair the actual Luau parser diagnostic; "
+                                   "do not guess an extra end token.",
+                    ))
+            except subprocess.TimeoutExpired:
+                real_parser_used = True
+                diagnostics.append(LuauDiagnostic(
+                    file_path=file_path, line_number=1,
+                    rule="LUAU_PARSER_TIMEOUT", severity="ERROR",
+                    message="StyLua Luau syntax parsing exceeded 12 seconds.",
+                ))
+            except OSError as exc:
+                real_parser_used = True
+                diagnostics.append(LuauDiagnostic(
+                    file_path=file_path, line_number=1,
+                    rule="LUAU_PARSER_UNAVAILABLE", severity="ERROR",
+                    message=f"StyLua parser could not start: {exc}",
+                ))
+        elif os.environ.get("RMM_REQUIRE_REAL_LUAU_PARSER") == "1":
+            real_parser_used = True
+            diagnostics.append(LuauDiagnostic(
+                file_path=file_path, line_number=1,
+                rule="LUAU_PARSER_UNAVAILABLE", severity="ERROR",
+                message="StyLua is required for actual Luau code verification "
+                        "but not installed or not on PATH.",
+            ))
+
+        # Fallback keyword checking is retained for lightweight library tests
+        # without StyLua. It is NOT used as a contradictory grammar verifier
+        # when the actual Luau parser has run.
         # Rule 2: Syntax and Keyword Balance
         block_starts = ["function", "if", "for", "while", "do"]
         open_blocks = 0
@@ -167,7 +228,7 @@ class LuauStaticAnalyzer:
                 elif token in {"end", "until"}:
                     open_blocks -= 1
 
-        if open_blocks != 0:
+        if not real_parser_used and open_blocks != 0:
             diagnostics.append(
                 LuauDiagnostic(
                     file_path=file_path,
