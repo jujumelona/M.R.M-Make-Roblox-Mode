@@ -553,10 +553,13 @@ class RobloxDynamicArchitect:
                           "existing_capabilities":research.get("reuse_candidates",[])},
                          ensure_ascii=False)
         )
-        # Long compound games are not a safe single JSON completion on a local
-        # 9B model. Give the model one source-anchored feature at a time and
-        # assemble validated contracts on the host without replaying past JSON.
-        if len(implementation_facets(ledger)) >= 3:
+        # A single gameplay mechanic needs the same protected architecture as
+        # a 12-feature experience. Never select model-owned Roblox wiring by
+        # an arbitrary >=3 facet threshold. Old full-JSON transports remain
+        # explicitly opt-in for compatibility with saved legacy workflows.
+        facets = implementation_facets(ledger)
+        if facets and os.environ.get(
+                "RMM_LEGACY_ARCHITECTURE_PROTOCOL", "0") != "1":
             return self._design_by_facets(prompt, research, existing_modules)
         last_error = ""
         raw: Any = None
