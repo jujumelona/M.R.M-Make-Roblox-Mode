@@ -13,9 +13,11 @@ from .spec import RobloxProposal
 
 # The remote must be bound to a named local. This rejects an unused literal
 # or a mention of a Remote name in a comment as proof of a working connection.
-_BINDING = re.compile(
-    r'\blocal\s+([A-Za-z_]\w*)\s*(?::[^=\n]+)?=\s*'
-    r'[^\n]*?\b(?:WaitForChild|FindFirstChild)\s*\(\s*["\']([^"\']+)["\']\s*\)',
+_ASSIGN = re.compile(
+    r'\blocal\s+([A-Za-z_]\w*)\s*(?::[^=\n]+)?=\s*([^\n]+)'
+)
+_LOOKUP = re.compile(
+    r'\b(?:WaitForChild|FindFirstChild)\s*\(\s*["\']([^"\']+)["\']\s*\)'
 )
 _USAGE = {
     "RemoteEvent": (r"\b{v}\.OnServerEvent\s*:\s*Connect\s*\(",
@@ -45,7 +47,13 @@ def inspect_dynamic_remote_wiring(proposal: RobloxProposal) -> dict[str, Any]:
             if not mod.module_id.startswith("dyn_"):
                 continue
             source = _source_without_comments(mod.code)
-            bound = [var for var,remote in _BINDING.findall(source) if remote == name]
+            bound = []
+            for variable, value in _ASSIGN.findall(source):
+                lookups = _LOOKUP.findall(value)
+                # Remotes:WaitForChild("X") is a chain: use the LAST
+                # lookup, otherwise every remote is mistaken for "Remotes".
+                if lookups and lookups[-1] == name:
+                    bound.append(variable)
             for variable in bound:
                 receiver, sender = (pattern.format(v=re.escape(variable))
                                     for pattern in patterns)
