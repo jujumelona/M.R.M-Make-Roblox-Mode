@@ -556,3 +556,70 @@ def test_full_architect_recovers_ambiguous_remote_without_rebuilding_valid_modul
     assert result["remotes"] == {"TradePurchase": "RemoteFunction"}
     assert {m.name for m in result["modules"]} == {"TradeService", "TradeController"}
     assert len(router.calls) == 2
+
+
+
+def test_server_only_space_game_with_remotes_is_repaired_before_luau_generation(monkeypatch):
+    """User's proposal(3).json had eleven server modules, sixteen remotes and no client."""
+    from roblox_mod_ai.dynamic_architect import RobloxDynamicArchitect
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    class RoleRepairModel:
+        def __init__(self): self.calls = []
+        def complete_json(self, prompt, **kwargs):
+            self.calls.append(prompt)
+            original = {
+                "modules": [
+                    {"name": "ShipService", "role": "server",
+                     "requirement_ids": ["req-001"], "facet_ids": ["intent-launch"],
+                     "behavior": "Server checks that purchased ship parts allow space launch."}
+                ],
+                "remotes": [{"name": "LaunchShip", "type": "RemoteFunction"}],
+                "world_objects": [],
+                "acceptance": [{"requirement_id": "req-001",
+                                "observable_result": "After equipping parts, ship launch is allowed."}],
+                "acceptance_facets": [{"facet_id": "intent-launch",
+                                       "observable_result": "Client can launch assembled ship after validation."}],
+            }
+            if len(self.calls) == 1:
+                return original
+            assert "no client Luau controller" in prompt
+            assert "Previous JSON:" in prompt
+            original["modules"].append({
+                "name": "LaunchController", "role": "client",
+                "requirement_ids": ["req-001"], "facet_ids": ["intent-launch"],
+                "behavior": "Client invokes launch request after user presses the launch button."
+            })
+            return original
+    router = RoleRepairModel()
+    result = RobloxDynamicArchitect(router=router).design(
+        "우주선 조립 후 발사", {
+            "ledger": {
+                "requirements": [{"id": "req-001", "statement": "우주선 조립 후 발사"}],
+                "facets": [{"id": "intent-launch", "requirements": ["req-001"]}],
+            },
+            "evidence": [], "reuse_candidates": [],
+        }, [],
+    )
+    assert {m.name for m in result["modules"]} == {"ShipService", "LaunchController"}
+    assert len(router.calls) == 2
+
+
+def test_remote_without_client_cannot_be_accepted_from_saved_model_json():
+    raw = {
+        "modules": [{
+            "name": "PlanetaryMining", "role": "server",
+            "requirement_ids": ["req-001"], "facet_ids": ["mining"],
+            "behavior": "Server validates ore mining reach and credits currency."
+        }],
+        "remotes": [{"name": "MineOre", "type": "RemoteEvent"}],
+        "world_objects": [],
+        "acceptance": [{"requirement_id": "req-001",
+                        "observable_result": "Player receives credits after mining ore."}],
+        "acceptance_facets": [{"facet_id": "mining",
+                               "observable_result": "Valid ore deposits pay mining credits."}]
+    }
+    with pytest.raises(DynamicDesignError, match="no client Luau controller"):
+        _clean_model_json(raw, {
+            "requirements": [{"id": "req-001", "statement": "Mine ore"}],
+            "facets": [{"id": "mining", "requirements": ["req-001"]}],
+        }, set())
