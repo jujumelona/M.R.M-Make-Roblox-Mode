@@ -7,7 +7,8 @@ In particular each prompt must omit the other six source requirements.
 import copy
 import json
 
-from roblox_mod_ai.dynamic_architect import RobloxDynamicArchitect
+from roblox_mod_ai.dynamic_architect import RobloxDynamicArchitect, DynamicDesignError
+import pytest
 
 _SPACE = [
     ("req-001", "intent-mining", "우주모드 인데 자원파밍 돈모으기 거래 등으로", "MiningTrade"),
@@ -65,6 +66,55 @@ class FakeLocalModel:
                 {"facet_id": "fac-002", "observable_result": stem + " player UI shows updates."},
             ],
         }
+
+
+
+def _user_space_ledger():
+    return {
+        "original_prompt": _PROMPT,
+        "requirements": [
+            {"id": req, "statement": source, "source": "user_prompt"}
+            for req, fid, source, stem in _SPACE
+        ],
+        "facets": [
+            {"id": fid, "requirements": [req], "source_span": source}
+            for req, fid, source, stem in _SPACE
+        ],
+    }
+
+
+def test_failure_on_seventh_feature_resumes_six_without_new_model_calls(
+        monkeypatch, tmp_path):
+    """The 9B service can die after 6 completed slices without losing them."""
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    ledger = _user_space_ledger()
+
+    class OfflineOnLast(FakeLocalModel):
+        def complete_json(self, prompt, **kwargs):
+            if json.loads(prompt.split("\\n")[-1])["feature_id"] == "intent-colony":
+                self.calls.append(prompt)
+                raise ConnectionError("local MiMo backend unavailable")
+            return super().complete_json(prompt, **kwargs)
+
+    offline = OfflineOnLast()
+    first = {"ledger": copy.deepcopy(ledger), "evidence": []}
+    with pytest.raises(DynamicDesignError, match="intent-colony"):
+        RobloxDynamicArchitect(offline, checkpoint_dir=tmp_path).design(
+            _PROMPT, first, [])
+    assert len(offline.calls) == 9  # six successes, three honest failed retries
+    cache = tmp_path / "architecture_subplans_checkpoint.json"
+    assert cache.is_file()
+    assert len(json.loads(cache.read_text(encoding="utf-8"))["facets"]) == 6
+
+    online = FakeLocalModel()
+    second = {"ledger": copy.deepcopy(ledger), "evidence": []}
+    output = RobloxDynamicArchitect(online, checkpoint_dir=tmp_path).design(
+        _PROMPT, second, [])
+    assert len(online.calls) == 1, "Must not regenerate six verified architecture slices"
+    assert len(output["modules"]) == 14
+    assert [row["cache_hit"] for row in second["architecture_subplans"]] == (
+        [True] * 6 + [False]
+    )
 
 
 def test_user_space_request_full_ledger_is_scoped_and_kept_without_replanning(monkeypatch):
