@@ -808,6 +808,7 @@ class RobloxDynamicArchitect:
                             reserved_remotes=reserved_remotes,
                             reserved_objects=reserved_objects,
                         )
+                        draft["_host_semantic"] = True
                     # Source IDs are host-owned, not model-generated. One
                     # scoped task equals one canonical source facet.
                     draft, id_binding = _bind_scoped_feature_ids(
@@ -891,6 +892,27 @@ class RobloxDynamicArchitect:
         # means the whole game is compiled or gameplay tested.
         result = _clean_model_json(
             combined, ledger, {m.name for m in existing_modules})
+        # Only semantic-only host-authored plans opt into the host Remote
+        # gateway. Legacy full-module JSON retains its current explicit
+        # source wiring so saved projects are not silently rewritten.
+        host_module_names = {
+            row["name"] for part in accepted_parts
+            if part.get("_host_semantic") is True
+            for row in part["modules"] if row.get("role") == "server"
+        }
+        if host_module_names:
+            host_actions: dict[str, dict[str, str]] = {}
+            for module in result["modules"]:
+                if module.name not in host_module_names:
+                    continue
+                for remote in result["module_remotes"].get(module.module_id, []):
+                    if remote in host_actions:
+                        raise DynamicDesignError("Ambiguous host-owned Remote owner: " + remote)
+                    host_actions[remote] = {
+                        "service": module.name,
+                        "kind": result["remotes"][remote],
+                    }
+            result["host_actions"] = host_actions
         research["architecture_assembly"] = {
             "strategy": "source_anchored_scoped_feature_contracts",
             "feature_count": len(facets),
