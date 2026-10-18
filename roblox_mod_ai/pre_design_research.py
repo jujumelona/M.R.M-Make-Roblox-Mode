@@ -338,6 +338,16 @@ class RobloxPreDesignResearch:
                     "status":"known_package_candidate_only",
                     "source_inspected":False, "wally_resolution_required":True,
                 })
+        # Atomic intents describe the game action. Long LLM-authored search
+        # strings often inject optional services (e.g. DataStoreService into
+        # every mechanic), producing the same unrelated docs for each action.
+        # Search the requested gameplay intent first, but preserve the full
+        # model query in the audit record for later targeted API lookup.
+        intent_queries = {
+            str(item.get("facet_id")): "Roblox " + str(item.get("intent", "")).strip()
+            for item in ledger.get("atomic_intents", [])
+            if item.get("facet_id") and len(str(item.get("intent", "")).split()) >= 3
+        }
         seen_urls: set[tuple[str, str]] = set()
 
         # Bound transport work, not the user's actual feature ledger. Newly
@@ -350,7 +360,9 @@ class RobloxPreDesignResearch:
         ))
         for index, facet in enumerate(prioritized_facets):
             query = facet["search_query"]
+            retrieval_query = intent_queries.get(facet["id"], query)
             entry = {"facet": facet["id"], "query": query,
+                     "retrieval_query": retrieval_query,
                      "providers": ["official_docs", "local_api_index"], "status": "pending",
                      "requirement_ids": facet["requirements"]}
             # Exact first-party generator source can be inspected and reused;
@@ -385,7 +397,7 @@ class RobloxPreDesignResearch:
                 local_source_count+=1
             entry["local_source_matches"]=local_source_count
             # Local source inspection is a candidate, not official live evidence.
-            local_api_hits = self.api.search(query, limit=3)
+            local_api_hits = self.api.search(retrieval_query, limit=3)
             for hit in local_api_hits:
                 evidence.append({
                     "facet": facet["id"],
@@ -407,7 +419,7 @@ class RobloxPreDesignResearch:
                 entry["status"] = "deferred_budget"
                 continue
             try:
-                result = self.docs.search(query, limit=_DOC_LIMIT, with_excerpt=True)
+                result = self.docs.search(retrieval_query, limit=_DOC_LIMIT, with_excerpt=True)
                 if result.get("error"):
                     failures.append({"facet": facet["id"], "provider": "official_docs",
                                      "reason": str(result["error"])[:250]})
