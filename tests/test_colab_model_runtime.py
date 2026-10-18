@@ -158,7 +158,10 @@ def test_notebook_generator_bootstraps_before_first_ai_plan(monkeypatch, tmp_pat
     assert "setup_colab_toolchain(" not in source[4]
     assert "CompleteRobloxAISession(" in source[5]
     assert "if RUN_MODE == \"Execute\" and FINAL_PLAN_REPLY is not None" in source[5]
-    assert "if not FINAL_PLAN_REPLY.ready_to_build:" in source[6]
+    assert "if FINAL_PLAN_REPLY.ready_to_build:" in source[6]
+    assert "PLAN_FAILURE_LOGS_ZIP = session.export_plan_failure()" in source[6]
+    assert "failure_logs_zip" in source[6]
+    assert "DOWNLOAD_TARGETS.append(Path(failure_path))" in source[7]
     assert source[2].index("setup_colab_toolchain(") < source[2].index("ensure_model_runtime(")
     assert "sample_models" not in source[4]
 
