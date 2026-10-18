@@ -4,9 +4,10 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
+import re
 
 from .spec import RobloxProposal
-from .dynamic_wiring import inspect_dynamic_remote_wiring
+from .dynamic_wiring import inspect_dynamic_remote_wiring, _mask_strings, _without_comments
 from .server_interface_audit import inspect_dynamic_server_interfaces
 from .request_contract import ledger_complete, implementation_facets
 
@@ -168,6 +169,24 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
             check("dynamic.source." + module.name,
                   on_disk is not None and on_disk == body,
                   "Production must validate exactly the same saved Luau that Rojo builds")
+            # Generator-side role checks do not protect sources restored
+            # from checkpoints or rewritten by formatter/repair tools.
+            # Check the actual file used for compilation, excluding literals.
+            active_source = _mask_strings(_without_comments(
+                on_disk if on_disk is not None else body))
+            is_server = module.file_path.startswith("src/server/")
+            is_client = module.file_path.endswith(".client.luau")
+            forbidden = (
+                (r"\\bLocalPlayer\\b|\\bFireServer\\s*\\(|\\bInvokeServer\\s*\\("
+                 r"|\\bOnClientEvent\\b|\\bOnClientInvoke\\b")
+                if is_server else
+                (r"\\bDataStoreService\\b|\\bOnServerEvent\\b|\\bOnServerInvoke\\b"
+                 r"|\\bFireClient\\s*\\(|\\bFireAllClients\\s*\\(")
+                if is_client else ""
+            )
+            check("dynamic.realm." + module.name,
+                  not forbidden or not re.search(forbidden, active_source),
+                  "Client-only/server-only Roblox APIs must not cross Luau realms")
             check("dynamic.code." + module.name,
                   bool(body.strip()) and len(body) >= 75
                   and not any(token in body.lower() for token in
