@@ -157,6 +157,17 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
               "Each user requirement has assigned novel implementation and observable acceptance case")
         for module in model_modules:
             body = source.get(module.name, "")
+            # Reject acceptance of a different code snapshot from the saved
+            # file that Rojo actually builds. In production the orchestrator
+            # updates code from the formatted source immediately before audit.
+            saved = root / module.file_path
+            try:
+                on_disk = saved.read_text(encoding="utf-8")
+            except OSError:
+                on_disk = None
+            check("dynamic.source." + module.name,
+                  on_disk is not None and on_disk == body,
+                  "Production must validate exactly the same saved Luau that Rojo builds")
             check("dynamic.code." + module.name,
                   bool(body.strip()) and len(body) >= 75
                   and not any(token in body.lower() for token in
