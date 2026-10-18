@@ -27,8 +27,12 @@ class RobloxProjectGenerator:
         """Builds standard Rojo 7.x default.project.json configuration with dynamic remotes."""
         remotes_dict: dict[str, Any] = {"$className": "Folder"}
 
-        # Dynamic Remotes declaration from proposal
-        declared_remotes = {
+        # Built-in sample remotes are for generic starter experiences ONLY.
+        # A custom architecture defines its own RPC contract; including
+        # unrelated combat/obby/tycoon defaults makes the actual project
+        # disagree with its source modules and creates useless channels.
+        dynamic = proposal.game_design.get("dynamic_design") or {}
+        declared_remotes = {} if dynamic.get("remotes") else {
             "AttackRequest": "RemoteEvent",
             "DamageEvent": "RemoteEvent",
             "ShopPurchase": "RemoteFunction",
@@ -38,7 +42,6 @@ class RobloxProjectGenerator:
             "ClickRequest": "RemoteEvent",
             "ButtonPurchased": "RemoteEvent",
         }
-        dynamic = proposal.game_design.get("dynamic_design") or {}
         for remote_name, class_type in dynamic.get("remotes", {}).items():
             if remote_name in declared_remotes and declared_remotes[remote_name] != class_type:
                 raise ValueError("Dynamic Remote cannot override an engine contract: " + remote_name)
