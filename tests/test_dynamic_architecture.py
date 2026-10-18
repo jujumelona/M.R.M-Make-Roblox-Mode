@@ -414,3 +414,92 @@ def test_planner_accepts_source_covered_trade_without_redundant_shop_model_label
     assert {x.name for x in plan.proposal.modules if x.module_id.startswith("dyn_")} == {
         "GameplaySystem1", "GameplaySystem2"
     }
+
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ([{"name":"PurchaseShip", "type":"RemoteFunction"}],
+     {"PurchaseShip":"RemoteFunction"}),
+    ([{"name":"MineOre", "type":"RemoteEvent"}],
+     {"MineOre":"RemoteEvent"}),
+    ([{"Name":"MineOre", "Type":"Event"}],
+     {"MineOre":"RemoteEvent"}),
+    ([{"remote_name":"BuyPart", "remote_type":"request-response"}],
+     {"BuyPart":"RemoteFunction"}),
+    ([{"name":"MineOre", "className":"RemoteEvent"}],
+     {"MineOre":"RemoteEvent"}),
+    ({"BuyPart":"RemoteFunction", "MineOre":"RemoteEvent"},
+     {"BuyPart":"RemoteFunction", "MineOre":"RemoteEvent"}),
+    (["MineOre: event", "BuyPart: RPC"],
+     {"MineOre":"RemoteEvent", "BuyPart":"RemoteFunction"}),
+])
+def test_remote_contract_normalizes_only_known_equivalent_forms(raw, expected):
+    from roblox_mod_ai.dynamic_architect import _normalize_remote_rows
+    rows, unresolved = _normalize_remote_rows(raw)
+    assert unresolved == []
+    assert {entry["name"]: entry["type"] for entry in rows} == expected
+
+
+@pytest.mark.parametrize("raw", [
+    [{"name":"MineOre", "type":"RemoteEvent"},
+     {"name":"MineOre", "type":"RemoteFunction"}],
+    [{"name":"../../evil", "type":"RemoteEvent"}],
+    ["MineOre"],
+    [{"name":"MineOre", "type":"BindableEvent"}],
+])
+def test_remote_contract_does_not_silently_approve_unsafe_protocol(raw):
+    from roblox_mod_ai.dynamic_architect import _normalize_remote_rows
+    if raw == [{"name":"MineOre", "type":"BindableEvent"}]:
+        rows, missing = _normalize_remote_rows(raw)
+        assert missing == ["MineOre"]
+        assert rows[0]["type"] == ""
+    else:
+        with pytest.raises(DynamicDesignError):
+            _normalize_remote_rows(raw)
+
+
+def test_remote_type_targeted_model_repair_preserves_game_architecture():
+    from roblox_mod_ai.dynamic_architect import RobloxDynamicArchitect
+    class RepairRouter:
+        def __init__(self):
+            self.prompts = []
+        def complete_json(self, prompt, **kwargs):
+            self.prompts.append(prompt)
+            assert "unresolved_remote_names" in prompt
+            return {"remotes": [
+                {"name":"UpgradeShip", "type":"RemoteFunction"},
+                {"name":"MineOre", "type":"RemoteEvent"},
+                {"name":"ExtraneousRemote", "type":"RemoteEvent"},
+            ]}
+    fake = RepairRouter()
+    source = {
+        "modules": [{"name":"ShipBuildService","role":"server",
+                     "behavior":"Validate resource inventory and purchase ship module."}],
+        "remotes":[{"name":"UpgradeShip","type":"Remote"},
+                   {"name":"MineOre","kind":"signal"}],
+        "world_objects":[{"name":"ShipBuilder","class":"Part",
+                          "position":[0,5,0],"size":[6,2,6]}],
+        "acceptance":[{"requirement_id":"req-001","observable_result":
+                       "Purchases commit atomically to the player's inventory."}],
+    }
+    before = copy.deepcopy(source)
+    result = RobloxDynamicArchitect(router=fake)._resolve_remote_declarations(source)
+    assert result["remotes"] == [
+        {"name":"UpgradeShip","type":"RemoteFunction"},
+        {"name":"MineOre","type":"RemoteEvent"},
+    ]
+    assert result["modules"] == before["modules"]
+    assert result["world_objects"] == before["world_objects"]
+    assert result["acceptance"] == before["acceptance"]
+    assert source == before
+    assert len(fake.prompts) == 1
+
+
+def test_remote_type_unrepairable_cannot_silently_become_event():
+    from roblox_mod_ai.dynamic_architect import RobloxDynamicArchitect
+    class BadRouter:
+        def complete_json(self, *args, **kwargs):
+            return {"remotes":[{"name":"BuyPart","type":"Remote"}]}
+    with pytest.raises(DynamicDesignError, match="Cannot determine"):
+        RobloxDynamicArchitect(router=BadRouter())._resolve_remote_declarations(
+            {"remotes":[{"name":"BuyPart","type":"Remote"}]})
