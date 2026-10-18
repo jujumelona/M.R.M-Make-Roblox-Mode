@@ -47,7 +47,7 @@ to copy scripts whose source/license/version have not been inspected.
 
 ## Small-model initial response (semantic only)
 
-The default **multi-facet** architect requests ONLY:
+The default architect requests the same semantic-only format for **every positive source-feature count (1, 2, 3, ...)**:
 
 ```json
 {
@@ -70,6 +70,32 @@ or server/client owner lists. Host expansion attaches those fields using one
 source-anchored feature. This removes several classes of format-induced 9B
 failures and reduces JSON/schema output length. The model still must describe
 actual non-placeholder gameplay and must not omit user requirements.
+
+This is NOT a fixed seven-feature space-game pipeline. The number of source
+requirements, semantic gameplay systems, Luau modules, generated Remotes and
+world objects is derived separately from each new user request. A weather-only
+request may use one server module and no Remotes; a puzzle plus pet-care request
+may need event and request/response channels; a large custom experience may
+require many independent systems. The older full-infrastructure JSON format
+remains available only via the explicit
+`RMM_LEGACY_ARCHITECTURE_PROTOCOL=1` compatibility option.
+
+The original seven-feature test remains a **regression for one historical
+failure**. It does not establish prompt generalization. New CI includes
+`tests/test_generalized_host_prompt_matrix.py`: 1, 2, 3, 5, 7, 8, 10
+and 12 feature variants from different genres and languages, differing
+interaction modes and sometimes two systems per feature. In addition,
+`tools/verify_diverse_host_assembly_e2e.py` compiles distinct non-space
+1-, 3- and 9-feature projects through StyLua, Selene and Rojo. A one-feature
+server-only request must produce exactly **zero** default Remotes.
+
+All these CI examples use **deterministic model substitutes**. They prove that
+host architecture does not depend on a magic list of specific prompt words
+or the previous seven-feature count. They do NOT prove that a real 9B model
+interprets every novel mechanic correctly, implements it correctly in Luau,
+or passes Studio gameplay testing. Those require real-model execution and
+behavioral tests for each proposed game.
+
 
 The code generator then receives a single module and its owned action
 contract. For semantic server actions it exports
