@@ -28,7 +28,12 @@ class ModelRouter:
         llama_url = (os.environ.get("ROBLOX_LLAMA_SERVER_URL")
                      or os.environ.get("RMM_MODEL_BASE_URL")
                      or "http://127.0.0.1:8080/v1")
-        self.adapters["llama_cpp"] = LlamaCppAdapter(base_url=llama_url)
+        self.adapters["llama_cpp"] = LlamaCppAdapter(
+            base_url=llama_url,
+            model_name=os.environ.get("RMM_MODEL_ID", "local-gguf"),
+            api_key=os.environ.get("RMM_MODEL_API_KEY", "not-needed"),
+            timeout_seconds=float(os.environ.get("RMM_MODEL_TIMEOUT_SECONDS", "420")),
+        )
         self.adapters["openai"] = OpenAICompatibleAdapter()
 
     def get_adapter_for_role(self, role: str) -> ModelAdapter:
