@@ -188,10 +188,17 @@ def module_bootstrap_contract(module: RobloxModuleSpec, proposal: RobloxProposal
         "calls each exported .start(services) once. The services table holds "
         "the actual exported APIs by their exact names; available keys: "
         + json.dumps(sorted(registry)) +
-        ". Use services.EconomyLedger.Grant/TrySpend/GetBalance where applicable. "
-        "Do not require any .server.luau Scripts, create a second currency store, "
+        ". Do not require any .server.luau Scripts, "
         "or write client methods on the server."
     )
+    # Never bring a currency subsystem into unrelated races, puzzles or
+    # weather-only experiences as a misleading few-shot prompt.
+    if "EconomyLedger" in registry and module.name != "EconomyLedger":
+        contract += (
+            " For credit changes use only the existing server-only "
+            "services.EconomyLedger.GetBalance/TrySpend/Grant contract; "
+            "do not create an independent currency balance."
+        )
     action_routes = {
         name: binding for name, binding
         in ((proposal.game_design.get("dynamic_design") or {}).get(
