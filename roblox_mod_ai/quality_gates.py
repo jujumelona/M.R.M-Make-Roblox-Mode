@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .spec import RobloxProposal
 from .dynamic_wiring import inspect_dynamic_remote_wiring
-from .request_contract import ledger_complete
+from .request_contract import ledger_complete, implementation_facets
 
 
 def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict:
@@ -140,7 +140,9 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
         assignments = dyn.get("module_requirements", {})
         model_modules = [m for m in proposal.modules if m.module_id.startswith("dyn_")]
         covered = {req for m in model_modules for req in assignments.get(m.module_id, [])}
-        authored_facets = {item["id"] for item in ledger.get("facets", [])}
+        # Require every original source-anchored mechanic, without double-counting
+        # a generic keyword category already represented by that same source.
+        authored_facets = {item["id"] for item in implementation_facets(ledger)}
         implemented_facets = {facet for m in model_modules for facet in
                               dyn.get("module_facets", {}).get(m.module_id, [])}
         check("dynamic.facets", implemented_facets == authored_facets
