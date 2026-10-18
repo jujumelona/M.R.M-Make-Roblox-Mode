@@ -680,7 +680,7 @@ class RobloxDynamicArchitect:
                 "or return the entire game's architecture. Do not invent "
                 "fac-001/fac-002 identifiers. All behaviors, names and "
                 "remotes must serve ONLY source_requirements for this slice. "
-                "Other game features are separate host-orchestrated tasks. JSON ONLY.\\n"
+                "Other game features are separate host-orchestrated tasks. JSON ONLY.\n"
                 + json.dumps(payload, ensure_ascii=False)
             )
             previous_error = ""
