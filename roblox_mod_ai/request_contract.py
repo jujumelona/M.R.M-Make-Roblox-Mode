@@ -82,6 +82,58 @@ def validate_model_behaviors(clause: str, behaviors: list[dict[str, Any]]) -> bo
     return span_coverage(source, spans) >= .78
 
 
+
+def implementation_facets(ledger: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return distinct implementation obligations, excluding duplicate genre labels.
+
+    Keyword facets (e.g. 'shop') are retrieval/classification hints. Once the
+    same exact user requirement is owned by a source-anchored atomic intent,
+    counting that keyword again as a separately authored gameplay requirement
+    makes small-model architecture validation reject otherwise fully covered
+    designs. Never discard an uncovered generic facet, an atom, or query-only
+    model research; those remain independently accountable.
+    """
+    facets = ledger.get("facets", [])
+    if not isinstance(facets, list):
+        return []
+    if ledger.get("decomposition_method") != "source_anchored_model":
+        return [f for f in facets if isinstance(f, dict)]
+    requirements = {
+        entry["id"]: clean(entry.get("statement", ""))
+        for entry in ledger.get("requirements", [])
+        if isinstance(entry, dict) and isinstance(entry.get("id"), str)
+    }
+    atom_owned: set[str] = set()
+    facet_by_id = {
+        f["id"]: f for f in facets
+        if isinstance(f, dict) and isinstance(f.get("id"), str)
+    }
+    for atom in ledger.get("atomic_intents", []):
+        if not isinstance(atom, dict):
+            continue
+        rid, fid = atom.get("requirement_id"), atom.get("facet_id")
+        facet = facet_by_id.get(fid)
+        if (rid in requirements and facet and
+                clean(atom.get("source_span", "")) == requirements[rid] and
+                clean(facet.get("source_span", "")) == requirements[rid] and
+                rid in facet.get("requirements", [])):
+            atom_owned.add(rid)
+    result: list[dict[str, Any]] = []
+    for facet in facets:
+        if not isinstance(facet, dict):
+            continue
+        owners = facet.get("requirements", [])
+        taxonomy_duplicate = (
+            not facet.get("source_span") and
+            not facet.get("model_query_only") and
+            isinstance(owners, list) and bool(owners) and
+            set(owners).issubset(atom_owned)
+        )
+        if not taxonomy_duplicate:
+            result.append(facet)
+    return result
+
+
 def ledger_complete(prompt: str, ledger: dict[str, Any]) -> bool:
     """Recheck saved plans independent of the planner's 'unmatched' bookkeeping."""
     if not isinstance(ledger, dict) or ledger.get("original_prompt") != prompt:
