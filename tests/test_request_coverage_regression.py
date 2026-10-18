@@ -144,3 +144,57 @@ def test_model_spans_must_be_exact_distinct_and_cover_source():
     assert not validate_model_behaviors(
         ATOMIC_REQUEST, [valid[0], valid[0]] + valid[2:]
     )
+
+
+
+def test_novel_action_searches_use_limited_docs_budget_first(monkeypatch):
+    """RAG must not spend eight search slots on generic shop/docs instead of user actions."""
+    class DocsSpy:
+        def __init__(self):
+            self.queries = []
+
+        def search(self, query, *, limit, with_excerpt):
+            self.queries.append(query)
+            return {"results": []}
+
+    monkeypatch.setenv("RMM_ENABLE_MODEL_QUERY_EXPANSION", "0")
+    original = "상점에서 아이템 구매"
+    ledger = build_request_ledger(original)
+    ledger["atomic_intents"] = [{"facet_id": "intent-0", "requirement_id": "req-001"}]
+    for index in range(10):
+        ledger["facets"].append({
+            "id": f"intent-{index}",
+            "requirements": ["req-001"],
+            "search_query": f"Roblox original mechanic {index}",
+            "source_span": f"mechanic {index}",
+            "implementation_key": None,
+            "implemented_by_builtin": False,
+        })
+    docs = DocsSpy()
+    research = RobloxPreDesignResearch(docs=docs, live_enabled=True)
+    research._decompose_compound = lambda prompt, _ledger: ledger
+    result = research.research(original)
+    assert len(docs.queries) == 8
+    assert all("original mechanic" in query for query in docs.queries)
+    assert result["queries"][0]["facet"].startswith("intent-")
+    shop_query = next(item for item in result["queries"] if item["facet"] == "shop")
+    assert shop_query["status"] == "deferred_budget"
+
+
+def test_auto_model_availability_does_not_rewrite_exact_stock_shop(monkeypatch):
+    """Availability of llama-server must not disable inspected first-party reuse."""
+    class ModelMustNotBeUsed:
+        def complete_json(self, *args, **kwargs):
+            raise AssertionError("Stock shop unexpectedly replanned with an LLM")
+
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "auto")
+    monkeypatch.setenv("ROBLOX_LLAMA_SERVER_URL", "http://127.0.0.1:9999/v1")
+    monkeypatch.setenv("RMM_ENABLE_MODEL_QUERY_EXPANSION", "0")
+    research = RobloxPreDesignResearch(live_enabled=False)
+    planner = RobloxGameDesignPlanner(pre_design_research=research)
+    planner.router = ModelMustNotBeUsed()
+    plan = planner.plan("상점에서 아이템 구매")
+    assert plan.proposal.game_design["dynamic_design"] is None
+    assert {"ShopService", "ShopController"}.issubset(
+        {module.name for module in plan.proposal.modules}
+    )
