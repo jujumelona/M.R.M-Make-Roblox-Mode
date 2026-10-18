@@ -10,6 +10,7 @@ import re
 from typing import Any
 
 from .spec import RobloxProposal
+from .dynamic_wiring import _mask_strings, _without_comments
 
 _NAME = r"[A-Za-z_][A-Za-z0-9_]*"
 _CALL = re.compile(r"\bservices\.(" + _NAME + r")\.(" + _NAME + r")\s*\(")
@@ -41,7 +42,7 @@ def inspect_dynamic_server_interfaces(proposal: RobloxProposal) -> dict[str, Any
     for name, module in services.items():
         # The host keeps server ModuleScripts private. Check the returned
         # service table before resolving method names across files.
-        source = module.code
+        source = _mask_strings(_without_comments(module.code))
         returned = _RETURN.search(source.strip())
         declaration = returned.group(1) if returned else None
         declared_tables = set(_LOCAL.findall(source))
@@ -67,9 +68,10 @@ def inspect_dynamic_server_interfaces(proposal: RobloxProposal) -> dict[str, Any
     for caller in proposal.modules:
         if not caller.module_id.startswith("dyn_"):
             continue
-        source = caller.code
-        for target, method in set([*_CALL.findall(source),
-                                   *_BRACKET_CALL.findall(source)]):
+        raw_source = _without_comments(caller.code)
+        masked = _mask_strings(raw_source)
+        for target, method in set([*_CALL.findall(masked),
+                                   *_BRACKET_CALL.findall(raw_source)]):
             target_module = services.get(target)
             ok = target_module is not None and method in exports.get(target, ())
             checks.append({
