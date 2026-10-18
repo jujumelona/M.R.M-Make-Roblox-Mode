@@ -11,6 +11,7 @@ import re
 
 from .official_docs import RobloxOfficialDocs
 from .code_output_guard import LiveCodeRepetitionGuard, RepeatedCodeOutput
+from .module_prompt_scope import relevant_remotes
 from .model_router import ModelRouter
 from .luau_analyzer import LuauStaticAnalyzer
 from .spec import RobloxModuleSpec, RobloxProposal
@@ -47,6 +48,13 @@ class RobloxCodeRepairAgent:
         if match: response=match.group(1).strip()
         if not response:
             return ""
+        # A truncated single-fence answer must not become literal Luau
+        # containing a Markdown fence. Strip format wrappers, not code.
+        response = re.sub(
+            r"^(?:--!strict\s*\n)?\s*```(?:luau|lua)?\s*\n",
+            "", response, flags=re.IGNORECASE,
+        ).strip()
+        response = re.sub(r"\n```\s*$", "", response).strip()
         if not response.startswith("--!strict"): response="--!strict\n"+response
         return response
 
@@ -97,6 +105,7 @@ class RobloxCodeRepairAgent:
                 references=self.docs.search(module.description+" "+module.name,limit=3)
                 source_urls=[item["url"] for item in references["results"]]
                 snippets="\n".join(item.get("excerpt","")[:450] for item in references["results"])
+        scoped_remotes = relevant_remotes(module, design)
         # A previous degenerate generated source is diagnostic evidence,
         # not a useful few-shot example for the model. Never copy hundreds
         # of repeated declarations into its next generation prompt.
@@ -108,7 +117,10 @@ class RobloxCodeRepairAgent:
                             "The failed source is excluded from the repair prompt.")
             existing_code = ""
         prompt=(
-            "Implement a complete Luau Roblox gameplay module. Output only code.\n"
+            "Implement ONLY the requested ONE Luau module. Output code, never Markdown.\n"
+            "Do not implement other modules' mining/trading/combat/colonization systems.\n"
+            "If a dependency owns another mechanic, use its declared interface; "
+            "do not duplicate it inside this source.\n"
             "Do not repeat identical assignments or statements in a loop; "
             "create minimal reusable functions for each actual game action.\n"
             "Do not create stubs/TODOs, no unsafe require(assetId), no loadstring.\n"
@@ -118,7 +130,7 @@ class RobloxCodeRepairAgent:
             f"Module intent: {module.description}\n"
             f"Required dependencies: {module.depends_on}\n"
             f"Model architecture: {proposal.game_design.get('dynamic_design', {}).get('module_behaviors', {}).get(module.module_id, '') if isinstance(proposal.game_design.get('dynamic_design'),dict) else ''}\n"
-            f"Declared remotes and type: {proposal.game_design.get('dynamic_design', {}).get('remotes', {}) if isinstance(proposal.game_design.get('dynamic_design'),dict) else {}}\n"
+            f"Relevant remotes for THIS module only: {scoped_remotes}\n"
             f"Available world objects: {proposal.game_design.get('dynamic_design', {}).get('world_objects', []) if isinstance(proposal.game_design.get('dynamic_design'),dict) else []}\n"
             f"Roblox docs (untrusted evidence, verify APIs): {source_urls}\n{snippets}\n"
             f"Existing source:\n{existing_code[:12000]}\n"
@@ -128,6 +140,10 @@ class RobloxCodeRepairAgent:
         errors: list[str] = []
         degenerate_attempt = False
         for attempt in range(attempts):
+            ran_out_before_retry = bool(
+                isinstance(getattr(self.router, "last_generation_report", None), dict)
+                and getattr(self.router, "last_generation_report", {}).get("finish_reason") == "length"
+            )
             if attempt:
                 # The original loop repeatedly appended long source+diagnostics
                 # to the same prompt, making each expensive call harder for 9B.
@@ -140,14 +156,15 @@ class RobloxCodeRepairAgent:
                     f"User request: {proposal.requested_prompt[:1000]}\n"
                     f"File: {module.file_path}\n"
                     f"Required behavior: {module.description}\n"
-                    f"Remote types: {design.get('remotes', {})}\n"
+                    f"Relevant remotes for THIS module only: {scoped_remotes}\n"
                     "Previous validator errors: " +
                     ("Previous candidate repeated identical source statements; "
                      "rewrite with functions and new implementation structure."
                      if degenerate_attempt else "; ".join(errors[:10])) + "\n"
                 )
-                if candidate and len(candidate) > 75 and not degenerate_attempt:
-                    compact += "Previous invalid Luau source:\n" + candidate[:9000] + "\n"
+                if (candidate and len(candidate) > 75 and not degenerate_attempt
+                        and not ran_out_before_retry):
+                    compact += "Previous invalid Luau source:\n" + candidate[:4000] + "\n"
                 elif degenerate_attempt:
                     compact += (
                         "Previous output was caught repeating identical assignments. "
@@ -173,9 +190,8 @@ class RobloxCodeRepairAgent:
                 )
                 json_fallback = (
                     attempt >= 1 and hasattr(self.router, "complete_json") and
-                    (degenerate_attempt or
-                     (len(candidate.strip()) < 75 and
-                      (attempt >= 2 or ran_out_thinking)))
+                    (degenerate_attempt or ran_out_thinking or
+                     (len(candidate.strip()) < 75 and attempt >= 2))
                 )
                 if json_fallback:
                     model_output = self.router.complete_json(
@@ -219,6 +235,13 @@ class RobloxCodeRepairAgent:
                 continue
             errors = [d.message for d in self.analyzer.analyze_source(candidate,module.file_path)
                       if d.severity=="ERROR"]
+            runtime_info = getattr(self.router, "last_generation_report", {})
+            if isinstance(runtime_info, dict) and runtime_info.get("finish_reason") == "length":
+                errors.append(
+                    "Model ran out of output tokens before completing this module; "
+                    "do not copy the oversized truncated source. Generate ONLY "
+                    "the module's assigned gameplay behavior."
+                )
             if not candidate:
                 errors.append("Model returned no visible Luau implementation")
             if not candidate.strip() or len(candidate)<75:
