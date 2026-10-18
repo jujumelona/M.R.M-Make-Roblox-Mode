@@ -87,10 +87,10 @@ def inspect_compiled_place(proposal: RobloxProposal, compiled: Path,
                       and _normalized(compiled_source)==original)
         dynamic=proposal.game_design.get("dynamic_design") or {}
         for obj in dynamic.get("world_objects", []):
-            check("dynamic.world."+obj["name"],
-                  (obj["name"],obj["class"]) in
-                  [(name,kind) for name,kind,_ in items
-                   if any(_name(p)=="Workspace" for p in _ancestors(_find_element(items,name,kind),parents))])
+            matches=[e for name,kind,e in items
+                     if name==obj["name"] and kind==obj["class"]
+                     and any(_name(p)=="Workspace" for p in _ancestors(e,parents))]
+            check("dynamic.world."+obj["name"],len(matches)==1)
         for remote_name, remote_class in dynamic.get("remotes", {}).items():
             matching=[e for n,k,e in items
                       if n==remote_name and k==remote_class and
@@ -127,5 +127,3 @@ def _ancestors(element: ET.Element | None, parents: dict) -> list[ET.Element]:
         parent=parents.get(parent)
     return result
 
-def _find_element(items: list[tuple], name: str, kind: str) -> ET.Element | None:
-    return next((e for n,k,e in items if n==name and k==kind),None)
