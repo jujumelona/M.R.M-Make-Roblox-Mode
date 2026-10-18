@@ -33,11 +33,13 @@ def test_actual_scoped_planner_prompts_not_whole_game(monkeypatch):
             f["id"] for f in report["ledger"]["facets"]}
         assert len(payload["source_requirements"]) == 1
         assert meta["role"] == "planner"
-        assert meta["max_tokens"] == 5000
+        assert meta["max_tokens"] == 2600
         schema = meta["json_schema"]
         assert schema["type"] == "object"
-        assert "uses_remotes" in schema["properties"]["modules"]["items"]["required"]
-        assert "remotes" in schema["required"]
+        assert "systems" in schema["required"]
+        assert "server_behavior" in schema["properties"]["systems"]["items"]["required"]
+        assert "remotes" not in schema["properties"]
+        assert "file_path" not in schema["properties"]["systems"]["items"]["properties"]
         assert "overall_game_context" not in payload
         assert "Luau scripts are to be written separately" not in prompt
 
