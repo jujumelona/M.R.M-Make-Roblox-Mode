@@ -98,6 +98,7 @@ def test_observed_rate_uses_identical_input_fingerprint_only():
         receipt("same-configuration", "build_or_runtime_failed", False),
         receipt("different-model-quantization", "verified", True),
         receipt("same-configuration", "error", False),  # model never finished request
+        receipt("same-configuration", "source_only_not_studio_verified", False),
         {"model_mode": "CI_deterministic_mock",
          "input_fingerprint": "same-configuration",
          "status": "verified", "complete_game_verified": True},
