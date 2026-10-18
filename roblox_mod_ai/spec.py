@@ -12,6 +12,7 @@ from typing import Any
 
 class ModuleKind(str, Enum):
     SERVER_SCRIPT = "server_script"
+    SERVER_MODULE = "server_module"
     CLIENT_SCRIPT = "client_script"
     SHARED_MODULE = "shared_module"
     REMOTE_BRIDGE = "remote_bridge"
