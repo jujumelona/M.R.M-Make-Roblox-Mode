@@ -120,6 +120,12 @@ class RobloxCodeRepairAgent:
             if isinstance(record, dict) and record.get("service") == module.name
             and module.file_path.startswith("src/server/")
         }
+        host_world_routes = {
+            name: record for name, record in
+            (design.get("host_world_actions") or {}).items()
+            if isinstance(record, dict) and record.get("service") == module.name
+            and module.file_path.startswith("src/server/")
+        }
         # The model is hired for ONE feature, not for the whole 7-feature
         # space game. Original user clauses remain binding via source IDs.
         ledger = pre.get("ledger", {}) if isinstance(pre, dict) else {}
@@ -343,7 +349,7 @@ class RobloxCodeRepairAgent:
                 if not re.search(
                         r"\bfunction\s+[A-Za-z_]\w*\.start\s*\(", candidate):
                     errors.append("Server ModuleScript needs an actual .start(services) entry point")
-            if host_routed_actions:
+            if host_routed_actions or host_world_routes:
                 if not re.search(
                     r"\b(?:function\s+[A-Za-z_]\w*[.:]handleAction\s*\(|"
                     r"[A-Za-z_]\w*\.handleAction\s*=\s*function\s*\()", candidate):
