@@ -7,6 +7,7 @@ module source file.  The same external tool must pass again after the patch.
 from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
+import json
 
 from .agent_loop import RobloxCodeRepairAgent
 from .spec import RobloxProposal
@@ -21,6 +22,45 @@ def affected_dynamic_modules(proposal: RobloxProposal, diagnostics: str) -> list
         if mod.file_path in normalized or Path(mod.file_path).name in normalized:
             affected.append(mod)
     return affected[:2]
+
+
+def model_triage_modules(proposal: RobloxProposal, diagnostic: str, router,
+                         *, max_files: int = 3) -> list:
+    """Ask model WHICH existing generated file owns an unlocated diagnostic.
+
+    Never let the model invent a path, choose a third-party file, or bypass the
+    failing check. Only use when tool output cannot be mapped by exact pathname.
+    """
+    available = [m for m in proposal.modules if m.module_id.startswith("dyn_")]
+    if not available:
+        return []
+    try:
+        result = router.complete_json(
+            "Given the ACTUAL failed Roblox source/tool diagnostic, identify "
+            "the existing generated Luau files that need fixing. Return JSON "
+            '{"files":["src/..."]}. No new filenames or invented modules. '
+            "Consider server/client roles and the current source. "
+            "Choose only files relevant to the failed action; do not rewrite "
+            "unrelated code.\n" +
+            json.dumps({
+                "diagnostic": diagnostic[:7500],
+                "files": [{"path": m.file_path, "role": str(m.kind),
+                           "purpose": m.description[:240],
+                           "code_excerpt": m.code[:1500]} for m in available],
+            }, ensure_ascii=False),
+            role="planner", temperature=0.0,
+        )
+        paths = result.get("files") if isinstance(result, dict) else None
+        if not isinstance(paths, list) or not paths or len(paths) > max_files:
+            return []
+        by_path = {m.file_path: m for m in available}
+        if len(set(paths)) != len(paths) or any(
+                not isinstance(path, str) or path not in by_path
+                for path in paths):
+            return []
+        return [by_path[path] for path in paths]
+    except Exception:
+        return []
 
 
 def repair_tool_diagnostics(proposal: RobloxProposal, output_dir: Path,
@@ -48,13 +88,21 @@ def repair_tool_diagnostics(proposal: RobloxProposal, output_dir: Path,
         )[:16000]
         selected = affected_dynamic_modules(proposal, diagnostics)
         if not selected:
+            selected = model_triage_modules(proposal, diagnostics, router)
+            history.append({"attempt": attempt, "action": "model diagnostic triage",
+                            "diagnostics": diagnostics,
+                            "candidate_files": [m.file_path for m in selected]})
+        if not selected:
             return {"passed": False, "tool": tool_name, "history": history,
-                    "reason": "No exact generated module mentioned in current tool diagnostic",
+                    "reason": "Model could not attribute tool error to a real generated source",
                     "last_tool": result}
         if attempt > 1 and diagnostics == previous_diagnostic:
-            return {"passed": False, "tool": tool_name, "history": history,
-                    "reason": "Identical compiler error after previous correction",
-                    "last_tool": result}
+            history.append({"attempt": attempt,
+                            "diagnostics": diagnostics,
+                            "decision": "repeat observed, requesting different targeted edit"})
+            # The previous edit did not alter the verifier's observation.
+            # Give the agent the prior failure again rather than prematurely
+            # declaring a finished repair attempt.
         previous_diagnostic = diagnostics
         attempt_record: dict[str, Any] = {
             "attempt": attempt, "diagnostics": diagnostics,
@@ -144,13 +192,23 @@ def repair_static_failures(proposal: RobloxProposal, output_dir: Path,
                         errors_by_path.setdefault(module.file_path, []).append(
                             check_id + ": " + detail)
         if not errors_by_path:
+            # General acceptance checks may not mention a file (e.g. wiring
+            # with a missing client sender). Ask the model to select ONLY known
+            # generated modules; retain exact checker failures for its edit.
+            detail = json.dumps({
+                "acceptance_checks": failures,
+                "analyzer_diagnostics": [getattr(d, "message", "") for d in diagnostics],
+            }, ensure_ascii=False)
+            selected = model_triage_modules(proposal, detail, router)
+            for mod in selected:
+                errors_by_path.setdefault(mod.file_path, []).append(detail)
             if trajectory:
                 trajectory.record("static", "diagnostic triage", {
-                    "unrepairable_checks": [x.get("id") for x in failures],
-                    "errors": [getattr(d, "message", "") for d in diagnostics],
-                    "reason": "No exact generated source implicated",
-                }, passed=False, attempt=round_num)
-            break
+                    "failed_checks": [x.get("id") for x in failures],
+                    "model_selected_files": [m.file_path for m in selected],
+                }, passed=bool(selected), attempt=round_num)
+            if not errors_by_path:
+                break
         before = set(x.get("id") for x in failures)
         before_errors = len(diagnostics)
         originals = {}
