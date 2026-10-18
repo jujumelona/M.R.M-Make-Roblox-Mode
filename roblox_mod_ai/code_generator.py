@@ -11,6 +11,7 @@ from .library_adapters import PROFILESTORE_SERVER, FUSION_HUD
 from .agent_loop import RobloxCodeRepairAgent
 from .economy_core import is_supported_economy_ledger, render_economy_ledger
 from .server_modules import render_dynamic_server_bootstrap
+from .host_client import render_host_client
 from .model_router import ModelRouter
 from .spec import RobloxModuleSpec, RobloxProposal
 
@@ -78,6 +79,11 @@ class LuauCodeGenerator:
             return render_dynamic_server_bootstrap(proposal)
         if is_supported_economy_ledger(module) and module.file_path.endswith("/EconomyLedger.luau"):
             return render_economy_ledger(module)
+        if (module.module_id.startswith("dyn_")
+                and module.name in (
+                    (proposal.game_design.get("dynamic_design") or {})
+                    .get("host_client_actions", {}))):
+            return render_host_client(module, proposal)
         if module.module_id.startswith("dyn_"):
             return RobloxCodeRepairAgent(router=self.router).repair(
                 module, proposal,
