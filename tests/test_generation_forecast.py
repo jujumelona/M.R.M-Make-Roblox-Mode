@@ -84,6 +84,40 @@ def test_untraceable_run_cannot_inflate_measured_rate():
     assert result["measured_full_game_model_runs"]["count"] == 0
 
 
+def test_observed_rate_uses_identical_input_fingerprint_only():
+    ledger = _user_space_ledger()
+    def receipt(fingerprint, status, completed):
+        return {
+            "model_mode": "real_local_llama_cpp_not_mock",
+            "input_fingerprint": fingerprint,
+            "status": status,
+            "complete_game_verified": completed,
+        }
+    samples = [
+        receipt("same-configuration", "verified", True),
+        receipt("same-configuration", "build_or_runtime_failed", False),
+        receipt("different-model-quantization", "verified", True),
+        receipt("same-configuration", "error", False),  # model never finished request
+        {"model_mode": "CI_deterministic_mock",
+         "input_fingerprint": "same-configuration",
+         "status": "verified", "complete_game_verified": True},
+    ]
+    result = forecast_generation(
+        requested_prompt=_PROMPT, ledger=ledger, modules=[],
+        observed_model_runs=samples, expected_input_fingerprint="same-configuration",
+    )
+    observed = result["measured_full_game_model_runs"]
+    assert observed["count"] == 2
+    assert observed["verified_completed"] == 1
+    assert observed["empirical_completion_rate"] == 0.5
+    mismatched = forecast_generation(
+        requested_prompt=_PROMPT, ledger=ledger, modules=[],
+        observed_model_runs=samples, expected_input_fingerprint="unused",
+    )
+    assert mismatched["measured_full_game_model_runs"]["count"] == 0
+    assert mismatched["measured_full_game_model_runs"]["empirical_completion_rate"] is None
+
+
 def test_invalid_probabilities_rejected_and_retries_do_not_claim_calibration():
     for p in (-0.1, 1.1, math.nan, math.inf):
         with pytest.raises(ValueError):
