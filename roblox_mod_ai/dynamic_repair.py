@@ -185,6 +185,25 @@ def repair_static_failures(proposal: RobloxProposal, output_dir: Path,
                 if target:
                     errors_by_path.setdefault(target.file_path, []).append(
                         check_id + ": " + detail)
+            if check_id.startswith(("service.export.", "service.start.")):
+                # This error identifies its exact owning server module.
+                owner_name = check_id.split(".", 2)[-1]
+                target = name_to_module.get(owner_name)
+                if target:
+                    errors_by_path.setdefault(target.file_path, []).append(
+                        check_id + ": " + detail)
+            if check_id.startswith("service.call."):
+                # service.call.<caller>.<callee>.<method>: repair ONLY the
+                # caller that invoked the nonexistent interface. Do not
+                # blindly rewrite the callee or unrelated gameplay files.
+                parts = check_id.split(".")
+                if len(parts) == 5:
+                    target = name_to_module.get(parts[2])
+                    if target:
+                        errors_by_path.setdefault(target.file_path, []).append(
+                            check_id + ": " + detail +
+                            "; change this call to an actually exported "
+                            "service method without deleting its gameplay")
             if check_id.startswith("wiring."):
                 remote = check_id.removeprefix("wiring.")
                 # When the CLIENT has no remote call, only the SERVER source
