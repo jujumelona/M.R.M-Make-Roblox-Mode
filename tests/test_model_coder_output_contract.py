@@ -142,3 +142,42 @@ def test_codegen_backend_error_is_observed_not_converted_to_stub(monkeypatch):
         RobloxCodeRepairAgent(router=Router()).repair(mod, plan, attempts=2)
     assert not e.value.candidate
     assert any("finish_reason=length" in d for d in e.value.diagnostics)
+
+
+
+def test_repeated_empty_plaintext_uses_structured_luau_recovery(monkeypatch):
+    monkeypatch.setenv("RMM_ENABLE_MODEL_GENERATION", "1")
+    class Router:
+        def __init__(self): self.plain_calls=0; self.json_calls=0
+        def complete(self, prompt, **kwargs):
+            self.plain_calls += 1
+            return ""
+        def complete_json(self, prompt, **kwargs):
+            self.json_calls += 1
+            assert kwargs["role"] == "coder"
+            assert kwargs["max_tokens"] == 6000
+            assert "'luau'" in prompt
+            return {"luau": "--!strict\n"
+                            "local economy: {[number]: number} = {}\n"
+                            "local function credit(userId: number, amount: number): number\n"
+                            "    economy[userId] = (economy[userId] or 0) + amount\n"
+                            "    return economy[userId]\n"
+                            "end\nprint(credit)\n"}
+    mod, plan = _module()
+    model = Router()
+    result = RobloxCodeRepairAgent(router=model).repair(mod, plan, attempts=3)
+    assert "economy[userId]" in result
+    assert model.plain_calls == 2
+    assert model.json_calls == 1
+
+
+def test_structured_luau_response_is_still_checked_for_placeholders(monkeypatch):
+    monkeypatch.setenv("RMM_ENABLE_MODEL_GENERATION", "1")
+    class Router:
+        def complete(self, *args, **kwargs): return ""
+        def complete_json(self, *args, **kwargs):
+            return {"luau": "--!strict\n-- TODO: implement currency\n"}
+    mod, plan = _module()
+    with pytest.raises(LuauGenerationError) as err:
+        RobloxCodeRepairAgent(router=Router()).repair(mod, plan, attempts=3)
+    assert "Placeholder code is prohibited" in err.value.diagnostics
