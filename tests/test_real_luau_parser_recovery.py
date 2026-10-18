@@ -116,3 +116,30 @@ def test_missing_real_parser_is_not_silent_success_in_colab(monkeypatch):
     result = LuauStaticAnalyzer().analyze_source("--!strict\nprint('a')\n")
     assert any(x.rule == "LUAU_PARSER_UNAVAILABLE" and x.severity == "ERROR"
                for x in result)
+
+
+
+def test_parser_failure_switches_to_structured_output_and_discards_bad_source(monkeypatch):
+    """The uploaded failure stopped normally with 752 tokens but invalid Luau."""
+    _fake_stylua(monkeypatch)
+    monkeypatch.setenv("RMM_ENABLE_MODEL_GENERATION", "1")
+    call_modes = []
+
+    class Router:
+        last_generation_report = {"finish_reason": "stop"}
+        def complete(self, prompt, **kwargs):
+            call_modes.append("plain")
+            return BAD_SOURCE
+        def complete_json(self, prompt, **kwargs):
+            call_modes.append("json")
+            assert "line 3, column 33" in prompt
+            assert "Previous invalid Luau source:" not in prompt
+            assert "function validateCredit(player): void?" not in prompt
+            return {"luau": "--!strict\n"
+                            "local function debit(balance: number, amount: number): number\n"
+                            "    return math.max(0, balance - amount)\n"
+                            "end\nprint(debit)\n"}
+    module, plan = _plan()
+    result = RobloxCodeRepairAgent(router=Router()).repair(module, plan)
+    assert call_modes == ["plain", "json"]
+    assert "function debit" in result
