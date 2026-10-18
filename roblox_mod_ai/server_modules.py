@@ -141,6 +141,10 @@ def render_dynamic_server_bootstrap(proposal: RobloxProposal) -> str:
                 contracts[remote_name] != kind or
                 kind not in {"RemoteEvent", "RemoteFunction"}):
             raise ValueError("Host Remote has invalid service/Remote class mapping")
+        max_args = binding.get("max_args")
+        if max_args not in (None, 0):
+            raise ValueError("Host gateway has unsupported argument constraint")
+        no_args = (max_args == 0)
         remote = json.dumps(remote_name)
         service = json.dumps(service_name)
         source += (
@@ -156,14 +160,18 @@ def render_dynamic_server_bootstrap(proposal: RobloxProposal) -> str:
             source += (
                 "    remote.OnServerEvent:Connect(function(player, ...)\n"
                 f"        if not allowAction(player, {remote}) then return end\n"
-                "        service.handleAction(player, services, ...)\n"
+                + ("        if select(\"#\", ...) ~= 0 then return end\n"
+                   if no_args else "")
+                + "        service.handleAction(player, services, ...)\n"
                 "    end)\n"
             )
         else:
             source += (
                 "    remote.OnServerInvoke = function(player, ...)\n"
                 f"        if not allowAction(player, {remote}) then return nil end\n"
-                "        return service.handleAction(player, services, ...)\n"
+                + ("        if select(\"#\", ...) ~= 0 then return nil end\n"
+                   if no_args else "")
+                + "        return service.handleAction(player, services, ...)\n"
                 "    end\n"
             )
         source += "end\n"
