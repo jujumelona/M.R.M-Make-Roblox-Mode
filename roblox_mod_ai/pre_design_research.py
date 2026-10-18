@@ -165,8 +165,16 @@ class RobloxPreDesignResearch:
         self.decomposition_error: str | None = None
 
     def _decompose_compound(self, prompt: str, ledger: dict[str, Any]) -> dict[str, Any]:
-        """LLM proposes atoms; host verifies exact source spans and full clause coverage."""
-        from .request_contract import validate_model_behaviors, clean
+        """Audit whole-clause LLM extraction, then recover with host-owned chunks.
+
+        The old 3x whole-prompt retry returned semantic_decomposition_required
+        whenever a small model missed one long clause. The recovery path sends
+        only short exact original spans, and requires a distinct model description
+        for EVERY span; one response cannot certify the rest of the game.
+        """
+        from .request_contract import validate_model_behaviors, clean, ledger_complete
+        from .source_decomposition import source_chunks, valid_chunk_classification
+
         pending = set(ledger.get("decomposition_pending", []))
         if not pending:
             return ledger
@@ -177,71 +185,149 @@ class RobloxPreDesignResearch:
         if not enabled or self.router is None:
             self.decomposition_error = "Compound request requires a configured local model"
             return ledger
-        for attempt in range(3):
-            try:
-                raw = self.router.complete_json(
-                    "Decompose EACH compound Roblox game request clause into distinct "
-                    "atomic gameplay behaviors. Return JSON object "
-                    "{behaviors:[{clause_id,source_span,intent,english_query}]}. "
-                    "source_span MUST be an exact, SHORT, contiguous quote from its clause; "
-                    "cover at least 80 percent of each compound clause with multiple "
-                    "distinct spans. Include resource gathering, crafting, travel, "
-                    "progression, enemies, and other requested mechanics ONLY when present "
-                    "in the original text; never invent gameplay. "
-                    "Do NOT combine different mechanics merely because they use a shop. "
-                    "A query must describe the specific implementation and Roblox APIs. "
-                    "Translate intent into a concrete English verb phrase. "
-                    "Maximum 24 behaviors per clause.\n"
-                    + json.dumps({"original_prompt": prompt, "clauses": [
-                        item for item in ledger["requirements"]
-                        if item["id"] in pending]}, ensure_ascii=False)
-                    + ("\nPREVIOUS INVALID OUTPUT: " + self.decomposition_error
-                       + "\nReturn corrected complete JSON with exact user quote spans."
-                       if attempt and self.decomposition_error else ""),
-                    role="planner", temperature=0.1
-                )
-                rows = raw.get("behaviors", []) if isinstance(raw, dict) else []
-                if not isinstance(rows, list) or len(rows) > 48:
-                    raise ValueError("Invalid model decomposition response size")
-                new_requirements: list[dict[str, str]] = []
-                atomic_intents: list[dict[str, str]] = []
-                for clause in ledger["requirements"]:
-                    parts = [x for x in rows if isinstance(x, dict)
-                             and x.get("clause_id") == clause["id"]]
-                    if clause["id"] in pending:
-                        if not validate_model_behaviors(clause["statement"], parts):
-                            raise ValueError("Model omitted or merged mechanics in " + clause["id"])
-                    else:
-                        parts = [{"source_span": clause["statement"], "intent": "",
-                                  "english_query": ""}]
-                    for part in parts:
-                        rid = f"req-{len(new_requirements)+1:03d}"
-                        span = clean(part["source_span"])
-                        new_requirements.append({"id": rid, "statement": span, "source": "user_prompt"})
-                        if clause["id"] in pending:
-                            fid = "intent-" + hashlib.sha256((rid + span).encode("utf-8")).hexdigest()[:10]
-                            atomic_intents.append({
-                                "facet_id": fid, "requirement_id": rid, "source_span": span,
-                                "intent": clean(part["intent"]),
-                                "english_query": clean(part["english_query"])
-                            })
-                result = _ledger_with_requirements(prompt, new_requirements,
-                                                    atomic_intents=atomic_intents)
-                # Independently verify that a valid decomposition of the ENTIRE request
-                # survives, not just that the model supplied plausible JSON.
-                from .request_contract import ledger_complete
-                # Pending novel implementation is legitimate at design time; only this
-                # structural check temporarily excludes implementation coverage fields.
-                structural = dict(result, unimplemented_facets=[], unmatched_requirements=[])
-                if not ledger_complete(prompt, structural):
-                    raise ValueError("Atomic source spans did not cover the original prompt")
-                return result
-            except Exception as exc:
-                self.decomposition_error = type(exc).__name__ + ": " + str(exc)[:220]
-                if attempt == 2:
-                    return ledger
 
-        return ledger
+        # Fast path: keep existing well-formed whole-clause behavior extraction.
+        whole_error = ""
+        try:
+            raw = self.router.complete_json(
+                "Decompose EACH compound Roblox game request clause into distinct "
+                "atomic gameplay behaviors. Return JSON object "
+                "{behaviors:[{clause_id,source_span,intent,english_query}]}. "
+                "source_span MUST be an exact, SHORT, contiguous quote from its clause; "
+                "cover at least 80 percent of each compound clause with multiple "
+                "distinct spans. Include only the requested mechanics. "
+                "Do NOT combine different actions into a single behavior. "
+                "Each query must describe the actual mechanic and applicable Roblox APIs. "
+                "Maximum 24 behaviors per clause.\\n"
+                + json.dumps({"original_prompt": prompt, "clauses": [
+                    item for item in ledger["requirements"] if item["id"] in pending
+                ]}, ensure_ascii=False),
+                role="planner", temperature=0.1,
+            )
+            rows = raw.get("behaviors", []) if isinstance(raw, dict) else []
+            if not isinstance(rows, list) or len(rows) > 48:
+                raise ValueError("Invalid response length")
+            new_requirements: list[dict[str, str]] = []
+            intents: list[dict[str, str]] = []
+            for clause in ledger["requirements"]:
+                parts = [x for x in rows if isinstance(x, dict)
+                         and x.get("clause_id") == clause["id"]]
+                if clause["id"] in pending:
+                    if not validate_model_behaviors(clause["statement"], parts):
+                        raise ValueError("Model omitted or merged mechanics in " + clause["id"])
+                else:
+                    parts = [{"source_span": clause["statement"], "intent": "",
+                              "english_query": ""}]
+                for part in parts:
+                    rid = f"req-{len(new_requirements)+1:03d}"
+                    span = clean(part["source_span"])
+                    new_requirements.append({
+                        "id": rid, "statement": span, "source": "user_prompt"
+                    })
+                    if clause["id"] in pending:
+                        fid = "intent-" + hashlib.sha256(
+                            (rid + span).encode("utf-8")).hexdigest()[:10]
+                        intents.append({
+                            "facet_id": fid, "requirement_id": rid,
+                            "source_span": span, "intent": clean(part["intent"]),
+                            "english_query": clean(part["english_query"]),
+                        })
+            result = _ledger_with_requirements(prompt, new_requirements, atomic_intents=intents)
+            structural = dict(result, unimplemented_facets=[], unmatched_requirements=[])
+            if not ledger_complete(prompt, structural):
+                raise ValueError("Atomic spans do not cover full original request")
+            return result
+        except Exception as exc:
+            whole_error = type(exc).__name__ + ": " + str(exc)[:200]
+            print("[RMM research] Whole-request decomposition incomplete; "
+                  "recovering by individually source-anchored chunks: " + whole_error,
+                  flush=True)
+
+        try:
+            chunks: list[dict[str, str]] = []
+            for clause in ledger["requirements"]:
+                if clause["id"] not in pending:
+                    continue
+                spans = source_chunks(clause["statement"])
+                if len(spans) < 2:
+                    raise ValueError(
+                        "Cannot independently source-chunk compound clause " + clause["id"])
+                for span in spans:
+                    chunks.append({
+                        "chunk_id": f"chunk-{len(chunks)+1:03d}",
+                        "clause_id": clause["id"],
+                        "source_span": span,
+                    })
+            if len(chunks) > 80:
+                raise ValueError("Too many source chunks to audit in a single plan")
+            classified: dict[str, dict[str, str]] = {}
+            # One-to-one classification in bounded groups; only missing source
+            # chunks are retried, not all previously verified capabilities.
+            for offset in range(0, len(chunks), 6):
+                group = chunks[offset:offset+6]
+                missing = group
+                for retry in range(3):
+                    if not missing:
+                        break
+                    output = self.router.complete_json(
+                        "Describe EACH provided user-authored Roblox gameplay chunk. "
+                        "Return ONLY JSON {behaviors:[{chunk_id,intent,english_query}]}. "
+                        "One entry per chunk_id; NEVER merge, skip, add or rename IDs. "
+                        "Translate each exact snippet into a specific, concrete gameplay "
+                        "implementation intent and Roblox API documentation query. "
+                        "Do not invent new actions. Chunks are independently owned "
+                        "source obligations, even when two relate to the same system.\\n"
+                        + json.dumps({"chunks": missing}, ensure_ascii=False),
+                        role="planner", temperature=0.1,
+                    )
+                    validated = valid_chunk_classification(output, missing)
+                    classified.update(validated)
+                    missing = [c for c in missing if c["chunk_id"] not in classified]
+                if missing:
+                    raise ValueError("Model failed to classify exact source chunks: " +
+                                     ", ".join(c["source_span"] for c in missing))
+            new_requirements = []
+            intents = []
+            for clause in ledger["requirements"]:
+                if clause["id"] in pending:
+                    parts = [entry for entry in chunks
+                             if entry["clause_id"] == clause["id"]]
+                else:
+                    parts = [{"source_span": clause["statement"], "chunk_id": ""}]
+                for part in parts:
+                    rid = f"req-{len(new_requirements)+1:03d}"
+                    span = clean(part["source_span"])
+                    new_requirements.append({
+                        "id": rid, "statement": span, "source": "user_prompt"
+                    })
+                    if clause["id"] in pending:
+                        learned = classified[part["chunk_id"]]
+                        fid = "intent-" + hashlib.sha256(
+                            (rid + span).encode("utf-8")).hexdigest()[:10]
+                        intents.append({
+                            "facet_id": fid, "requirement_id": rid,
+                            "source_span": span,
+                            "intent": learned["intent"],
+                            "english_query": learned["english_query"],
+                        })
+            result = _ledger_with_requirements(prompt, new_requirements,
+                                                atomic_intents=intents)
+            result["decomposition_strategy"] = "source_chunk_model_classification"
+            result["decomposition_chunk_count"] = len(chunks)
+            structural = dict(result, unimplemented_facets=[], unmatched_requirements=[])
+            if not ledger_complete(prompt, structural):
+                raise ValueError("Recovered chunks did not cover entire original prompt")
+            print("[RMM research] Recovered all " + str(len(chunks)) +
+                  " source-anchored gameplay chunks", flush=True)
+            self.decomposition_error = None
+            return result
+        except Exception as exc:
+            self.decomposition_error = (
+                "Whole-request: " + whole_error + "; chunk recovery: " +
+                type(exc).__name__ + ": " + str(exc)[:240]
+            )
+            return ledger
+
     def _propose_semantic_searches(self, prompt: str, ledger: dict) -> list[dict]:
         """Model proposes queries only, never source evidence or game success."""
         setting = os.environ.get("RMM_ENABLE_MODEL_QUERY_EXPANSION", "auto").lower()
@@ -292,7 +378,8 @@ class RobloxPreDesignResearch:
         ledger = self._decompose_compound(prompt, build_request_ledger(prompt))
         # A source-anchored atomic decomposition already supplies its own exact,
         # feature-specific searches. Query expansion cannot supersede it.
-        semantic = ([] if ledger.get("atomic_intents") else
+        semantic = ([] if ledger.get("atomic_intents") or
+                    ledger.get("decomposition_pending") else
                     self._propose_semantic_searches(prompt, ledger))
         if semantic:
             ledger["facets"] = ledger["facets"] + semantic
