@@ -177,11 +177,11 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
             is_server = module.file_path.startswith("src/server/")
             is_client = module.file_path.endswith(".client.luau")
             forbidden = (
-                (r"\\bLocalPlayer\\b|\\bFireServer\\s*\\(|\\bInvokeServer\\s*\\("
-                 r"|\\bOnClientEvent\\b|\\bOnClientInvoke\\b")
+                (r"\bLocalPlayer\b|\bFireServer\s*\(|\bInvokeServer\s*\("
+                 r"|\bOnClientEvent\b|\bOnClientInvoke\b")
                 if is_server else
-                (r"\\bDataStoreService\\b|\\bOnServerEvent\\b|\\bOnServerInvoke\\b"
-                 r"|\\bFireClient\\s*\\(|\\bFireAllClients\\s*\\(")
+                (r"\bDataStoreService\b|\bOnServerEvent\b|\bOnServerInvoke\b"
+                 r"|\bFireClient\s*\(|\bFireAllClients\s*\(")
                 if is_client else ""
             )
             check("dynamic.realm." + module.name,
