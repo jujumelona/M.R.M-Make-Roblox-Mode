@@ -248,7 +248,10 @@ def _extract_prebuilt_cuda_bundle(archive: Path, destination: Path) -> Path:
                 (destination / name).chmod(0o755 if name == "llama-server" else 0o644)
                 seen.add(name)
                 server_found |= name == "llama-server"
-            elif member.issym() and "/" not in member.linkname:
+            elif member.issym():
+                if ("/" in member.linkname or "\\" in member.linkname or
+                        member.linkname in (".", "..")):
+                    raise ModelStartupError("Unsafe or broken shared-library symlinks: " + name)
                 symlinks.append((name, member.linkname))
         # Resolve common SONAME link chains (libfoo.so -> libfoo.so.0 ->
         # libfoo.so.0.9.8). Never follow links outside the extracted directory.
