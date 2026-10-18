@@ -22,7 +22,7 @@ class GenerationRequest:
     messages: list[dict[str, Any]]
     temperature: float = 0.2
     max_tokens: int = 4096
-    response_format: str | None = None  # None, "json", or schema dict
+    response_format: str | dict[str, Any] | None = None  # None, "json", or provider schema
     tools: list[dict[str, Any]] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
 
