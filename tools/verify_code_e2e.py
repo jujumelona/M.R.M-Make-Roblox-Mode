@@ -37,7 +37,8 @@ def main():
     inspector=inspect_compiled_place(reply.authored_plan.proposal,compiled,source_root=project)
     assert inspector["passed"],inspector
     checks={c["id"]:c["passed"] for c in inspector["checks"]}
-    for name in ("module.CustomPetHatching","module.source.CustomPetHatching",
+    for name in ("module.RMMServerBootstrap","module.source.RMMServerBootstrap",
+                 "module.CustomPetHatching","module.source.CustomPetHatching",
                  "module.PetHatchController","module.source.PetHatchController",
                  "dynamic.remote.HatchPet","dynamic.world.PetEggStand"):
         assert checks.get(name),name
@@ -52,7 +53,8 @@ def main():
             assert name in names
             assert hashlib.sha256(z.read(name)).hexdigest()==digest
         assert "src/client/PetHatchController.client.luau" in names
-        assert "src/server/CustomPetHatching.server.luau" in names
+        assert "src/server/CustomPetHatching.luau" in names
+        assert "src/server/RMMServerBootstrap.server.luau" in names
         assert "pre_design_research.json" in names
 
     assert result.success is False
