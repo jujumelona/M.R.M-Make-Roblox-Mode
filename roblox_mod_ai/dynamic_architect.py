@@ -373,6 +373,11 @@ class RobloxDynamicArchitect:
                           "existing_capabilities":research.get("reuse_candidates",[])},
                          ensure_ascii=False)
         )
+        # Long compound games are not a safe single JSON completion on a local
+        # 9B model. Give the model one source-anchored feature at a time and
+        # assemble validated contracts on the host without replaying past JSON.
+        if len(implementation_facets(ledger)) >= 3:
+            return self._design_by_facets(prompt, research, existing_modules)
         last_error = ""
         raw: Any = None
         observations = research.setdefault("architecture_attempts", [])
@@ -430,6 +435,199 @@ class RobloxDynamicArchitect:
                       " failed: " + last_error, flush=True)
         raise DynamicDesignError("Architecture self-repair failed; " +
                                  str(len(observations)) + " attempts: " + last_error)
+
+
+    def _design_by_facets(self, prompt: str, research: dict[str, Any],
+                          existing_modules: list[RobloxModuleSpec]) -> dict[str, Any]:
+        """Small-model orchestration: scoped architecture calls, retained successes.
+
+        The host owns the merge, requirement IDs, duplicate detection, and
+        validation. A failed facet never causes already accepted facets to be
+        regenerated. A missing client role is fixed with a small additive
+        module-only response, never by reproducing the entire game design.
+        """
+        ledger = research["ledger"]
+        facets = implementation_facets(ledger)
+        required = {r["id"]: r for r in ledger.get("requirements", [])
+                    if isinstance(r, dict) and r.get("id")}
+        docs = [e for e in research.get("evidence", [])
+                if e.get("provider") == "official_docs"
+                and e.get("grounding") == "fetched_official_document"]
+        reserved_modules = {m.name for m in existing_modules}
+        reserved_remotes: set[str] = set()
+        reserved_objects: set[str] = set()
+        accepted_parts: list[dict[str, Any]] = []
+        observations = research.setdefault("architecture_attempts", [])
+        checkpoints = research.setdefault("architecture_subplans", [])
+
+        for index, facet in enumerate(facets):
+            facet_id = str(facet["id"])
+            owned_ids = list(dict.fromkeys(
+                rid for rid in facet.get("requirements", []) if rid in required))
+            if not owned_ids:
+                raise DynamicDesignError("Feature " + facet_id +
+                                         " has no valid source requirement")
+            subset = [required[rid] for rid in owned_ids]
+            # The original request may describe other unrelated features
+            # (e.g. alien combat). Do not enforce them on a mining-only slice.
+            slice_request = " ".join(str(r.get("statement", "")) for r in subset)
+            slice_ledger = {"requirements": subset, "facets": [facet],
+                            "original_prompt": slice_request}
+            excerpts = [{"url": e["url"], "text": str(e.get("excerpt", ""))[:650]}
+                        for e in docs if e.get("facet") == facet_id][:2]
+            payload = {"feature_id": facet_id, "feature": facet,
+                       "source_requirements": subset,
+                       "overall_game_context": prompt[:1700],
+                       "existing_module_names": sorted(reserved_modules),
+                       "existing_remote_names": sorted(reserved_remotes),
+                       "existing_world_object_names": sorted(reserved_objects),
+                       "official_references": excerpts}
+            task = (
+                "Design ONLY this one feature of a Roblox game, as a small, "
+                "complete JSON object with keys: modules, remotes, "
+                "world_objects, acceptance, acceptance_facets. "
+                "modules are [{name,role,requirement_ids,facet_ids,behavior}]; "
+                "role is server, client, or shared. "
+                "remotes are [{name,type}] where type is exactly "
+                "RemoteEvent or RemoteFunction. "
+                "world_objects are [{name,class,position,size}], with "
+                "class Part or SpawnLocation. "
+                "acceptance entries are [{requirement_id,observable_result}]; "
+                "acceptance_facets entries are [{facet_id,observable_result}]. "
+                "Use the exact supplied requirement and facet IDs, no others. "
+                "Include real client UI/input scripts AND server handlers "
+                "when using remotes. No client-owned rewards or damage. "
+                "Avoid every already-reserved module/remote/object name. "
+                "Each module's behavior must be implementable Luau, not TODO. "
+                "Do not design unrelated features, reuse third-party code, "
+                "or return the entire game's architecture. JSON ONLY.\n"
+                + json.dumps(payload, ensure_ascii=False)
+            )
+            previous_error = ""
+            draft: dict[str, Any] | None = None
+            successful = False
+            for attempt in range(3):
+                try:
+                    # Repair a missing client/server role by APPENDING modules
+                    # instead of asking the small model to reprint its large JSON.
+                    missing_role = (
+                        isinstance(draft, dict) and draft.get("remotes")
+                        and not any(m.get("role") == "client"
+                                    for m in draft.get("modules", [])
+                                    if isinstance(m, dict))
+                    )
+                    if missing_role:
+                        patch = self.router.complete_json(
+                            "Return ONLY JSON {\"modules\":[...]} with NEW "
+                            "client Luau controller modules that supply actual "
+                            "UI/input and invoke the already declared remotes. "
+                            "Do not regenerate server modules, remotes, objects "
+                            "or acceptance cases. Each module must have name, "
+                            "role=client, requirement_ids, facet_ids, behavior "
+                            "(at least 24 characters). Use ONLY the supplied "
+                            "source IDs. Use new names.\n"
+                            + json.dumps({
+                                "feature": facet, "requirements": subset,
+                                "existing_modules": draft["modules"],
+                                "remotes": draft["remotes"],
+                                "reserved_names": sorted(reserved_modules),
+                            }, ensure_ascii=False),
+                            role="planner", temperature=0.0, max_tokens=2600,
+                        )
+                        extra = patch.get("modules") if isinstance(patch, dict) else None
+                        if not isinstance(extra, list) or not extra or any(
+                            not isinstance(row, dict) or row.get("role") != "client"
+                            for row in extra
+                        ):
+                            raise DynamicDesignError("Client-only repair returned no client modules")
+                        draft = dict(draft, modules=[*draft["modules"], *extra])
+                    else:
+                        query = task + (
+                            "\nPREVIOUS VALIDATOR FAILURE: " + previous_error +
+                            "\nRegenerate ONLY this feature, preserving its requested behavior."
+                            if attempt else ""
+                        )
+                        draft = self.router.complete_json(
+                            query, role="planner", temperature=0.1,
+                            max_tokens=5000,
+                        )
+                    if not isinstance(draft, dict):
+                        raise DynamicDesignError("Facet architecture must be JSON object")
+                    draft = self._resolve_remote_declarations(draft)
+                    rows, _ = _normalize_remote_rows(draft.get("remotes", []))
+                    overlap = reserved_remotes.intersection(r["name"] for r in rows)
+                    if overlap:
+                        raise DynamicDesignError(
+                            "Remote collision with completed feature: " +
+                            ", ".join(sorted(overlap)))
+                    objects = draft.get("world_objects", [])
+                    if not isinstance(objects, list):
+                        raise DynamicDesignError("World objects must be a list")
+                    overlap_objects = reserved_objects.intersection(
+                        obj.get("name") for obj in objects if isinstance(obj, dict))
+                    if overlap_objects:
+                        raise DynamicDesignError(
+                            "World object collision: " +
+                            ", ".join(sorted(overlap_objects)))
+                    part = _clean_model_json(draft, slice_ledger, reserved_modules)
+                    reserved_modules.update(m.name for m in part["modules"])
+                    reserved_remotes.update(part["remotes"])
+                    reserved_objects.update(obj["name"] for obj in part["world_objects"])
+                    accepted_parts.append(draft)
+                    checkpoints.append({
+                        "facet_id": facet_id,
+                        "module_names": [m.name for m in part["modules"]],
+                        "remote_names": list(part["remotes"]),
+                        "validated": True,
+                    })
+                    observations.append({
+                        "facet_id": facet_id, "attempt": attempt + 1,
+                        "passed": True, "validator": "scoped feature validated",
+                    })
+                    successful = True
+                    break
+                except Exception as exc:
+                    previous_error = type(exc).__name__ + ": " + str(exc)[:500]
+                    observations.append({
+                        "facet_id": facet_id, "attempt": attempt + 1,
+                        "passed": False, "validator_error": previous_error,
+                        "model_response": draft if isinstance(draft, dict)
+                            and len(json.dumps(draft, ensure_ascii=False)) <= 16000
+                            else "unavailable_or_too_large",
+                    })
+                    # No stale draft after a failure other than missing-client:
+                    # only that failure has a safe, append-only correction.
+                    if "no client Luau controller" not in previous_error:
+                        draft = None
+                    print("[RMM architect] feature " + facet_id +
+                          " attempt " + str(attempt + 1) +
+                          " failed: " + previous_error, flush=True)
+            if not successful:
+                raise DynamicDesignError(
+                    "Feature " + facet_id + " could not be validated after "
+                    "3 scoped attempts: " + previous_error)
+            print("[RMM architect] feature " + facet_id + " (" +
+                  str(index + 1) + "/" + str(len(facets)) +
+                  ") contract accepted", flush=True)
+
+        combined = {"modules": [], "remotes": [], "world_objects": [],
+                    "acceptance": [], "acceptance_facets": []}
+        for part in accepted_parts:
+            for key in combined:
+                combined[key].extend(part.get(key, []))
+        # Re-run the full original-request validator. No successful feature
+        # means the whole game is compiled or gameplay tested.
+        result = _clean_model_json(
+            combined, ledger, {m.name for m in existing_modules})
+        research["architecture_assembly"] = {
+            "strategy": "source_anchored_scoped_feature_contracts",
+            "feature_count": len(facets),
+            "module_count": len(result["modules"]),
+            "remote_count": len(result["remotes"]),
+            "validated": True,
+            "gameplay_verified": False,
+        }
+        return result
 
     def _resolve_remote_declarations(self, raw: Any) -> Any:
         if not isinstance(raw, dict) or "remotes" not in raw:
