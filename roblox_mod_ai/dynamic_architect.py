@@ -722,6 +722,12 @@ class RobloxDynamicArchitect:
                 "validation of any player actions. interaction is: "
                 "none (server-only), event (player action without direct "
                 "return), or request_response (player request needing result). "
+                "For approaching exactly one static world object to interact, "
+                "use input_mode=world_prompt, interaction=event and exactly "
+                "one world_entities name. The host installs ProximityPrompt "
+                "and safely dispatches it on the SERVER: no client module "
+                "or Remote needs to be authored. This cannot return a "
+                "RemoteFunction response or select among inventory items. "
                 "Set input_mode=host_button ONLY for a no-argument action "
                 "that needs no target, item selection, aiming, or other "
                 "custom UI. The host then builds all screen buttons and "
@@ -954,6 +960,25 @@ class RobloxDynamicArchitect:
                     host_client_actions[client_name] = binding
             if host_client_actions:
                 result["host_client_actions"] = host_client_actions
+            # A Roblox ProximityPrompt already renders a cross-platform
+            # object interaction. Host owns its Instance and server callback;
+            # no fabricated client module or client-to-server Remote.
+            host_world_actions: dict[str, dict[str, str]] = {}
+            actual_world = {o["name"] for o in result["world_objects"]}
+            for part in accepted_parts:
+                for world_name, binding in part.get(
+                        "_host_world_actions", {}).items():
+                    if (world_name in host_world_actions
+                            or world_name not in actual_world
+                            or not isinstance(binding, dict)
+                            or binding.get("service") not in host_module_names
+                            or not isinstance(binding.get("action_text"), str)
+                            or not binding["action_text"].strip()):
+                        raise DynamicDesignError(
+                            "Invalid or unowned host ProximityPrompt world action")
+                    host_world_actions[world_name] = binding
+            if host_world_actions:
+                result["host_world_actions"] = host_world_actions
         research["architecture_assembly"] = {
             "strategy": "source_anchored_scoped_feature_contracts",
             "feature_count": len(facets),
