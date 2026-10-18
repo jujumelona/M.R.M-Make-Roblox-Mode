@@ -34,6 +34,8 @@ SEMANTIC_FACET_SCHEMA = {
                     "client_behavior": {"type": "string"},
                     "interaction": {"type": "string", "enum": [
                         "none", "event", "request_response"]},
+                    "input_mode": {"type": "string", "enum": [
+                        "custom", "host_button"]},
                     "observable_result": {"type": "string"},
                     "world_entities": {"type": "array", "items": {
                         "type": "string"}},
@@ -101,6 +103,7 @@ def expand_semantic_facet(
         client = system.get("client_behavior")
         name = system.get("name")
         interaction = system.get("interaction")
+        input_mode = system.get("input_mode", "custom")
         observable = system.get("observable_result")
         world = system.get("world_entities", [])
         if not isinstance(name, str) or not name.strip():
@@ -111,11 +114,21 @@ def expand_semantic_facet(
             raise HostArchitectureError("Gameplay system needs observable result")
         if re.search(r"\b(TODO|stub|placeholder|implement later)\b", server, re.I):
             raise HostArchitectureError("Unimplemented gameplay cannot pass host plan")
+        if input_mode not in {"custom", "host_button"}:
+            raise HostArchitectureError("Unknown input mode")
+        if input_mode == "host_button" and interaction == "none":
+            raise HostArchitectureError("Server-only behavior cannot have a button")
         if interaction not in {"none", "event", "request_response"}:
             raise HostArchitectureError("Invalid semantic interaction")
         if not isinstance(client, str) or (
                 interaction != "none" and len(client.strip()) < 24):
             raise HostArchitectureError("Client interaction needs a real UI/input behavior")
+        if input_mode == "host_button" and world:
+            # Clicking a generic button with zero arguments must not
+            # masquerade as choosing a mineable node or combat target.
+            raise HostArchitectureError(
+                "Host button is for zero-argument global actions only; "
+                "targeted world interactions need custom input")
         if not isinstance(world, list) or any(
             not isinstance(item, str) or not item.strip() for item in world
         ):
@@ -185,6 +198,23 @@ def expand_semantic_facet(
         for rid in requirement_ids
     ]
     return {
+        "_host_client_actions": {
+            modules_row["name"]: {
+                "remote": modules_row["uses_remotes"][0],
+                "label": system["name"][:44],
+                "kind": ("RemoteEvent" if system["interaction"] == "event"
+                         else "RemoteFunction"),
+                "input_mode": "host_button",
+                "argument_count": 0,
+            }
+            for system_index, system in enumerate(systems)
+            if system.get("input_mode", "custom") == "host_button"
+            for modules_row in modules
+            if (modules_row["role"] == "client"
+                and modules_row["name"].endswith(
+                    hashlib.sha256(facet_id.encode("utf-8")).hexdigest()[:6].upper()
+                    + str(system_index + 1) + "Client"))
+        },
         "modules": modules, "remotes": remotes,
         "world_objects": objects,
         "acceptance": acceptance,
