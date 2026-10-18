@@ -141,8 +141,18 @@ class RobloxCodeRepairAgent:
                 # JSON mode already produces visible answers with non-thinking
                 # templates on the user's MiMo GGUF. Request the actual Luau
                 # code in an escaped JSON string if plain completion is empty.
-                json_fallback = (attempt >= 2 and len(candidate.strip()) < 75
-                                 and hasattr(self.router, "complete_json"))
+                last_report = getattr(self.router, "last_generation_report", {})
+                ran_out_thinking = (
+                    isinstance(last_report, dict) and (
+                        last_report.get("finish_reason") == "length" or
+                        "finish_reason=length" in str(last_report.get("error", ""))
+                    )
+                )
+                json_fallback = (
+                    attempt >= 1 and len(candidate.strip()) < 75 and
+                    hasattr(self.router, "complete_json") and
+                    (attempt >= 2 or ran_out_thinking)
+                )
                 if json_fallback:
                     model_output = self.router.complete_json(
                         query + "\nReturn JSON with exactly one key 'luau' "
