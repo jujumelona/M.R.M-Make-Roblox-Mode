@@ -34,13 +34,12 @@ def run_command(*args: str) -> dict:
 def main() -> None:
     os.environ["RMM_ENABLE_DYNAMIC_DESIGN"] = "1"
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests"))
-    from test_space_seven_facets_e2e import (
-        FakeLocalModel, _PROMPT, _user_space_ledger,
-    )
+    from test_space_seven_facets_e2e import _PROMPT, _user_space_ledger
+    from test_host_architecture import SemanticOnlySevenFeatureModel
 
     root = Path(".rmm-space-assembly").resolve()
     root.mkdir(parents=True, exist_ok=True)
-    model = FakeLocalModel()
+    model = SemanticOnlySevenFeatureModel()
     ledger = _user_space_ledger()
     network = RobloxModuleSpec(
         module_id="mod_network_bridge", name="NetworkRemotes",
@@ -123,7 +122,7 @@ def main() -> None:
     (root / "proposal.json").write_text(json.dumps(
         proposal.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
     result = {"schema": "rmm/seven-facet-assembly-ci-v1",
-              "model_type": "DETERMINISTIC FIXTURE, NOT MIMO",
+              "model_type": "SEMANTIC-ONLY DETERMINISTIC FIXTURE, NOT MIMO",
               "real_roblox_studio_execution": False,
               "source_facets": 7, "authored_modules": 14,
               "connected_remotes": len(dynamic["remotes"]),
