@@ -98,9 +98,16 @@ class LuauStaticAnalyzer:
                     detail = (parsed.stderr or parsed.stdout or
                               "StyLua rejected Luau source")
                     detail = re.sub(r"\x1b\[[0-9;]*m", "", detail).strip()
-                    numbers = re.search(
-                        r"(?i)(?:line\s*|:\s*)(\d+)(?::\d+)?", detail)
-                    line_no = int(numbers.group(1)) if numbers else 1
+                    # Actual StyLua diagnostics use "(line:column to
+                    # line:column)" rather than the English "line N".
+                    # The previous regexp incorrectly treated the column as
+                    # the line (e.g. (4:3) became line 3).
+                    location = re.search(
+                        r"\((\d+):(\d+)(?:\s+to\s+\d+:\d+)?\)",
+                        detail)
+                    by_label = re.search(r"(?i)\bline\s+(\d+)", detail)
+                    line_no = (int(location.group(1)) if location else
+                               int(by_label.group(1)) if by_label else 1)
                     diagnostics.append(LuauDiagnostic(
                         file_path=file_path, line_number=line_no,
                         rule="LUAU_PARSER_SYNTAX", severity="ERROR",
