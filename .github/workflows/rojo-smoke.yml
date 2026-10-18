@@ -20,6 +20,17 @@ jobs:
           python-version: "3.12"
       - name: Install Python project
         run: pip install -e ".[dev]"
+      - name: Fast negative-source and seven-facet regression gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q \
+            tests/test_ci_remote_fault_matrix.py \
+            tests/test_ci_code_snapshot_and_realms.py \
+            tests/test_ci_luau_api_failure_corpus.py \
+            tests/test_ci_real_e2e_receipts.py \
+            tests/test_e2e_server_interface_contract.py \
+            tests/test_space_seven_facets_e2e.py
       - name: Install real Roblox toolchain
         uses: paradoxum-games/setup-rokit@v3
         with:
