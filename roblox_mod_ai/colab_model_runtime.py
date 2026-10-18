@@ -5,8 +5,6 @@ No simulated responses or silent fallback to an unrelated Roblox game.
 """
 from __future__ import annotations
 
-import importlib
-import json
 import os
 from pathlib import Path
 import shutil
@@ -14,7 +12,6 @@ import socket
 import subprocess
 import sys
 import time
-from typing import Any
 
 import httpx
 
@@ -35,7 +32,7 @@ def _model_probe(url: str, api_key: str = "") -> str | None:
     headers = {"Authorization": "Bearer " + (api_key or "not-needed")}
     base = url.rstrip("/")
     try:
-        with httpx.Client(timeout=18, trust_env=False) as client:
+        with httpx.Client(timeout=httpx.Timeout(180, connect=3, pool=3), trust_env=False) as client:
             response = client.get(base + "/models", headers=headers)
             response.raise_for_status()
             models = response.json().get("data", [])
@@ -58,6 +55,18 @@ def _model_probe(url: str, api_key: str = "") -> str | None:
             return model_id if isinstance(content, str) and bool(content.strip()) else None
     except (httpx.HTTPError, ValueError, KeyError, IndexError, TypeError):
         return None
+
+
+def _health_ready(url: str) -> bool:
+    """llama.cpp /health becomes ready after model weights are loaded."""
+    health = url.rstrip("/").removesuffix("/v1") + "/health"
+    try:
+        with httpx.Client(timeout=3, trust_env=False) as client:
+            response = client.get(health)
+            return (response.status_code == 200 and
+                    response.json().get("status") == "ok")
+    except (httpx.HTTPError, ValueError, AttributeError):
+        return False
 
 
 def _tail(path: Path, lines: int = 32) -> str:
@@ -94,10 +103,8 @@ def _download_gguf(cache_root: Path) -> Path:
     try:
         # Uses Hub's content-addressed cache and resumes previously downloaded
         # model blobs. Never download all quantizations or multimodal projectors.
-        return Path(hf_hub_download(
-            repo_id=MODEL_REPO, filename=MODEL_FILE,
-            cache_dir=str(cache_root / "huggingface"),
-        ))
+        # Use the shared HF cache so an existing MMM download is reused.
+        return Path(hf_hub_download(repo_id=MODEL_REPO, filename=MODEL_FILE))
     except Exception as exc:
         raise ModelStartupError("GGUF download failed (" + MODEL_REPO + "/" +
                                 MODEL_FILE + "): " + str(exc)[:500]) from exc
@@ -186,18 +193,25 @@ def _start_managed_server(binary: Path, model: Path, cache_root: Path) -> str:
             start_new_session=True
         )
     url = "http://127.0.0.1:" + str(port) + "/v1"
-    # Readiness requires successful chat inference. /health alone is insufficient.
-    for _ in range(100):
+    # Poll cheap /health while loading. Perform a real completion ONCE ready,
+    # rather than stacking slow inference requests against an unloaded model.
+    for _ in range(150):
         if process.poll() is not None:
             raise ModelStartupError(
                 "llama-server terminated (exit " + str(process.returncode) +
                 "). Log: " + str(log) + "\n" + _tail(log)
             )
-        if _model_probe(url):
-            return url
+        if _health_ready(url):
+            if _model_probe(url):
+                return url
+            process.terminate()
+            raise ModelStartupError(
+                "Server became healthy but failed a real chat completion. Log: " +
+                str(log) + "\n" + _tail(log)
+            )
         time.sleep(3)
     process.terminate()
-    raise ModelStartupError("llama-server inference never became ready. Log: " +
+    raise ModelStartupError("llama-server never loaded its model. Log: " +
                             str(log) + "\n" + _tail(log))
 
 
