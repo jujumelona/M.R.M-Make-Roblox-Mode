@@ -58,19 +58,26 @@ def _model_probe(url: str, api_key: str = "") -> str | None:
             if not models or not isinstance(models[0].get("id"), str):
                 return None
             model_id = models[0]["id"]
-            response = client.post(
-                base + "/chat/completions",
-                headers=headers,
-                json={
-                    "model": model_id,
-                    "messages": [{"role": "user", "content": "Reply with the single word READY."}],
-                    "temperature": 0,
-                    # A reasoning model can exhaust a small completion budget
-                    # before emitting its final answer.
-                    "max_tokens": 512,
-                    "stream": False,
-                },
-            )
+            payload = {
+                "model": model_id,
+                "messages": [{"role": "user", "content": "Reply with the single word READY."}],
+                "temperature": 0,
+                "max_tokens": 512,
+                "stream": False,
+            }
+            response = client.post(base + "/chat/completions",
+                                   headers=headers, json=payload)
+            response.raise_for_status()
+            choice = response.json()["choices"][0]
+            content = choice["message"].get("content", "")
+            if isinstance(content, str) and content.strip():
+                return model_id
+            # MiMo and other reasoning models may fill the entire completion
+            # with reasoning tokens. Retry the *probe* without thinking, not
+            # the gameplay agent, and require visible generated answer text.
+            payload["chat_template_kwargs"] = {"enable_thinking": False}
+            response = client.post(base + "/chat/completions",
+                                   headers=headers, json=payload)
             response.raise_for_status()
             content = response.json()["choices"][0]["message"].get("content", "")
             return model_id if isinstance(content, str) and bool(content.strip()) else None
