@@ -63,6 +63,18 @@ def inspect_compiled_place(proposal: RobloxProposal, compiled: Path,
                 check("module."+m.name,False)
                 continue
             target_parent,target_class=expected
+            # Older authored plans declared dynamic .server.luau Scripts.
+            # Production normalizes them to requireable ModuleScripts plus
+            # a host bootstrap. Audit the REAL compiled and on-disk type;
+            # never skip source equality or treat arbitrary Scripts as modules.
+            source_file = m.file_path
+            if (source_root is not None and m.module_id.startswith("dyn_")
+                    and m.file_path.startswith("src/server/")
+                    and m.file_path.endswith(".server.luau")):
+                candidate = m.file_path[:-len(".server.luau")] + ".luau"
+                if (Path(source_root) / candidate).is_file():
+                    source_file = candidate
+                    target_class = "ModuleScript"
             matches=[]
             for name,kind,element in items:
                 if name!=m.name or kind!=target_class:
@@ -76,7 +88,7 @@ def inspect_compiled_place(proposal: RobloxProposal, compiled: Path,
                     matches.append(element)
             check("module."+m.name,len(matches)==1)
             if source_root is not None:
-                source_path=Path(source_root)/m.file_path
+                source_path=Path(source_root)/source_file
                 try:
                     original=_normalized(source_path.read_text(encoding="utf-8"))
                 except (OSError,UnicodeError):
@@ -86,6 +98,19 @@ def inspect_compiled_place(proposal: RobloxProposal, compiled: Path,
                       bool(original) and compiled_source is not None
                       and _normalized(compiled_source)==original)
         dynamic=proposal.game_design.get("dynamic_design") or {}
+        if (source_root is not None and dynamic and
+                (Path(source_root) / "src/server/RMMServerBootstrap.server.luau").is_file()):
+            bootstrap = [e for name, kind, e in items
+                         if name == "RMMServerBootstrap" and kind == "Script"
+                         and any(_name(x) == "ServerScriptService"
+                                 for x in _ancestors(e, parents))]
+            check("module.RMMServerBootstrap", len(bootstrap) == 1)
+            disk = (Path(source_root) /
+                    "src/server/RMMServerBootstrap.server.luau")
+            check("module.source.RMMServerBootstrap",
+                  len(bootstrap) == 1
+                  and _normalized(_source(bootstrap[0]) or "")
+                  == _normalized(disk.read_text(encoding="utf-8")))
         for obj in dynamic.get("world_objects", []):
             matches=[e for name,kind,e in items
                      if name==obj["name"] and kind==obj["class"]
