@@ -114,6 +114,12 @@ class RobloxCodeRepairAgent:
                 snippets="\n".join(item.get("excerpt","")[:450] for item in references["results"])
         scoped_remotes = relevant_remotes(module, design)
         server_contract = module_bootstrap_contract(module, proposal)
+        host_routed_actions = {
+            name: record for name, record in
+            (design.get("host_actions") or {}).items()
+            if isinstance(record, dict) and record.get("service") == module.name
+            and module.file_path.startswith("src/server/")
+        }
         # The model is hired for ONE feature, not for the whole 7-feature
         # space game. Original user clauses remain binding via source IDs.
         ledger = pre.get("ledger", {}) if isinstance(pre, dict) else {}
@@ -325,6 +331,19 @@ class RobloxCodeRepairAgent:
                 if not re.search(
                         r"\bfunction\s+[A-Za-z_]\w*\.start\s*\(", candidate):
                     errors.append("Server ModuleScript needs an actual .start(services) entry point")
+            if host_routed_actions:
+                if not re.search(
+                    r"\\b(?:function\\s+[A-Za-z_]\\w*[.:]handleAction\\s*\\(|"
+                    r"[A-Za-z_]\\w*\\.handleAction\\s*=\\s*function\\s*\\()", candidate):
+                    errors.append(
+                        "Host-owned Remote requires exported Service.handleAction(player, services, ...) "
+                        "for the game's actual state transitions"
+                    )
+                if re.search(r"\\bOnServerEvent\\b|\\bOnServerInvoke\\b", candidate):
+                    errors.append(
+                        "Host bootstrap already binds Remote requests. "
+                        "Never bind duplicate OnServerEvent/OnServerInvoke from model source"
+                    )
             for observation in invalid_luau_apis(candidate):
                 errors.append("ROBLOX_API_INVALID: " + observation)
             if not candidate:
