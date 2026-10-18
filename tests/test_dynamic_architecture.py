@@ -254,8 +254,8 @@ def test_dynamic_doc_refs_are_bound_to_owned_facets(tmp_path, monkeypatch):
     research = {
         "ledger": ledger, "status": "partial", "queries": [],
         "evidence": [
-            {"facet": "shop", "provider": "official_docs", "url": "https://create.roblox.com/docs/en-us/shop.md"},
-            {"facet": "pets", "provider": "official_docs", "url": "https://create.roblox.com/docs/en-us/pets.md"},
+            {"facet": "shop", "provider": "official_docs", "url": "https://create.roblox.com/docs/en-us/shop.md", "content_sha256": "a" * 64},
+            {"facet": "pets", "provider": "official_docs", "url": "https://create.roblox.com/docs/en-us/pets.md", "content_sha256": "b" * 64},
         ],
         "asset_candidates": [], "reuse_candidates": [], "provider_failures": [],
     }
