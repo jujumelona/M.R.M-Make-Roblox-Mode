@@ -210,3 +210,26 @@ def test_failure_zip_contains_both_original_and_recovery_model_attempts(tmp_path
         in_zip = "failed_candidates/" + module.file_path + ".attempts.json"
         assert in_zip in bundle.namelist()
         assert json.loads(bundle.read(in_zip))["recovery_attempts"] == recovery
+
+
+
+def test_actual_stylua_range_reports_line_not_column(monkeypatch):
+    """Actual binary uses a source range (4:3 to 4:16); old regex returned 3."""
+    from roblox_mod_ai import luau_analyzer
+    monkeypatch.setattr(luau_analyzer.shutil, "which",
+                        lambda name: "/usr/bin/stylua" if name == "stylua" else None)
+
+    def fake_run(*args, **kwargs):
+        return subprocess.CompletedProcess(
+            args[0], 1, "",
+            "error parsing:\n - unexpected token :: (4:3 to 4:16), "
+            "expected end to close do block"
+        )
+
+    monkeypatch.setattr(luau_analyzer.subprocess, "run", fake_run)
+    errors = [x for x in LuauStaticAnalyzer().analyze_source(
+        "--!strict\nlocal a = {}\nfunction foo() do\nbad :: statement\n",
+        "example.luau") if x.severity == "ERROR"]
+    assert len(errors) == 1
+    assert errors[0].rule == "LUAU_PARSER_SYNTAX"
+    assert errors[0].line_number == 4
