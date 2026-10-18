@@ -28,9 +28,9 @@ _ALLOWED_SERVICES = {
                "src/shared/{name}.luau"),
 }
 _ALLOWED_OBJECTS = {"Part", "SpawnLocation"}
-_MAX_NEW_MODULES = 16
-_MAX_NEW_OBJECTS = 64
-_MAX_NEW_REMOTES = 16
+# Validate source ownership, Roblox class semantics and collisions instead of
+# arbitrary 16-module/16-remote quotas. Complex user games may legitimately
+# require more, and the old quota discarded complete small-model designs.
 
 # These are inspected first-party *code templates*, not third-party libraries.
 # A candidate can be reused only when its behavior is an exact request match.
@@ -110,8 +110,6 @@ def _normalize_remote_rows(raw: Any) -> tuple[list[dict[str, str]], list[str]]:
         rows = raw
     else:
         raise DynamicDesignError("Invalid remote declarations: expected array or name:type map")
-    if len(rows) > _MAX_NEW_REMOTES:
-        raise DynamicDesignError("Too many remote declarations")
     result: list[dict[str, str]] = []
     unresolved: list[str] = []
     seen: dict[str, str] = {}
@@ -150,8 +148,8 @@ def _clean_model_json(response: dict[str, Any], ledger: dict[str, Any],
     required_ids = _normalize_requirements(ledger)
     if not required_ids: raise DynamicDesignError("No original user requirements recorded")
     records = response.get("modules")
-    if not isinstance(records, list) or not records or len(records) > _MAX_NEW_MODULES:
-        raise DynamicDesignError("One to sixteen implementable Luau modules required")
+    if not isinstance(records, list) or not records:
+        raise DynamicDesignError("At least one implementable Luau module required")
     # Source-anchored atomic intents represent the user's gameplay.
     # Genre keyword matches for the same source (e.g. shop) are search hints,
     # not additional independent requests. Keep all unmatched facets mandatory.
@@ -233,8 +231,8 @@ def _clean_model_json(response: dict[str, Any], ledger: dict[str, Any],
                 "Add a server-authoritative module for each remote.")
 
     raw_objects = response.get("world_objects", [])
-    if not isinstance(raw_objects, list) or len(raw_objects) > _MAX_NEW_OBJECTS:
-        raise DynamicDesignError("Invalid world object count")
+    if not isinstance(raw_objects, list):
+        raise DynamicDesignError("Invalid world object declarations")
     objects: list[dict[str, Any]] = []
     names: set[str] = set()
     for item in raw_objects:
@@ -255,7 +253,7 @@ def _clean_model_json(response: dict[str, Any], ledger: dict[str, Any],
         objects.append({"name":name,"class":item["class"],
                         "position":pos,"size":size})
     checks=response.get("acceptance")
-    if not isinstance(checks,list) or not checks or len(checks)>32:
+    if not isinstance(checks,list) or not checks:
         raise DynamicDesignError("Behavioral acceptance cases required")
     accepted: dict[str,str] = {}
     for item in checks:
@@ -330,6 +328,9 @@ class RobloxDynamicArchitect:
             "Module names must be unique PascalCase, 3-58 alphanumeric. Each "
             "original requirement AND EVERY gameplay facet must be assigned "
             "a module and have an observable acceptance case. Do not include existing modules. "
+            "Use as many distinct modules, remotes and objects as needed by the "
+            "original requested mechanics; do not omit gameplay to satisfy a "
+            "fixed count. Avoid duplicate or unused remotes. "
             "For large environments prefer a server procedural world builder. "
             "If remotes is nonempty, include at least one client Luau module AND "
             "one server Luau module. Plan REAL client keyboard/touch UI actions "
