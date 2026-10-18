@@ -69,6 +69,12 @@ def inspect_dynamic_server_interfaces(proposal: RobloxProposal) -> dict[str, Any
             (dynamic.get("host_actions") or {}).items()
             if isinstance(action, dict) and action.get("service") == name
         ]
+        world_routed = [
+            object_name for object_name, action in
+            (dynamic.get("host_world_actions") or {}).items()
+            if isinstance(action, dict) and action.get("service") == name
+        ]
+        host_routed.extend(world_routed)
         if host_routed:
             checks.append({
                 "id": "service.handleAction." + name,
