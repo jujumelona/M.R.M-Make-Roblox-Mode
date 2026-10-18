@@ -137,11 +137,29 @@ class RobloxCodeRepairAgent:
             else:
                 query = prompt
             try:
-                raw_code = self.router.complete(
-                    query, role="coder",
-                    system_prompt="You are a Roblox Luau programmer. Return source code only; no reasoning or commentary.",
-                    temperature=0.1, max_tokens=6000,
-                )
+                # A distinct recovery mode, not another identical code call.
+                # JSON mode already produces visible answers with non-thinking
+                # templates on the user's MiMo GGUF. Request the actual Luau
+                # code in an escaped JSON string if plain completion is empty.
+                json_fallback = (attempt >= 2 and len(candidate.strip()) < 75
+                                 and hasattr(self.router, "complete_json"))
+                if json_fallback:
+                    model_output = self.router.complete_json(
+                        query + "\nReturn JSON with exactly one key 'luau' "
+                        "containing the COMPLETE Luau script as a string. "
+                        "Start its value with --!strict and include actual "
+                        "functional statements; no TODO or explanation.",
+                        role="coder", temperature=0.1,
+                        system_prompt="Write complete runnable Roblox Luau in the JSON field 'luau'.",
+                    )
+                    raw_code = (model_output.get("luau", "")
+                                if isinstance(model_output, dict) else "")
+                else:
+                    raw_code = self.router.complete(
+                        query, role="coder",
+                        system_prompt="You are a Roblox Luau programmer. Return source code only; no reasoning or commentary.",
+                        temperature=0.1, max_tokens=6000,
+                    )
             except Exception as exc:
                 runtime_observation = getattr(self.router, "last_generation_report", {})
                 errors = [
