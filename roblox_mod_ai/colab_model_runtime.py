@@ -78,17 +78,38 @@ def _tail(path: Path, lines: int = 32) -> str:
 def _checked_command(command: list[str], log: Path, *,
                      cwd: Path | None = None, timeout: int = 1200) -> None:
     log.parent.mkdir(parents=True, exist_ok=True)
+    phase = " ".join(command[:3])
+    print("[RMM model] starting " + phase + " (full log: " + str(log) + ")", flush=True)
+    began = time.monotonic()
     with log.open("a", encoding="utf-8") as output:
         output.write("\n$ " + " ".join(command) + "\n")
         output.flush()
+        process = None
         try:
-            subprocess.run(command, cwd=str(cwd) if cwd else None, check=True,
-                           stdout=output, stderr=subprocess.STDOUT, timeout=timeout)
+            process = subprocess.Popen(
+                command, cwd=str(cwd) if cwd else None,
+                stdout=output, stderr=subprocess.STDOUT,
+            )
+            while True:
+                try:
+                    return_code = process.wait(timeout=10)
+                    break
+                except subprocess.TimeoutExpired:
+                    elapsed = int(time.monotonic() - began)
+                    print(f"[RMM model] {phase}: {elapsed}s elapsed; "
+                          f"recent output: {_tail(log, 2)[-220:]}", flush=True)
+                    if elapsed >= timeout:
+                        process.kill()
+                        process.wait()
+                        raise subprocess.TimeoutExpired(command, timeout)
+            if return_code != 0:
+                raise subprocess.CalledProcessError(return_code, command)
         except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
             raise ModelStartupError(
                 "Model runtime command failed: " + str(exc) +
                 "\nLog: " + str(log) + "\n" + _tail(log)
             ) from exc
+    print(f"[RMM model] complete {phase} in {int(time.monotonic()-began)}s", flush=True)
 
 
 def _download_gguf(cache_root: Path) -> Path:
@@ -104,7 +125,21 @@ def _download_gguf(cache_root: Path) -> Path:
         # Uses Hub's content-addressed cache and resumes previously downloaded
         # model blobs. Never download all quantizations or multimodal projectors.
         # Use the shared HF cache so an existing MMM download is reused.
-        return Path(hf_hub_download(repo_id=MODEL_REPO, filename=MODEL_FILE))
+        from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+        print(f"[RMM model] downloading or reusing {MODEL_REPO}/{MODEL_FILE} "
+              "(~5.84GB, Hugging Face cache)", flush=True)
+        started = time.monotonic()
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            task = executor.submit(hf_hub_download, repo_id=MODEL_REPO, filename=MODEL_FILE)
+            while True:
+                try:
+                    path = task.result(timeout=15)
+                    print(f"[RMM model] GGUF ready: {path} "
+                          f"({int(time.monotonic()-started)}s)", flush=True)
+                    return Path(path)
+                except FutureTimeout:
+                    print(f"[RMM model] GGUF download/cache check in progress: "
+                          f"{int(time.monotonic()-started)}s elapsed", flush=True)
     except Exception as exc:
         raise ModelStartupError("GGUF download failed (" + MODEL_REPO + "/" +
                                 MODEL_FILE + "): " + str(exc)[:500]) from exc
@@ -193,16 +228,23 @@ def _start_managed_server(binary: Path, model: Path, cache_root: Path) -> str:
             start_new_session=True
         )
     url = "http://127.0.0.1:" + str(port) + "/v1"
+    print(f"[RMM model] llama-server spawned pid={process.pid} url={url}; "
+          f"full server log: {log}", flush=True)
     # Poll cheap /health while loading. Perform a real completion ONCE ready,
     # rather than stacking slow inference requests against an unloaded model.
-    for _ in range(150):
+    for tick in range(150):
+        if tick % 5 == 0:
+            print(f"[RMM model] waiting for GGUF load: {tick * 3}s; "
+                  f"server log: {_tail(log, 2)[-180:]}", flush=True)
         if process.poll() is not None:
             raise ModelStartupError(
                 "llama-server terminated (exit " + str(process.returncode) +
                 "). Log: " + str(log) + "\n" + _tail(log)
             )
         if _health_ready(url):
+            print("[RMM model] weights loaded; testing real chat completion", flush=True)
             if _model_probe(url):
+                print("[RMM model] real chat completion verified", flush=True)
                 return url
             process.terminate()
             raise ModelStartupError(
@@ -223,6 +265,8 @@ def ensure_model_runtime(*, profile: str, remote_base_url: str = "",
     Reuse a verified running model where possible. On Colab and with no
     configured external server, download MiMo Q4_K_M and launch llama.cpp.
     """
+    print("[RMM model] starting model runtime bootstrap, profile=" + profile,
+          flush=True)
     os.environ["ROBLOX_MOD_AI_ALLOW_OFFLINE_FALLBACK"] = "0"
     if profile == "fast_test":
         return {"status": "test_mode", "url": "", "model_id": ""}
@@ -256,7 +300,9 @@ def ensure_model_runtime(*, profile: str, remote_base_url: str = "",
                     "start llama-server locally."
                 )
             root = Path(cache_root).expanduser().resolve()
+            print("[RMM model] preparing CUDA llama.cpp server", flush=True)
             binary = _ensure_llama_server_binary(root)
+            print("[RMM model] checking/downloading GGUF weights", flush=True)
             model = _download_gguf(root)
             url = _start_managed_server(binary, model, root)
             model_id = _model_probe(url) or ""
