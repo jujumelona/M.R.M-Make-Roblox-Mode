@@ -360,6 +360,17 @@ class RobloxGameDesignPlanner:
                     "reason": str(exc),
                 })
 
+        # Never serialize an incomplete custom request as a runnable prefab game.
+        # Keep shared infrastructure for diagnostics but discard stock shop/combat
+        # implementations that only happened to match incidental keywords.
+        if (dynamic_design is None and (
+                research["ledger"].get("decomposition_pending") or
+                research["ledger"].get("unimplemented_facets") or
+                research["ledger"].get("unmatched_requirements"))):
+            modules = [m for m in modules if m.name in
+                       {"NetworkRemotes", "PlayerDataManager"}]
+            features = {key: False for key in features}
+
         # 4. Generate Test Specs tailored to the generated modules
         unresolved = bool(research["ledger"].get("decomposition_pending") or
                           research["ledger"].get("unimplemented_facets") or
