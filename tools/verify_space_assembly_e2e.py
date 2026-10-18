@@ -52,11 +52,16 @@ def main() -> None:
     dynamic = RobloxDynamicArchitect(router=model).design(
         _PROMPT, research, [network],
     )
+    # The architect returns module dataclass instances for the host, but
+    # the production planner stores only JSON-safe contract metadata in
+    # game_design.dynamic_design. Match that exact handoff.
+    runtime_design = {key: value for key, value in dynamic.items()
+                      if key != "modules"}
     proposal = RobloxProposal(
         requested_prompt=_PROMPT, game_title="SpaceStructuralFixture",
         description="CI integration fixture, not implemented space gameplay",
         game_design={"genre": "Custom", "project_mode": "new_experience",
-                     "features": {}, "dynamic_design": dynamic,
+                     "features": {}, "dynamic_design": runtime_design,
                      "storage_backend": "builtin",
                      "pre_design_research": {"ledger": ledger}},
         modules=[network, *dynamic["modules"]],
