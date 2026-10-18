@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import tarfile
 
@@ -178,6 +179,7 @@ def test_mandatory_sha256_rejects_modified_prebuilt(monkeypatch, tmp_path):
         )
 
 
+@pytest.mark.skipif(os.name != "posix", reason="Linux bundle uses POSIX shared-library symlinks")
 def test_pinned_tar_libs_and_soname_symlink_chain(tmp_path):
     archive = tmp_path / "bundle.tar.gz"
     with tarfile.open(archive, "w:gz") as writer:
