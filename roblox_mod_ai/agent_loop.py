@@ -333,13 +333,13 @@ class RobloxCodeRepairAgent:
                     errors.append("Server ModuleScript needs an actual .start(services) entry point")
             if host_routed_actions:
                 if not re.search(
-                    r"\\b(?:function\\s+[A-Za-z_]\\w*[.:]handleAction\\s*\\(|"
-                    r"[A-Za-z_]\\w*\\.handleAction\\s*=\\s*function\\s*\\()", candidate):
+                    r"\b(?:function\s+[A-Za-z_]\w*[.:]handleAction\s*\(|"
+                    r"[A-Za-z_]\w*\.handleAction\s*=\s*function\s*\()", candidate):
                     errors.append(
                         "Host-owned Remote requires exported Service.handleAction(player, services, ...) "
                         "for the game's actual state transitions"
                     )
-                if re.search(r"\\bOnServerEvent\\b|\\bOnServerInvoke\\b", candidate):
+                if re.search(r"\bOnServerEvent\b|\bOnServerInvoke\b", candidate):
                     errors.append(
                         "Host bootstrap already binds Remote requests. "
                         "Never bind duplicate OnServerEvent/OnServerInvoke from model source"
