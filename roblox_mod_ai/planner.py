@@ -315,9 +315,12 @@ class RobloxGameDesignPlanner:
         # With a local model available, do NOT guess that a keyword such as
         # "combat" proves the entire game is a matching combat prefab. Ask for
         # the complete architecture and implement it as new gameplay by default.
-        needs_novel = bool(dynamic_design_enabled() or
-                           research["ledger"].get("unimplemented_facets") or
+        # An available LLM is a capability, not evidence that existing tested
+        # templates should be replaced. Keep exact stock gameplay when the
+        # audited request ledger has no unsupported requirement.
+        needs_novel = bool(research["ledger"].get("unimplemented_facets") or
                            research["ledger"].get("unmatched_requirements") or
+                           research["ledger"].get("decomposition_pending") or
                            not any(features.values()))
         # A model may not claim to implement an unparsed compound request.
         # Parsing must succeed first; otherwise the plan remains explicitly blocked.
