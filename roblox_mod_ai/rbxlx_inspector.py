@@ -63,6 +63,10 @@ def inspect_compiled_place(proposal: RobloxProposal, compiled: Path,
                 check("module."+m.name,False)
                 continue
             target_parent,target_class=expected
+            if (m.file_path.startswith("src/server/")
+                    and m.file_path.endswith(".luau")
+                    and not m.file_path.endswith(".server.luau")):
+                target_class = "ModuleScript"
             # Older authored plans declared dynamic .server.luau Scripts.
             # Production normalizes them to requireable ModuleScripts plus
             # a host bootstrap. Audit the REAL compiled and on-disk type;
