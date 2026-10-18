@@ -103,7 +103,7 @@ def test_long_nonempty_truncation_uses_plain_scoped_repair_not_whole_json(monkey
     assert "mine ore on planets" not in initial
     assert "Relevant remotes for THIS module only" in initial
     assert "Owned user requirement" in repair
-    assert "finish_reason" not in repair  # feedback about failure, not raw telemetry
+    assert "Model ran out of output tokens" in repair
     assert model.calls[0][1]["max_tokens"] == 6000
     assert model.calls[1][1]["max_tokens"] == 6000
     assert "Return JSON" not in repair
