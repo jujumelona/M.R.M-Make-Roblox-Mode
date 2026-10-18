@@ -452,7 +452,7 @@ class RobloxPreDesignResearch:
         desired = {facet["id"] for facet in ledger["facets"]}
         if not self.live_enabled:
             status = "live_disabled"
-        elif desired and covered == desired:
+        elif desired and covered == desired and not ledger.get("decomposition_pending"):
             status = "grounded"
         elif covered:
             status = "partial"
