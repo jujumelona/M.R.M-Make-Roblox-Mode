@@ -1,8 +1,11 @@
 """Colab model bootstrap contracts, tested without downloading the 5.84GB GGUF."""
 from __future__ import annotations
 
+import hashlib
+import io
 import json
 from pathlib import Path
+import tarfile
 
 import pytest
 
@@ -89,8 +92,9 @@ def test_missing_local_server_is_not_treated_as_a_valid_custom_game(monkeypatch)
         runtime.ensure_model_runtime(profile="t4_local", in_colab=False)
 
 
-def test_model_compiler_must_support_gpu_and_never_fake(monkeypatch, tmp_path):
+def test_opt_in_source_compiler_requires_gpu(monkeypatch, tmp_path):
     _clean_env(monkeypatch)
+    monkeypatch.setenv("RMM_BUILD_LLAMA_FROM_SOURCE", "1")
     monkeypatch.setattr(runtime, "_gpu_cuda_ready", lambda: False)
     with pytest.raises(runtime.ModelStartupError, match="GPU/CUDA compiler"):
         runtime._ensure_llama_server_binary(tmp_path)
@@ -142,3 +146,89 @@ def test_fast_test_session_never_downloads_model(monkeypatch, tmp_path):
     session = CompleteRobloxAISession(output_root=tmp_path,
                                       model_profile="fast_test", fast_mode=True)
     assert session.model_runtime is None
+
+
+
+def test_default_installs_pinned_cuda_without_colab_compile(monkeypatch, tmp_path):
+    _clean_env(monkeypatch)
+    monkeypatch.delenv("RMM_BUILD_LLAMA_FROM_SOURCE", raising=False)
+    calls = []
+    binary = tmp_path / "prebuilt" / "llama-server"
+    monkeypatch.setattr(runtime, "_ensure_pinned_cuda_binary",
+                        lambda root: calls.append(root) or binary)
+    monkeypatch.setattr(runtime, "_gpu_cuda_ready",
+                        lambda: pytest.fail("CUDA compilation must not run by default"))
+    assert runtime._ensure_llama_server_binary(tmp_path) == binary
+    assert calls == [tmp_path]
+
+
+def test_mandatory_sha256_rejects_modified_prebuilt(monkeypatch, tmp_path):
+    class Download:
+        headers = {"Content-Length": "8"}
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def read(self, size): return b"tampered" if not hasattr(self, "done") and setattr(self, "done", True) is None else b""
+
+    monkeypatch.setattr(runtime.urllib.request, "urlopen",
+                        lambda *args, **kwargs: Download())
+    with pytest.raises(runtime.ModelStartupError, match="SHA256 mismatch"):
+        runtime._download_pinned_cuda_bundle(
+            "https://example.invalid/llama-cuda.tar.gz", "0" * 64,
+            tmp_path / "cuda.tar.gz"
+        )
+
+
+def test_pinned_tar_libs_and_soname_symlink_chain(tmp_path):
+    archive = tmp_path / "bundle.tar.gz"
+    with tarfile.open(archive, "w:gz") as writer:
+        for filename, body in (
+            ("cuda-12.8/llama-server", b"binary"),
+            ("cuda-12.8/libggml.so.0.9.8", b"library"),
+            ("cuda-12.8/VERSION.txt", b"not executable"),
+        ):
+            data = tarfile.TarInfo(filename)
+            data.size = len(body)
+            writer.addfile(data, io.BytesIO(body))
+        for name, target in [
+            ("cuda-12.8/libggml.so", "libggml.so.0"),
+            ("cuda-12.8/libggml.so.0", "libggml.so.0.9.8"),
+        ]:
+            symlink = tarfile.TarInfo(name)
+            symlink.type = tarfile.SYMTYPE
+            symlink.linkname = target
+            writer.addfile(symlink)
+    result = runtime._extract_prebuilt_cuda_bundle(archive, tmp_path / "out")
+    assert result.is_file()
+    assert (tmp_path / "out" / "libggml.so").resolve().is_file()
+    assert not (tmp_path / "out" / "VERSION.txt").exists()
+
+
+def test_pinned_tar_rejects_external_symlink(tmp_path):
+    archive = tmp_path / "malicious.tar.gz"
+    with tarfile.open(archive, "w:gz") as writer:
+        body = b"binary"
+        info = tarfile.TarInfo("cuda-12.8/llama-server")
+        info.size = len(body)
+        writer.addfile(info, io.BytesIO(body))
+        info = tarfile.TarInfo("cuda-12.8/libunsafe.so")
+        info.type = tarfile.SYMTYPE
+        info.linkname = "../../outside"
+        writer.addfile(info)
+    with pytest.raises(runtime.ModelStartupError, match="Unsafe or broken"):
+        runtime._extract_prebuilt_cuda_bundle(archive, tmp_path / "out")
+
+
+def test_prebuilt_cache_never_redownloads(monkeypatch, tmp_path):
+    _clean_env(monkeypatch)
+    monkeypatch.setattr(runtime.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(runtime.platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(runtime.shutil, "which",
+                        lambda executable: "/usr/bin/nvidia-smi"
+                        if executable == "nvidia-smi" else None)
+    directory = tmp_path / "prebuilt-cuda-0.7.0"
+    directory.mkdir(parents=True)
+    (directory / "llama-server").write_bytes(b"binary")
+    (directory / ".verified-sha256").write_text(runtime.CUDA_RELEASE_SHA256)
+    monkeypatch.setattr(runtime, "_download_pinned_cuda_bundle",
+                        lambda *a: pytest.fail("Must reuse verified cache"))
+    assert runtime._ensure_pinned_cuda_binary(tmp_path) == directory / "llama-server"
