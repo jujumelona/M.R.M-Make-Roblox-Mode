@@ -5,9 +5,15 @@ No simulated responses or silent fallback to an unrelated Roblox game.
 """
 from __future__ import annotations
 
+import hashlib
 import os
+import platform
 from pathlib import Path
 import shutil
+import stat
+import tarfile
+import tempfile
+import urllib.request
 import socket
 import subprocess
 import sys
@@ -21,6 +27,15 @@ MODEL_FILE = "MiMo-V2.6-Distill-Qwen-9B-Q4_K_M.gguf"
 LLAMA_CPP_REF = "b10964"
 MODEL_ALIAS = "local-gguf"
 DEFAULT_PORT = 8910
+# Third-party CUDA release built from upstream llama.cpp v0.7.0;
+# pinned byte-for-byte using GitHub's published release asset SHA256.
+CUDA_RELEASE_URL = (
+    "https://github.com/ai-dock/llama.cpp-cuda/releases/download/v0.7.0/"
+    "llama.cpp-v0.7.0-cuda-12.8-amd64.tar.gz"
+)
+CUDA_RELEASE_SHA256 = "64ed0880c8c4dc4de93526402b550f8ea4d8e26bb54740c219ad2aa69ef87635"
+CUDA_RELEASE_SOURCE = "ggml-org/llama.cpp@620d2225cc436ab0b001e3200e590e3b286ef9ab"
+
 _READY_LOCAL_RUNTIME: dict[str, str] = {}
 
 
@@ -175,6 +190,110 @@ def _gpu_cuda_ready() -> bool:
                 (shutil.which("nvidia-smi") or Path("/usr/bin/nvidia-smi").is_file()))
 
 
+def _download_pinned_cuda_bundle(url: str, expected_sha256: str, destination: Path) -> None:
+    """Download a versioned third-party release with mandatory SHA256 validation."""
+    print("[RMM model] downloading precompiled CUDA llama-server (pinned SHA256); "
+          "no Colab CUDA compilation", flush=True)
+    request = urllib.request.Request(url, headers={"User-Agent": "RMM-Colab/1.0"})
+    actual = hashlib.sha256()
+    total = 0
+    last = time.monotonic()
+    max_bytes = 400 * 1024 * 1024
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response, destination.open("wb") as output:
+            while True:
+                chunk = response.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > max_bytes:
+                    raise ModelStartupError("Prebuilt CUDA bundle larger than expected.")
+                actual.update(chunk)
+                output.write(chunk)
+                if time.monotonic() - last >= 8:
+                    print(f"[RMM model] prebuilt CUDA download {total / 1048576:.1f} MiB",
+                          flush=True)
+                    last = time.monotonic()
+    except (OSError, ValueError) as exc:
+        raise ModelStartupError("Prebuilt CUDA bundle download failed: " + str(exc)) from exc
+    if actual.hexdigest() != expected_sha256:
+        raise ModelStartupError(
+            "Prebuilt CUDA bundle SHA256 mismatch; archive rejected. "
+            "Expected " + expected_sha256 + ", got " + actual.hexdigest())
+    print(f"[RMM model] verified {total / 1048576:.1f} MiB CUDA bundle SHA256", flush=True)
+
+
+def _extract_prebuilt_cuda_bundle(archive: Path, destination: Path) -> Path:
+    """Extract only server and shared libraries, without following tar links."""
+    destination.mkdir(parents=True, exist_ok=True)
+    symlinks: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    server_found = False
+    with tarfile.open(archive, "r:gz") as source:
+        for member in source:
+            name = Path(member.name).name
+            allowed = (name == "llama-server" or
+                       name.startswith("lib") and ".so" in name)
+            if not allowed or name in seen:
+                continue
+            if member.isreg():
+                if member.size > 250 * 1024 * 1024:
+                    raise ModelStartupError("Invalid prebuilt library size: " + name)
+                handle = source.extractfile(member)
+                if handle is None:
+                    raise ModelStartupError("Prebuilt archive file missing: " + name)
+                with handle, (destination / (name + ".partial")).open("wb") as out:
+                    shutil.copyfileobj(handle, out)
+                os.replace(destination / (name + ".partial"), destination / name)
+                (destination / name).chmod(0o755 if name == "llama-server" else 0o644)
+                seen.add(name)
+                server_found |= name == "llama-server"
+            elif member.issym() and "/" not in member.linkname:
+                symlinks.append((name, member.linkname))
+        # All symlink targets must be present, and must not traverse outside.
+        for name, target in symlinks:
+            if name in seen or target not in seen or name == "llama-server":
+                continue
+            (destination / name).symlink_to(target)
+            seen.add(name)
+    if not server_found:
+        raise ModelStartupError("Pinned CUDA archive has no llama-server executable.")
+    return destination / "llama-server"
+
+
+def _ensure_pinned_cuda_binary(cache_root: Path) -> Path:
+    if platform.system() != "Linux" or platform.machine().lower() not in ("x86_64", "amd64"):
+        raise ModelStartupError("Precompiled CUDA binary is for Linux x86_64 only.")
+    if not (shutil.which("nvidia-smi") or Path("/usr/bin/nvidia-smi").is_file()):
+        raise ModelStartupError("An NVIDIA GPU is required for Colab CUDA model inference.")
+    prebuilt = cache_root / "prebuilt-cuda-0.7.0"
+    binary = prebuilt / "llama-server"
+    marker = prebuilt / ".verified-sha256"
+    if binary.is_file() and marker.is_file() and marker.read_text().strip() == CUDA_RELEASE_SHA256:
+        print("[RMM model] reusing pinned precompiled CUDA llama-server", flush=True)
+        return binary
+    cache_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="rmm-cuda-") as scratch:
+        tarball = Path(scratch) / "llama-cuda.tar.gz"
+        staging = Path(scratch) / "libs"
+        _download_pinned_cuda_bundle(CUDA_RELEASE_URL, CUDA_RELEASE_SHA256, tarball)
+        binary_tmp = _extract_prebuilt_cuda_bundle(tarball, staging)
+        prebuilt.mkdir(parents=True, exist_ok=True)
+        for entry in staging.iterdir():
+            destination = prebuilt / entry.name
+            if destination.is_symlink() or destination.exists():
+                destination.unlink()
+            if entry.is_symlink():
+                destination.symlink_to(os.readlink(entry))
+            elif entry.is_file():
+                os.replace(entry, destination)
+        if not binary.is_file():
+            raise ModelStartupError("Precompiled CUDA llama-server was not extracted.")
+        marker.write_text(CUDA_RELEASE_SHA256, encoding="utf-8")
+    print("[RMM model] ready: prebuilt CUDA server from " + CUDA_RELEASE_SOURCE, flush=True)
+    return binary
+
+
 def _ensure_llama_server_binary(cache_root: Path) -> Path:
     """Build a pinned, compatible upstream llama-server with CUDA when needed."""
     chosen = os.environ.get("RMM_LLAMA_SERVER_BIN", "").strip()
@@ -183,6 +302,12 @@ def _ensure_llama_server_binary(cache_root: Path) -> Path:
         if not binary.is_file():
             raise ModelStartupError("RMM_LLAMA_SERVER_BIN does not exist: " + str(binary))
         return binary
+    # Fast default: do not compile ~100+ CUDA source files in Colab T4.
+    # A manually requested source build is still available for unsupported
+    # CUDA runtimes or users who do not trust third-party prebuilt releases.
+    if os.environ.get("RMM_BUILD_LLAMA_FROM_SOURCE", "").strip() != "1":
+        return _ensure_pinned_cuda_binary(cache_root)
+    print("[RMM model] explicit source compilation requested", flush=True)
     source = cache_root / "llama.cpp"
     binary = source / "build" / "bin" / "llama-server"
     if binary.is_file():
@@ -208,6 +333,7 @@ def _ensure_llama_server_binary(cache_root: Path) -> Path:
     configure = [
         cmake, "-S", str(source), "-B", str(build),
         "-DGGML_CUDA=ON", "-DLLAMA_CURL=OFF",
+        "-DGGML_CUDA_FA=OFF", "-DCMAKE_CUDA_ARCHITECTURES=75",
         "-DCMAKE_BUILD_TYPE=Release",
     ]
     if shutil.which("ninja"):
@@ -243,10 +369,14 @@ def _start_managed_server(binary: Path, model: Path, cache_root: Path) -> str:
         "--ubatch-size", "256",
     ]
     cache_root.mkdir(parents=True, exist_ok=True)
+    # Packaged llama.cpp shared libraries live next to the server executable.
+    env = os.environ.copy()
+    env["LD_LIBRARY_PATH"] = (str(binary.parent) + os.pathsep +
+                              env.get("LD_LIBRARY_PATH", ""))
     with log.open("w", encoding="utf-8") as output:
         process = subprocess.Popen(
             argv, stdout=output, stderr=subprocess.STDOUT,
-            start_new_session=True
+            start_new_session=True, env=env,
         )
     url = "http://127.0.0.1:" + str(port) + "/v1"
     print(f"[RMM model] llama-server spawned pid={process.pid} url={url}; "
