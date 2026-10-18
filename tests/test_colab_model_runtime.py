@@ -234,3 +234,91 @@ def test_prebuilt_cache_never_redownloads(monkeypatch, tmp_path):
     monkeypatch.setattr(runtime, "_download_pinned_cuda_bundle",
                         lambda *a: pytest.fail("Must reuse verified cache"))
     assert runtime._ensure_pinned_cuda_binary(tmp_path) == directory / "llama-server"
+
+
+
+def test_cuda_loader_finds_python_nvidia_wheels_without_torch(monkeypatch, tmp_path):
+    package_dir = tmp_path / "python" / "site-packages"
+    runtime_dir = package_dir / "nvidia" / "cuda_runtime" / "lib"
+    blas_dir = package_dir / "nvidia" / "cublas" / "lib"
+    runtime_dir.mkdir(parents=True)
+    blas_dir.mkdir(parents=True)
+    (runtime_dir / "libcudart.so.12").write_bytes(b"test")
+    (blas_dir / "libcublas.so.12").write_bytes(b"test")
+    monkeypatch.setattr(runtime.site, "getsitepackages", lambda: [str(package_dir)])
+    monkeypatch.setattr(runtime.site, "getusersitepackages",
+                        lambda: str(tmp_path / "nonexistent"))
+    binary = tmp_path / "llama-server"
+    binary.write_bytes(b"elf placeholder")
+    env = runtime._cuda_env(binary)
+    dirs = env["LD_LIBRARY_PATH"].split(os.pathsep)
+    assert dirs[0] == str(binary.parent)
+    assert str(runtime_dir) in dirs
+    assert str(blas_dir) in dirs
+
+
+def test_cuda_loader_parses_real_ldd_missing_library_output(monkeypatch, tmp_path):
+    import subprocess
+
+    binary = tmp_path / "llama-server"
+    binary.write_bytes(b"fake")
+    backend = tmp_path / "libggml-cuda.so.0"
+    backend.write_bytes(b"fake")
+
+    def fake_ldd(args, **kwargs):
+        assert args[0] == "ldd"
+        if str(args[1]) == str(binary):
+            output = "\tlibcudart.so.12 => not found\n\tlibcublas.so.12 => not found\n"
+        else:
+            output = "\tlibcublasLt.so.12 => not found\n"
+        return subprocess.CompletedProcess(args, 0, output, "")
+
+    monkeypatch.setattr(runtime.subprocess, "run", fake_ldd)
+    assert runtime._ldd_missing_libraries(binary, {}) == {
+        "libcudart.so.12", "libcublas.so.12", "libcublasLt.so.12"
+    }
+
+
+def test_cuda_loader_installs_only_missing_wheels_and_rechecks(monkeypatch, tmp_path):
+    binary = tmp_path / "llama-server"
+    binary.write_bytes(b"binary")
+    seen = []
+    steps = iter([
+        {"libcudart.so.12", "libcublas.so.12", "libcublasLt.so.12"},
+        set()
+    ])
+    monkeypatch.setattr(runtime, "_cuda_env",
+                        lambda b: {"LD_LIBRARY_PATH": str(b.parent)})
+    monkeypatch.setattr(runtime, "_ldd_missing_libraries",
+                        lambda *a: next(steps))
+    monkeypatch.setattr(runtime, "_checked_command",
+                        lambda command, log, **kw: seen.append(command[-1]))
+    result = runtime._prepare_cuda_linker_environment(binary, tmp_path)
+    assert result["LD_LIBRARY_PATH"] == str(tmp_path)
+    assert seen == [
+        "nvidia-cublas-cu12==12.8.4.1",
+        "nvidia-cuda-runtime-cu12==12.8.90",
+    ]
+
+
+def test_cuda_loader_skips_pip_when_existing_runtime_is_available(monkeypatch, tmp_path):
+    binary = tmp_path / "llama-server"
+    binary.write_bytes(b"binary")
+    monkeypatch.setattr(runtime, "_cuda_env", lambda b: {"LD_LIBRARY_PATH": "ok"})
+    monkeypatch.setattr(runtime, "_ldd_missing_libraries", lambda *a: set())
+    monkeypatch.setattr(runtime, "_checked_command",
+                        lambda *a, **kw: pytest.fail("unexpected CUDA wheel install"))
+    assert runtime._prepare_cuda_linker_environment(binary, tmp_path) == {
+        "LD_LIBRARY_PATH": "ok"
+    }
+
+
+def test_cuda_loader_rejects_unresolved_runtime_instead_of_spawning(monkeypatch, tmp_path):
+    binary = tmp_path / "llama-server"
+    binary.write_bytes(b"binary")
+    monkeypatch.setattr(runtime, "_cuda_env", lambda b: {"LD_LIBRARY_PATH": "ok"})
+    monkeypatch.setattr(runtime, "_ldd_missing_libraries",
+                        lambda *a: {"libcudart.so.12"})
+    monkeypatch.setattr(runtime, "_checked_command", lambda *a, **kw: None)
+    with pytest.raises(runtime.ModelStartupError, match="libcudart.so.12"):
+        runtime._prepare_cuda_linker_environment(binary, tmp_path)
