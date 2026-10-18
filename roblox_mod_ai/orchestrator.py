@@ -179,8 +179,9 @@ class RobloxProductionOrchestrator:
 
             def save_checkpoint(module):
                 content = module.code
-                if not content or not self.analyzer.analyze_source(
-                        content, file_path=module.file_path).passed:
+                if (not content or any(
+                        d.severity == "ERROR" for d in self.analyzer.analyze_source(
+                            content, file_path=module.file_path))):
                     return
                 entries[module.file_path] = {
                     "input_sha256": checkpoint_signature(module),
@@ -203,8 +204,10 @@ class RobloxProductionOrchestrator:
                         previous = path.read_text(encoding="utf-8")
                         if (hashlib.sha256(previous.encode("utf-8")).hexdigest() ==
                                 stored.get("source_sha256")
-                                and self.analyzer.analyze_source(
-                                    previous, file_path=module.file_path).passed):
+                                and not any(
+                                    d.severity == "ERROR"
+                                    for d in self.analyzer.analyze_source(
+                                        previous, file_path=module.file_path))):
                             module.code = previous
                             trajectory.record("generation", "resume " + module.file_path,
                                               {"source_bytes": len(previous),
