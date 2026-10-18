@@ -28,7 +28,7 @@ def test_failed_runtime_preserves_actual_stage_errors(monkeypatch, tmp_path):
         def plan(self, prompt):
             assert prompt == "mine and launch"
             proposal = SimpleNamespace(
-                modules=[1, 2],
+                requested_prompt="mine and launch", modules=[1, 2],
                 game_design={"pre_design_research": {
                     "ledger": {"requirements": [{"id": "req-001"}],
                                "unimplemented_facets": []}}})
@@ -57,6 +57,8 @@ def test_failed_runtime_preserves_actual_stage_errors(monkeypatch, tmp_path):
     monkeypatch.setattr(cli, "CompleteRobloxAISession", Session)
     receipt = cli.run("mine and launch", tmp_path)
     assert receipt["status"] == "build_or_runtime_failed"
+    assert len(receipt["input_fingerprint"]) == 64
+    assert receipt["model_id"] == "local-mimo"
     assert receipt["rojo_compiled"] is True
     assert receipt["source_static_passed"] is True
     assert receipt["studio_runtime_passed"] is False
