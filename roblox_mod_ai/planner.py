@@ -319,7 +319,10 @@ class RobloxGameDesignPlanner:
                            research["ledger"].get("unimplemented_facets") or
                            research["ledger"].get("unmatched_requirements") or
                            not any(features.values()))
-        if needs_novel and dynamic_design_enabled():
+        # A model may not claim to implement an unparsed compound request.
+        # Parsing must succeed first; otherwise the plan remains explicitly blocked.
+        if (needs_novel and dynamic_design_enabled() and
+                not research["ledger"].get("decomposition_pending")):
             try:
                 # A fixed shop/sword/obby template cannot implement bespoke
                 # mechanics (pet shop, procedural RPG, etc.). Do not transplant
@@ -358,11 +361,15 @@ class RobloxGameDesignPlanner:
                 })
 
         # 4. Generate Test Specs tailored to the generated modules
-        primary_genre = "Custom" if dynamic_design or not any(features.values()) else "Combat"
-        for g_name, active in [("Obby", features["is_obby"]), ("Shop", features["is_shop"]), ("Tycoon", features["is_tycoon"]), ("Simulator", features["is_simulator"]), ("Combat", features["is_combat"])]:
-            if active:
-                primary_genre = g_name
-                break
+        unresolved = bool(research["ledger"].get("decomposition_pending") or
+                          research["ledger"].get("unimplemented_facets") or
+                          research["ledger"].get("unmatched_requirements"))
+        primary_genre = "Custom" if dynamic_design or unresolved or not any(features.values()) else "Combat"
+        if not (dynamic_design or unresolved):
+            for g_name, active in [("Obby", features["is_obby"]), ("Shop", features["is_shop"]), ("Tycoon", features["is_tycoon"]), ("Simulator", features["is_simulator"]), ("Combat", features["is_combat"])]:
+                if active:
+                    primary_genre = g_name
+                    break
 
         proto_proposal = RobloxProposal(
             requested_prompt=prompt,
