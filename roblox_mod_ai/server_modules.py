@@ -110,9 +110,7 @@ def render_dynamic_server_bootstrap(proposal: RobloxProposal) -> str:
         return source
     source += (
         "\n-- Host-owned Remote ingress. AI never wires OnServerEvent itself.\n"
-        "local ReplicatedStorage = game:GetService(\"ReplicatedStorage\")\n"
         "local Players = game:GetService(\"Players\")\n"
-        "local remotes = ReplicatedStorage:WaitForChild(\"Remotes\")\n"
         "local lastAction = setmetatable({}, {__mode = \"k\"})\n"
         "local function allowAction(player, actionName)\n"
         "    if typeof(player) ~= \"Instance\" or not player:IsA(\"Player\") then return false end\n"
@@ -128,6 +126,11 @@ def render_dynamic_server_bootstrap(proposal: RobloxProposal) -> str:
         "    actionsForPlayer[actionName] = now\n"
         "    return true\n"
         "end\n"
+    )
+    if actions:
+        source += (
+            'local ReplicatedStorage = game:GetService("ReplicatedStorage")\\n'
+            'local remotes = ReplicatedStorage:WaitForChild("Remotes")\\n'
         "-- Bound common transport payloads before game-specific processing.\n"
         "-- Game permissions, amounts, ownership and target class remain in the domain handler.\n"
         "local function safeWireArgs(...)\n"
@@ -150,7 +153,7 @@ def render_dynamic_server_bootstrap(proposal: RobloxProposal) -> str:
         "    end\n"
         "    return true\n"
         "end\n"
-    )
+        )
     names_by_id = {
         m.name for m in modules if m.kind == ModuleKind.SERVER_MODULE
     }
