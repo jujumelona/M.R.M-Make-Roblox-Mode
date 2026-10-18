@@ -158,7 +158,7 @@ def forecast_generation(
             "minimum_sequential_model_completions": facet_count + actual_model_code_count,
             "maximum_if_each_planner_and_coder_task_retries_three_times":
                 3 * (facet_count + actual_model_code_count),
-            "planner_output_token_cap_per_facet": 5000,
+            "planner_output_token_cap_per_facet": 2600,
             "coder_output_token_cap_per_module": 6000,
         },
         "measured_full_game_model_runs": {
