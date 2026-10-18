@@ -130,6 +130,13 @@ class RobloxCodeRepairAgent:
             "create minimal reusable functions for each actual game action.\n"
             "Do not create stubs/TODOs, no unsafe require(assetId), no loadstring.\n"
             "Server must validate all incoming client data and remote actions.\n"
+            "Server uses Roblox Players, ReplicatedStorage, DataStoreService APIs; "
+            "never use Players.LocalPlayer, game.GetPlayers(), os.now(), "
+            "type.isinteger(), or any invented Roblox API.\n"
+            "When this game has a shared EconomyLedger ModuleScript, server "
+            "purchase/mining handlers must use "
+            "require(game:GetService('ServerScriptService'):WaitForChild('EconomyLedger')) "
+            "and its GetBalance, TrySpend, Grant methods, not an invented ledger.\n"
             f"User request: {proposal.requested_prompt}\n"
             f"File: {module.file_path}\nModule: {module.name}\n"
             f"Module intent: {module.description}\n"
@@ -160,6 +167,9 @@ class RobloxCodeRepairAgent:
                     "Do not output reasoning, JSON, markdown or placeholders. "
                     "Include functional state and handlers. "
                     "Use only the declared remotes and server-authoritative logic.\n"
+                    "Never invent Roblox APIs (no Players.LocalPlayer in server "
+                    "scripts, no os.now(), no type.isinteger()). "
+                    "Prefer an explicit small service contract to verbose source.\n"
                     f"User request: {proposal.requested_prompt[:1000]}\n"
                     f"File: {module.file_path}\n"
                     f"Required behavior: {module.description}\n"
@@ -191,10 +201,12 @@ class RobloxCodeRepairAgent:
             else:
                 query = prompt
             try:
-                # A distinct recovery mode, not another identical code call.
-                # JSON mode already produces visible answers with non-thinking
-                # templates on the user's MiMo GGUF. Request the actual Luau
-                # code in an escaped JSON string if plain completion is empty.
+                # JSON wrapping is ONLY a transport recovery for missing visible
+                # output or hidden-reasoning exhaustion. It is NOT a syntax
+                # repair mode: proposal (11) repeatedly produced 6000-token
+                # unterminated JSON string for a malformed EconomyLedger.
+                # For malformed Luau, change the task with a fresh scoped
+                # plain-code prompt rather than re-encoding whole source.
                 last_report = getattr(self.router, "last_generation_report", {})
                 ran_out_thinking = (
                     isinstance(last_report, dict) and (
@@ -204,7 +216,7 @@ class RobloxCodeRepairAgent:
                 )
                 json_fallback = (
                     attempt >= 1 and hasattr(self.router, "complete_json") and
-                    (degenerate_attempt or syntax_failed or ran_out_thinking or
+                    (ran_out_thinking or
                      (len(candidate.strip()) < 75 and attempt >= 2))
                 )
                 if json_fallback:
