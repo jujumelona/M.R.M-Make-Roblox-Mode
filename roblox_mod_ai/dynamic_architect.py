@@ -339,6 +339,8 @@ class RobloxDynamicArchitect:
                 return _clean_model_json(raw, ledger, {m.name for m in existing_modules})
             except Exception as exc:
                 last_error = type(exc).__name__ + ": " + str(exc)[:220]
+                print("[RMM architect] attempt " + str(attempt + 1) +
+                      " failed: " + last_error, flush=True)
         raise DynamicDesignError("Small-model architecture failed after validation retries: "
                                  + last_error)
 
