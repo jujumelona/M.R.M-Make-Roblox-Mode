@@ -558,8 +558,12 @@ class RobloxDynamicArchitect:
         # an arbitrary >=3 facet threshold. Old full-JSON transports remain
         # explicitly opt-in for compatibility with saved legacy workflows.
         facets = implementation_facets(ledger)
-        if facets and os.environ.get(
-                "RMM_LEGACY_ARCHITECTURE_PROTOCOL", "0") != "1":
+        if os.environ.get("RMM_LEGACY_ARCHITECTURE_PROTOCOL", "0") != "1":
+            if not facets:
+                raise DynamicDesignError(
+                    "Source requirements have no implementation facets. "
+                    "Recover original request decomposition before game planning; "
+                    "do not invent a stock project to fill this gap.")
             return self._design_by_facets(prompt, research, existing_modules)
         last_error = ""
         raw: Any = None
