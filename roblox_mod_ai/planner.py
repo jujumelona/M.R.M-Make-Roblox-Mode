@@ -434,6 +434,7 @@ class RobloxGameDesignPlanner:
                     "module_behaviors": dynamic_design["module_behaviors"],
                     "module_facets": dynamic_design["module_facets"],
                     "module_remotes": dynamic_design.get("module_remotes", {}),
+                    "host_actions": dynamic_design.get("host_actions", {}),
                     "acceptance_facets": dynamic_design["acceptance_facets"],
                     "remotes": dynamic_design["remotes"],
                     "world_objects": dynamic_design["world_objects"],
