@@ -197,8 +197,8 @@ def inspect_dynamic_remote_wiring(proposal: RobloxProposal) -> dict[str, Any]:
             for variable in variables:
                 var = re.escape(variable)
                 for method in methods:
-                    delimiter = r"\\s*\\.\\s*" if method.startswith("On") else r"\\s*:\\s*"
-                    pattern = r"\\b" + var + delimiter + method + r"\\b"
+                    delimiter = r"\s*\.\s*" if method.startswith("On") else r"\s*:\s*"
+                    pattern = r"\b" + var + delimiter + method + r"\b"
                     if (re.search(pattern, masked) and
                             method not in allowed[kind][side]):
                         invalid_methods.add(method)
