@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -80,12 +81,14 @@ class CompleteRobloxAISession:
         plan = self.planner.plan(prompt, project_mode=project_mode)
         self.authored_plan = plan
         self.save_plan()
-
-        return CompleteChatReply(
+        reply = CompleteChatReply(
             message=plan.text,
             approval_hash=plan.calculate_hash(),
             authored_plan=plan,
         )
+        if not reply.ready_to_build:
+            self.export_plan_failure()
+        return reply
 
     def revise(self, feedback: str) -> CompleteChatReply:
         """Revise the existing plan based on feedback, keeping unaffected subsystems."""
@@ -95,12 +98,14 @@ class CompleteRobloxAISession:
         plan = self.planner.revise(self.authored_plan, feedback)
         self.authored_plan = plan
         self.save_plan()
-
-        return CompleteChatReply(
+        reply = CompleteChatReply(
             message=plan.text,
             approval_hash=plan.calculate_hash(),
             authored_plan=plan,
         )
+        if not reply.ready_to_build:
+            self.export_plan_failure()
+        return reply
 
     def build(
         self,
@@ -125,6 +130,40 @@ class CompleteRobloxAISession:
             run_name=run_name,
             source_only=source_only,
         )
+
+    def export_plan_failure(self) -> Path:
+        """Persist the actual planning diagnostics instead of ending in traceback.
+
+        Includes the source-anchored request ledger, model/provider failures and
+        model design repair observations. No gameplay success is implied.
+        """
+        if self.authored_plan is None:
+            raise ValueError("No plan failure available")
+        research = self.authored_plan.proposal.game_design.get("pre_design_research", {})
+        self.output_root.mkdir(parents=True, exist_ok=True)
+        report = self.output_root / "plan_failure_report.json"
+        report.write_text(json.dumps({
+            "schema": "rmm/plan-failure-v1",
+            "success": False,
+            "requested_prompt": self.authored_plan.requested_prompt,
+            "provider_failures": research.get("provider_failures", []),
+            "architecture_attempts": research.get("architecture_attempts", []),
+            "missing_requirements": research.get("ledger", {}).get(
+                "unmatched_requirements", []),
+            "unimplemented_facets": research.get("ledger", {}).get(
+                "unimplemented_facets", []),
+            "decomposition_pending": research.get("ledger", {}).get(
+                "decomposition_pending", []),
+            "request_ledger": research.get("ledger", {}),
+            "note": "Planning incomplete; source generated? no; Roblox engine run? no",
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        bundle = self.output_root / "plan_failure_logs.zip"
+        with zipfile.ZipFile(bundle, "w", zipfile.ZIP_DEFLATED) as archive:
+            for path in (report, self.output_root / "proposal.json"):
+                if path.is_file():
+                    archive.write(path, path.name)
+        print("[RMM agent] planning failure report: " + str(bundle), flush=True)
+        return bundle
 
     def save_plan(self, target_path: str | Path | None = None) -> Path:
         """Persist the authored plan and checkpoints to a JSON file."""
