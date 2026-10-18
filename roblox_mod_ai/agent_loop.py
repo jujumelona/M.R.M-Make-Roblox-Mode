@@ -10,6 +10,7 @@ import os
 import re
 
 from .official_docs import RobloxOfficialDocs
+from .code_output_guard import LiveCodeRepetitionGuard, RepeatedCodeOutput
 from .model_router import ModelRouter
 from .luau_analyzer import LuauStaticAnalyzer
 from .spec import RobloxModuleSpec, RobloxProposal
@@ -96,8 +97,19 @@ class RobloxCodeRepairAgent:
                 references=self.docs.search(module.description+" "+module.name,limit=3)
                 source_urls=[item["url"] for item in references["results"]]
                 snippets="\n".join(item.get("excerpt","")[:450] for item in references["results"])
+        # A previous degenerate generated source is diagnostic evidence,
+        # not a useful few-shot example for the model. Never copy hundreds
+        # of repeated declarations into its next generation prompt.
+        try:
+            LiveCodeRepetitionGuard.inspect(existing_code)
+        except RepeatedCodeOutput as loop:
+            diagnostics += ("\nPrevious source had pathological repeated lines: " +
+                            str(loop))
+            existing_code = ""
         prompt=(
             "Implement a complete Luau Roblox gameplay module. Output only code.\n"
+            "Do not repeat identical assignments or statements in a loop; "
+            "create minimal reusable functions for each actual game action.\n"
             "Do not create stubs/TODOs, no unsafe require(assetId), no loadstring.\n"
             "Server must validate all incoming client data and remote actions.\n"
             f"User request: {proposal.requested_prompt}\n"
@@ -113,6 +125,7 @@ class RobloxCodeRepairAgent:
         )
         candidate = existing_code
         errors: list[str] = []
+        degenerate_attempt = False
         for attempt in range(attempts):
             if attempt:
                 # The original loop repeatedly appended long source+diagnostics
@@ -129,8 +142,14 @@ class RobloxCodeRepairAgent:
                     f"Remote types: {design.get('remotes', {})}\n"
                     "Previous validator errors: " + "; ".join(errors[:10]) + "\n"
                 )
-                if candidate and len(candidate) > 75:
+                if candidate and len(candidate) > 75 and not degenerate_attempt:
                     compact += "Previous invalid Luau source:\n" + candidate[:9000] + "\n"
+                elif degenerate_attempt:
+                    compact += (
+                        "Previous output was caught repeating identical assignments. "
+                        "DO NOT continue it. Start over with concise functional "
+                        "Luau handling only this file's gameplay behavior.\n"
+                    )
                 else:
                     compact += "Previous attempt produced no functional code. Start directly with --!strict and actual statements.\n"
                 query = compact
@@ -149,9 +168,10 @@ class RobloxCodeRepairAgent:
                     )
                 )
                 json_fallback = (
-                    attempt >= 1 and len(candidate.strip()) < 75 and
-                    hasattr(self.router, "complete_json") and
-                    (attempt >= 2 or ran_out_thinking)
+                    attempt >= 1 and hasattr(self.router, "complete_json") and
+                    (degenerate_attempt or
+                     (len(candidate.strip()) < 75 and
+                      (attempt >= 2 or ran_out_thinking)))
                 )
                 if json_fallback:
                     model_output = self.router.complete_json(
@@ -176,10 +196,23 @@ class RobloxCodeRepairAgent:
                     "Model completion failed: " + type(exc).__name__ + ": " + str(exc),
                     "Model runtime observation: " + str(runtime_observation),
                 ]
+                if isinstance(exc, RepeatedCodeOutput):
+                    degenerate_attempt = True
+                    candidate = exc.partial_output
+                    errors.insert(0, "Streaming repetition aborted before token budget exhaustion")
                 print("[RMM coder] " + module.name + " attempt " +
                       str(attempt + 1) + ": " + errors[0][:600], flush=True)
                 continue
             candidate = self._clean_code(raw_code)
+            try:
+                LiveCodeRepetitionGuard.inspect(candidate)
+                degenerate_attempt = False
+            except RepeatedCodeOutput as loop:
+                degenerate_attempt = True
+                errors = ["Generated source is stuck in repeated statements: " + str(loop)]
+                print("[RMM coder] " + module.name + " attempt " +
+                      str(attempt + 1) + ": " + errors[0][:600], flush=True)
+                continue
             errors = [d.message for d in self.analyzer.analyze_source(candidate,module.file_path)
                       if d.severity=="ERROR"]
             if not candidate:
