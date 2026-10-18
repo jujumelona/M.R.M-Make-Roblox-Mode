@@ -12,7 +12,7 @@ from typing import Any
 from .authored_plan import RobloxAuthoredPlan
 from .code_generator import LuauCodeGenerator
 from .dynamic_repair import repair_tool_diagnostics, repair_static_failures
-from .agent_loop import RobloxCodeRepairAgent
+from .agent_loop import RobloxCodeRepairAgent, LuauGenerationError
 from .agent_trajectory import AgentTrajectory
 from .quality_gates import acceptance_obligations, make_artifact_manifest
 from .request_traceability import build_request_traceability
@@ -155,8 +155,17 @@ class RobloxProductionOrchestrator:
                 except Exception as exc:
                     message = type(exc).__name__ + ": " + str(exc)
                     trace = traceback.format_exc()
+                    failed_code = exc.candidate if isinstance(exc, LuauGenerationError) else module.code
+                    actual_errors = (exc.diagnostics if isinstance(exc, LuauGenerationError)
+                                     else [message])
+                    if failed_code:
+                        debug_path = output_dir / "failed_candidates" / module.file_path
+                        debug_path.parent.mkdir(parents=True, exist_ok=True)
+                        debug_path.write_text(failed_code, encoding="utf-8")
                     trajectory.record("generation", "generate " + module.file_path,
-                                      {"error": message, "traceback": trace},
+                                      {"error": message, "traceback": trace,
+                                       "analyzer_diagnostics": actual_errors,
+                                       "failed_candidate_saved": bool(failed_code)},
                                       passed=False)
                     # The original path immediately returned False. Feed the
                     # actual exception and partial source to the coding agent
@@ -167,9 +176,10 @@ class RobloxProductionOrchestrator:
                     try:
                         replacement = RobloxCodeRepairAgent(router=self.router).repair(
                             module, proposal,
-                            existing_code=module.code or "",
+                            existing_code=failed_code or "",
                             diagnostics=("Generation failed for " + module.file_path +
-                                         ": " + message + "\n" + trace[-8000:]),
+                                         "\n" + "\n".join(actual_errors) +
+                                         "\n" + trace[-5000:]),
                             attempts=3,
                         )
                         module.code = replacement
