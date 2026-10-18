@@ -30,6 +30,7 @@ def forecast_proposal(path: Path, *,
         requested_prompt=proposal["requested_prompt"],
         ledger=ledger, modules=proposal.get("modules", []),
         remotes=dynamic.get("remotes") or {},
+        host_client_actions=dynamic.get("host_client_actions") or {},
         observed_model_runs=receipts,
         expected_input_fingerprint=fingerprint,
     )
