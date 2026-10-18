@@ -84,7 +84,19 @@ def run(prompt: str, output: Path, *, source_only: bool = False,
             return write()
 
         result = session.build(source_only=source_only)
-        receipt["production_errors"] = result.errors
+        # RobloxPipelineResult has no .errors field. The authoritative
+        # failures live in the work receipt's per-stage error/diagnostic
+        # records; an AttributeError here previously destroyed real E2E
+        # reporting after an otherwise successful build attempt.
+        stage_receipt = result.work_receipt.to_dict()
+        receipt["production_stages"] = stage_receipt["stages"]
+        receipt["production_errors"] = [
+            {"stage": entry["stage"],
+             "errors": entry.get("errors", []),
+             "details": entry.get("details", {})}
+            for entry in stage_receipt["stages"]
+            if not entry.get("success")
+        ]
         receipt["project_dir"] = result.project_dir
         receipt["failure_logs_zip"] = result.metadata.get("failure_logs_zip")
         receipt["checks"] = result.metadata.get("acceptance", {}).get("checks", [])
