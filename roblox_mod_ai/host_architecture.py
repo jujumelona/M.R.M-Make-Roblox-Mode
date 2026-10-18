@@ -164,15 +164,17 @@ def expand_semantic_facet(
             if object_name in used_objects:
                 raise HostArchitectureError("World entity name collision")
             used_objects.add(object_name)
+            # Global placement slot includes already accepted facets, so
+            # separate semantic systems do not spawn Parts on top of each other.
+            slot = len(used_objects) - 1
             objects.append({
                 "name": object_name, "class": "Part",
-                # Deterministic grid separated from main spawn. These are
-                # *starter placeholders* for the requested semantic entities,
-                # not proof of a playable 3D world.
+                # Deterministic starter geometry only; game-specific authored
+                # world shapes still require generation and Studio inspection.
                 "position": [
-                    float(24 + len(objects) % 10 * 12),
+                    float(24 + slot % 17 * 12),
                     2.0,
-                    float(24 + len(objects) // 10 * 12),
+                    float(24 + slot // 17 * 12),
                 ],
                 "size": [4.0, 4.0, 4.0],
             })
