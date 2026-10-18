@@ -72,6 +72,78 @@ def choose_reuse(name: str, requirements: list[str], source: str,
             "reason": "First-party template, source inspected and exact behavior verified"}
 
 
+
+def _remote_kind(raw: Any) -> str | None:
+    """Normalize representation, not protocol semantics.
+
+    'Remote', 'signal', or 'method' alone do not reveal whether a response is
+    required. Those remain unresolved until the model explicitly classifies
+    the remote, so the host never quietly turns an InvokeServer into FireServer.
+    """
+    if not isinstance(raw, str):
+        return None
+    value = re.sub(r"[\s_\-\.]", "", raw).casefold()
+    events = {"remoteevent", "event", "fireandforget", "oneway", "fireserver",
+              "fireclient", "fireallclients"}
+    functions = {"remotefunction", "function", "requestresponse", "rpc",
+                 "invokeserver", "invokeclient"}
+    if value in events:
+        return "RemoteEvent"
+    if value in functions:
+        return "RemoteFunction"
+    return None
+
+
+def _normalize_remote_rows(raw: Any) -> tuple[list[dict[str, str]], list[str]]:
+    """Canonicalize benign LLM JSON variants; return unresolved names intact.
+
+    Accept both [{name,type}] and {name:type} shapes; accept known synonyms
+    only. Preserve remote identity and reject conflicting duplicate kinds.
+    """
+    if isinstance(raw, dict):
+        rows: list[Any] = [
+            {"name": key, "type": value.get("type", value.get("className",
+              value.get("$className"))) if isinstance(value, dict) else value}
+            for key, value in raw.items()
+        ]
+    elif isinstance(raw, list):
+        rows = raw
+    else:
+        raise DynamicDesignError("Invalid remote declarations: expected array or name:type map")
+    if len(rows) > _MAX_NEW_REMOTES:
+        raise DynamicDesignError("Too many remote declarations")
+    result: list[dict[str, str]] = []
+    unresolved: list[str] = []
+    seen: dict[str, str] = {}
+    for item in rows:
+        if isinstance(item, str):
+            m = re.fullmatch(r"\s*([A-Z][A-Za-z0-9]{2,55})\s*[:=]\s*(\w+)\s*", item)
+            if not m:
+                raise DynamicDesignError("Invalid remote string declaration: " + item[:100])
+            name, raw_type = m.groups()
+        elif isinstance(item, dict):
+            name = item.get("name", item.get("Name", item.get("remote_name")))
+            raw_type = item.get(
+                "type", item.get("Type", item.get("remote_type",
+                item.get("class", item.get("className", item.get("$className",
+                item.get("kind"))))))
+            )
+        else:
+            raise DynamicDesignError("Invalid remote declaration entry")
+        if not isinstance(name, str) or not _VALID_REMOTE.fullmatch(name):
+            raise DynamicDesignError("Remote name collision/invalid name: " + str(name)[:80])
+        canonical = _remote_kind(raw_type)
+        if name in seen:
+            raise DynamicDesignError("Duplicate remote name: " + name)
+        seen[name] = canonical or ""
+        if canonical is None:
+            unresolved.append(name)
+            result.append({"name": name, "type": ""})
+        else:
+            result.append({"name": name, "type": canonical})
+    return result, unresolved
+
+
 def _clean_model_json(response: dict[str, Any], ledger: dict[str, Any],
                       existing_names: set[str]) -> dict[str, Any]:
     if not isinstance(response, dict): raise DynamicDesignError("Architecture must be JSON object")
@@ -133,17 +205,15 @@ def _clean_model_json(response: dict[str, Any], ledger: dict[str, Any],
         raise DynamicDesignError("Unimplemented gameplay facets: " +
                                  ", ".join(sorted(required_facets - assigned_facets)))
 
-    raw_remotes = response.get("remotes", [])
-    if not isinstance(raw_remotes, list) or len(raw_remotes) > _MAX_NEW_REMOTES:
-        raise DynamicDesignError("Invalid remote declarations")
-    remotes: dict[str, str] = {}
-    for item in raw_remotes:
-        if not isinstance(item, dict) or item.get("type") not in ("RemoteEvent", "RemoteFunction"):
-            raise DynamicDesignError("Remote must specify RemoteEvent or RemoteFunction")
-        name = item.get("name")
-        if not isinstance(name,str) or not _VALID_REMOTE.fullmatch(name) or name in remotes:
-            raise DynamicDesignError("Remote name collision/invalid name")
-        remotes[name] = item["type"]
+    remote_rows, unresolved_remotes = _normalize_remote_rows(response.get("remotes", []))
+    if unresolved_remotes:
+        raise DynamicDesignError(
+            "Remote needs explicit RemoteEvent or RemoteFunction: " +
+            ", ".join(unresolved_remotes)
+        )
+    remotes: dict[str, str] = {
+        item["name"]: item["type"] for item in remote_rows
+    }
 
     raw_objects = response.get("world_objects", [])
     if not isinstance(raw_objects, list) or len(raw_objects) > _MAX_NEW_OBJECTS:
@@ -249,12 +319,70 @@ class RobloxDynamicArchitect:
         for attempt in range(3):
             try:
                 query = (prompt_text + ("\nPrevious design invalid: " + last_error +
-                         "\nCorrect the missing requirement/facet assignments; return FULL JSON."
+                         "\nFix the stated contract issue; return FULL JSON."
                          if attempt else ""))
                 raw = self.router.complete_json(
                     query, role="planner", temperature=0.1)
+                # A malformed remote *type* must not discard an otherwise valid
+                # architecture and force the model to regenerate everything.
+                # Fix that field on the existing design, retaining all modules,
+                # facets, acceptance cases, and object definitions.
+                raw = self._resolve_remote_declarations(raw)
                 return _clean_model_json(raw, ledger, {m.name for m in existing_modules})
             except Exception as exc:
                 last_error = type(exc).__name__ + ": " + str(exc)[:220]
         raise DynamicDesignError("Small-model architecture failed after validation retries: "
                                  + last_error)
+
+    def _resolve_remote_declarations(self, raw: Any) -> Any:
+        if not isinstance(raw, dict) or "remotes" not in raw:
+            return raw
+        rows, missing = _normalize_remote_rows(raw["remotes"])
+        if not missing:
+            return dict(raw, remotes=rows)
+        modules = raw.get("modules", [])
+        context = [
+            {"role": row.get("role"), "name": row.get("name"),
+             "behavior": str(row.get("behavior", ""))[:300]}
+            for row in modules if isinstance(row, dict)
+        ] if isinstance(modules, list) else []
+        # Classify ONLY ambiguous remote kinds. Never silently assume
+        # RemoteEvent for a request/response channel.
+        unresolved = set(missing)
+        resolved = {r["name"]: r["type"] for r in rows if r["type"]}
+        for attempt in range(3):
+            if not unresolved:
+                break
+            batch = sorted(unresolved)
+            print("[RMM architect] resolving remote types: " + ", ".join(batch),
+                  flush=True)
+            answer = self.router.complete_json(
+                "Choose exact Roblox transport semantics for ONLY the listed "
+                "existing remote names. Return JSON "
+                '{"remotes":[{"name":"ExactName","type":"RemoteEvent"}]}. '
+                "RemoteEvent = one-way FireServer/OnServerEvent or FireClient. "
+                "RemoteFunction = synchronous InvokeServer/OnServerInvoke with "
+                "a returned result. Names and module list must not change. "
+                "Do not invent extra remote names. "
+                "A purchase needing a synchronous result uses RemoteFunction; "
+                "a one-way action uses RemoteEvent.\n"
+                + json.dumps({"unresolved_remote_names": batch,
+                              "modules": context}, ensure_ascii=False),
+                role="planner", temperature=0.0,
+            )
+            if not isinstance(answer, dict) or "remotes" not in answer:
+                continue
+            proposed, still_missing = _normalize_remote_rows(answer["remotes"])
+            _ = still_missing
+            for item in proposed:
+                if item["name"] in unresolved and item["type"]:
+                    resolved[item["name"]] = item["type"]
+                    unresolved.remove(item["name"])
+        if unresolved:
+            raise DynamicDesignError(
+                "Cannot determine RemoteEvent vs RemoteFunction for: " +
+                ", ".join(sorted(unresolved))
+            )
+        canonical = [{"name": item["name"],
+                      "type": resolved[item["name"]]} for item in rows]
+        return dict(raw, remotes=canonical)
