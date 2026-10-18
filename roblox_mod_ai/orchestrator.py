@@ -142,6 +142,21 @@ class RobloxProductionOrchestrator:
             return {"module_order": [m.name for m in proposal.modules]}
 
         checkpoint_file = output_dir / "generation_checkpoint.json"
+        # Input-only checkpoints previously survived changes to coder prompts,
+        # server bootstrap contracts and recovery policy. This resumed stale
+        # broken code after every fix. Tie all resumed modules to the actual
+        # source of the generation pipeline; changed implementation invalidates
+        # checkpoints without deleting the user's prior run evidence.
+        generation_components = (
+            "orchestrator.py", "agent_loop.py", "code_generator.py",
+            "module_prompt_scope.py", "server_modules.py", "economy_core.py",
+        )
+        component_fingerprints = {
+            component: hashlib.sha256(
+                (Path(__file__).resolve().parent / component).read_bytes()
+            ).hexdigest()
+            for component in generation_components
+        }
 
         def checkpoint_signature(module):
             # Resume ONLY the same authored gameplay and module interfaces.
@@ -150,6 +165,11 @@ class RobloxProductionOrchestrator:
             design = proposal.game_design.get("dynamic_design") or {}
             research = proposal.game_design.get("pre_design_research") or {}
             contract = {
+                "code_generation_components": component_fingerprints,
+                "coder_backend": {
+                    "router_type": type(self.router).__name__,
+                    "profile": str(getattr(self.router, "profile", "")),
+                },
                 "request": proposal.requested_prompt,
                 "module": {k: v for k, v in module.to_dict().items() if k != "code"},
                 "all_modules": [{
@@ -159,6 +179,9 @@ class RobloxProductionOrchestrator:
                 "remotes": design.get("remotes", {}),
                 "world_objects": design.get("world_objects", []),
                 "module_facets": design.get("module_facets", {}),
+                "module_remotes": design.get("module_remotes", {}),
+                "module_requirements": design.get("module_requirements", {}),
+                "module_behaviors": design.get("module_behaviors", {}),
                 "evidence": [{
                     "facet": e.get("facet"), "url": e.get("url"),
                     "sha": e.get("content_sha256"),
