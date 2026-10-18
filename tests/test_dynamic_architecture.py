@@ -625,3 +625,123 @@ def test_remote_without_client_cannot_be_accepted_from_saved_model_json():
             "requirements": [{"id": "req-001", "statement": "Mine ore"}],
             "facets": [{"id": "mining", "requirements": ["req-001"]}],
         }, set())
+
+
+
+def _space_game_size_regression():
+    """Match the actual user's failed plan: 22 modules, 17 remotes, 7 obligations."""
+    from roblox_mod_ai.request_contract import clean
+    names = [
+        "ShipyardCatalog", "ShipyardBuilder", "CrewRoster", "WeaponCatalog",
+        "ShipPerformanceCatalog", "EconomyLedger", "TradeBoard",
+        "Marketplace", "LaunchGate", "PlanetRegistry", "MineralHarvest",
+        "AlienCombat", "ColonizationService", "GameModeRouter",
+        "ClientShipyardUI", "ClientCrewUI", "ClientWeaponUI",
+        "ClientEconomyUI", "ClientLaunchUI", "ClientPlanetUI",
+        "ClientCombatUI", "ClientColonizationUI",
+    ]
+    remote_names = [
+        "RequestShipSection", "RequestShipUpgrade", "RequestCrewRecruit",
+        "RequestCrewAssign", "RequestWeaponPurchase", "RequestWeaponUpgrade",
+        "RequestPerformanceUpgrade", "RequestCurrencySpend", "RequestCurrencyEarn",
+        "RequestTradeOffer", "RequestMarketPurchase", "RequestLaunch",
+        "RequestPlanetSelect", "RequestMineralHarvest", "RequestCombatAction",
+        "RequestColonize", "RequestGameModeTransition",
+    ]
+    requirements = [{"id": f"req-{i:03}", "statement": f"Requested gameplay clause {i}"}
+                    for i in range(1, 8)]
+    facets = [{"id": f"intent-{i}", "requirements": [f"req-{i:03}"],
+               "source_span": f"Requested gameplay clause {i}"}
+              for i in range(1, 8)]
+    ledger = {
+        "decomposition_method": "source_anchored_model",
+        "requirements": requirements,
+        "facets": facets,
+        "atomic_intents": [
+            {"facet_id": f["id"], "requirement_id": f["requirements"][0],
+             "source_span": f["source_span"]}
+            for f in facets
+        ],
+    }
+    modules = [
+        {"name": name, "role": "server" if i < 14 else "client",
+         "requirement_ids": [f"req-{i % 7 + 1:03}"],
+         "facet_ids": [f"intent-{i % 7 + 1}"],
+         "behavior": "Server validates gameplay operations and reconciles "
+                     "the requested user-visible action for " + name}
+        for i, name in enumerate(names)
+    ]
+    raw = {
+        "modules": modules,
+        "remotes": [{"name": name, "type": "RemoteFunction"}
+                    for name in remote_names],
+        "world_objects": [
+            {"name": "ShipyardPlatform", "class": "Part",
+             "position": [0, 0, 0], "size": [10, 2, 10]},
+            {"name": "LaunchPad", "class": "Part",
+             "position": [0, 0, 20], "size": [8, 1, 8]},
+            {"name": "PlanetSurface", "class": "Part",
+             "position": [0, 0, 0], "size": [100, 1, 100]},
+        ],
+        "acceptance": [
+            {"requirement_id": r["id"],
+             "observable_result": "Players can carry out this requested game action: " + r["statement"]}
+            for r in requirements
+        ],
+        "acceptance_facets": [
+            {"facet_id": f["id"],
+             "observable_result": "Players can carry out a real " + f["source_span"]}
+            for f in facets
+        ],
+    }
+    return ledger, raw
+
+
+def test_valid_22_modules_and_17_remotes_are_not_discarded_by_arbitrary_quota():
+    ledger, raw = _space_game_size_regression()
+    design = _clean_model_json(raw, ledger, set())
+    assert len(design["modules"]) == 22
+    assert len(design["remotes"]) == 17
+    assert len(design["world_objects"]) == 3
+    assert len(design["acceptance"]) == 7
+    assert len(design["acceptance_facets"]) == 7
+    assert {m.name for m in design["modules"]} == {
+        m["name"] for m in raw["modules"]
+    }
+
+
+def test_large_design_cannot_hide_missing_user_gameplay_or_duplicate_remote():
+    ledger, raw = _space_game_size_regression()
+    missing = copy.deepcopy(raw)
+    for module in missing["modules"]:
+        module["facet_ids"] = [x for x in module["facet_ids"]
+                               if x != "intent-4"]
+    with pytest.raises(DynamicDesignError, match="Unimplemented gameplay facets"):
+        _clean_model_json(missing, ledger, set())
+    duplicate = copy.deepcopy(raw)
+    duplicate["remotes"].append(copy.deepcopy(duplicate["remotes"][0]))
+    with pytest.raises(DynamicDesignError, match="Duplicate remote"):
+        _clean_model_json(duplicate, ledger, set())
+
+
+def test_architect_accepts_user_scale_design_in_one_call_without_four_retries(monkeypatch):
+    from roblox_mod_ai.dynamic_architect import RobloxDynamicArchitect
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    ledger, raw = _space_game_size_regression()
+
+    class Router:
+        def __init__(self): self.calls = 0
+        def complete_json(self, query, **kwargs):
+            self.calls += 1
+            return copy.deepcopy(raw)
+
+    router = Router()
+    research = {"ledger": ledger, "evidence": [], "reuse_candidates": []}
+    answer = RobloxDynamicArchitect(router).design(
+        "Build modular spaceship, trade, visit planets, colonize", research, []
+    )
+    assert len(answer["modules"]) == 22
+    assert len(answer["remotes"]) == 17
+    assert router.calls == 1
+    assert len(research["architecture_attempts"]) == 1
+    assert research["architecture_attempts"][0]["passed"]
