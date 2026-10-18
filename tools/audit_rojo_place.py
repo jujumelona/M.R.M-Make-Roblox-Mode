@@ -9,8 +9,11 @@ if __name__=="__main__":
     parser=argparse.ArgumentParser()
     parser.add_argument("--plan",type=Path,required=True)
     parser.add_argument("--place",type=Path,required=True)
+    parser.add_argument("--source-root",type=Path,
+                        help="Rojo source root (defaults to compiled Place parent)")
     a=parser.parse_args()
     proposal=RobloxAuthoredPlan.from_dict(json.loads(a.plan.read_text(encoding="utf-8"))).proposal
-    result=inspect_compiled_place(proposal,a.place)
+    result=inspect_compiled_place(proposal,a.place,
+    source_root=a.source_root or a.place.parent)
     print(json.dumps(result,indent=2))
     raise SystemExit(0 if result["passed"] else 1)
