@@ -32,7 +32,9 @@ def test_single_binary_extracted_and_given_execute_permissions(tmp_path):
     dest = tmp_path / "rojo"
     setup._extract_executable(archive, "rojo", dest)
     assert dest.is_file()
-    assert dest.stat().st_mode & stat.S_IXUSR
+    # Windows filesystems do not expose POSIX execute permission bits.
+    if setup.os.name == "posix":
+        assert dest.stat().st_mode & stat.S_IXUSR
     assert not (tmp_path / "artifact").exists()
     assert not (tmp_path / "docs").exists()
 
