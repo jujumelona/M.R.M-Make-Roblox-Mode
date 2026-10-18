@@ -74,11 +74,19 @@ def inspect_dynamic_server_interfaces(proposal: RobloxProposal) -> dict[str, Any
                                    *_BRACKET_CALL.findall(raw_source)]):
             target_module = services.get(target)
             ok = target_module is not None and method in exports.get(target, ())
+            available = (
+                "Exported methods on " + target + ": " +
+                (", ".join(sorted(exports.get(target, set()))) or "(none)")
+                if target_module is not None else
+                "Unknown service " + target + "; known services: " +
+                ", ".join(sorted(services))
+            )
             checks.append({
                 "id": "service.call." + caller.name + "." + target + "." + method,
                 "passed": ok,
                 "detail": ("resolved exported server method" if ok else
-                           "missing service or exported method; must not invent another module's API"),
+                           "missing service or exported method. " + available +
+                           ". Repair caller using actual exported API, not an invented symbol."),
             })
     return {
         "passed": all(check["passed"] for check in checks),
