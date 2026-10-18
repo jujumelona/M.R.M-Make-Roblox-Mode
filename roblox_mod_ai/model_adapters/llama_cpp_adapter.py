@@ -58,6 +58,15 @@ class LlamaCppAdapter(ModelAdapter):
 
         if request.response_format == "json":
             payload["response_format"] = {"type": "json_object"}
+            # A local MiMo reasoning model can consume the entire JSON
+            # completion budget in <think> tokens without returning JSON.
+            # Only constrain the structured-output phase; normal game-code
+            # generation retains the model's full reasoning capability.
+            # Do not send llama.cpp-specific kwargs to arbitrary remote APIs.
+            is_local_llama = self.base_url.lower().startswith((
+                "http://127.0.0.1:", "http://localhost:", "http://[::1]:"))
+            if is_local_llama and os.environ.get("RMM_JSON_ENABLE_THINKING", "0") != "1":
+                payload["chat_template_kwargs"] = {"enable_thinking": False}
         elif isinstance(request.response_format, dict):
             payload["response_format"] = {
                 "type": "json_object",
