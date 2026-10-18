@@ -108,7 +108,6 @@ def forecast_generation(
         and row.get("model_mode") == "real_local_llama_cpp_not_mock"
         and row.get("status") in {
             "verified", "build_or_runtime_failed", "plan_failed",
-            "source_only_not_studio_verified",
         }
         and row.get("complete_game_verified") in {True, False}
         and expected_input_fingerprint is not None
