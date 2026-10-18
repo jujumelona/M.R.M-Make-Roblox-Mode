@@ -726,24 +726,102 @@ def test_large_design_cannot_hide_missing_user_gameplay_or_duplicate_remote():
         _clean_model_json(duplicate, ledger, set())
 
 
-def test_architect_accepts_user_scale_design_in_one_call_without_four_retries(monkeypatch):
+def test_compound_game_architecture_shards_and_repairs_without_reprinting_game(monkeypatch):
+    """Regress the 2026 space-game failures: missing client, malformed JSON.
+
+    A client-only response must retain the approved server/remote contract.
+    Later feature failures must never regenerate earlier accepted features.
+    """
+    from collections import Counter
     from roblox_mod_ai.dynamic_architect import RobloxDynamicArchitect
     monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
-    ledger, raw = _space_game_size_regression()
+    ledger, _ = _space_game_size_regression()
 
     class Router:
-        def __init__(self): self.calls = 0
+        def __init__(self):
+            self.calls = []
+            self.attempts = Counter()
+
         def complete_json(self, query, **kwargs):
-            self.calls += 1
-            return copy.deepcopy(raw)
+            if query.startswith("Return ONLY JSON"):
+                payload = json.JSONDecoder().raw_decode(
+                    query[query.index('{"feature"'):])[0]
+                facet = payload["feature"]["id"]
+                self.calls.append(("client-patch", facet))
+                return {"modules": [self.module(facet, "client")]}
+
+            payload = json.JSONDecoder().raw_decode(
+                query[query.index('{"feature_id"'):])[0]
+            facet = payload["feature_id"]
+            self.calls.append(("facet", facet))
+            self.attempts[facet] += 1
+            if facet == "intent-1" and self.attempts[facet] == 1:
+                raise ValueError("JSONDecodeError: model output was truncated")
+            index = int(facet.removeprefix("intent-"))
+            modules = [self.module(facet, "server")]
+            if facet != "intent-0":
+                modules.append(self.module(facet, "client"))
+            return {
+                "modules": modules,
+                "remotes": [{"name": f"RequestFeature{index}",
+                             "type": "RemoteFunction"}],
+                "world_objects": [],
+                "acceptance": [{"requirement_id": f"req-{index+1:03}",
+                                "observable_result":
+                                "Player can use the requested feature in the game."}],
+                "acceptance_facets": [{"facet_id": facet,
+                                       "observable_result":
+                                       "The player sees an observable gameplay result."}],
+            }
+
+        @staticmethod
+        def module(facet, role):
+            index = int(facet.removeprefix("intent-"))
+            return {
+                "name": f"Feature{index}{'ClientUI' if role == 'client' else 'Server'}",
+                "role": role,
+                "requirement_ids": [f"req-{index+1:03}"],
+                "facet_ids": [facet],
+                "behavior": (
+                    "Client displays controls, sends request and shows a visible result."
+                    if role == "client" else
+                    "Server validates action, applies rules and returns a safe result."
+                ),
+            }
 
     router = Router()
     research = {"ledger": ledger, "evidence": [], "reuse_candidates": []}
     answer = RobloxDynamicArchitect(router).design(
         "Build modular spaceship, trade, visit planets, colonize", research, []
     )
-    assert len(answer["modules"]) == 22
-    assert len(answer["remotes"]) == 17
-    assert router.calls == 1
-    assert len(research["architecture_attempts"]) == 1
-    assert research["architecture_attempts"][0]["passed"]
+    assert len(answer["modules"]) == 14
+    assert len(answer["remotes"]) == 7
+    assert sum(x["passed"] for x in research["architecture_attempts"]) == 7
+    assert sum(not x["passed"] for x in research["architecture_attempts"]) == 2
+    assert router.calls.count(("facet", "intent-0")) == 1
+    assert router.calls.count(("client-patch", "intent-0")) == 1
+    assert router.calls.count(("facet", "intent-1")) == 2
+    assert all(router.calls.count(("facet", f"intent-{n}")) == 1
+               for n in (0, 2, 3, 4, 5, 6))
+    assert len(research["architecture_subplans"]) == 7
+    assert research["architecture_assembly"]["validated"] is True
+    assert research["architecture_assembly"]["gameplay_verified"] is False
+
+
+def test_scoped_failure_does_not_claim_a_partial_game_as_complete(monkeypatch):
+    from roblox_mod_ai.dynamic_architect import RobloxDynamicArchitect
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    ledger, _ = _space_game_size_regression()
+
+    class Router:
+        def __init__(self): self.calls = 0
+        def complete_json(self, query, **kwargs):
+            self.calls += 1
+            raise ValueError("malformed or unavailable JSON")
+
+    research = {"ledger": ledger, "evidence": [], "reuse_candidates": []}
+    with pytest.raises(DynamicDesignError, match="Feature intent-0"):
+        RobloxDynamicArchitect(Router()).design("a space game", research, [])
+    assert not research["architecture_subplans"]
+    assert len(research["architecture_attempts"]) == 3
+    assert all(not item["passed"] for item in research["architecture_attempts"])
