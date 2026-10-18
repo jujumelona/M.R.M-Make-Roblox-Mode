@@ -139,6 +139,7 @@ class RobloxCodeRepairAgent:
         candidate = existing_code
         errors: list[str] = []
         degenerate_attempt = False
+        syntax_failed = False
         for attempt in range(attempts):
             ran_out_before_retry = bool(
                 isinstance(getattr(self.router, "last_generation_report", None), dict)
@@ -163,13 +164,20 @@ class RobloxCodeRepairAgent:
                      if degenerate_attempt else "; ".join(errors[:10])) + "\n"
                 )
                 if (candidate and len(candidate) > 75 and not degenerate_attempt
-                        and not ran_out_before_retry):
+                        and not syntax_failed and not ran_out_before_retry):
                     compact += "Previous invalid Luau source:\n" + candidate[:4000] + "\n"
                 elif degenerate_attempt:
                     compact += (
                         "Previous output was caught repeating identical assignments. "
                         "DO NOT continue it. Start over with concise functional "
                         "Luau handling only this file's gameplay behavior.\n"
+                    )
+                elif syntax_failed:
+                    compact += (
+                        "Previous output could NOT be parsed as Luau by StyLua. "
+                        "Discard its malformed source and generate a fresh, "
+                        "minimal, complete module from the intended behavior. "
+                        "Pay attention to the EXACT syntax error and line.\n"
                     )
                 else:
                     compact += "Previous attempt produced no functional code. Start directly with --!strict and actual statements.\n"
@@ -190,7 +198,7 @@ class RobloxCodeRepairAgent:
                 )
                 json_fallback = (
                     attempt >= 1 and hasattr(self.router, "complete_json") and
-                    (degenerate_attempt or ran_out_thinking or
+                    (degenerate_attempt or syntax_failed or ran_out_thinking or
                      (len(candidate.strip()) < 75 and attempt >= 2))
                 )
                 if json_fallback:
@@ -233,8 +241,17 @@ class RobloxCodeRepairAgent:
                 print("[RMM coder] " + module.name + " attempt " +
                       str(attempt + 1) + ": " + errors[0][:600], flush=True)
                 continue
-            errors = [d.message for d in self.analyzer.analyze_source(candidate,module.file_path)
-                      if d.severity=="ERROR"]
+            parser_diagnostics = self.analyzer.analyze_source(
+                candidate, module.file_path)
+            syntax_failed = any(
+                d.rule in {"LUAU_PARSER_SYNTAX", "UNBALANCED_BLOCKS"}
+                for d in parser_diagnostics
+                if d.severity == "ERROR"
+            )
+            errors = [
+                f"{d.rule} {d.file_path}:{d.line_number}: {d.message}"
+                for d in parser_diagnostics if d.severity == "ERROR"
+            ]
             runtime_info = getattr(self.router, "last_generation_report", {})
             if (not json_fallback and isinstance(runtime_info, dict)
                     and runtime_info.get("finish_reason") == "length"):
