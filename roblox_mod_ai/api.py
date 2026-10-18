@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -35,6 +37,10 @@ class CompleteChatReply:
 class CompleteRobloxAISession:
     """Conversational session for Roblox experience planning, revision, and production."""
 
+    @staticmethod
+    def _is_colab_runtime() -> bool:
+        return ("google.colab" in sys.modules or Path("/content").is_dir())
+
     def __init__(
         self,
         output_root: str | Path = "rmm-output",
@@ -44,6 +50,18 @@ class CompleteRobloxAISession:
         self.output_root = Path(output_root).resolve()
         self.model_profile = model_profile
         self.fast_mode = fast_mode
+        self.model_runtime = None
+        # Older Colab notebooks import the latest package but do not start their
+        # model in cell 4. Initialize the real backend before ModelRouter takes
+        # a snapshot of the endpoint. This is idempotent for a ready endpoint.
+        if (not fast_mode and model_profile != "fast_test"
+                and self._is_colab_runtime()):
+            from .colab_model_runtime import ensure_model_runtime
+            self.model_runtime = ensure_model_runtime(
+                profile=model_profile,
+                cache_root=self.output_root.parent / "rmm-model",
+                in_colab=True,
+            )
 
         self.router = ModelRouter(profile=model_profile)
         self.planner = RobloxGameDesignPlanner(router=self.router)
