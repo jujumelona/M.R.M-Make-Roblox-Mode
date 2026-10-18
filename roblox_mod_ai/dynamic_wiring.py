@@ -137,7 +137,8 @@ def inspect_dynamic_remote_wiring(proposal: RobloxProposal) -> dict[str, Any]:
                     if (module.file_path.endswith(".client.luau")
                             and re.search(client_pattern.format(v=var),masked)):
                         endpoints[direction]["client"].append(module.file_path)
-                    if (module.file_path.endswith(".server.luau")
+                    if (module.file_path.startswith("src/server/")
+                            and module.file_path.endswith(".luau")
                             and re.search(server_pattern.format(v=var),masked)):
                         endpoints[direction]["server"].append(module.file_path)
         valid=any(e["client"] and e["server"] for e in endpoints.values())
