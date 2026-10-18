@@ -197,12 +197,13 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
             forbidden_service = False
             if is_client:
                 for match in re.finditer(
-                    r'\\bgame\\s*:\\s*GetService\\s*\\(\\s*([\\x27\\x22])'
-                    r'(?:DataStoreService|ServerStorage|ServerScriptService)'
-                    r'\\1\\s*\\)', stripped,
+                    r"""\bgame\s*:\s*GetService\s*\(\s*(['"])(?:DataStoreService|ServerStorage|ServerScriptService)\1\s*\)""",
+                    stripped,
                 ):
-                    if re.match(r'\\bgame\\s*:\\s*GetService\\s*\\(',
-                                active_source[match.start():]):
+                    if re.match(
+                        r"\bgame\s*:\s*GetService\s*\(",
+                        active_source[match.start():],
+                    ):
                         forbidden_service = True
                         break
             invalid_realm = bool(forbidden and re.search(
