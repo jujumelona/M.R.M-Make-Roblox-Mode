@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from .spec import RobloxProposal
+from .dynamic_wiring import inspect_dynamic_remote_wiring
 
 
 def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict:
@@ -126,6 +127,11 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
               "Requested magic may not be replaced with a generic stub")
     dyn = proposal.game_design.get("dynamic_design") or {}
     if dyn:
+        wiring = inspect_dynamic_remote_wiring(proposal)
+        for entry in wiring["checks"]:
+            check(entry["id"], entry["passed"],
+                  "Code-level client Remote call and server handler connected: " +
+                  str(entry["detail"]))
         requirements = set(dyn.get("acceptance", {}))
         check("dynamic.no_unverified_reuse", dyn.get("source_reuse") == "none_unless_validated"
               and not any(m.name not in {"NetworkRemotes", "PlayerDataManager"}
