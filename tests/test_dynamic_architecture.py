@@ -265,3 +265,69 @@ def test_dynamic_doc_refs_are_bound_to_owned_facets(tmp_path, monkeypatch):
     for module in reply.authored_plan.proposal.modules:
         if module.module_id.startswith("dyn_"):
             assert module.evidence_refs == ["https://create.roblox.com/docs/en-us/pets.md"]
+
+
+def test_source_anchored_trade_and_combat_do_not_require_duplicate_shop_facet():
+    """Reproduce the user error: all requested intents are assigned; shop is a taxonomy alias."""
+    from roblox_mod_ai.request_contract import implementation_facets
+    from roblox_mod_ai.dynamic_architect import _clean_model_json
+    ledger = {
+        "decomposition_method": "source_anchored_model",
+        "requirements": [
+            {"id": "req-001", "statement": "거래 구매", "source": "user_prompt"},
+            {"id": "req-002", "statement": "외계인 전투", "source": "user_prompt"},
+        ],
+        "facets": [
+            {"id": "shop", "requirements": ["req-001"], "implementation_key": "is_shop"},
+            {"id": "combat", "requirements": ["req-002"], "implementation_key": "is_combat"},
+            {"id": "intent-buy", "requirements": ["req-001"], "source_span": "거래 구매"},
+            {"id": "intent-fight", "requirements": ["req-002"], "source_span": "외계인 전투"},
+        ],
+        "atomic_intents": [
+            {"requirement_id": "req-001", "facet_id": "intent-buy", "source_span": "거래 구매"},
+            {"requirement_id": "req-002", "facet_id": "intent-fight", "source_span": "외계인 전투"},
+        ],
+    }
+    assert {f["id"] for f in implementation_facets(ledger)} == {"intent-buy", "intent-fight"}
+    raw = {
+        "modules": [{"name": "SpaceCommerceCombat", "role": "server",
+                     "requirement_ids": ["req-001", "req-002"],
+                     "facet_ids": ["intent-buy", "intent-fight"],
+                     "behavior": "Server validates player trade funds and alien combat damage."}],
+        "remotes": [], "world_objects": [],
+        "acceptance": [
+            {"requirement_id": "req-001", "observable_result": "Players purchase ship parts for credits."},
+            {"requirement_id": "req-002", "observable_result": "Players attack aliens and receive verified damage."},
+        ],
+        "acceptance_facets": [
+            {"facet_id": "intent-buy", "observable_result": "Players can purchase items and trade credits."},
+            {"facet_id": "intent-fight", "observable_result": "Aliens lose health when an attack is validated."},
+        ],
+    }
+    result = _clean_model_json(raw, ledger, set())
+    assert set(result["module_facets"][result["modules"][0].module_id]) == {"intent-buy", "intent-fight"}
+    assert set(result["acceptance_facets"]) == {"intent-buy", "intent-fight"}
+    bad = copy.deepcopy(raw)
+    bad["modules"][0]["facet_ids"] = ["intent-buy"]
+    with pytest.raises(DynamicDesignError, match="Unimplemented gameplay facets"):
+        _clean_model_json(bad, ledger, set())
+
+
+def test_keyword_facet_still_required_when_no_source_anchored_atom_owns_it():
+    from roblox_mod_ai.request_contract import implementation_facets
+    ledger = {
+        "decomposition_method": "source_anchored_model",
+        "requirements": [{"id": "req-001", "statement": "거래 구매"},
+                         {"id": "req-002", "statement": "외계인 전투"}],
+        "facets": [
+            {"id": "shop", "requirements": ["req-001"]},
+            {"id": "intent-fight", "requirements": ["req-002"],
+             "source_span": "외계인 전투"},
+        ],
+        "atomic_intents": [
+            {"requirement_id": "req-002", "facet_id": "intent-fight",
+             "source_span": "외계인 전투"},
+        ],
+    }
+    # Buying is not atom-owned, so the host cannot silently drop shopping.
+    assert {f["id"] for f in implementation_facets(ledger)} == {"shop", "intent-fight"}
