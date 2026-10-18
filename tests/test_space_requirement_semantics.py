@@ -86,6 +86,7 @@ def test_alien_enemy_server_subsystem_restores_original_requested_gameplay():
 
 def test_architecture_agent_repairs_misread_combat_target_without_losing_mining(monkeypatch):
     monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    monkeypatch.setenv("RMM_LEGACY_ARCHITECTURE_PROTOCOL", "1")
     ledger, bad = _space_contract()
 
     class Model:
