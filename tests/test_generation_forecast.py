@@ -11,7 +11,7 @@ import math
 import pytest
 
 from roblox_mod_ai.generation_forecast import (
-    StageAssumptions, forecast_generation, scenario_success,
+    StageAssumptions, forecast_generation, scenario_success, wilson_95_interval,
 )
 from tools.forecast_generation import forecast_proposal
 from test_space_seven_facets_e2e import _user_space_ledger, _PROMPT, _SPACE
@@ -110,12 +110,23 @@ def test_observed_rate_uses_identical_input_fingerprint_only():
     assert observed["count"] == 2
     assert observed["verified_completed"] == 1
     assert observed["empirical_completion_rate"] == 0.5
+    assert observed["approximate_95pct_wilson_interval"][0] < 0.5
+    assert observed["approximate_95pct_wilson_interval"][1] > 0.5
     mismatched = forecast_generation(
         requested_prompt=_PROMPT, ledger=ledger, modules=[],
         observed_model_runs=samples, expected_input_fingerprint="unused",
     )
     assert mismatched["measured_full_game_model_runs"]["count"] == 0
     assert mismatched["measured_full_game_model_runs"]["empirical_completion_rate"] is None
+
+
+def test_intervals_cannot_disguise_zero_or_tiny_model_run_samples():
+    assert wilson_95_interval(0, 0) is None
+    assert wilson_95_interval(0, 10)[1] > 0.25
+    assert wilson_95_interval(0, 20)[1] > 0.16
+    assert wilson_95_interval(10, 10)[0] < 0.75
+    with pytest.raises(ValueError):
+        wilson_95_interval(4, 3)
 
 
 def test_invalid_probabilities_rejected_and_retries_do_not_claim_calibration():
