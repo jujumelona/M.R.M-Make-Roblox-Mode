@@ -39,7 +39,7 @@ def test_space_game_14_modules_seven_facets_composes_21_model_decisions():
     assert counts["remote_count"] == 7
     assert counts["minimum_sequential_model_completions"] == 21
     assert counts["maximum_if_each_planner_and_coder_task_retries_three_times"] == 63
-    assert counts["planner_output_token_cap_per_facet"] == 5000
+    assert counts["planner_output_token_cap_per_facet"] == 2600
     assert counts["coder_output_token_cap_per_module"] == 6000
     assert result["measured_full_game_model_runs"]["empirical_completion_rate"] is None
     assert "no_calibrated_real_model_e2e_success_rate" in result["warnings"]
