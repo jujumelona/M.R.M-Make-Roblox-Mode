@@ -44,18 +44,29 @@ class LuauCodeGenerator:
             errors = [d for d in diagnostics if d.severity == "ERROR"]
             if not errors:
                 return code
-
-            # Self-correction: analyze diagnostics and apply programmatic or model fixes
-            fixed_code = code
-            for err in errors:
-                if "Missing 'end'" in err.message:
-                    fixed_code += "\nend\n"
-                elif "Unbalanced" in err.message and "more opening" in err.message:
-                    fixed_code += "\nend\n"
-
-            code = fixed_code
-
-        raise ValueError("Luau source failed static verification: " + "; ".join(d.message for d in errors))
+            report = "\n".join(
+                f"{d.file_path}:{d.line_number} [{d.rule}] {d.message}"
+                for d in errors
+            )
+            if module.module_id.startswith("dyn_"):
+                # Reflect the *actual* analyzer diagnostic back to the model
+                # with its previous code; do not append guessed 'end' tokens.
+                print("[RMM coder] repair " + module.name +
+                      " after static errors:\n" + report[:1500], flush=True)
+                code = RobloxCodeRepairAgent(router=self.router).repair(
+                    module, proposal, existing_code=code,
+                    diagnostics=report, attempts=2,
+                )
+                continue
+            # Fixed first-party templates should be repaired in source control,
+            # not silently rewritten as unrelated model-generated gameplay.
+            raise ValueError("First-party Luau template failed static checks: " + report)
+        diagnostics = self.analyzer.analyze_source(code, file_path=module.file_path)
+        errors = [d for d in diagnostics if d.severity == "ERROR"]
+        if errors:
+            raise ValueError("Luau source failed after model correction: " +
+                             "; ".join(d.message for d in errors))
+        return code
 
     def generate_module_code(self, module: RobloxModuleSpec, proposal: RobloxProposal) -> str:
         """Dispatches Luau code generation to specialized genre and subsystem engines."""
