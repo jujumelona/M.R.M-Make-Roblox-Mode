@@ -11,6 +11,7 @@ plan validity, source checks, Rojo compilation and real Studio execution.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -61,6 +62,16 @@ def run(prompt: str, output: Path, *, source_only: bool = False,
         except Exception as exc:
             raise RuntimeError("Real local model is not ready at " + endpoint +
                                ": " + str(exc)) from exc
+        # Only comparable real-model receipts may contribute to an empirical
+        # rate. The model id and relevant local decoding settings are part of
+        # the fingerprint, not merely the user request text.
+        receipt["model_id"] = str(models[0].get("id", "unknown"))
+        receipt["model_decode_settings"] = {
+            key: os.environ.get(key, "(default)")
+            for key in ("RMM_CODE_ENABLE_THINKING", "RMM_JSON_ENABLE_THINKING",
+                        "RMM_CODE_REPEAT_PENALTY", "RMM_CODE_REPEAT_LAST_N",
+                        "RMM_MODEL_TIMEOUT_SECONDS")
+        }
         receipt["model_loaded"] = True
         if resume_plan:
             planned = session.load_plan()
@@ -68,6 +79,20 @@ def run(prompt: str, output: Path, *, source_only: bool = False,
             if not prompt.strip():
                 raise ValueError("A concrete game prompt is required")
             planned = session.plan(prompt)
+        actual_prompt = planned.authored_plan.proposal.requested_prompt
+        fingerprint_input = {
+            "prompt": actual_prompt,
+            "model_id": receipt["model_id"],
+            "model_endpoint": endpoint,
+            "model_decode_settings": receipt["model_decode_settings"],
+            "source_only": source_only,
+        }
+        receipt["input_fingerprint"] = hashlib.sha256(
+            json.dumps(fingerprint_input, sort_keys=True,
+                       ensure_ascii=False).encode("utf-8")
+        ).hexdigest()
+        receipt["requested_prompt_sha256"] = hashlib.sha256(
+            actual_prompt.encode("utf-8")).hexdigest()
         receipt["plan_path"] = str(output / "proposal.json")
         receipt["plan_passed"] = bool(planned.ready_to_build)
         receipt["plan_modules"] = len(planned.authored_plan.proposal.modules)
