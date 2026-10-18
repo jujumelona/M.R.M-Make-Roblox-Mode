@@ -32,7 +32,10 @@ class RobloxProjectGenerator:
         # unrelated combat/obby/tycoon defaults makes the actual project
         # disagree with its source modules and creates useless channels.
         dynamic = proposal.game_design.get("dynamic_design") or {}
-        declared_remotes = {} if dynamic.get("remotes") else {
+        # A dynamic server-only mechanic can legitimately need ZERO Remotes.
+        # Never inject unrelated combat/obby/shop defaults merely because
+        # the semantic architect declared an empty Remote map.
+        declared_remotes = {} if dynamic else {
             "AttackRequest": "RemoteEvent",
             "DamageEvent": "RemoteEvent",
             "ShopPurchase": "RemoteFunction",
