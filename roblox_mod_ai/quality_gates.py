@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .spec import RobloxProposal
 from .dynamic_wiring import inspect_dynamic_remote_wiring
+from .server_interface_audit import inspect_dynamic_server_interfaces
 from .request_contract import ledger_complete, implementation_facets
 
 
@@ -127,6 +128,9 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
               "Requested magic may not be replaced with a generic stub")
     dyn = proposal.game_design.get("dynamic_design") or {}
     if dyn:
+        interfaces = inspect_dynamic_server_interfaces(proposal)
+        for contract in interfaces["checks"]:
+            check(contract["id"], contract["passed"], contract["detail"])
         wiring = inspect_dynamic_remote_wiring(proposal)
         for entry in wiring["checks"]:
             check(entry["id"], entry["passed"],
