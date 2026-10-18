@@ -64,6 +64,37 @@ The default architect requests the same semantic-only format for **every positiv
 }
 ```
 
+## New reduction: host-generated cross-platform input without another LLM call
+
+The semantic-only model can now declare **`input_mode: "host_button"`**
+*only* for a zero-argument action with no selected world target and
+`world_entities: []`. For this contract:
+
+- `host_architecture.py` gives the action a canonical unique client name,
+  Remote name/type, argument count **zero**, and label.
+- `host_client.py` produces the entire client LocalScript from first-party
+  code. It creates one shared PlayerGui `ScreenGui` with a scrolling
+  `UIListLayout`, `TextButton.Activated` callbacks (mouse/touch/gamepad),
+  and RemoteEvent or RemoteFunction transport. The user never needs a model
+  call to write this client script.
+- `RMMServerBootstrap` binds the action on the server, checks the Player and
+  cooldown, and rejects client calls containing unexpected arguments.
+- The host **regenerates** its client source and server bootstrap from the
+  current contract, even if an imported proposal contains stale or
+  model-written source. A saved model module cannot replace this infrastructure.
+- Forecast/prompt-profiling report the *actual number* of remaining small-model
+  code-generation calls, excluding those rendered by host.
+- For `input_mode: "custom"` (default), the small AI still writes a
+  specialized client controller, because a fixed button cannot implement
+  aiming, selecting an ore node, constructing a 3D spaceship, interacting with
+  inventory choices or dragging objects. A request needing an explicit world
+  target cannot masquerade as a zero-argument host button.
+
+This feature reduces model workload without falsely turning every unusual
+Roblox game into a generic clicker. It does **not** prove that host-produced
+buttons make bespoke gameplay functional: the server action handler must
+still implement the requested semantics and must be tested in Studio.
+
 The model never outputs `src/server`/`StarterPlayerScripts` paths,
 `uses_remotes`, `intent-...` source IDs, RemoteEvent types, world coordinates,
 or server/client owner lists. Host expansion attaches those fields using one
@@ -133,6 +164,13 @@ itself does NOT make arbitrary gameplay safe.
 python -m pytest tests/test_host_architecture.py tests/test_host_remote_gateway.py -q
 python tools/verify_space_assembly_e2e.py
 ```
+
+The host UI reduction is additionally checked in
+`tests/test_host_client_transport.py` and in the
+`HostButtonsTwo` compiled case in
+`tools/verify_diverse_host_assembly_e2e.py`.
+The latter uses two no-argument event/function actions and verifies they
+compile without *any* client-code model call.
 
 The second command exercises the 7-source-facet semantic conversion into
 14 generated-role Luau source fixtures, seven host-built Remotes, a real Rojo
