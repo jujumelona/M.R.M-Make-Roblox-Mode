@@ -31,7 +31,8 @@ jobs:
             tests/test_ci_real_e2e_receipts.py \
             tests/test_e2e_server_interface_contract.py \
             tests/test_space_seven_facets_e2e.py \
-            tests/test_generalized_host_prompt_matrix.py
+            tests/test_generalized_host_prompt_matrix.py \
+            tests/test_host_client_transport.py
       - name: Install real Roblox toolchain
         uses: paradoxum-games/setup-rokit@v3
         with:
