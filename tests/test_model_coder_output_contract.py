@@ -181,3 +181,31 @@ def test_structured_luau_response_is_still_checked_for_placeholders(monkeypatch)
     with pytest.raises(LuauGenerationError) as err:
         RobloxCodeRepairAgent(router=Router()).repair(mod, plan, attempts=3)
     assert "Placeholder code is prohibited" in err.value.diagnostics
+
+
+
+def test_exhausted_hidden_reasoning_switches_to_json_on_next_call(monkeypatch):
+    monkeypatch.setenv("RMM_ENABLE_MODEL_GENERATION", "1")
+    class Router:
+        last_generation_report = {}
+        def __init__(self): self.plain=0; self.json=0
+        def complete(self, prompt, **kwargs):
+            self.plain += 1
+            self.last_generation_report = {
+                "error": "ModelBackendError: empty visible content; "
+                         "finish_reason=length, completion_tokens=6000",
+            }
+            raise ModelBackendError("empty visible content; finish_reason=length")
+        def complete_json(self, prompt, **kwargs):
+            self.json += 1
+            return {"luau": "--!strict\n"
+                            "local function buy(playerId: number): number\n"
+                            "    local credits = 50\n"
+                            "    return credits + playerId\n"
+                            "end\nprint(buy)\n"}
+    mod, plan = _module()
+    router = Router()
+    result = RobloxCodeRepairAgent(router=router).repair(mod, plan, attempts=3)
+    assert "function buy" in result
+    assert router.plain == 1
+    assert router.json == 1
