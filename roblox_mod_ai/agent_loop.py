@@ -152,12 +152,12 @@ class RobloxCodeRepairAgent:
         economy_guidance = (
             "When handling credits, use the existing server-only "
             "EconomyLedger.GetBalance/TrySpend/Grant contract rather than "
-            "creating a new currency balance.\\n"
+            "creating a new currency balance.\n"
             if has_economy and module.name != "EconomyLedger" else ""
         )
         prompt=(
-            "Implement ONLY the requested ONE Luau module. Output code, never Markdown.\\n"
-            "Do not implement features assigned to other modules.\\n"
+            "Implement ONLY the requested ONE Luau module. Output code, never Markdown.\n"
+            "Do not implement features assigned to other modules.\n"
             "If a dependency owns another mechanic, use its declared interface; "
             "do not duplicate it inside this source.\n"
             "Do not repeat identical assignments or statements in a loop; "
