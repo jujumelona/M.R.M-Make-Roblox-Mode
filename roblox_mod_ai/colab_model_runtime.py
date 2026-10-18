@@ -250,12 +250,27 @@ def _extract_prebuilt_cuda_bundle(archive: Path, destination: Path) -> Path:
                 server_found |= name == "llama-server"
             elif member.issym() and "/" not in member.linkname:
                 symlinks.append((name, member.linkname))
-        # All symlink targets must be present, and must not traverse outside.
-        for name, target in symlinks:
-            if name in seen or target not in seen or name == "llama-server":
-                continue
-            (destination / name).symlink_to(target)
-            seen.add(name)
+        # Resolve common SONAME link chains (libfoo.so -> libfoo.so.0 ->
+        # libfoo.so.0.9.8). Never follow links outside the extracted directory.
+        unresolved = list(symlinks)
+        for _ in range(len(unresolved)):
+            following: list[tuple[str, str]] = []
+            progressed = False
+            for name, target in unresolved:
+                if name in seen or name == "llama-server":
+                    continue
+                if target in seen:
+                    (destination / name).symlink_to(target)
+                    seen.add(name)
+                    progressed = True
+                else:
+                    following.append((name, target))
+            unresolved = following
+            if not progressed:
+                break
+        if unresolved:
+            raise ModelStartupError("Unsafe or broken shared-library symlinks: " +
+                                    ", ".join(name for name, _ in unresolved[:8]))
     if not server_found:
         raise ModelStartupError("Pinned CUDA archive has no llama-server executable.")
     return destination / "llama-server"
