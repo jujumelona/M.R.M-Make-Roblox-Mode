@@ -77,7 +77,7 @@ def render_dynamic_server_bootstrap(proposal: RobloxProposal) -> str:
     table_rows = "\n".join("    " + json.dumps(m.name) + "," for m in modules)
     active_rows = "\n".join("    " + json.dumps(m.name) + "," for m in modules
                            if m.kind == ModuleKind.SERVER_MODULE)
-    return (
+    source = (
         "--!strict\n"
         "-- Host-generated startup. Modules share the same server-only registry.\n"
         "local ServerScriptService = game:GetService(\"ServerScriptService\")\n"
@@ -100,6 +100,75 @@ def render_dynamic_server_bootstrap(proposal: RobloxProposal) -> str:
         "end\n"
     )
 
+    # The host handles ENGINE transport and universal first-line safety, not
+    # a 9B model. Game-specific permission, proximity, item ownership and
+    # transaction checks remain mandatory in the exported handler.
+    actions = (proposal.game_design.get("dynamic_design") or {}).get(
+        "host_actions") or {}
+    if not actions:
+        return source
+    source += (
+        "\n-- Host-owned Remote ingress. AI never wires OnServerEvent itself.\n"
+        "local ReplicatedStorage = game:GetService(\\"ReplicatedStorage\\")\n"
+        "local Players = game:GetService(\\"Players\\")\n"
+        "local remotes = ReplicatedStorage:WaitForChild(\\"Remotes\\")\n"
+        "local lastAction = setmetatable({}, {__mode = \\"k\\"})\n"
+        "local function allowAction(player, actionName)\n"
+        "    if typeof(player) ~= \\"Instance\\" or not player:IsA(\\"Player\\") then return false end\n"
+        "    if player.Parent ~= Players then return false end\n"
+        "    local now = os.clock()\n"
+        "    local actionsForPlayer = lastAction[player]\n"
+        "    if not actionsForPlayer then\n"
+        "        actionsForPlayer = {}\n"
+        "        lastAction[player] = actionsForPlayer\n"
+        "    end\n"
+        "    local previous = actionsForPlayer[actionName]\n"
+        "    if previous and now - previous < 0.08 then return false end\n"
+        "    actionsForPlayer[actionName] = now\n"
+        "    return true\n"
+        "end\n"
+    )
+    names_by_id = {
+        m.name for m in modules if m.kind == ModuleKind.SERVER_MODULE
+    }
+    for remote_name, binding in sorted(actions.items()):
+        if not isinstance(binding, dict):
+            raise ValueError("Invalid host Remote action definition")
+        service_name, kind = binding.get("service"), binding.get("kind")
+        contracts = (proposal.game_design.get("dynamic_design") or {}).get(
+            "remotes") or {}
+        if (service_name not in names_by_id or remote_name not in contracts or
+                contracts[remote_name] != kind or
+                kind not in {"RemoteEvent", "RemoteFunction"}):
+            raise ValueError("Host Remote has invalid service/Remote class mapping")
+        remote = json.dumps(remote_name)
+        service = json.dumps(service_name)
+        source += (
+            "do\n"
+            f"    local remote = remotes:WaitForChild({remote})\n"
+            f"    if not remote:IsA({json.dumps(kind)}) then error(\\"Wrong Remote class for {remote_name}\\") end\n"
+            f"    local service = services[{service}]\n"
+            "    if type(service) ~= \\"table\\" or type(service.handleAction) ~= \\"function\\" then\n"
+            f"        error(\\"Missing server action handler for {remote_name}\\")\n"
+            "    end\n"
+        )
+        if kind == "RemoteEvent":
+            source += (
+                "    remote.OnServerEvent:Connect(function(player, ...)\n"
+                f"        if not allowAction(player, {remote}) then return end\n"
+                "        service.handleAction(player, services, ...)\n"
+                "    end)\n"
+            )
+        else:
+            source += (
+                "    remote.OnServerInvoke = function(player, ...)\n"
+                f"        if not allowAction(player, {remote}) then return nil end\n"
+                "        return service.handleAction(player, services, ...)\n"
+                "    end\n"
+            )
+        source += "end\n"
+    return source
+
 
 def module_bootstrap_contract(module: RobloxModuleSpec, proposal: RobloxProposal) -> str:
     if not (module.module_id.startswith("dyn_")
@@ -109,7 +178,7 @@ def module_bootstrap_contract(module: RobloxModuleSpec, proposal: RobloxProposal
                 and m.roblox_service == RobloxService.SERVER_SCRIPT_SERVICE
                 and m.file_path.endswith(".luau")
                 and not m.file_path.endswith(".server.luau")]
-    return (
+    contract = (
         "SERVER MODULE CONTRACT: file ends in .luau and is a server-only "
         "ModuleScript, NOT a .server.luau auto-running Script. Return a table "
         "of callable functions at the end. For event handlers/init, expose "
@@ -122,3 +191,20 @@ def module_bootstrap_contract(module: RobloxModuleSpec, proposal: RobloxProposal
         "Do not require any .server.luau Scripts, create a second currency store, "
         "or write client methods on the server."
     )
+    action_routes = {
+        name: binding for name, binding
+        in ((proposal.game_design.get("dynamic_design") or {}).get(
+            "host_actions") or {}).items()
+        if isinstance(binding, dict) and binding.get("service") == module.name
+    }
+    if action_routes:
+        contract += (
+            " HOST-OWNED NETWORK: bootstrap handles all RemoteEvent/"
+            "RemoteFunction binding and server-side player/rate checks. "
+            "Do not use OnServerEvent/OnServerInvoke, and do not bind Remotes "
+            "manually. Export function Service.handleAction(player, services, ...) "
+            "containing only the game-specific validation/state changes, "
+            "AND function Service.start(services) for other initialization. "
+            "Action routes and classes: " + json.dumps(action_routes)
+        )
+    return contract
