@@ -11,6 +11,7 @@ import json
 import math
 import os
 import re
+from pathlib import Path
 from typing import Any
 
 from .spec import ModuleKind, RobloxModuleSpec, RobloxService
@@ -492,8 +493,13 @@ def _bind_scoped_feature_ids(
 
 
 class RobloxDynamicArchitect:
-    def __init__(self, router: ModelRouter | None = None) -> None:
+    def __init__(self, router: ModelRouter | None = None,
+                 checkpoint_dir: Path | str | None = None) -> None:
         self.router = router or ModelRouter()
+        self.checkpoint_file = (
+            Path(checkpoint_dir).resolve() / "architecture_subplans_checkpoint.json"
+            if checkpoint_dir is not None else None
+        )
 
     def design(self, prompt: str, research: dict[str, Any],
                existing_modules: list[RobloxModuleSpec]) -> dict[str, Any]:
@@ -634,6 +640,44 @@ class RobloxDynamicArchitect:
         observations = research.setdefault("architecture_attempts", [])
         checkpoints = research.setdefault("architecture_subplans", [])
 
+        # A failed seventh feature must NOT make the next Colab run spend
+        # several minutes redesigning the first six. Checkpoints are tied to
+        # the original source ledger, reference evidence and this validator
+        # implementation. Invalid/tampered drafts are strictly revalidated.
+        signature = hashlib.sha256(json.dumps({
+            "policy_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            "original_prompt": prompt, "ledger": ledger,
+            "reserved_modules": sorted(reserved_modules),
+            "reference_hashes": [
+                (e.get("facet"), e.get("content_sha256"))
+                for e in docs
+            ],
+        }, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+        stored_parts: dict[str, Any] = {}
+        if self.checkpoint_file is not None and os.environ.get(
+                "RMM_DISABLE_ARCHITECTURE_CACHE", "0") != "1":
+            try:
+                saved = json.loads(self.checkpoint_file.read_text(encoding="utf-8"))
+                if (saved.get("schema") == "rmm/scoped-design-checkpoint-v1"
+                        and saved.get("input_sha256") == signature
+                        and isinstance(saved.get("facets"), dict)):
+                    stored_parts = saved["facets"]
+            except (OSError, ValueError, TypeError, AttributeError):
+                pass
+
+        def persist_part(feature_id: str, design: dict[str, Any]) -> None:
+            if self.checkpoint_file is None or os.environ.get(
+                    "RMM_DISABLE_ARCHITECTURE_CACHE", "0") == "1":
+                return
+            stored_parts[feature_id] = design
+            self.checkpoint_file.parent.mkdir(parents=True, exist_ok=True)
+            staging = self.checkpoint_file.with_suffix(".json.tmp")
+            staging.write_text(json.dumps({
+                "schema": "rmm/scoped-design-checkpoint-v1",
+                "input_sha256": signature, "facets": stored_parts,
+            }, ensure_ascii=False, indent=2), encoding="utf-8")
+            staging.replace(self.checkpoint_file)
+
         for index, facet in enumerate(facets):
             facet_id = str(facet["id"])
             owned_ids = list(dict.fromkeys(
@@ -686,8 +730,14 @@ class RobloxDynamicArchitect:
             previous_error = ""
             draft: dict[str, Any] | None = None
             successful = False
+            cache_hit = False
             for attempt in range(3):
                 try:
+                    # A previously validated feature is reused only after the
+                    # SAME current source ownership and collision checks.
+                    if attempt == 0 and isinstance(stored_parts.get(facet_id), dict):
+                        draft = stored_parts[facet_id]
+                        cache_hit = True
                     # Repair a missing client/server role by APPENDING modules
                     # instead of asking the small model to reprint its large JSON.
                     missing_role = (
@@ -696,7 +746,9 @@ class RobloxDynamicArchitect:
                                     for m in draft.get("modules", [])
                                     if isinstance(m, dict))
                     )
-                    if missing_role:
+                    if cache_hit:
+                        pass  # validation below, no model inference needed
+                    elif missing_role:
                         patch = self.router.complete_json(
                             "Return ONLY JSON {\"modules\":[...]} with NEW "
                             "client Luau controller modules that supply actual "
@@ -762,7 +814,9 @@ class RobloxDynamicArchitect:
                     reserved_remotes.update(part["remotes"])
                     reserved_objects.update(obj["name"] for obj in part["world_objects"])
                     accepted_parts.append(draft)
+                    persist_part(facet_id, draft)
                     checkpoints.append({
+                        "cache_hit": cache_hit,
                         "facet_id": facet_id,
                         "module_names": [m.name for m in part["modules"]],
                         "remote_names": list(part["remotes"]),
@@ -772,11 +826,17 @@ class RobloxDynamicArchitect:
                     observations.append({
                         "facet_id": facet_id, "attempt": attempt + 1,
                         "passed": True, "validator": "scoped feature validated",
+                        "cache_hit": cache_hit,
                         "id_binding": id_binding,
                     })
                     successful = True
                     break
                 except Exception as exc:
+                    if cache_hit:
+                        # Never retry the same corrupt checkpoint as if the
+                        # model had generated it again.
+                        stored_parts.pop(facet_id, None)
+                        cache_hit = False
                     previous_error = type(exc).__name__ + ": " + str(exc)[:500]
                     observations.append({
                         "facet_id": facet_id, "attempt": attempt + 1,
