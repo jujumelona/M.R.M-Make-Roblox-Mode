@@ -240,6 +240,21 @@ class RobloxProductionOrchestrator:
                         debug_path = output_dir / "failed_candidates" / module.file_path
                         debug_path.parent.mkdir(parents=True, exist_ok=True)
                         debug_path.write_text(failed_code, encoding="utf-8")
+                    # Keep every failed model candidate and parser observation,
+                    # not just the last truncated version.
+                    attempt_path = output_dir / "failed_candidates" / (
+                        module.file_path + ".attempts.json")
+                    attempt_path.parent.mkdir(parents=True, exist_ok=True)
+                    attempt_record = {
+                        "module": module.name,
+                        "source_file": module.file_path,
+                        "initial_generation_attempts": (
+                            exc.history if isinstance(exc, LuauGenerationError) else []),
+                        "initial_error": message,
+                    }
+                    attempt_path.write_text(
+                        json.dumps(attempt_record, ensure_ascii=False, indent=2),
+                        encoding="utf-8")
                     trajectory.record("generation", "generate " + module.file_path,
                                       {"error": message, "traceback": trace,
                                        "analyzer_diagnostics": actual_errors,
@@ -275,6 +290,14 @@ class RobloxProductionOrchestrator:
                                           passed=True)
                         continue
                     except Exception as repair_error:
+                        attempt_record["recovery_attempts"] = (
+                            repair_error.history
+                            if isinstance(repair_error, LuauGenerationError) else [])
+                        attempt_record["recovery_error"] = (
+                            type(repair_error).__name__ + ": " + str(repair_error))
+                        attempt_path.write_text(
+                            json.dumps(attempt_record, ensure_ascii=False, indent=2),
+                            encoding="utf-8")
                         trajectory.record("generation", "recover " + module.file_path,
                                           {"initial_error": message,
                                            "repair_error": str(repair_error),
