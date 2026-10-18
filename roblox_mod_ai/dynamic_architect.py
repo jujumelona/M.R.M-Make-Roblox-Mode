@@ -331,6 +331,11 @@ class RobloxDynamicArchitect:
             "original requirement AND EVERY gameplay facet must be assigned "
             "a module and have an observable acceptance case. Do not include existing modules. "
             "For large environments prefer a server procedural world builder. "
+            "If remotes is nonempty, include at least one client Luau module AND "
+            "one server Luau module. Plan REAL client keyboard/touch UI actions "
+            "and corresponding server-authoritative handlers for every declared "
+            "remote. Avoid declaring unnecessary response remotes when one "
+            "RemoteFunction already returns a value. "
             "Do not output completed Luau here. Do not invent details about docs.\n"
             + json.dumps({"original_prompt":prompt,
                           "requirements":reqs,
