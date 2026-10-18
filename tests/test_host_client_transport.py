@@ -119,3 +119,47 @@ def test_invalid_route_or_remotekind_does_not_generate_trusted_code():
     from roblox_mod_ai.host_client import render_host_client
     with pytest.raises(ValueError, match="zero-argument"):
         render_host_client(client, proposal)
+
+
+def test_bulk_generation_replaces_saved_host_client_and_bootstrap_instead_of_model_code():
+    proposal, model, result = _architecture()
+    server = next(m for m in proposal.modules
+                  if m.module_id.startswith("dyn_")
+                  and m.file_path.startswith("src/server/"))
+    client = next(m for m in proposal.modules
+                  if m.file_path.endswith(".client.luau"))
+    bootstrap = next(m for m in proposal.modules
+                     if m.module_id == "mod_dynamic_server_bootstrap")
+    server.code = ("--!strict\nlocal Service = {}\n"
+                   "function Service.start(_services) end\n"
+                   "function Service.handleAction(player, _services)\n"
+                   "    return player ~= nil\nend\nreturn Service\n")
+    client.code = "--!strict\nprint('untrusted stale custom client')\n"
+    bootstrap.code = "--!strict\nprint('untrusted stale gateway')\n"
+    class NoModel:
+        def complete(self, *args, **kwargs):
+            raise AssertionError("Only first-party source can run here")
+    modules = LuauCodeGenerator(NoModel()).generate_all_modules(proposal)
+    assert client.code != "--!strict\nprint('untrusted stale custom client')\n"
+    assert 'button.Activated:Connect' in client.code
+    assert "Remote class mismatch" in client.code
+    assert "untrusted stale gateway" not in bootstrap.code
+    assert 'select("#", ...) ~= 0' in bootstrap.code
+    assert "service.handleAction(player, services, ...)" in bootstrap.code
+
+
+def test_forecast_discounts_only_verified_host_client_codegen():
+    from roblox_mod_ai.generation_forecast import forecast_generation
+    proposal, model, result = _architecture(interaction="request_response")
+    ledger = proposal.game_design["pre_design_research"]["ledger"]
+    modules = [m.to_dict() for m in proposal.modules]
+    counts = forecast_generation(
+        requested_prompt=proposal.requested_prompt,
+        ledger=ledger, modules=modules,
+        remotes=result["remotes"],
+        host_client_actions=result["host_client_actions"],
+    )["source_counts"]
+    assert counts["generated_module_count"] == 2
+    assert counts["host_rendered_client_module_count"] == 1
+    assert counts["estimated_model_code_completions"] == 1
+    assert counts["minimum_sequential_model_completions"] == 2
