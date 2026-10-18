@@ -25,7 +25,12 @@ class LocalGameModel:
                         "role":"server",
                         "requirement_ids":clauses,
                         "facet_ids":facets,
-                        "behavior":"Server checks egg distance, handles hatching and writes player owned items."}],
+                        "behavior":"Server checks egg distance, handles hatching and writes player owned items."},
+                       {"name":"PetHatchController",
+                        "role":"client",
+                        "requirement_ids":clauses,
+                        "facet_ids":facets,
+                        "behavior":"Mobile keyboard and gamepad hatch button sends server validated pet hatch request."}],
             "remotes":[{"name":"HatchPet","type":"RemoteEvent"}],
             "world_objects":[{"name":"PetEggStand","class":"Part","position":[9,2,0],"size":[3,3,3]}],
             "acceptance":[{"requirement_id":rid,
@@ -37,6 +42,20 @@ class LocalGameModel:
         }
     def complete(self, prompt, **kwargs):
         self.prompt_history.append(("code",prompt))
+        if "PetHatchController.client.luau" in prompt:
+            return """--!strict
+local ContextActionService = game:GetService("ContextActionService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local remote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("HatchPet")
+local function hatch(_action: string, state: Enum.UserInputState, _input: InputObject)
+    if state ~= Enum.UserInputState.Begin then return Enum.ContextActionResult.Pass end
+    remote:FireServer()
+    return Enum.ContextActionResult.Sink
+end
+ContextActionService:BindAction("HatchPetAction", hatch, true,
+    Enum.KeyCode.E, Enum.KeyCode.ButtonX)
+ContextActionService:SetTitle("HatchPetAction", "Hatch")
+"""
         return """--!strict
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local remote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("HatchPet")
@@ -74,6 +93,7 @@ def test_generic_pet_game_generates_custom_luau_world_and_remote(tmp_path,monkey
     plan=reply.authored_plan.proposal
     modules={m.name for m in plan.modules}
     assert "CustomPetHatching" in modules
+    assert "PetHatchController" in modules
     assert "CombatSystem" not in modules and "ShopService" not in modules
     assert plan.game_design["dynamic_design"]["source_reuse"]=="none_unless_validated"
     novel_test=next(x for x in plan.tests if x.test_id=="test_dynamic_structure")
@@ -87,6 +107,8 @@ def test_generic_pet_game_generates_custom_luau_world_and_remote(tmp_path,monkey
     root=Path(result.project_dir)
     generated=(root/"src/server/CustomPetHatching.server.luau").read_text(encoding="utf-8")
     assert "HatchPet" in generated and "OwnedItems" in generated
+    client=(root/"src/client/PetHatchController.client.luau").read_text(encoding="utf-8")
+    assert "FireServer" in client and "BindAction" in client
     config=json.loads((root/"default.project.json").read_text(encoding="utf-8"))
     assert config["tree"]["Workspace"]["PetEggStand"]["$className"]=="Part"
     assert config["tree"]["ReplicatedStorage"]["Remotes"]["HatchPet"]["$className"]=="RemoteEvent"
@@ -190,3 +212,36 @@ def test_model_code_with_unsafe_asset_or_client_only_api_rejected(tmp_path,monke
                             game_design={"pre_design_research":{"evidence":[]}},modules=[module])
     with pytest.raises(ValueError):
         RobloxCodeRepairAgent(router=UnsafeRouter()).repair(module,proposal,attempts=1)
+
+
+def test_missing_client_to_server_remote_connection_must_fail(tmp_path, monkeypatch):
+    """Before this check a server-only remote was accepted as a complete game."""
+    session, fake = _session(tmp_path, monkeypatch)
+    def server_only(prompt, **kwargs):
+        result = LocalGameModel.complete_json(fake, prompt, **kwargs)
+        result["modules"] = [row for row in result["modules"] if row["role"] == "server"]
+        return result
+    fake.complete_json = server_only
+    reply = session.plan("펫 부화")
+    assert reply.ready_to_build  # Architecture itself is only a proposal.
+    built = session.build(source_only=True)
+    failed = {c["id"] for c in built.metadata["acceptance"]["checks"] if not c["passed"]}
+    assert "wiring.HatchPet" in failed
+    assert not built.metadata["acceptance"]["passed"]
+    assert not built.success
+
+
+def test_disconnected_client_string_reference_is_not_remote_sender(tmp_path, monkeypatch):
+    session, fake = _session(tmp_path, monkeypatch)
+    actual = fake.complete
+    def disconnected(prompt, **kwargs):
+        source = actual(prompt, **kwargs)
+        if "PetHatchController.client.luau" in prompt:
+            return source.replace("remote:FireServer()", "print(remote.Name)")
+        return source
+    fake.complete = disconnected
+    session.plan("펫 부화")
+    built = session.build(source_only=True)
+    failures = {x["id"] for x in built.metadata["acceptance"]["checks"] if not x["passed"]}
+    assert "wiring.HatchPet" in failures
+
