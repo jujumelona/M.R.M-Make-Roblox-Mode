@@ -198,3 +198,29 @@ def test_auto_model_availability_does_not_rewrite_exact_stock_shop(monkeypatch):
     assert {"ShopService", "ShopController"}.issubset(
         {module.name for module in plan.proposal.modules}
     )
+
+
+def test_atomic_doc_queries_drop_unrequested_generic_api_terms(monkeypatch):
+    class DocsSpy:
+        def __init__(self): self.calls = []
+        def search(self, query, *, limit, with_excerpt):
+            self.calls.append(query)
+            return {"results": [], "error": None}
+    monkeypatch.setenv("RMM_ENABLE_MODEL_QUERY_EXPANSION", "0")
+    ledger = build_request_ledger("상점에서 아이템 구매")
+    ledger["facets"].append({
+        "id": "intent-custom", "requirements": ["req-001"],
+        "search_query": "Roblox implement pet collection with DataStoreService Chat",
+        "implementation_key": None, "implemented_by_builtin": False,
+        "source_span": "아이템 구매",
+    })
+    ledger["atomic_intents"] = [{"facet_id": "intent-custom",
+                                  "intent": "Implement pet collection and hatching"}]
+    docs = DocsSpy()
+    research = RobloxPreDesignResearch(docs=docs, live_enabled=True)
+    monkeypatch.setattr(research, "_decompose_compound", lambda prompt, old: ledger)
+    result = research.research("상점에서 아이템 구매")
+    entry = next(q for q in result["queries"] if q["facet"] == "intent-custom")
+    assert entry["retrieval_query"] == "Roblox Implement pet collection and hatching"
+    assert docs.calls[0] == entry["retrieval_query"]
+    assert "DataStoreService" in entry["query"]
