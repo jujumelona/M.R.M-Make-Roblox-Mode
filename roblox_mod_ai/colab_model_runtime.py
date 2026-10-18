@@ -57,6 +57,25 @@ def _model_probe(url: str, api_key: str = "") -> str | None:
         return None
 
 
+def _probe_with_progress(url: str, api_key: str = "") -> str | None:
+    """Keep notebook output alive during a slow first-model inference."""
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+    started = time.monotonic()
+    print("[RMM model] verifying real chat inference at " + url, flush=True)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        task = pool.submit(_model_probe, url, api_key)
+        while True:
+            try:
+                result = task.result(timeout=12)
+                print("[RMM model] inference check " +
+                      ("passed" if result else "failed") +
+                      f" ({int(time.monotonic()-started)}s)", flush=True)
+                return result
+            except FutureTimeout:
+                print(f"[RMM model] waiting for first inference response "
+                      f"({int(time.monotonic()-started)}s)", flush=True)
+
+
 def _health_ready(url: str) -> bool:
     """llama.cpp /health becomes ready after model weights are loaded."""
     health = url.rstrip("/").removesuffix("/v1") + "/health"
@@ -243,7 +262,7 @@ def _start_managed_server(binary: Path, model: Path, cache_root: Path) -> str:
             )
         if _health_ready(url):
             print("[RMM model] weights loaded; testing real chat completion", flush=True)
-            if _model_probe(url):
+            if _probe_with_progress(url):
                 print("[RMM model] real chat completion verified", flush=True)
                 return url
             process.terminate()
@@ -274,21 +293,21 @@ def ensure_model_runtime(*, profile: str, remote_base_url: str = "",
     env_url = (os.environ.get("ROBLOX_LLAMA_SERVER_URL")
                or os.environ.get("RMM_MODEL_BASE_URL") or "").strip()
     if user_url:
-        model_id = _model_probe(user_url, api_key)
+        model_id = _probe_with_progress(user_url, api_key)
         if not model_id:
             raise ModelStartupError(
                 "Configured REMOTE_BASE_URL does not serve working chat inference: " +
                 user_url
             )
         url, status = user_url.rstrip("/"), "verified_remote"
-    elif env_url and (model_id := _model_probe(env_url, api_key)):
+    elif env_url and (model_id := _probe_with_progress(env_url, api_key)):
         url, status = env_url.rstrip("/"), "verified_existing"
     else:
         # A valid default local server may already be running in this Colab.
         url = ""
         model_id = ""
         for candidate in ("http://127.0.0.1:8910/v1", "http://127.0.0.1:8080/v1"):
-            if model_id := _model_probe(candidate):
+            if model_id := _probe_with_progress(candidate):
                 url = candidate
                 break
         if url:
@@ -305,7 +324,7 @@ def ensure_model_runtime(*, profile: str, remote_base_url: str = "",
             print("[RMM model] checking/downloading GGUF weights", flush=True)
             model = _download_gguf(root)
             url = _start_managed_server(binary, model, root)
-            model_id = _model_probe(url) or ""
+            model_id = _probe_with_progress(url) or ""
             if not model_id:
                 raise ModelStartupError("Managed model produced no chat response.")
             status = "managed_colab"
