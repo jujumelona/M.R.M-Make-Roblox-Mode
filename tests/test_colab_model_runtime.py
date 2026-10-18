@@ -64,6 +64,51 @@ def test_managed_colab_model_is_started_before_plan(monkeypatch, tmp_path):
     assert [x[0] for x in events if x[0] != "probe"] == [
         "build", "download", "start"
     ]
+    # Only candidate probes before launch; no duplicate post-launch completion.
+    assert not [x for x in events[events.index(("start", tmp_path / "llama-server", tmp_path / "model.gguf"))+1:] if x[0] == "probe"]
+
+
+
+def test_reasoning_only_probe_retries_without_thinking(monkeypatch):
+    import httpx
+
+    requests = []
+    def respond(request):
+        if request.url.path.endswith("/models"):
+            return httpx.Response(200, json={"data": [{"id": "MiMo-9B"}]})
+        body = json.loads(request.content)
+        requests.append(body)
+        if "chat_template_kwargs" not in body:
+            return httpx.Response(200, json={
+                "choices": [{"finish_reason": "length", "message": {
+                    "content": "", "reasoning_content": "thinking..."}}]})
+        return httpx.Response(200, json={
+            "choices": [{"finish_reason": "stop", "message": {"content": "READY"}}]})
+
+    original = httpx.Client
+    monkeypatch.setattr(httpx, "Client",
+                        lambda **kwargs: original(transport=httpx.MockTransport(respond),
+                                                  **kwargs))
+    assert runtime._model_probe("http://127.0.0.1:8910/v1") == "MiMo-9B"
+    assert len(requests) == 2
+    assert requests[1]["chat_template_kwargs"] == {"enable_thinking": False}
+
+
+def test_reasoning_only_probe_never_claims_readiness(monkeypatch):
+    import httpx
+
+    def respond(request):
+        if request.url.path.endswith("/models"):
+            return httpx.Response(200, json={"data": [{"id": "MiMo-9B"}]})
+        return httpx.Response(200, json={
+            "choices": [{"finish_reason": "length", "message": {
+                "content": "", "reasoning_content": "thinking..."}}]})
+
+    original = httpx.Client
+    monkeypatch.setattr(httpx, "Client",
+                        lambda **kwargs: original(transport=httpx.MockTransport(respond),
+                                                  **kwargs))
+    assert runtime._model_probe("http://127.0.0.1:8910/v1") is None
 
 
 def test_existing_real_model_is_reused_without_model_download(monkeypatch, tmp_path):
