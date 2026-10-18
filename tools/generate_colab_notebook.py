@@ -282,6 +282,7 @@ def build_notebook() -> None:
             "from roblox_mod_ai.luau_analyzer import LuauStaticAnalyzer\n"
             "\n"
             "BUILD_RESULT = None\n"
+            "PLAN_FAILURE_LOGS_ZIP = None\n"
             "\n"
             'if RUN_MODE == "Plan":\n'
             '    print("Plan 모드: 빌드를 건너뜁니다.")\n'
@@ -304,29 +305,23 @@ def build_notebook() -> None:
             "    if FINAL_PLAN_REPLY is None:\n"
             '        raise RuntimeError("빌드할 계획이 없습니다. 5번 셀(플랜 준비)을 먼저 실행해 주세요.")\n'
             "\n"
-            "    if not FINAL_PLAN_REPLY.ready_to_build:\n"
-            "        research = FINAL_PLAN_REPLY.authored_plan.proposal.game_design.get(\n"
-            "            \"pre_design_research\", {})\n"
-            "        missing = research.get(\"ledger\", {}).get(\"unimplemented_facets\", [])\n"
-            "        failures = research.get(\"provider_failures\", [])\n"
-            "        raise RuntimeError(\n"
-            "            \"실제 모델을 호출했지만 게임 설계 검증을 통과하지 못했습니다. \"\n"
-            "            + \"누락: \" + str(missing)\n"
-            "            + \"; 모델 오류: \" + str(failures)\n"
-            "        )\n"
+            "    if FINAL_PLAN_REPLY.ready_to_build:\n"
+            "        print(\"빌드 시작: 코드 생성 -> 정적 검사 및 에이전트 수정 -> Rojo 빌드\")\n"
+            "        BUILD_RESULT = session.build(FINAL_PLAN_REPLY, run_name=ROBLOX_EXPERIENCE_NAME)\n"
+            "        print(\"빌드 상태:\", BUILD_RESULT.success)\n"
+            "        print(\"Roblox Place:\", BUILD_RESULT.rbxlx_path)\n"
+            "        print(\"Rojo 프로젝트 ZIP:\", BUILD_RESULT.project_zip_path)\n"
+            "        print(\"에이전트 로그:\", BUILD_RESULT.metadata.get(\"agent_trajectory\", \"\"))\n"
+            "        if not BUILD_RESULT.success:\n"
+            "            print(\"실패 진단 ZIP:\", BUILD_RESULT.metadata.get(\"failure_logs_zip\", \"\"))\n"
+            "    else:\n"
+            "        PLAN_FAILURE_LOGS_ZIP = session.export_plan_failure()\n"
+            "        research = FINAL_PLAN_REPLY.authored_plan.proposal.game_design.get(\"pre_design_research\", {})\n"
+            "        print(\"게임 설계가 검증되지 않았습니다. 생성 성공으로 표시하지 않습니다.\")\n"
+            "        print(\"원인:\", research.get(\"provider_failures\", []))\n"
+            "        print(\"누락:\", research.get(\"ledger\", {}).get(\"unimplemented_facets\", []))\n"
+            "        print(\"실패 로그:\", PLAN_FAILURE_LOGS_ZIP)\n"
             "\n"
-            '    print("빌드 시작: Luau 코드 생성 -> 정적 분석 -> TestEZ 플레이테스트 -> .rbxlx / ZIP 컴파일")\n'
-            "    BUILD_RESULT = session.build(FINAL_PLAN_REPLY, run_name=ROBLOX_EXPERIENCE_NAME)\n"
-            "\n"
-            '    print("=" * 60)\n'
-            '    print(f"빌드 상태: {\'성공 (SUCCESS)\' if BUILD_RESULT.success else \'실패 (FAILED)\'}")\n'
-            '    print(f"Roblox Place (.rbxlx): {BUILD_RESULT.rbxlx_path}")\n'
-            '    print(f"Rojo 프로젝트 ZIP: {BUILD_RESULT.project_zip_path}")\n'
-            '    print(f"생성된 Luau 파일 수: {len(BUILD_RESULT.generated_files)}개")\n'
-            "    if BUILD_RESULT.playtest_report:\n"
-            "        pt = BUILD_RESULT.playtest_report\n"
-            '        print(f"플레이테스트 결과: {\'통과\' if pt.passed else \'실패\'} (테스트 {pt.tests_run}개 중 {pt.tests_passed}개 성공)")\n'
-            '    print("=" * 60)\n'
         ),
         id="build",
     )
@@ -351,6 +346,13 @@ def build_notebook() -> None:
             "        DOWNLOAD_TARGETS.append(SAVED_PLAN_PATH)\n"
             "elif SAVED_PLAN_PATH.is_file():\n"
             "    DOWNLOAD_TARGETS.append(SAVED_PLAN_PATH)\n"
+            "\n"
+            "if BUILD_RESULT is not None and not BUILD_RESULT.success:\n"
+            "    failure_path = BUILD_RESULT.metadata.get(\"failure_logs_zip\", \"\")\n"
+            "    if failure_path and Path(failure_path).is_file():\n"
+            "        DOWNLOAD_TARGETS.append(Path(failure_path))\n"
+            "elif PLAN_FAILURE_LOGS_ZIP is not None and Path(PLAN_FAILURE_LOGS_ZIP).is_file():\n"
+            "    DOWNLOAD_TARGETS.append(Path(PLAN_FAILURE_LOGS_ZIP))\n"
             "\n"
             "if not DOWNLOAD_TARGETS:\n"
             '    print("다운로드할 결과 파일이 없습니다.")\n'
