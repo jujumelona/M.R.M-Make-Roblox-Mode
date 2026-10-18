@@ -164,6 +164,18 @@ class RobloxProductionOrchestrator:
                 ]:
                     result = action()
                     tool_results[name] = result
+                    # luau-analyze is optional because the canonical Rokit
+                    # toolchain in CI installs StyLua, Selene, Wally and Rojo.
+                    # It is NOT reported as executed or as verified when absent.
+                    # Real Selene and Rojo compilation remain mandatory below.
+                    if (name == "luau_analyze" and not result.get("executed")
+                            and result.get("message") == "luau-analyze missing"):
+                        tool_results["luau_typechecking"] = {
+                            "executed": False, "verified": False,
+                            "reason": "Standalone luau-analyze not installed; "
+                                      "Selene+Rojo validation is not static typechecking"
+                        }
+                        continue
                     if not result.get("success") or not result.get("executed"):
                         if (result.get("executed") and
                                 proposal.game_design.get("dynamic_design")):
