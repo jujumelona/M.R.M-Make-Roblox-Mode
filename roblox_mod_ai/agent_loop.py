@@ -36,9 +36,16 @@ class RobloxCodeRepairAgent:
 
     @staticmethod
     def _clean_code(response: str) -> str:
-        response=response.strip()
+        response = (response or "").strip()
+        # Do not transform an EMPTY completion into '--!strict' and treat it
+        # as a Luau candidate. This was the exact failed EconomyLedger file.
+        if not response:
+            return ""
+        response = re.sub(r"(?is)^<think>[\s\S]*?</think>\s*", "", response).strip()
         match=re.search(r"```(?:luau|lua)?\s*([\s\S]*?)\s*```",response,re.IGNORECASE)
         if match: response=match.group(1).strip()
+        if not response:
+            return ""
         if not response.startswith("--!strict"): response="--!strict\n"+response
         return response
 
@@ -57,21 +64,26 @@ class RobloxCodeRepairAgent:
         pre = proposal.game_design.get("pre_design_research", {})
         # Reuse actual plan-time source evidence; don't silently replace the user's
         # research scope with another untracked request at code generation time.
+        design = proposal.game_design.get("dynamic_design") or {}
+        # Do not feed the economy coder random planet/avatar documents:
+        # use only official evidence owned by this exact requested facet.
+        owned = set(design.get("module_facets", {}).get(module.module_id, []))
         observed = [record for record in pre.get("evidence", [])
                     if record.get("provider") == "official_docs"
                     and record.get("grounding") == "fetched_official_document"
-                    and record.get("excerpt") and record.get("url")]
+                    and record.get("excerpt") and record.get("url")
+                    and (not owned or record.get("facet") in owned)]
         if observed:
             # Rank against the specific implementation, preserving original URL/hash.
             tokens = set(re.findall(r"[a-zA-Z]{4,}",(module.name+" "+module.description).lower()))
             selected = sorted(observed, key=lambda rec: -sum(
                 word in (rec.get("excerpt","")+" "+rec.get("url","")).lower()
                 for word in tokens
-            ))[:4]
+            ))[:2]
             source_urls=[rec["url"] for rec in selected]
             snippets="\n".join(
                 f"[UNTRUSTED DOCUMENT {rec['url']} sha256:{rec['content_sha256']}] "
-                +rec["excerpt"][:580] for rec in selected
+                +rec["excerpt"][:360] for rec in selected
             )
         else:
             if pre:
@@ -102,14 +114,48 @@ class RobloxCodeRepairAgent:
         candidate = existing_code
         errors: list[str] = []
         for attempt in range(attempts):
-            candidate=self._clean_code(self.router.complete(
-                prompt,
-                role="coder",
-                system_prompt="You are an expert Roblox Luau engine programmer. Return compilable Luau source only.",
-                temperature=0.1,max_tokens=6000
-            ))
-            errors=[d.message for d in self.analyzer.analyze_source(candidate,module.file_path)
-                    if d.severity=="ERROR"]
+            if attempt:
+                # The original loop repeatedly appended long source+diagnostics
+                # to the same prompt, making each expensive call harder for 9B.
+                # Regenerate a compact per-file repair request instead.
+                compact = (
+                    "Generate ONLY valid Roblox Luau source for ONE file. "
+                    "Do not output reasoning, JSON, markdown or placeholders. "
+                    "Include functional state and handlers. "
+                    "Use only the declared remotes and server-authoritative logic.\n"
+                    f"User request: {proposal.requested_prompt[:1000]}\n"
+                    f"File: {module.file_path}\n"
+                    f"Required behavior: {module.description}\n"
+                    f"Remote types: {design.get('remotes', {})}\n"
+                    "Previous validator errors: " + "; ".join(errors[:10]) + "\n"
+                )
+                if candidate and len(candidate) > 75:
+                    compact += "Previous invalid Luau source:\n" + candidate[:9000] + "\n"
+                else:
+                    compact += "Previous attempt produced no functional code. Start directly with --!strict and actual statements.\n"
+                query = compact
+            else:
+                query = prompt
+            try:
+                raw_code = self.router.complete(
+                    query, role="coder",
+                    system_prompt="You are a Roblox Luau programmer. Return source code only; no reasoning or commentary.",
+                    temperature=0.1, max_tokens=6000,
+                )
+            except Exception as exc:
+                runtime_observation = getattr(self.router, "last_generation_report", {})
+                errors = [
+                    "Model completion failed: " + type(exc).__name__ + ": " + str(exc),
+                    "Model runtime observation: " + str(runtime_observation),
+                ]
+                print("[RMM coder] " + module.name + " attempt " +
+                      str(attempt + 1) + ": " + errors[0][:600], flush=True)
+                continue
+            candidate = self._clean_code(raw_code)
+            errors = [d.message for d in self.analyzer.analyze_source(candidate,module.file_path)
+                      if d.severity=="ERROR"]
+            if not candidate:
+                errors.append("Model returned no visible Luau implementation")
             if not candidate.strip() or len(candidate)<75:
                 errors.append("Unimplemented or empty module")
             if re.search(r"\b(?:TODO|FIXME|not implemented|placeholder)\b",candidate,re.IGNORECASE):
@@ -130,6 +176,6 @@ class RobloxCodeRepairAgent:
                 errors.append("Client source contains server-only API")
             if not errors:
                 return candidate
-            prompt+="\nRETRY; previous code failed: "+("; ".join(errors[:8]))
-            prompt+="\nPrevious code:\n"+candidate[:12500]
+            print("[RMM coder] " + module.name + " attempt " + str(attempt + 1) +
+                  " invalid: " + "; ".join(errors[:5])[:700], flush=True)
         raise LuauGenerationError(module.name, candidate, errors)
