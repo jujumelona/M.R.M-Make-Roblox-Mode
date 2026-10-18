@@ -1,0 +1,85 @@
+"""Cross-module static contract audit for model-authored server Lua services.
+
+An individual source file can parse yet invoke an invented method on a separate
+generated service. This pass joins REAL saved source files at the production
+quality gate. It is a static interface check, NOT a Roblox engine playtest.
+"""
+from __future__ import annotations
+
+import re
+from typing import Any
+
+from .spec import RobloxProposal
+
+_NAME = r"[A-Za-z_][A-Za-z0-9_]*"
+_CALL = re.compile(r"\bservices\.(" + _NAME + r")\.(" + _NAME + r")\s*\(")
+_BRACKET_CALL = re.compile(r"\bservices\[\s*[\"'](" + _NAME + r")[\"']\s*\]\.(" +
+                           _NAME + r")\s*\(")
+_EXPORT_FUNCTION = re.compile(
+    r"\bfunction\s+(" + _NAME + r")[.:](" + _NAME + r")\s*\(")
+_EXPORT_ASSIGN = re.compile(
+    r"\b(" + _NAME + r")\.(" + _NAME + r")\s*=\s*function\s*\(")
+_RETURN = re.compile(r"\breturn\s+(" + _NAME + r")\s*$")
+_LOCAL = re.compile(r"\blocal\s+(" + _NAME + r")\s*=\s*\{")
+
+
+def inspect_dynamic_server_interfaces(proposal: RobloxProposal) -> dict[str, Any]:
+    dynamic = proposal.game_design.get("dynamic_design") or {}
+    if not dynamic:
+        return {"passed": True, "checks": [], "scope": "not_a_dynamic_game"}
+
+    services = {
+        module.name: module
+        for module in proposal.modules
+        if module.file_path.startswith("src/server/")
+        and module.file_path.endswith(".luau")
+        and not module.file_path.endswith(".server.luau")
+        and module.module_id.startswith("dyn_")
+    }
+    checks: list[dict[str, Any]] = []
+    exports: dict[str, set[str]] = {}
+    for name, module in services.items():
+        # The host keeps server ModuleScripts private. Check the returned
+        # service table before resolving method names across files.
+        source = module.code
+        returned = _RETURN.search(source.strip())
+        declaration = returned.group(1) if returned else None
+        declared_tables = set(_LOCAL.findall(source))
+        checks.append({
+            "id": "service.export." + name,
+            "passed": bool(declaration and declaration in declared_tables),
+            "detail": "A server ModuleScript must return a locally owned service table",
+        })
+        methods = {
+            method
+            for table_name, method in
+            [*_EXPORT_FUNCTION.findall(source), *_EXPORT_ASSIGN.findall(source)]
+            if table_name == declaration
+        }
+        exports[name] = methods
+        if module.kind == "server_module":
+            checks.append({
+                "id": "service.start." + name,
+                "passed": "start" in methods,
+                "detail": "Bootstrap must call an exported start method",
+            })
+
+    for caller in proposal.modules:
+        if not caller.module_id.startswith("dyn_"):
+            continue
+        source = caller.code
+        for target, method in set([*_CALL.findall(source),
+                                   *_BRACKET_CALL.findall(source)]):
+            target_module = services.get(target)
+            ok = target_module is not None and method in exports.get(target, ())
+            checks.append({
+                "id": "service.call." + caller.name + "." + target + "." + method,
+                "passed": ok,
+                "detail": ("resolved exported server method" if ok else
+                           "missing service or exported method; must not invent another module's API"),
+            })
+    return {
+        "passed": all(check["passed"] for check in checks),
+        "checks": checks,
+        "scope": "cross_module_static_source_not_gameplay_execution",
+    }
