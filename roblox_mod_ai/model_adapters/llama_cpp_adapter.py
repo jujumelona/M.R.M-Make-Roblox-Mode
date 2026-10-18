@@ -95,6 +95,7 @@ class LlamaCppAdapter(ModelAdapter):
             payload["frequency_penalty"] = 0.35
             payload["temperature"] = max(0.25, request.temperature)
             payload["stream"] = True
+            payload["stream_options"] = {"include_usage": True}
 
         headers = {
             "Content-Type": "application/json",
