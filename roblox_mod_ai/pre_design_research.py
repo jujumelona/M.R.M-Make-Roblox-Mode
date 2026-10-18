@@ -269,20 +269,43 @@ class RobloxPreDesignResearch:
                 for retry in range(3):
                     if not missing:
                         break
-                    output = self.router.complete_json(
-                        "Describe EACH provided user-authored Roblox gameplay chunk. "
-                        "Return ONLY JSON {behaviors:[{chunk_id,intent,english_query}]}. "
-                        "One entry per chunk_id; NEVER merge, skip, add or rename IDs. "
-                        "Translate each exact snippet into a specific, concrete gameplay "
-                        "implementation intent and Roblox API documentation query. "
-                        "Do not invent new actions. Chunks are independently owned "
-                        "source obligations, even when two relate to the same system.\\n"
-                        + json.dumps({"chunks": missing}, ensure_ascii=False),
-                        role="planner", temperature=0.1,
-                    )
-                    validated = valid_chunk_classification(output, missing)
-                    classified.update(validated)
+                    try:
+                        output = self.router.complete_json(
+                            "Describe EACH provided user-authored Roblox gameplay chunk. "
+                            "Return ONLY JSON {behaviors:[{chunk_id,intent,english_query}]}. "
+                            "One entry per chunk_id; NEVER merge, skip, add or rename IDs. "
+                            "Translate each exact snippet into a specific, concrete gameplay "
+                            "implementation intent and Roblox API documentation query. "
+                            "Do not invent new actions. Chunks are independently owned "
+                            "source obligations, even when two relate to the same system.\\n"
+                            + json.dumps({"chunks": missing}, ensure_ascii=False),
+                            role="planner", temperature=0.1,
+                        )
+                        classified.update(valid_chunk_classification(output, missing))
+                    except Exception as exc:
+                        print("[RMM research] Chunk classification retry " +
+                              str(retry+1) + ": " + type(exc).__name__, flush=True)
                     missing = [c for c in missing if c["chunk_id"] not in classified]
+                # Small models may still omit one entry when decoding six chunks
+                # in a batch. Reask only those missing, one source span per call.
+                for chunk in missing:
+                    for retry in range(2):
+                        try:
+                            output = self.router.complete_json(
+                                "Return JSON {behaviors:[{chunk_id,intent,english_query}]}. "
+                                "Describe this ONE exact user-authored gameplay fragment "
+                                "as a specific Roblox action and API query; never invent "
+                                "or merge gameplay.\\n" +
+                                json.dumps({"chunks": [chunk]}, ensure_ascii=False),
+                                role="planner", temperature=0.1,
+                            )
+                            classified.update(valid_chunk_classification(output, [chunk]))
+                            if chunk["chunk_id"] in classified:
+                                break
+                        except Exception as exc:
+                            print("[RMM research] Single-chunk retry " +
+                                  str(retry+1) + ": " + type(exc).__name__, flush=True)
+                missing = [c for c in group if c["chunk_id"] not in classified]
                 if missing:
                     raise ValueError("Model failed to classify exact source chunks: " +
                                      ", ".join(c["source_span"] for c in missing))
