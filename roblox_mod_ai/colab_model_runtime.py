@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
+import site
 import platform
 from pathlib import Path
 import shutil
@@ -371,6 +373,139 @@ def _port_available(port: int) -> bool:
         return sock.connect_ex(("127.0.0.1", port)) != 0
 
 
+
+# CUDA 12.8 artifacts have runtime dependencies which may be provided by
+# Python NVIDIA wheels rather than /usr/local/cuda/lib64. Never assume a GPU
+# driver install makes libcudart or cuBLAS visible to the ELF linker.
+_CUDA_WHEEL_BY_SONAME = {
+    "libcudart.so.12": "nvidia-cuda-runtime-cu12==12.8.90",
+    "libcublas.so.12": "nvidia-cublas-cu12==12.8.4.1",
+    "libcublasLt.so.12": "nvidia-cublas-cu12==12.8.4.1",
+    "libnvrtc.so.12": "nvidia-cuda-nvrtc-cu12==12.8.93",
+    "libnvJitLink.so.12": "nvidia-nvjitlink-cu12==12.8.93",
+}
+_CUDA_WHEEL_LIB_DIRS = (
+    "nvidia/cuda_runtime/lib",
+    "nvidia/cublas/lib",
+    "nvidia/cuda_nvrtc/lib",
+    "nvidia/nvjitlink/lib",
+    "nvidia/cusparse/lib",
+)
+_CUDA_SONAMES = tuple(_CUDA_WHEEL_BY_SONAME)
+_MISSING_ELF_LIBRARY = re.compile(r"(?m)^\s*(\S+\.so(?:\.\S+)?)\s+=>\s+not found\s*$")
+
+
+def _cuda_library_directories(binary: Path) -> list[str]:
+    """Locate preinstalled CUDA 12 shared libraries without importing torch."""
+    candidates: list[Path] = [binary.parent]
+    cuda_home = os.environ.get("CUDA_HOME", "").strip()
+    if cuda_home:
+        candidates.extend((Path(cuda_home) / "lib64",
+                           Path(cuda_home) / "targets/x86_64-linux/lib"))
+    candidates.extend([
+        Path("/usr/local/cuda/lib64"),
+        Path("/usr/local/cuda/targets/x86_64-linux/lib"),
+        Path("/usr/local/cuda-12.8/lib64"),
+        Path("/usr/local/cuda-12.8/targets/x86_64-linux/lib"),
+        Path("/usr/lib/x86_64-linux-gnu"),
+    ])
+    roots: list[Path] = []
+    try:
+        roots.extend(Path(x) for x in site.getsitepackages())
+    except (AttributeError, OSError):
+        pass
+    try:
+        roots.append(Path(site.getusersitepackages()))
+    except (AttributeError, OSError):
+        pass
+    roots.extend(Path(x) for x in sys.path if x and ("site-packages" in x or "dist-packages" in x))
+    for root in roots:
+        candidates.extend(root / suffix for suffix in _CUDA_WHEEL_LIB_DIRS)
+        candidates.append(root / "torch/lib")
+    # Preserve caller's configured loader directories; the prebuilt binary's
+    # own libraries must still take precedence.
+    candidates.extend(Path(p) for p in os.environ.get("LD_LIBRARY_PATH", "").split(":") if p)
+    result: list[str] = []
+    for candidate in candidates:
+        if not candidate.is_dir() or str(candidate) in result:
+            continue
+        if candidate == binary.parent or any((candidate / name).exists() for name in _CUDA_SONAMES):
+            result.append(str(candidate))
+    return result
+
+
+def _cuda_env(binary: Path) -> dict[str, str]:
+    env = os.environ.copy()
+    entries = _cuda_library_directories(binary)
+    inherited = [x for x in env.get("LD_LIBRARY_PATH", "").split(":") if x]
+    env["LD_LIBRARY_PATH"] = os.pathsep.join(dict.fromkeys(entries + inherited))
+    return env
+
+
+def _ldd_missing_libraries(binary: Path, env: dict[str, str]) -> set[str]:
+    """Read missing ELF dependencies from executable AND dynamically loaded CUDA backend."""
+    libraries = [binary]
+    libraries.extend(sorted({
+        p.resolve() for p in binary.parent.glob("libggml-cuda.so*")
+        if p.is_file()
+    }))
+    missing: set[str] = set()
+    for path in libraries:
+        try:
+            result = subprocess.run(
+                ["ldd", str(path)], env=env, text=True,
+                capture_output=True, timeout=25, check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ModelStartupError("CUDA ELF linkage inspection failed: " + str(exc)) from exc
+        output = result.stdout + "\n" + result.stderr
+        missing.update(_MISSING_ELF_LIBRARY.findall(output))
+        if result.returncode != 0 and not missing:
+            raise ModelStartupError(
+                "CUDA ELF linkage inspection failed for " + str(path) + ": " +
+                output[-800:]
+            )
+    return missing
+
+
+def _prepare_cuda_linker_environment(binary: Path, cache_root: Path) -> dict[str, str]:
+    """Resolve CUDA 12 dependencies and fail BEFORE starting a broken server.
+
+    Colab may expose CUDA 13 system libraries and CUDA 12 wheel libraries.
+    Installing a CUDA 12 wheel is a targeted fallback only when genuinely
+    needed; it never upgrades torch or replaces the installed GPU driver.
+    """
+    env = _cuda_env(binary)
+    missing = _ldd_missing_libraries(binary, env)
+    print("[RMM model] CUDA loader preflight: " +
+          (", ".join(sorted(missing)) if missing else "all ELF dependencies found"),
+          flush=True)
+    if missing:
+        wheels = sorted({_CUDA_WHEEL_BY_SONAME[name] for name in missing
+                         if name in _CUDA_WHEEL_BY_SONAME})
+        for wheel in wheels:
+            print("[RMM model] installing missing CUDA 12 runtime wheel: " +
+                  wheel, flush=True)
+            _checked_command(
+                [sys.executable, "-m", "pip", "install",
+                 "--disable-pip-version-check", "--no-deps", "-q", wheel],
+                cache_root / "cuda-runtime-install.log", timeout=600,
+            )
+        if wheels:
+            env = _cuda_env(binary)
+            missing = _ldd_missing_libraries(binary, env)
+    if missing:
+        raise ModelStartupError(
+            "llama-server cannot start; missing ELF dependencies after CUDA "
+            "runtime resolution: " + ", ".join(sorted(missing)) +
+            ". Check Colab T4 GPU driver, CUDA 12 wheels and " +
+            str(cache_root / "cuda-runtime-install.log")
+        )
+    print("[RMM model] CUDA shared libraries resolved; server can be launched",
+          flush=True)
+    return env
+
+
 def _start_managed_server(binary: Path, model: Path, cache_root: Path) -> str:
     if not model.is_file() or model.stat().st_size < 1_000_000_000:
         raise ModelStartupError("Downloaded GGUF missing or unexpectedly small: " + str(model))
@@ -387,10 +522,9 @@ def _start_managed_server(binary: Path, model: Path, cache_root: Path) -> str:
         "--ubatch-size", "256",
     ]
     cache_root.mkdir(parents=True, exist_ok=True)
-    # Packaged llama.cpp shared libraries live next to the server executable.
-    env = os.environ.copy()
-    env["LD_LIBRARY_PATH"] = (str(binary.parent) + os.pathsep +
-                              env.get("LD_LIBRARY_PATH", ""))
+    # Check actual binary/backend linkage before spawning the server. Merely
+    # finding nvidia-smi is insufficient: libcudart.so.12 may not be in LD_PATH.
+    env = _prepare_cuda_linker_environment(binary, cache_root)
     with log.open("w", encoding="utf-8") as output:
         process = subprocess.Popen(
             argv, stdout=output, stderr=subprocess.STDOUT,
