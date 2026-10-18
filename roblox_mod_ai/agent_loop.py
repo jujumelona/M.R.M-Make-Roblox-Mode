@@ -332,7 +332,7 @@ class RobloxCodeRepairAgent:
                 errors.append("Dynamic third-party asset loading is forbidden")
             if re.search(r"\b(?:HttpService|http)\s*[:.]\s*(?:GetAsync|PostAsync|RequestAsync)\s*\(",candidate):
                 errors.append("Unexpected outbound network code in generated gameplay")
-            if module.file_path.endswith(".server.luau") and re.search(
+            if module.file_path.startswith("src/server/") and re.search(
                     r"\bLocalPlayer\b|:FireServer\s*\(",candidate):
                 errors.append("Server source contains client-only API")
             if module.file_path.endswith(".client.luau") and re.search(
