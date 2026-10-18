@@ -234,10 +234,16 @@ class RobloxDynamicArchitect:
                           "existing_capabilities":research.get("reuse_candidates",[])},
                          ensure_ascii=False)
         )
-        try:
-            raw = self.router.complete_json(
-                prompt_text,role="planner",temperature=0.1)
-        except Exception as exc:
-            raise DynamicDesignError("Small-model architecture request failed: "
-                                     + type(exc).__name__ + ": " + str(exc)[:180]) from exc
-        return _clean_model_json(raw, ledger, {m.name for m in existing_modules})
+        last_error = ""
+        for attempt in range(3):
+            try:
+                query = (prompt_text + ("\nPrevious design invalid: " + last_error +
+                         "\nCorrect the missing requirement/facet assignments; return FULL JSON."
+                         if attempt else ""))
+                raw = self.router.complete_json(
+                    query, role="planner", temperature=0.1)
+                return _clean_model_json(raw, ledger, {m.name for m in existing_modules})
+            except Exception as exc:
+                last_error = type(exc).__name__ + ": " + str(exc)[:220]
+        raise DynamicDesignError("Small-model architecture failed after validation retries: "
+                                 + last_error)
