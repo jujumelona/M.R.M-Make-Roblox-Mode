@@ -307,6 +307,16 @@ def test_source_anchored_trade_and_combat_do_not_require_duplicate_shop_facet():
     result = _clean_model_json(raw, ledger, set())
     assert set(result["module_facets"][result["modules"][0].module_id]) == {"intent-buy", "intent-fight"}
     assert set(result["acceptance_facets"]) == {"intent-buy", "intent-fight"}
+    # An old model may echo the redundant shop/combat taxonomy labels.
+    # They are accepted for compatibility, but never replace the two intents.
+    echoed = copy.deepcopy(raw)
+    echoed["modules"][0]["facet_ids"].extend(["shop", "combat"])
+    echoed["acceptance_facets"].extend([
+        {"facet_id": "shop", "observable_result": "Players can trade using a purchase menu."},
+        {"facet_id": "combat", "observable_result": "Players can fight opponents with weapons."},
+    ])
+    echoed_result = _clean_model_json(echoed, ledger, set())
+    assert set(echoed_result["acceptance_facets"]) == {"intent-buy", "intent-fight"}
     bad = copy.deepcopy(raw)
     bad["modules"][0]["facet_ids"] = ["intent-buy"]
     with pytest.raises(DynamicDesignError, match="Unimplemented gameplay facets"):
