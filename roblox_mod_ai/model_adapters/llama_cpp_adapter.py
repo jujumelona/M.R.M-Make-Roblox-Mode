@@ -56,17 +56,22 @@ class LlamaCppAdapter(ModelAdapter):
             "max_tokens": request.max_tokens,
         }
 
+        # JSON and generated Luau need visible output. On reasoning GGUFs the
+        # entire code budget can be spent in hidden <think> tokens, leaving an
+        # empty response. The prior code disabled thinking for JSON only.
+        is_local_llama = self.base_url.lower().startswith((
+            "http://127.0.0.1:", "http://localhost:", "http://[::1]:"))
+        no_reasoning = (
+            (request.response_format == "json" and
+             os.environ.get("RMM_JSON_ENABLE_THINKING", "0") != "1")
+            or (request.metadata.get("generation_role") == "coder" and
+                os.environ.get("RMM_CODE_ENABLE_THINKING", "0") != "1")
+        )
+        if is_local_llama and no_reasoning:
+            payload["chat_template_kwargs"] = {"enable_thinking": False}
+
         if request.response_format == "json":
             payload["response_format"] = {"type": "json_object"}
-            # A local MiMo reasoning model can consume the entire JSON
-            # completion budget in <think> tokens without returning JSON.
-            # Only constrain the structured-output phase; normal game-code
-            # generation retains the model's full reasoning capability.
-            # Do not send llama.cpp-specific kwargs to arbitrary remote APIs.
-            is_local_llama = self.base_url.lower().startswith((
-                "http://127.0.0.1:", "http://localhost:", "http://[::1]:"))
-            if is_local_llama and os.environ.get("RMM_JSON_ENABLE_THINKING", "0") != "1":
-                payload["chat_template_kwargs"] = {"enable_thinking": False}
         elif isinstance(request.response_format, dict):
             payload["response_format"] = {
                 "type": "json_object",
@@ -89,6 +94,18 @@ class LlamaCppAdapter(ModelAdapter):
                 choice = data.get("choices", [{}])[0]
                 message = choice.get("message", {})
                 content = message.get("content", "") or ""
+                # Fail with real runtime metadata instead of silently turning
+                # an empty completion into a '--!strict' fake module.
+                if not str(content).strip():
+                    usage = data.get("usage", {})
+                    reason = choice.get("finish_reason", "unknown")
+                    raise ModelBackendError(
+                        "llama.cpp produced empty visible content; "
+                        f"finish_reason={reason}, "
+                        f"prompt_tokens={usage.get('prompt_tokens', '?')}, "
+                        f"completion_tokens={usage.get('completion_tokens', '?')}; "
+                        "check reasoning tokens, context size and model template"
+                    )
 
                 tool_calls: list[ToolCall] = []
                 for tc in message.get("tool_calls", []):
