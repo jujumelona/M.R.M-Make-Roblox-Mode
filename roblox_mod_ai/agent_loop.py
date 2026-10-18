@@ -14,6 +14,19 @@ from .model_router import ModelRouter
 from .luau_analyzer import LuauStaticAnalyzer
 from .spec import RobloxModuleSpec, RobloxProposal
 
+class LuauGenerationError(ValueError):
+    """Model generation exhausted; carry the actual source and validator output."""
+
+    def __init__(self, module: str, candidate: str, diagnostics: list[str]):
+        self.module = module
+        self.candidate = candidate
+        self.diagnostics = list(diagnostics)
+        super().__init__(
+            "Luau generation failed for " + module + ": " +
+            "; ".join(self.diagnostics[:12])
+        )
+
+
 class RobloxCodeRepairAgent:
     def __init__(self, router: ModelRouter | None = None,
                  docs: RobloxOfficialDocs | None = None) -> None:
@@ -86,6 +99,8 @@ class RobloxCodeRepairAgent:
             f"Existing source:\n{existing_code[:12000]}\n"
             f"Tool diagnostics:\n{diagnostics[:6500]}"
         )
+        candidate = existing_code
+        errors: list[str] = []
         for attempt in range(attempts):
             candidate=self._clean_code(self.router.complete(
                 prompt,
@@ -117,4 +132,4 @@ class RobloxCodeRepairAgent:
                 return candidate
             prompt+="\nRETRY; previous code failed: "+("; ".join(errors[:8]))
             prompt+="\nPrevious code:\n"+candidate[:12500]
-        raise ValueError("Model could not produce a validated implementation for "+module.name)
+        raise LuauGenerationError(module.name, candidate, errors)
