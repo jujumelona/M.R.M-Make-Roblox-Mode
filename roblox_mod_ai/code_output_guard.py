@@ -34,10 +34,12 @@ class LiveCodeRepetitionGuard:
         self._sequence_seen: dict[tuple[str, ...], int] = {}
 
     def feed(self, chunk: str) -> None:
-        self._partial += chunk
         self._pending += chunk
         while "\n" in self._pending:
             line, self._pending = self._pending.split("\n", 1)
+            # Preserve ONLY emitted source up to the first bad line.
+            # A non-streaming inspect() may feed the full 20KB at once.
+            self._partial += line + "\n"
             stripped = line.strip()
             if stripped and len(stripped) >= 12 and stripped == self._previous:
                 self._count += 1
