@@ -33,9 +33,19 @@ def capture(proposal: RobloxProposal) -> dict:
                     if isinstance(r, dict) and r.get("id")}
     owned_map = (proposal.game_design.get("dynamic_design") or {}).get(
         "module_requirements", {})
+    host_rendered = (proposal.game_design.get("dynamic_design") or {}).get(
+        "host_client_actions", {})
+    host_modules = []
+    total_dynamic = 0
     rows = []
     for module in proposal.modules:
         if not module.module_id.startswith("dyn_"):
+            continue
+        total_dynamic += 1
+        if module.name in host_rendered:
+            # These modules are compiled from first-party source. They never
+            # call a small model, so don't profile a fictional model prompt.
+            host_modules.append(module.name)
             continue
         recorder = PromptRecorder()
         try:
@@ -67,6 +77,9 @@ def capture(proposal: RobloxProposal) -> dict:
         "model_executed": False, "token_counts_measured": False,
         "source": "production RobloxCodeRepairAgent prompts",
         "module_count": len(rows),
+        "all_dynamic_modules": total_dynamic,
+        "host_generated_client_count": len(host_modules),
+        "host_generated_module_names": sorted(host_modules),
         "maximum_prompt_chars": max((r["prompt_chars"] for r in rows), default=0),
         "minimum_prompt_chars": min((r["prompt_chars"] for r in rows), default=0),
         "average_prompt_chars": (sum(r["prompt_chars"] for r in rows) / len(rows)
