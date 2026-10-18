@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from typing import Any
 
 from .model_adapters import (
@@ -61,8 +62,26 @@ class ModelRouter:
             temperature=temperature,
             max_tokens=max_tokens,
             response_format=response_format,
+            metadata={"generation_role": role},
         )
-        response = adapter.generate(request)
+        started = time.monotonic()
+        try:
+            response = adapter.generate(request)
+        except Exception as exc:
+            self.last_generation_report = {
+                "role": role, "elapsed_seconds": round(time.monotonic() - started, 2),
+                "error": type(exc).__name__ + ": " + str(exc)[:600],
+            }
+            print("[RMM model] " + str(self.last_generation_report), flush=True)
+            raise
+        self.last_generation_report = {
+            "role": role, "elapsed_seconds": round(time.monotonic() - started, 2),
+            "prompt_tokens": response.prompt_tokens,
+            "completion_tokens": response.completion_tokens,
+            "finish_reason": response.finish_reason,
+            "visible_chars": len(response.content or ""),
+        }
+        print("[RMM model] " + str(self.last_generation_report), flush=True)
         return response.content
 
     def complete_json(
