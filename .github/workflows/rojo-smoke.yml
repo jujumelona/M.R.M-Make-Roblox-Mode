@@ -24,6 +24,32 @@ jobs:
         uses: paradoxum-games/setup-rokit@v3
         with:
           cache: true
+      - name: Reproduce failed EconomyLedger with actual StyLua 2.x parser
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os, shutil
+          from roblox_mod_ai.luau_analyzer import LuauStaticAnalyzer
+          assert shutil.which("stylua"), "Real StyLua parser missing from CI"
+          os.environ["RMM_REQUIRE_REAL_LUAU_PARSER"] = "1"
+          analyzer = LuauStaticAnalyzer()
+          invalid = ("--!strict\nlocal Ledger = {}\n"
+                     "function validateCredit(player): void? do\n"
+                     "  local balance :: number? invalid code\n"
+                     "end\n")
+          failures = [x for x in analyzer.analyze_source(
+              invalid, "src/server/EconomyLedger.server.luau")
+              if x.severity == "ERROR"]
+          assert failures and failures[0].rule == "LUAU_PARSER_SYNTAX", failures
+          print("Actual StyLua parse failure:", failures[0].message[:600])
+          valid = ("--!strict\nlocal function deposit(balance: number, "
+                   "delta: number): number\n"
+                   "    return math.max(0, balance + delta)\n"
+                   "end\nprint(deposit)\n")
+          assert not [x for x in analyzer.analyze_source(valid)
+                      if x.severity == "ERROR"], "Real parser rejected valid Luau"
+          PY
       - name: Run standalone pure Luau rules in Lune
         run: lune run tests/economy_logic
       - name: Generate source only (release must remain unverified)
