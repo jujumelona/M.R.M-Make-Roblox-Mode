@@ -9,6 +9,7 @@ from typing import Any
 from .luau_analyzer import LuauStaticAnalyzer
 from .library_adapters import PROFILESTORE_SERVER, FUSION_HUD
 from .agent_loop import RobloxCodeRepairAgent
+from .economy_core import is_supported_economy_ledger, render_economy_ledger
 from .model_router import ModelRouter
 from .spec import RobloxModuleSpec, RobloxProposal
 
@@ -72,6 +73,8 @@ class LuauCodeGenerator:
         """Dispatches Luau code generation to specialized genre and subsystem engines."""
         # Authored novel mechanics must NEVER be dispatched to same-name
         # first-party templates whose behavior was not contract-matched.
+        if is_supported_economy_ledger(module) and module.file_path.endswith("/EconomyLedger.luau"):
+            return render_economy_ledger(module)
         if module.module_id.startswith("dyn_"):
             return RobloxCodeRepairAgent(router=self.router).repair(
                 module, proposal,
