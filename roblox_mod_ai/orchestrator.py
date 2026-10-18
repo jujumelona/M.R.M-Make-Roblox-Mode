@@ -12,6 +12,7 @@ from typing import Any
 from .authored_plan import RobloxAuthoredPlan
 from .code_generator import LuauCodeGenerator
 from .dynamic_repair import repair_tool_diagnostics, repair_static_failures
+from .agent_loop import RobloxCodeRepairAgent
 from .agent_trajectory import AgentTrajectory
 from .quality_gates import acceptance_obligations, make_artifact_manifest
 from .request_traceability import build_request_traceability
@@ -153,11 +154,46 @@ class RobloxProductionOrchestrator:
                                       {"source_bytes": len(module.code)}, passed=True)
                 except Exception as exc:
                     message = type(exc).__name__ + ": " + str(exc)
+                    trace = traceback.format_exc()
                     trajectory.record("generation", "generate " + module.file_path,
-                                      {"error": message, "traceback": traceback.format_exc()},
+                                      {"error": message, "traceback": trace},
                                       passed=False)
-                    return {"success": False, "generated_count": completed,
-                            "failed_module": module.name, "error": message}
+                    # The original path immediately returned False. Feed the
+                    # actual exception and partial source to the coding agent
+                    # before abandoning this specific gameplay module.
+                    if not module.module_id.startswith("dyn_"):
+                        return {"success": False, "generated_count": completed,
+                                "failed_module": module.name, "error": message}
+                    try:
+                        replacement = RobloxCodeRepairAgent(router=self.router).repair(
+                            module, proposal,
+                            existing_code=module.code or "",
+                            diagnostics=("Generation failed for " + module.file_path +
+                                         ": " + message + "\n" + trace[-8000:]),
+                            attempts=3,
+                        )
+                        module.code = replacement
+                        path = output_dir / module.file_path
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        path.write_text(replacement, encoding="utf-8")
+                        (output_dir / "proposal_partial.json").write_text(
+                            json.dumps(proposal.to_dict(), indent=2, ensure_ascii=False),
+                            encoding="utf-8")
+                        completed += 1
+                        trajectory.record("generation", "recover " + module.file_path,
+                                          {"source_bytes": len(replacement),
+                                           "original_error": message},
+                                          passed=True)
+                        continue
+                    except Exception as repair_error:
+                        trajectory.record("generation", "recover " + module.file_path,
+                                          {"initial_error": message,
+                                           "repair_error": str(repair_error),
+                                           "traceback": traceback.format_exc()},
+                                          passed=False)
+                        return {"success": False, "generated_count": completed,
+                                "failed_module": module.name, "error": message,
+                                "repair_error": str(repair_error)}
             return {"generated_count": completed, "success": True}
 
         def materialize():
@@ -172,7 +208,30 @@ class RobloxProductionOrchestrator:
                     result = action()
                     tool_results[name] = result
                     if not result.get("success") or not result.get("executed"):
-                        raise RuntimeError(f"{name} failed or skipped: {result}")
+                        if (name == "stylua" and result.get("executed")
+                                and proposal.game_design.get("dynamic_design")):
+                            # Formatter has actionable Luau source diagnostics:
+                            # pass them to the coding agent and rerun formatting.
+                            try:
+                                recovery = repair_tool_diagnostics(
+                                    proposal, output_dir, name, result,
+                                    retry_tool=action,
+                                    format_sources=None,
+                                    router=self.router,
+                                )
+                            except Exception as exc:
+                                recovery = {"passed": False, "reason": str(exc)}
+                            tool_results[name + "_repair"] = recovery
+                            trajectory.record("tool", "repair " + name, recovery,
+                                              passed=bool(recovery.get("passed")))
+                            if recovery.get("passed"):
+                                continue
+                        # Missing executables, credentials and Wally network
+                        # failures are environment errors, not Luau errors.
+                        # Never ask a model to invent source to disguise them.
+                        return {"success": False, "created_files": len(created),
+                                "error": f"{name} failed after recovery: {result}",
+                                "tool": name, "diagnostic": result}
             return {"created_files": len(created), "success": True}
 
         def check_static():
