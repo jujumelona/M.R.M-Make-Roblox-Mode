@@ -118,6 +118,33 @@ class LuauCodeGenerator:
 
     # 1. Shared Network Remotes Bridge
     def _generate_shared_network_module(self, module: RobloxModuleSpec, proposal: RobloxProposal) -> str:
+        dynamic = proposal.game_design.get("dynamic_design") or {}
+        declared = dynamic.get("remotes") or {}
+        if declared:
+            # Do not ship a generic obby/tycoon/combat RPC bridge in a
+            # space game that declared its own exact client/server protocol.
+            # This same map is installed as Instances by the Rojo project.
+            for name, kind in declared.items():
+                if not re.fullmatch(r"[A-Z][A-Za-z0-9_]{2,55}", name):
+                    raise ValueError("Invalid dynamic Remote name: " + str(name))
+                if kind not in ("RemoteEvent", "RemoteFunction"):
+                    raise ValueError("Invalid dynamic Remote class for " + name)
+            remote_rows = "\n".join(
+                '    ' + name + ' = "' + name + '",'
+                for name in declared
+            )
+            type_rows = "\n".join(
+                '    ' + name + ' = "' + kind + '",'
+                for name, kind in declared.items()
+            )
+            return (
+                "--!strict\n"
+                "-- Shared network contract for THIS exact game architecture.\n"
+                "local NetworkRemotes = {}\n"
+                "NetworkRemotes.Remotes = {\n" + remote_rows + "\n}\n"
+                "NetworkRemotes.RemoteTypes = {\n" + type_rows + "\n}\n"
+                "return NetworkRemotes\n"
+            )
         return f"""--!strict
 -- Module: {module.name}
 -- Service: ReplicatedStorage
