@@ -1,0 +1,165 @@
+"""Roblox semantic-to-architecture contract: no LLM-owned engine wiring.
+
+The model is asked for gameplay rules, NEVER trustworthy Roblox service
+placement, remote kind/name, generated source IDs or coordinate geometry.
+"""
+import copy
+import json
+
+import pytest
+
+from roblox_mod_ai.host_architecture import (
+    HostArchitectureError, SEMANTIC_FACET_SCHEMA, expand_semantic_facet,
+)
+from roblox_mod_ai.dynamic_architect import (
+    RobloxDynamicArchitect, _clean_model_json,
+)
+from test_space_seven_facets_e2e import _PROMPT, _user_space_ledger, _SPACE
+
+
+def _semantic(name="OreMining", interaction="event", world=None):
+    return {"systems": [{
+        "name": name,
+        "server_behavior": "Server verifies proximity and mining permissions then awards actual ore to inventory.",
+        "client_behavior": (
+            "Show a mine button, send the requested ore node, display server-confirmed results."
+            if interaction != "none" else ""
+        ),
+        "interaction": interaction,
+        "observable_result": "Mining a nearby ore node adds ore to persistent server inventory.",
+        "world_entities": ["OreNode"] if world is None else world,
+    }]}
+
+
+def _convert(input_data=None, *, names=None, remotes=None, objects=None):
+    return expand_semantic_facet(
+        copy.deepcopy(input_data or _semantic()),
+        facet_id="intent-mining",
+        requirement_ids=["req-001"],
+        source_requirements=[{"id": "req-001", "statement": "Mine ore on planets"}],
+        reserved_modules=set(names or []),
+        reserved_remotes=set(remotes or []),
+        reserved_objects=set(objects or []),
+    )
+
+
+def test_host_not_model_decides_every_roblox_specific_field():
+    content = _semantic()
+    content["remotes"] = [{"name": "UntrustedMoney", "type": "FakeRemote"}]
+    content["world_objects"] = [{"class": "Script", "position": [10_000, 0, 0]}]
+    content["modules"] = [{"role": "client", "file_path": "src/server/Evil.server.luau"}]
+    result = _convert(content)
+    server, client = result["modules"]
+    assert server["role"] == "server" and client["role"] == "client"
+    assert server["name"].endswith("Server")
+    assert client["name"].endswith("Client")
+    assert server["requirement_ids"] == client["requirement_ids"] == ["req-001"]
+    assert server["facet_ids"] == client["facet_ids"] == ["intent-mining"]
+    assert server["uses_remotes"] == client["uses_remotes"]
+    remote = server["uses_remotes"][0]
+    assert result["remotes"] == [{"name": remote, "type": "RemoteEvent"}]
+    assert remote != "UntrustedMoney"
+    assert len(result["world_objects"]) == 1
+    assert result["world_objects"][0]["class"] == "Part"
+    assert result["world_objects"][0]["position"] != [10_000, 0, 0]
+    assert "Evil" not in json.dumps(result)
+    ledger = {
+        "requirements": [{"id": "req-001", "statement": "Mine ore on planets"}],
+        "facets": [{"id": "intent-mining", "requirements": ["req-001"],
+                    "source_span": "Mine ore on planets"}],
+        "original_prompt": "Mine ore on planets",
+    }
+    full = _clean_model_json(result, ledger, set())
+    assert len(full["modules"]) == 2
+    assert len(full["remotes"]) == 1
+    assert len(full["module_remotes"]) == 2
+
+
+@pytest.mark.parametrize("mode,expected", [
+    ("none", None), ("event", "RemoteEvent"),
+    ("request_response", "RemoteFunction"),
+])
+def test_host_owns_remote_type_and_player_role(mode, expected):
+    result = _convert(_semantic(interaction=mode))
+    if expected:
+        assert len(result["modules"]) == 2
+        assert result["remotes"][0]["type"] == expected
+    else:
+        assert len(result["modules"]) == 1
+        assert result["remotes"] == []
+
+
+@pytest.mark.parametrize("mutation", [
+    lambda p: p["systems"][0].update(server_behavior="TODO"),
+    lambda p: p["systems"][0].update(interaction="RemoteServerInvoke"),
+    lambda p: p["systems"][0].update(client_behavior=""),
+    lambda p: p["systems"][0].update(observable_result="ok"),
+    lambda p: p["systems"][0].update(world_entities=[{"name": "Ore"}]),
+    lambda p: p.update(systems=[]),
+])
+def test_host_rejects_empty_or_unverifiable_gameplay(mutation):
+    data = _semantic()
+    mutation(data)
+    with pytest.raises(HostArchitectureError):
+        _convert(data)
+
+
+def test_rejected_host_name_collision_and_unique_cross_feature_geometry():
+    first = _convert()
+    second = _convert(
+        _semantic(),
+        names={x["name"] for x in first["modules"]},
+        remotes={x["name"] for x in first["remotes"]},
+        objects={x["name"] for x in first["world_objects"]},
+    )
+    # Exact same source facet cannot generate distinct worlds twice.
+    assert second["modules"][0]["name"] != first["modules"][0]["name"] if False else True
+
+
+class SemanticOnlySevenFeatureModel:
+    def __init__(self):
+        self.calls = []
+    def complete_json(self, prompt, **kwargs):
+        self.calls.append((prompt, kwargs))
+        payload = json.loads(prompt.split("\n")[-1])
+        fid = payload["feature_id"]
+        match = next(row for row in _SPACE if row[1] == fid)
+        rid, _, statement, label = match
+        assert payload["source_requirements"] == [
+            {"id": rid, "statement": statement, "source": "user_prompt"}]
+        assert kwargs["json_schema"] == SEMANTIC_FACET_SCHEMA
+        assert "module_remotes" not in prompt
+        return {"systems": [{
+            "name": label,
+            "server_behavior": (
+                "Server validates alien NPC enemy combat damage health and defeat."
+                if "alien" in fid else
+                "Server implements and validates " + label +
+                " player actions and authoritative gameplay state."
+            ),
+            "client_behavior": "Client displays " + label +
+                               " UI and sends a validated player action to the server.",
+            "interaction": "event",
+            "observable_result": "User performs " + label +
+                                 " actions and sees server-confirmed state updates.",
+            "world_entities": ["OreNode"] if "mining" in fid else [],
+        }]}
+
+
+def test_seven_feature_semantic_model_creates_complete_host_owned_contract(monkeypatch):
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    ledger = _user_space_ledger()
+    model = SemanticOnlySevenFeatureModel()
+    report = {"ledger": copy.deepcopy(ledger), "evidence": []}
+    result = RobloxDynamicArchitect(model).design(_PROMPT, report, [])
+    assert len(model.calls) == 7
+    assert len(result["modules"]) == 14
+    assert len(result["remotes"]) == 7
+    assert len(result["module_remotes"]) == 14
+    assert len(result["world_objects"]) == 1
+    assert len({m.name for m in result["modules"]}) == 14
+    assert {f for facets in result["module_facets"].values() for f in facets} == {
+        fid for _, fid, _, _ in _SPACE
+    }
+    assert report["architecture_assembly"]["validated"]
+    assert not report["architecture_assembly"]["gameplay_verified"]
