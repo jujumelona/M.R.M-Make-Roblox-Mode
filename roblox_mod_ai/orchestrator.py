@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -125,7 +126,9 @@ class RobloxProductionOrchestrator:
                 receipt.stages.append(StageReceipt(stage=stage_id, success=False,
                     duration_ms=(time.perf_counter() - began) * 1000, errors=[msg]))
                 errors.append(f"{stage_id.value}: {msg}")
-                trajectory.record(stage_id.value, "exception", msg, passed=False)
+                trajectory.record(stage_id.value, "exception", {
+                    "error": msg, "traceback": traceback.format_exc()
+                }, passed=False)
                 return False
 
         def resolve():
@@ -151,7 +154,8 @@ class RobloxProductionOrchestrator:
                 except Exception as exc:
                     message = type(exc).__name__ + ": " + str(exc)
                     trajectory.record("generation", "generate " + module.file_path,
-                                      message, passed=False)
+                                      {"error": message, "traceback": traceback.format_exc()},
+                                      passed=False)
                     return {"success": False, "generated_count": completed,
                             "failed_module": module.name, "error": message}
             return {"generated_count": completed, "success": True}
