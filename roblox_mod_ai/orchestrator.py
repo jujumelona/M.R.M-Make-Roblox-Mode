@@ -377,6 +377,12 @@ class RobloxProductionOrchestrator:
         def check_static():
             source_map = {m.file_path: (output_dir / m.file_path).read_text(encoding="utf-8")
                           for m in proposal.modules}
+            # StyLua and repair tools mutate disk. The REAL built sources are
+            # the authority, not stale in-memory pre-format text. Otherwise
+            # wiring and cross-file acceptance can approve a different program
+            # from the one Rojo packages.
+            for m in proposal.modules:
+                m.code = source_map[m.file_path]
             checked_analysis = self.analyzer.analyze_files(source_map)
             checked_acceptance = acceptance_obligations(proposal, output_dir)
             (output_dir / "request_traceability.json").write_text(
