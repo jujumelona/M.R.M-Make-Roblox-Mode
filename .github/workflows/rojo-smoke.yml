@@ -85,6 +85,9 @@ jobs:
           assert shutil.which("lune"), "Rokit must install real Lune in CI"
           with tempfile.TemporaryDirectory(prefix="rmm-any-genre-") as directory:
               root = Path(directory)
+              # Rokit exposes shims; a temporary project needs its own
+              # manifest or the shim refuses to resolve installed Lune.
+              shutil.copyfile("rokit.toml", root / "rokit.toml")
               offline = root / "tests" / "offline"
               offline.mkdir(parents=True)
               (offline / "sample_motion.luau").write_text(
