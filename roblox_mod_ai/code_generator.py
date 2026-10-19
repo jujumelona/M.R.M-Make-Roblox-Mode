@@ -223,6 +223,7 @@ return {module.name}
 local Players = game:GetService("Players")
 local DataStoreService = game:GetService("DataStoreService")
 local HttpService = game:GetService("HttpService")
+local RunService = game:GetService("RunService")
 
 local PlayerDataStore = DataStoreService:GetDataStore("RMM_ExperienceData_v1")
 
@@ -240,6 +241,7 @@ type PlayerData = {{
 local sessionData: {{ [number]: PlayerData }} = {{}}
 local sessionLocks: {{ [number]: string }} = {{}}
 local isSaving: {{ [number]: boolean }} = {{}}
+local studioEphemeral: {{ [number]: boolean }} = {{}}
 
 local function getPlayerKey(userId: number): string
     return "Player_" .. tostring(userId)
@@ -271,23 +273,42 @@ local function onPlayerAdded(player: Player)
 
     -- Atomically acquire a lease. An existing active owner blocks this session.
     local lockedByOther = false
-    local success, rawData, err = retryWithBackoff(function()
-        return PlayerDataStore:UpdateAsync(key, function(current)
-            if current and current.lockToken and current.lockToken ~= sessionToken
-                and (current.lockUntil or 0) > os.time() then
-                lockedByOther = true
-                return nil
-            end
-            lockedByOther = false
-            current = current or {{
-                coins = 0, level = 1, stage = 1, clicks = 0,
-                inventory = {{}}, lastSaved = os.time(),
-            }}
-            current.lockToken = sessionToken
-            current.lockUntil = os.time() + 120
-            return current
-        end)
-    end, 4)
+    -- An unpublished Studio Place is deliberately isolated from cloud data.
+    -- Live servers ALWAYS use DataStore and fail closed on profile errors.
+    -- Studio sessions never modify production profiles when the API is blocked.
+    local success, rawData, err
+    if RunService:IsStudio() and game.GameId == 0 then
+        studioEphemeral[userId] = true
+        success = true
+        rawData = {{ coins = 0, level = 1, stage = 1, clicks = 0,
+            inventory = {{}}, lastSaved = os.time() }}
+        warn("RMM Studio local preview: using memory-only profile; progress will not persist.")
+    else
+        success, rawData, err = retryWithBackoff(function()
+            return PlayerDataStore:UpdateAsync(key, function(current)
+                if current and current.lockToken and current.lockToken ~= sessionToken
+                    and (current.lockUntil or 0) > os.time() then
+                    lockedByOther = true
+                    return nil
+                end
+                lockedByOther = false
+                current = current or {{
+                    coins = 0, level = 1, stage = 1, clicks = 0,
+                    inventory = {{}}, lastSaved = os.time(),
+                }}
+                current.lockToken = sessionToken
+                current.lockUntil = os.time() + 120
+                return current
+            end)
+        end, 4)
+        if not success and RunService:IsStudio() then
+            studioEphemeral[userId] = true
+            success = true
+            rawData = {{ coins = 0, level = 1, stage = 1, clicks = 0,
+                inventory = {{}}, lastSaved = os.time() }}
+            warn("RMM Studio DataStore unavailable: temporary memory-only profile; no cloud data was changed.")
+        end
+    end
     if not success or lockedByOther or rawData == nil then
         warn("DataStore unavailable or profile locked for " .. player.Name .. ": " .. tostring(err))
         player:Kick("Profile is unavailable or active on another server. Please rejoin later.")
@@ -337,6 +358,7 @@ local function onPlayerAdded(player: Player)
         while player.Parent == Players and sessionLocks[userId] == sessionToken do
             task.wait(45)
             if player.Parent ~= Players or sessionLocks[userId] ~= sessionToken then break end
+            if studioEphemeral[userId] then continue end
             -- Persist live session progress during each lease renewal. The old
             -- template only refreshed lockUntil and lost all coins/inventory
             -- earned since joining if a server crashed before PlayerRemoving.
@@ -414,6 +436,10 @@ local function savePlayerData(player: Player): boolean
         end
     end
     data.lastSaved = os.time()
+    if studioEphemeral[userId] then
+        isSaving[userId] = false
+        return true -- Preview data is intentionally NOT persisted to Roblox.
+    end
     local key = getPlayerKey(userId)
 
     local success, savedData, err = retryWithBackoff(function()
@@ -446,6 +472,7 @@ local function onPlayerRemoving(player: Player)
     savePlayerData(player)
     sessionData[userId] = nil
     sessionLocks[userId] = nil
+    studioEphemeral[userId] = nil
 end
 
 Players.PlayerAdded:Connect(onPlayerAdded)
