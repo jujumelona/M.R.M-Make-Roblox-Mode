@@ -49,7 +49,7 @@
 - [x] Verify save/reload and lease retention/release in actual generated Luau; commit and push checkpoint.
 
 ### Task 5: Verify complete pipeline and record evidence
-- [ ] Run full Python suite with coverage, notebook validation and real available Luau tooling.
-- [ ] Check pushed SHA CI, investigate failures while continuing local verification.
-- [ ] Review final diff; document actual scope and unresolved environment/model/Studio limits.
-- [ ] Commit and push final evidence.
+- [x] Run full Python suite with coverage, notebook validation and real available Luau tooling.
+- [x] Check pushed SHA CI, investigate failures while continuing local verification.
+- [x] Review final diff; document actual scope and unresolved environment/model/Studio limits.
+- [x] Commit and push final evidence.
