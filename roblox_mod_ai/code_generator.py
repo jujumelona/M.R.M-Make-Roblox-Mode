@@ -597,6 +597,7 @@ local PURCHASE_COOLDOWN = 0.35
 -- Permanent shop items must be restored after a new character spawns.
 -- Keep the spell server-owned and exclude the caster from raycasts.
 local function grantMagicStaff(player: Player): boolean
+    if not SHOP_ITEMS.magic_staff then return false end
     local backpack = player:FindFirstChildOfClass("Backpack")
     if not backpack then return false end
     local character = player.Character
@@ -1197,6 +1198,9 @@ attackRemote.OnServerEvent:Connect(function(player, targetCharacter: Model?)
 
     local char = player.Character
     if not char or targetCharacter == char then return end
+    -- Equipped Tool attacks must use their own checked server weapon handler.
+    -- Reject forged barehand Remote attacks that bypass a weapon cooldown.
+    if char:FindFirstChildOfClass("Tool") then return end
     local attacker = char:FindFirstChildOfClass("Humanoid")
     if not attacker or attacker.Health <= 0 then return end
     local root = char:FindFirstChild("HumanoidRootPart") :: BasePart?
@@ -1237,6 +1241,10 @@ local attackRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Att
 
 local function attack(_actionName: string, state: Enum.UserInputState, _input: InputObject)
     if state ~= Enum.UserInputState.Begin then return Enum.ContextActionResult.Pass end
+    local activeCharacter = localPlayer.Character
+    if activeCharacter and activeCharacter:FindFirstChildOfClass("Tool") then
+        return Enum.ContextActionResult.Pass -- Let the equipped Tool receive input.
+    end
     local camera = workspace.CurrentCamera
     if not camera then return Enum.ContextActionResult.Pass end
     local viewport = camera.ViewportSize
