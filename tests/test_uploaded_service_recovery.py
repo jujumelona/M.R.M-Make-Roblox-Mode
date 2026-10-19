@@ -142,3 +142,19 @@ def test_bootstrap_does_not_accept_a_second_required_argument():
     module.code = ("local Service = {}\nfunction Service.start(player, services)\n"
                    "services.PlayerDataManager.OnReady(print)\nend\nreturn Service")
     assert not inspect_dynamic_server_interfaces(plan)["passed"]
+
+def test_invalid_typed_syntax_retry_uses_plain_luau_contract(monkeypatch):
+    monkeypatch.setenv("RMM_ENABLE_MODEL_GENERATION", "1")
+    module, plan = _plan()
+    prompts = []
+    class Model:
+        def complete(self, prompt, **kwargs):
+            prompts.append(prompt)
+            if len(prompts) == 1:
+                return "local Service = {}\nfunction Service.start(services) :: ?() end\nreturn Service"
+            return ("local Service = {}\nfunction Service.start(services)\n"
+                    "workspace:SetAttribute('ModeActive', true)\nend\nreturn Service")
+    RobloxCodeRepairAgent(Model()).repair(module, plan, attempts=2)
+    assert len(prompts) == 2
+    assert "PLAIN UNTYPED LUAU" in prompts[1]
+    assert "no type aliases" in prompts[0]

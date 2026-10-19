@@ -258,10 +258,23 @@ def module_bootstrap_contract(module: RobloxModuleSpec, proposal: RobloxProposal
     if not (module.module_id.startswith("dyn_")
             and module.kind == ModuleKind.SERVER_MODULE):
         return ""
-    registry = [m.name for m in proposal.modules if (m.module_id.startswith("dyn_") or m.module_id == "mod_player_data")
-                and m.roblox_service == RobloxService.SERVER_SCRIPT_SERVICE
-                and m.file_path.endswith(".luau")
-                and not m.file_path.endswith(".server.luau")]
+    # Only expose services whose callable contracts belong to this module.
+    # The runtime bootstrap still loads all modules; this is a CODER scope.
+    direct_ids = set(module.depends_on)
+    domain = (module.name + " " + module.description).casefold()
+    currency = any(term in domain for term in (
+        "currency", "credits", "economy", "purchase", "trading",
+        "money", "coin", "upgrade", "거래", "화폐", "구매", "자원"))
+    registry = [
+        m.name for m in proposal.modules
+        if (m.module_id == "mod_player_data"
+            or m.module_id in direct_ids
+            or (m.name == "EconomyLedger" and currency and bool(m.code)))
+        and m.name != module.name
+        and m.roblox_service == RobloxService.SERVER_SCRIPT_SERVICE
+        and m.file_path.endswith(".luau")
+        and not m.file_path.endswith(".server.luau")
+    ]
     contract = (
         "SERVER MODULE CONTRACT: Begin with --!strict, then local Service = {}. "
         "Use that SAME local table for all exported methods; finish with return Service. "
@@ -276,7 +289,7 @@ def module_bootstrap_contract(module: RobloxModuleSpec, proposal: RobloxProposal
         "world/PlayerAdded initialization. When host Remote ingress is "
         "enabled, start MUST NOT wire Remotes. Bootstrap requires all modules first and "
         "calls each exported .start(services) once. The services table holds "
-        "the actual exported APIs by their exact names; available keys: "
+        "the actual exported APIs by their exact names; approved dependency keys for this module: "
         + json.dumps(sorted(registry)) +
         ". Do not require any .server.luau Scripts, "
         "or write client methods on the server."
@@ -285,7 +298,7 @@ def module_bootstrap_contract(module: RobloxModuleSpec, proposal: RobloxProposal
         m.name: {method: detail["params"]
                  for method, detail in exported_methods(m.code)[1].items()}
         for m in proposal.modules
-        if m.name != module.name and m.code and m.file_path.startswith("src/server/")
+        if m.name in registry and m.code and m.file_path.startswith("src/server/")
         and not m.file_path.endswith(".server.luau")
     }
     contract += (" Actual already-generated callable APIs (method: parameters): "

@@ -110,3 +110,24 @@ def test_server_module_contract_accepts_real_remote_registration(monkeypatch):
     result = RobloxCodeRepairAgent(Router()).repair(mining, plan, attempts=1)
     assert "EconomyLedger.Grant" in result
     assert "function Mining.start" in result
+
+def test_coder_contract_does_not_expose_unrelated_services():
+    from roblox_mod_ai.server_modules import module_bootstrap_contract
+    plan = _proposal()
+    extra = RobloxModuleSpec(
+        module_id="dyn_colony", name="PlanetColonizationServer",
+        kind="server_script", file_path="src/server/PlanetColonizationServer.server.luau",
+        roblox_service="ServerScriptService",
+        description="Own planet colonization state.")
+    plan.modules.append(extra)
+    normalize_dynamic_server_modules(plan)
+    mine = next(m for m in plan.modules if m.name == "MiningActionHandler")
+    ledger = next(m for m in plan.modules if m.name == "EconomyLedger")
+    ledger.code = ("local Service = {}\n"
+                   "function Service.start(services) workspace:SetAttribute('Ready', true) end\n"
+                   "function Service.Grant(player, amount) player:SetAttribute('Credits', amount) end\n"
+                   "return Service")
+    contract = module_bootstrap_contract(mine, plan)
+    assert "PlanetColonizationServer" not in contract
+    assert "EconomyLedger" in contract
+    assert "Grant" in contract

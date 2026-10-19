@@ -179,6 +179,14 @@ class RobloxCodeRepairAgent:
             "do not duplicate it inside this source.\n"
             "Do not repeat identical assignments or statements in a loop; "
             "create minimal reusable functions for each actual game action.\n"
+            "Use plain UNTYPED Luau: no type aliases, casts (::), optional "
+            "type suffix (?), arrows (->), or TypeScript syntax. "
+            "On server use local Service = {}, "
+            "function Service.start(services), and for routed actions "
+            "function Service.handleAction(player, services, ...), "
+            "then return Service. No self or colon service methods. "
+            "Never initialize other services or require server modules "
+            "from ReplicatedStorage.\n"
             "Do not create stubs/TODOs, no unsafe require(assetId), no loadstring.\n"
             "Server must validate all incoming client data and remote actions.\n"
             "Host creates Roblox Instance layout, Remote classes/names, "
@@ -229,6 +237,12 @@ class RobloxCodeRepairAgent:
                     "Use only the declared remotes and server-authoritative logic.\n"
                     "Never invent Roblox APIs (no Players.LocalPlayer in server "
                     "scripts, no os.now(), no type.isinteger()). "
+                    "Use PLAIN UNTYPED LUAU. No type aliases, casts (::), "
+                    "optional type suffix (?), -> or TypeScript syntax. "
+                    "Server uses local Service = {}, Service.start(services), "
+                    "Service.handleAction(player, services, ...) when routed, "
+                    "and return Service. No self, no colon methods, "
+                    "no invented helpers, no sibling service initialization.\n"
                     "Prefer an explicit small service contract to verbose source.\n"
                     f"Owned user requirement: {scoped_user_request[:1000]}\n"
                     f"File: {module.file_path}\n"
@@ -242,7 +256,7 @@ class RobloxCodeRepairAgent:
                     "Previous validator errors: " +
                     ("Previous candidate repeated identical source statements; "
                      "rewrite with functions and new implementation structure."
-                     if degenerate_attempt else "; ".join(errors[:10])) + "\n"
+                     if degenerate_attempt else "; ".join(errors[:3])) + "\n"
                 )
                 if (candidate and len(candidate) > 75 and not degenerate_attempt
                         and not syntax_failed and not ran_out_before_retry):
@@ -260,7 +274,7 @@ class RobloxCodeRepairAgent:
                         "minimal, complete module from the intended behavior. "
                         "Pay attention to the EXACT syntax error and line.\n"
                         "Failed source excerpt (diagnostic evidence only; do not copy):\n"
-                        + self._failed_excerpt(candidate, "; ".join(errors)) + "\n"
+                        + self._failed_excerpt(candidate, "; ".join(errors[:2])) + "\n"
                     )
                 else:
                     compact += "Previous attempt produced no functional code. Start directly with --!strict and actual statements.\n"
@@ -308,7 +322,7 @@ class RobloxCodeRepairAgent:
                 else:
                     raw_code = self.router.complete(
                         query, role="coder",
-                        system_prompt="You are a Roblox Luau programmer. Return source code only; no reasoning or commentary.",
+                        system_prompt="You are a Roblox Luau programmer. Complete valid untyped Luau source only. No type declarations, casts, TypeScript or invented engine APIs.",
                         temperature=0.1, max_tokens=6000,
                     )
             except Exception as exc:
