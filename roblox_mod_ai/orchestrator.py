@@ -395,10 +395,24 @@ class RobloxProductionOrchestrator:
             (output_dir / "rokit.toml").write_text(self.toolchain.generate_rokit_manifest(), encoding="utf-8")
             (output_dir / "aftman.toml").write_text(self.toolchain.generate_aftman_manifest(), encoding="utf-8")
             if not source_only:
-                for name, action in [
-                    ("stylua", lambda: self.toolchain.run_stylua(output_dir)),
-                    ("wally", lambda: self.toolchain.run_wally_install(output_dir)),
-                ]:
+                # The default built-in game has no Wally runtime imports:
+                # optional Promise/Signal/Jest dev packages must not turn
+                # a valid offline Rojo build into a network install failure.
+                # Fusion or ProfileStore explicitly opts into Wally.
+                needs_wally = (
+                    proposal.game_design.get("ui_backend") == "fusion"
+                    or proposal.game_design.get("storage_backend") == "profilestore"
+                )
+                if not needs_wally:
+                    tool_results["wally"] = {
+                        "success": False, "executed": False,
+                        "status": "not_applicable",
+                        "reason": "Built-in UI/storage requires no external Wally packages",
+                    }
+                actions = [("stylua", lambda: self.toolchain.run_stylua(output_dir))]
+                if needs_wally:
+                    actions.append(("wally", lambda: self.toolchain.run_wally_install(output_dir)))
+                for name, action in actions:
                     result = action()
                     tool_results[name] = result
                     if not result.get("success") or not result.get("executed"):
