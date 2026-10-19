@@ -105,10 +105,12 @@ local sessionData:""")
     source = _replace(source, """    savePlayerData(player)
     sessionData[userId] = nil
     sessionLocks[userId] = nil
+    studioEphemeral[userId] = nil
 end""", """    if profilePlayers[userId] ~= player then return end
     savePlayerData(player)
     sessionData[userId] = nil
     sessionLocks[userId] = nil
+    studioEphemeral[userId] = nil
     profilePlayers[userId] = nil
     restartQueued(userId)
 end""")
