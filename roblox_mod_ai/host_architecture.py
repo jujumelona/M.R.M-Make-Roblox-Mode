@@ -42,7 +42,7 @@ SEMANTIC_FACET_SCHEMA = {
                 },
                 "required": [
                     "name", "server_behavior", "client_behavior",
-                    "interaction", "observable_result", "world_entities",
+                    "interaction", "world_entities",
                 ],
             },
         },
@@ -61,6 +61,42 @@ def _pascal(value: str, fallback: str) -> str:
     if not base[0].isupper():
         base = base[0].upper() + base[1:]
     return base
+
+
+# Some local GGUF structured-output providers omit one optional descriptive
+# field even when the remaining gameplay semantics are complete. Recover only
+# an omitted acceptance label from *model-authored* state changes and visible
+# feedback. Never invent gameplay rules or waive an explicitly bad label.
+_STATE_CHANGE = re.compile(
+    r"\\b(?:adds?|added|appl(?:y|ies|ied)|awards?|grants?|gains?|"
+    r"updates?|updated|changes?|changed|sets?|saves?|stores?|records?|"
+    r"deducts?|deducted|decrements?|increments?|consumes?|converts?|"
+    r"spawns?|creates?|removes?|destroys?|teleports?|unlocks?|"
+    r"deals?|damages?|heals?|equips?|rewards?|depletes?)\\b", re.I,
+)
+_VISIBLE_FEEDBACK = re.compile(
+    r"\\b(?:shows?|displays?|updates?|reflects?|sees?|receives?|"
+    r"notifies?|appears?|renders?|visible|feedback)\\b", re.I,
+)
+_POST_ACTION = re.compile(
+    r"\\b(?:after|then|on success|successfully|confirmed|success|"
+    r"result|received|earned|reward|gain|updated|changes?|"
+    r"rejected|completion|complete|status|notification|progress)\\b", re.I,
+)
+
+
+def _recover_observable_result(server: Any, client: Any, interaction: Any) -> str | None:
+    if interaction not in {"event", "request_response"}:
+        return None
+    if not isinstance(server, str) or not isinstance(client, str):
+        return None
+    if len(server.strip()) < 24 or len(client.strip()) < 24:
+        return None
+    if not (_STATE_CHANGE.search(server) and _VISIBLE_FEEDBACK.search(client)
+            and _POST_ACTION.search(client)):
+        return None
+    # This remains a *planned* outcome, not a claim of executed gameplay.
+    return client.strip()
 
 
 def expand_semantic_facet(
@@ -106,6 +142,8 @@ def expand_semantic_facet(
         interaction = system.get("interaction")
         input_mode = system.get("input_mode", "custom")
         observable = system.get("observable_result")
+        if "observable_result" not in system:
+            observable = _recover_observable_result(server, client, interaction)
         world = system.get("world_entities", [])
         if not isinstance(name, str) or not name.strip():
             raise HostArchitectureError("Gameplay system needs a descriptive name")

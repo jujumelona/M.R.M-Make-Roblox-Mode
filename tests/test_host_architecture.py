@@ -167,3 +167,66 @@ def test_seven_feature_semantic_model_creates_complete_host_owned_contract(monke
     }
     assert report["architecture_assembly"]["validated"]
     assert not report["architecture_assembly"]["gameplay_verified"]
+
+@pytest.mark.parametrize("server,client", [
+    (
+        "The server validates proximity, decrements the resource node and "
+        "updates the player's inventory with the mined material.",
+        "When the player harvests a node, the client shows the granted "
+        "resource amount on success and displays the changed inventory.",
+    ),
+    (
+        "Server validates destination access and teleports the ship to "
+        "the chosen planet, recording the destination in player progression.",
+        "After a successful launch, the client displays the new planet and "
+        "shows a confirmed destination notification.",
+    ),
+])
+def test_host_recovers_missing_observable_from_concrete_model_behavior(server, client):
+    """Regression: uploaded mining log omitted observable_result on all tries."""
+    data = _semantic()
+    system = data["systems"][0]
+    system["server_behavior"] = server
+    system["client_behavior"] = client
+    system.pop("observable_result")
+    result = _convert(data)
+    assert result["acceptance"][0]["observable_result"] == client
+    assert result["acceptance_facets"][0]["observable_result"] == client
+    assert "observable_result" not in SEMANTIC_FACET_SCHEMA[
+        "properties"]["systems"]["items"]["required"]
+
+
+@pytest.mark.parametrize("server,client,interaction", [
+    (
+        "Server validates that requests are well formed and responds with "
+        "an error if any validation fails.",
+        "Client shows a button to send a request with no gameplay result.",
+        "event",
+    ),
+    (
+        "Server grants a resource reward after a validated harvest action.",
+        "Client presents an interact button without showing any outcome.",
+        "event",
+    ),
+    (
+        "Server updates the resource yield for all players in a world.",
+        "Client shows the resulting world yield after update confirmation.",
+        "none",
+    ),
+])
+def test_host_missing_observable_does_not_invent_unproven_gameplay(
+        server, client, interaction):
+    data = _semantic(interaction=interaction)
+    system = data["systems"][0]
+    system["server_behavior"] = server
+    system["client_behavior"] = client
+    system.pop("observable_result")
+    with pytest.raises(HostArchitectureError, match="observable result"):
+        _convert(data)
+
+
+def test_host_explicit_invalid_observable_is_not_silently_replaced():
+    data = _semantic()
+    data["systems"][0]["observable_result"] = "ok"
+    with pytest.raises(HostArchitectureError, match="observable result"):
+        _convert(data)
