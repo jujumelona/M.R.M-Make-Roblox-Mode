@@ -22,6 +22,67 @@ OWNERS: dict[str, tuple[str, ...]] = {
     "is_magic": ("MagicAbilities",),
 }
 
+# Concrete behavioral contracts for stock mechanics, not generic genre labels.
+# Every row becomes an observable Studio scenario, including negative paths.
+STOCK_BEHAVIORS: dict[str, dict[str, str]] = {
+    "is_coin_collect": {
+        "interaction": "Player touches an available coin part",
+        "precondition": "Player character and server balance are initialized; coin is active",
+        "postcondition": "Server increments Coins once, hides coin and respawns it after cooldown",
+        "rejection": "Non-player contact and concurrent duplicate touches grant nothing",
+        "persistence": "Coins survive reconnect on a published experience",
+    },
+    "is_shop": {
+        "interaction": "Player opens shop prompt and buys a selected item",
+        "precondition": "Alive player is near shop; item exists; balance covers price",
+        "postcondition": "Server deducts exact price, grants real gameplay effect and client shows result",
+        "rejection": "Forged item IDs, insufficient balance, remote spam and duplicates are rejected",
+        "persistence": "Permanent purchases survive respawn and reconnect",
+    },
+    "is_combat": {
+        "interaction": "Player attacks an eligible opponent from valid reach",
+        "precondition": "Attacker and target are alive; server verifies range, sight and round enrollment",
+        "postcondition": "Only validated target loses health; lethal attack awards knockout credit once",
+        "rejection": "Out-of-range, spectator, cooldown and spoofed target are rejected",
+        "persistence": "Authoritative knockout record persists if leaderboard is requested",
+    },
+    "is_leaderboard": {
+        "interaction": "Player gains currency, wins or knockouts",
+        "precondition": "Server owns leaderstats and loads saved profile",
+        "postcondition": "Visible stats match authoritative Coins, Wins and KOs where applicable",
+        "rejection": "Clients cannot submit arbitrary score increments",
+        "persistence": "Stats are restored from the same versioned player profile",
+    },
+    "is_obby": {
+        "interaction": "Player visits checkpoints and reaches the requested finish",
+        "precondition": "Checkpoint order and quantity match user request",
+        "postcondition": "Server records progress and respawn position; completion is visible",
+        "rejection": "Stage skipping and non-player checkpoint touches cannot fake completion",
+        "persistence": "Saved checkpoint progresses according to declared game policy",
+    },
+    "is_tycoon": {
+        "interaction": "Player claims a plot, earns cash and unlocks a purchase pad",
+        "precondition": "Plot belongs to that player; production and price are valid",
+        "postcondition": "Server activates purchased equipment and reflects economy change",
+        "rejection": "Other players cannot steal claimed plot rewards or free upgrades",
+        "persistence": "Saved unlocks are restored from server profile",
+    },
+    "is_simulator": {
+        "interaction": "Player performs the core collection action and sells at a zone",
+        "precondition": "Player capacity, cooldown and zone access are valid",
+        "postcondition": "Server increases stored resource then exchanges it for currency",
+        "rejection": "Client resource injection and oversized sell requests are rejected",
+        "persistence": "Persistent progress follows authored save policy",
+    },
+    "is_magic": {
+        "interaction": "Player activates a purchased or unlocked magic ability",
+        "precondition": "Ability is owned, ready, and target is valid",
+        "postcondition": "Server applies documented effect and broadcasts visuals to clients",
+        "rejection": "Non-owners, cooldown bypass and out-of-round target are rejected",
+        "persistence": "Permanent ability ownership is restored",
+    },
+}
+
 # Each coupling is a distinct behavior to implement and verify.  Do not
 # conflate independent systems with a working end-to-end experience.
 LINKS = (
@@ -49,6 +110,7 @@ def build_implementation_blueprint(proposal: Any) -> dict[str, Any]:
         owner_names = list(OWNERS[feature])
         mechanics.append({
             "id": feature,
+            **STOCK_BEHAVIORS[feature],
             "owners": owner_names,
             "files": [modules[n].file_path for n in owner_names if n in modules],
             "missing_owners": [n for n in owner_names if n not in modules],
@@ -110,8 +172,12 @@ def build_implementation_blueprint(proposal: Any) -> dict[str, Any]:
             "acceptance": (dyn.get("acceptance") or {}).get(rid, ""),
         })
     scenarios = [{
-        "id": "mechanic." + m["id"], "action": "Perform the authored " + m["id"] + " interaction",
-        "expect": "State change and client feedback agree with server authority",
+        "id": "mechanic." + m["id"],
+        "setup": m.get("precondition", "Real Studio with generated modules available"),
+        "action": m.get("interaction", "Perform requested mechanic " + m["id"]),
+        "expect": m.get("postcondition", m.get("acceptance", "Observed game state changes")),
+        "negative": m.get("rejection", "Reject invalid client input"),
+        "persistence": m.get("persistence", "Verify authored save policy"),
         "status": "not_run",
     } for m in mechanics]
     scenarios.extend({
