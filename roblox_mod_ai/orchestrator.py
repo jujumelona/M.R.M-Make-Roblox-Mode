@@ -633,6 +633,51 @@ class RobloxProductionOrchestrator:
             trajectory.record("result", "build artifacts created; Studio playtest not run",
                               {"place": rbxlx_path, "zip": zip_path,
                                "release_status": release_status}, passed=True)
+        # The first ZIP is assembled inside the packaging stage, before that
+        # stage can append its final receipt and the success trajectory event.
+        # Rebuild the manifest *after* these facts have been recorded, then
+        # repack. This prevents a "successful" ZIP with a truncated audit log
+        # or stale hashes. Do not count a failed final ZIP as artifact-ready.
+        if artifact_ready and zip_path:
+            try:
+                if not addon_mode and not source_only:
+                    latest_manifest = make_artifact_manifest(output_dir, Path(rbxlx_path))
+                    (output_dir / "artifact_manifest.json").write_text(
+                        json.dumps(latest_manifest, indent=2, ensure_ascii=False),
+                        encoding="utf-8")
+                self.project_generator.pack_project_zip(output_dir, Path(zip_path))
+                with zipfile.ZipFile(zip_path) as archive:
+                    members = set(archive.namelist())
+                    if "work_receipt.json" not in members or "agent_trajectory.json" not in members:
+                        raise RuntimeError("Packaged ZIP missing final receipt/trajectory")
+                    saved_receipt = json.loads(archive.read("work_receipt.json"))
+                    saved_steps = json.loads(archive.read("agent_trajectory.json"))
+                    if saved_receipt.get("overall_success") is not True:
+                        raise RuntimeError("Packaged receipt is not a successful build")
+                    if not any(step.get("phase") == "result" for step in saved_steps.get("steps", [])):
+                        raise RuntimeError("Packaged trajectory missing final outcome")
+                    if not addon_mode and not source_only:
+                        if "compiled_place.rbxlx" not in members:
+                            raise RuntimeError("Compiled Roblox Place missing from distribution")
+                        if hashlib.sha256(archive.read("compiled_place.rbxlx")).hexdigest() != (
+                            hashlib.sha256(Path(rbxlx_path).read_bytes()).hexdigest()
+                        ):
+                            raise RuntimeError("Compiled Place changed after initial validation")
+                        for rel, digest in latest_manifest["source_files"].items():
+                            if rel not in members or hashlib.sha256(archive.read(rel)).hexdigest() != digest:
+                                raise RuntimeError("Final ZIP mismatch: " + rel)
+            except (OSError, ValueError, RuntimeError, KeyError, zipfile.BadZipFile) as exc:
+                artifact_ready = False
+                build_ready = False
+                receipt.overall_success = False
+                runtime["artifact_ready"] = False
+                release_status = "build_incomplete"
+                errors.append("final_package: " + str(exc))
+                (output_dir / "work_receipt.json").write_text(
+                    json.dumps(receipt.to_dict(), indent=2), encoding="utf-8")
+                failure_logs_zip = str(trajectory.failure_bundle(
+                    "; ".join(errors), receipt=receipt.to_dict(), tool_results=tool_results))
+                print("[RMM agent] final package failed: " + str(exc), flush=True)
         elapsed_ms = (time.perf_counter() - start) * 1000
         return RobloxPipelineResult(
             success=receipt.overall_success,
