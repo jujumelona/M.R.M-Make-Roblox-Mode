@@ -54,6 +54,9 @@ def test_composite_game_has_cross_system_acceptance_and_studio_scenarios():
     })
     blueprint = build_implementation_blueprint(proposal)
     assert blueprint["ready_for_codegen"] is True
+    assert all(row["acceptance"].strip() for row in blueprint["requirements"])
+    assert any(row["id"] == "req-003" and "ArenaRoundService" in row["owners"]
+               for row in blueprint["requirements"])
     assert {i["id"] for i in blueprint["integration_contracts"]} >= {
         "coin_to_purchase", "coin_to_leaderboard", "purchase_to_combat",
         "combat_to_leaderboard", "arena_lifecycle",
