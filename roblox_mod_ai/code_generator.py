@@ -559,7 +559,7 @@ end)
         if game:GetAttribute("ArenaRoundActive") ~= true
             or player:GetAttribute("InArenaRound") ~= true then return end
 """
-        weapon_item = ('    magic_staff = {{ name = "Arcane Staff", price = 150, itemType = "Weapon" }},\n'
+        weapon_item = ('    magic_staff = { name = "Arcane Staff", price = 150, itemType = "Weapon" },\n'
                        if proposal.game_design.get("features", {}).get("is_combat") else "")
         return f"""--!strict
 -- Service: ServerScriptService
@@ -746,7 +746,7 @@ for _, player in Players:GetPlayers() do onAdded(player) end
 """
 
     def _generate_shop_controller(self, module: RobloxModuleSpec, proposal: RobloxProposal) -> str:
-        weapon_row = ('    {{"magic_staff", "Arcane Staff - 150"}},\n'
+        weapon_row = ('    {"magic_staff", "Arcane Staff - 150"},\n'
                       if proposal.game_design.get("features", {}).get("is_combat") else "")
         return f"""--!strict
 -- Service: StarterPlayerScripts
