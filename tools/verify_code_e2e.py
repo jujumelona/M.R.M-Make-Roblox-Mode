@@ -24,6 +24,14 @@ def main():
     result=session.build(source_only=False)  # Actual production orchestrator
     tools=result.metadata["tool_results"]
     assert result.metadata["acceptance"]["passed"],result.metadata
+    verification=result.metadata["verification"]
+    assert verification["schema"]=="rmm/verification-selection-v1"
+    assert verification["gameplay_verified"] is False
+    assert verification["checks"]["studio_multiplayer"]["status"]=="not_run"
+    assert verification["checks"]["studio_structure"]["status"]=="not_run"
+    assert verification["checks"]["rojo_build"]["status"]=="passed"
+    assert verification["checks"]["compiled_structure"]["status"]=="passed"
+    assert verification["checks"]["lune_economy"]["status"]=="not_applicable"
     for name in ("stylua","wally","selene","rojo"):
         assert tools.get(name,{}).get("executed") is True,(name,tools.get(name))
         assert tools[name]["success"] is True,(name,tools.get(name))
@@ -48,6 +56,10 @@ def main():
     with zipfile.ZipFile(archive) as z:
         names=set(z.namelist())
         assert "artifact_manifest.json" in names
+        assert "verification_report.json" in names
+        embedded=json.loads(z.read("verification_report.json"))
+        assert embedded==verification
+        assert embedded["checks"]["studio_multiplayer"]["status"]=="not_run"
         hashes=json.loads(z.read("artifact_manifest.json"))["source_files"]
         for name,digest in hashes.items():
             assert name in names
