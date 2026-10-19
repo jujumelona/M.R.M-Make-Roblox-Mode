@@ -125,7 +125,7 @@ def test_generic_lune_discovers_unrelated_genre_tests_without_prompt_flags(tmp_p
     paths = [test_root / "offline" / "physics" / "gravity.luau",
              test_root / "pathfinding.offline.luau"]
     for path in paths:
-        path.write_text('assert(1 + 1 == 2)\\n', encoding="utf-8")
+        path.write_text('assert(1 + 1 == 2)\n', encoding="utf-8")
     # Jest specs require the Roblox engine and must NOT be executed in Lune.
     (test_root / "abilities.spec.luau").write_text("game:GetService('Players')", encoding="utf-8")
     (test_root / "offline" / "physics" / "fake.lua").write_text("", encoding="utf-8")
@@ -150,7 +150,7 @@ def test_generic_lune_exec_failure_is_never_relabelled_success(tmp_path, monkeyp
     from roblox_mod_ai import roblox_toolchain
     path = tmp_path / "tests" / "offline" / "unknown_gameplay.luau"
     path.parent.mkdir(parents=True)
-    path.write_text("assert(false)\\n", encoding="utf-8")
+    path.write_text("assert(false)\n", encoding="utf-8")
     monkeypatch.setattr(roblox_toolchain.shutil, "which",
                         lambda name: "/mock/lune" if name == "lune" else None)
     monkeypatch.setattr(roblox_toolchain.subprocess, "run",
@@ -164,7 +164,7 @@ def test_official_luau_parser_optional_and_fails_closed_on_real_error(tmp_path, 
     from roblox_mod_ai import roblox_toolchain
     src = tmp_path / "src" / "server" / "SomeCustomMechanic.server.luau"
     src.parent.mkdir(parents=True)
-    src.write_text("--!strict\\nlocal n = 1\\n", encoding="utf-8")
+    src.write_text("--!strict\nlocal n = 1\n", encoding="utf-8")
     monkeypatch.setattr(roblox_toolchain.shutil, "which",
                         lambda name: "/mock/luau-compile" if name == "luau-compile" else None)
     calls = []
