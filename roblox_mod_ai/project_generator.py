@@ -46,6 +46,10 @@ class RobloxProjectGenerator:
             "ClickRequest": "RemoteEvent",
             "ButtonPurchased": "RemoteEvent",
         }
+        # A round is inserted only for an explicit arena request. Keep the
+        # private server-owned lifecycle event out of unrelated game genres.
+        if any(m.module_id == "mod_arena_round" for m in proposal.modules):
+            declared_remotes["RoundStatus"] = "RemoteEvent"
         for remote_name, class_type in dynamic.get("remotes", {}).items():
             if remote_name in declared_remotes and declared_remotes[remote_name] != class_type:
                 raise ValueError("Dynamic Remote cannot override an engine contract: " + remote_name)
