@@ -34,7 +34,7 @@ def build_notebook() -> None:
             "\n"
             "[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jujumelona/M.R.M-Make-Roblox-Mode/blob/main/R.M.M_Make_Roblox_Mode_Colab.ipynb)\n"
             "\n"
-            "> 자연어 요구사항만으로 **Roblox Studio 경험 및 인게임 모딩 시스템**을 자동 기획하고, Luau 코드를 정적 검증 및 플레이테스트한 뒤 **즉시 열 수 있는 `.rbxlx` 및 Rojo 프로젝트 ZIP**을 생성하는 올인원 Colab 노트북입니다.\n"
+            "> 자연어 요구사항만으로 **Roblox Studio 경험 및 인게임 모딩 시스템**을 자동 기획하고, Luau 코드를 정적 검증 및 Rojo 빌드한 뒤 **즉시 열 수 있는 `.rbxlx` 및 Rojo 프로젝트 ZIP**을 생성하는 올인원 Colab 노트북입니다.\n"
             "\n"
             "- **Full**: 기획/RAG/Luau 생성 및 도구체인 검사 (실제 Roblox Studio 멀티플레이 검증은 별도 필요)\n"
             "- **Plan**: 자연어 요구사항을 게임플레이, 네트워크(RemoteEvent), DataStore, UI 서브시스템으로 분해 및 기획안 생성\n"
@@ -60,7 +60,6 @@ def build_notebook() -> None:
             'REMOTE_BASE_URL = "" #@param {type:"string"}\n'
             'REMOTE_API_KEY = "" #@param {type:"string"}\n'
             'SEARCH_CREATOR_STORE = True #@param {type:"boolean"}\n'
-            'RUN_PLAYTEST = True #@param {type:"boolean"}\n'
             'SAVE_TO_GOOGLE_DRIVE = False #@param {type:"boolean"}\n'
             "\n"
             'VALID_RUN_MODES = {"Full", "Plan", "Revise", "Execute", "Audit"}\n'
@@ -278,7 +277,7 @@ def build_notebook() -> None:
     # 6. Build
     cell_6 = new_code_cell(
         source=(
-            "# @title 6. Luau 코드 생성, 정적 분석, 플레이테스트 및 빌드\n"
+            "# @title 6. Luau 코드 생성, 정적 분석 및 오프라인 Rojo 빌드\n"
             "import json\n"
             "from roblox_mod_ai.luau_analyzer import LuauStaticAnalyzer\n"
             "\n"
@@ -310,6 +309,8 @@ def build_notebook() -> None:
             "        print(\"빌드 시작: 코드 생성 -> 정적 검사 및 에이전트 수정 -> Rojo 빌드\")\n"
             "        BUILD_RESULT = session.build(FINAL_PLAN_REPLY, run_name=ROBLOX_EXPERIENCE_NAME)\n"
             "        print(\"빌드 상태:\", BUILD_RESULT.success)\n"
+            "        print(\"실제 Studio 플레이테스트: 미실행 (로컬 선택)\")\n"
+            "        print(\"제작 상태:\", BUILD_RESULT.metadata.get(\"release_status\", \"unverified\"))\n"
             "        print(\"Roblox Place:\", BUILD_RESULT.rbxlx_path)\n"
             "        print(\"Rojo 프로젝트 ZIP:\", BUILD_RESULT.project_zip_path)\n"
             "        print(\"에이전트 로그:\", BUILD_RESULT.metadata.get(\"agent_trajectory\", \"\"))\n"
@@ -376,28 +377,16 @@ def build_notebook() -> None:
     # 8. Boundaries
     cell_8 = new_markdown_cell(
         source=(
-            "## 🎮 생성된 Roblox 산출물 활용 안내\n"
+            "## Roblox Studio에서 결과물 실행\n"
             "\n"
-            "### 1. Roblox Studio에서 즉시 열기 (.rbxlx)\n"
-            "다운로드된 `<GameName>.rbxlx` 파일은 Roblox의 표준 XML 플레이스 파일입니다.\n"
-            "- **실행 방법**: Windows 탐색기 또는 Mac Finder에서 `.rbxlx` 파일을 더블클릭하면 Roblox Studio가 바로 실행됩니다.\n"
-            "- **구성 요소**:\n"
-            "  - `ServerScriptService`: 서버 권한 게임플레이 서비스 및 인게임 모딩 시스템 (`ModdingSystem.luau`)\n"
-            "  - `StarterPlayer.StarterPlayerScripts`: 클라이언트 컨트롤러 및 UI 바인딩\n"
-            "  - `ReplicatedStorage`: 서버-클라이언트 공유 모듈 및 자동 바인딩된 `RemoteEvent`\n"
-            "  - `StarterGui`: 게임 HUD 및 화면 UI\n"
+            "1. Colab은 코드 생성, 정적 검사와 Rojo 빌드를 수행합니다. 성공한 ZIP에는 compiled_place.rbxlx가 포함됩니다.\n"
+            "2. ZIP 압축을 풀고 compiled_place.rbxlx를 Roblox Studio에서 열어 Play로 게임을 확인합니다.\n"
+            "3. Windows에서 설치된 Roblox Studio를 사용해 로컬 구조 검사를 실행하려면 powershell -ExecutionPolicy Bypass -File .\\local_studio\\run_smoke.ps1 을 실행합니다. 이 검사는 실제 게임플레이나 멀티플레이 성공을 증명하지 않습니다.\n"
+            "4. 파일 실시간 동기화가 필요하면 Rojo Studio 플러그인을 설치하고 rojo serve를 실행한 뒤 Connect를 누릅니다.\n"
+            "5. AI로 Studio 플레이 테스트를 조작하려면 Studio의 내장 MCP 서버를 활성화하고 신뢰하는 로컬 MCP 클라이언트를 연결합니다. 예시 설정: local_studio/studio_mcp.windows.json.\n"
             "\n"
-            "### 2. Rojo로 실시간 2-Way 라이브 싱크 (`<GameName>_rojo_project.zip`)\n"
-            "외부 코드 편집기(VS Code, Cursor, Antigravity)에서 프로젝트를 개발하려면:\n"
-            "1. ZIP 파일의 압축을 풉니다.\n"
-            "2. 터미널에서 다음 명령어를 실행합니다:\n"
-            "   ```bash\n"
-            "   rojo serve\n"
-            "   ```\n"
-            "3. Roblox Studio에서 Rojo 플러그인을 열고 **Connect**를 누르면 파일 변경사항이 Studio에 실시간 반영됩니다.\n"
-            "\n"
-            "### 3. 소형 AI 모델(Small AI) 및 MCP 연동\n"
-            "R.M.M은 Claude Desktop, Cursor 등에서 사용할 수 있는 MCP 서버(`roblox_mod_ai/mcp_server.py`) 및 API 카탈로그를 내장하고 있어, 7B~14B급 소형 AI도 API 실수 없이 완벽하게 Luau 코드를 작성하고 플레이테스트할 수 있습니다.\n"
+            "Roblox Cloud API 키, 테스트용 Universe ID, Place ID는 게임 파일 생성에 필요하지 않습니다.\n"
+            "Colab은 사용자의 Windows PC에서 실행되는 Studio를 직접 제어하지 않습니다.\n"
         ),
         id="boundaries",
     )
