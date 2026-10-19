@@ -43,6 +43,18 @@ def make_verification_report(
     put("gameplay_contract", "passed" if acceptance.get("passed") is True else "failed",
         "on-disk module wiring, requirement coverage and gameplay lifecycle")
 
+    source_review = tool_results.get("ai_source_review") or {}
+    if source_review.get("status") == "not_run" or not source_review:
+        put("ai_source_review", "not_run", "LLM source inspection against authored plan",
+            source_review.get("reason", "No local AI reviewer executed"))
+    elif source_review.get("status") == "reviewed_no_blockers":
+        put("ai_source_review", "passed",
+            "AI reviewed actual source with line citations; NOT engine execution")
+    else:
+        put("ai_source_review", "failed",
+            "AI source inspection failed or found quoted blocking problems",
+            source_review.get("reason", ""))
+
     real_place = not source_only and not addon_mode
     from_tool("stylua", "stylua", "formatter/parser", applicable=not source_only)
     wally_info = tool_results.get("wally") or {}
