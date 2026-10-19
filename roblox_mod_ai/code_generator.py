@@ -14,6 +14,7 @@ from .server_modules import render_dynamic_server_bootstrap
 from .host_client import render_host_client
 from .host_player_data import render_callable_player_data
 from .gameplay_round import render_arena_round_service, render_arena_round_controller
+from .implementation_blueprint import audit_implementation_blueprint
 from .gameplay_onboarding import render_game_objectives
 from .model_router import ModelRouter
 from .spec import ModuleKind, RobloxModuleSpec, RobloxProposal
@@ -28,6 +29,13 @@ class LuauCodeGenerator:
 
     def generate_all_modules(self, proposal: RobloxProposal) -> list[RobloxModuleSpec]:
         """Generates Luau code for each module in the proposal with self-correction feedback loop."""
+        if "implementation_blueprint" in proposal.game_design:
+            blueprint_audit = audit_implementation_blueprint(proposal)
+            if not blueprint_audit["passed"]:
+                raise ValueError(
+                    "Blocked incomplete Roblox implementation blueprint before code generation: "
+                    + "; ".join(blueprint_audit["errors"])
+                )
         completed_modules: list[RobloxModuleSpec] = []
         for mod in proposal.modules:
             dynamic = proposal.game_design.get("dynamic_design") or {}
