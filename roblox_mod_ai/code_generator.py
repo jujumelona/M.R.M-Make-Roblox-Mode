@@ -369,7 +369,8 @@ local function onPlayerAdded(player: Player)
 
     local owned = Instance.new("Folder")
     owned.Name = "OwnedItems"
-    owned.Parent = player
+    -- Populate all saved item markers before publishing the folder to other
+    -- scripts. Otherwise a CharacterAdded gear restore can read it half empty.
     for _, id in data.inventory or {{}} do
         if type(id) == "string" then
             local marker = Instance.new("StringValue")
@@ -378,6 +379,7 @@ local function onPlayerAdded(player: Player)
             marker.Parent = owned
         end
     end
+    owned.Parent = player
 
     local winsVal = Instance.new("IntValue")
     winsVal.Name = "Wins"
@@ -736,22 +738,38 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 
 local function restoreEquipment(player: Player, character: Model)
-    local owned = player:WaitForChild("OwnedItems", 10)
-    local humanoid = character:WaitForChild("Humanoid", 10)
+    -- Profile load and character spawn race on reconnect. Only restore when
+    -- both exist; an arbitrary 10-second OwnedItems timeout loses paid gear.
+    if player.Character ~= character then return end
+    local owned = player:FindFirstChild("OwnedItems")
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
     if not owned or not humanoid then return end
+    -- CharacterAdded and profile-ready can fire close together. Permanent
+    -- shield health is additive, so make restoration idempotent per spawn.
+    if character:GetAttribute("RMMGearRestored") then return end
+    character:SetAttribute("RMMGearRestored", true)
     if owned:FindFirstChild("speed_boots") then humanoid.WalkSpeed = 24 end
     if owned:FindFirstChild("shield") then
         humanoid.MaxHealth += 50
         humanoid.Health += 50
     end
     if owned:FindFirstChild("magic_staff") then
-        player:WaitForChild("Backpack", 10)
         grantMagicStaff(player)
     end
 end
 local function onAdded(player: Player)
-    player.CharacterAdded:Connect(function(char) restoreEquipment(player, char) end)
-    if player.Character then task.spawn(restoreEquipment, player, player.Character) end
+    local function onCharacter(char: Model)
+        -- Restore after the Humanoid exists; profile loading may still run.
+        local humanoid = char:WaitForChild("Humanoid", 10)
+        if humanoid then restoreEquipment(player, char) end
+    end
+    player.CharacterAdded:Connect(onCharacter)
+    player.ChildAdded:Connect(function(child)
+        if child.Name == "OwnedItems" and child:IsA("Folder") and player.Character then
+            restoreEquipment(player, player.Character)
+        end
+    end)
+    if player.Character then task.spawn(onCharacter, player.Character) end
 end
 Players.PlayerAdded:Connect(onAdded)
 for _, player in Players:GetPlayers() do onAdded(player) end
