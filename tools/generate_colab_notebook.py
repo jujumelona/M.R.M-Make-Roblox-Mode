@@ -90,36 +90,57 @@ def build_notebook() -> None:
             "import sys\n"
             "from pathlib import Path\n"
             "\n"
-            'REPO_DIR = Path("/content/M.R.M-Make-Roblox-Mode")\n'
-            'REPO_URL = "https://github.com/jujumelona/M.R.M-Make-Roblox-Mode.git"\n'
+            "REPO_DIR = Path(\"/content/M.R.M-Make-Roblox-Mode\")\n"
+            "REPO_URL = \"https://github.com/jujumelona/M.R.M-Make-Roblox-Mode.git\"\n"
             "\n"
-            'IN_COLAB = "google.colab" in sys.modules or Path("/content").is_dir()\n'
+            "IN_COLAB = \"google.colab\" in sys.modules or Path(\"/content\").is_dir()\n"
             "\n"
             "if IN_COLAB:\n"
-            '    if (REPO_DIR / ".git").is_dir():\n'
-            '        subprocess.run(["git", "-C", str(REPO_DIR), "fetch", "origin", "+main:refs/remotes/origin/main"], check=True)\n'
-            '        subprocess.run(["git", "-C", str(REPO_DIR), "checkout", "-f", "main"], check=True)\n'
-            '        subprocess.run(["git", "-C", str(REPO_DIR), "reset", "--hard", "refs/remotes/origin/main"], check=True)\n'
-            '        subprocess.run(["git", "-C", str(REPO_DIR), "clean", "-fd"], check=True)\n'
+            "    if (REPO_DIR / \".git\").is_dir():\n"
+            "        subprocess.run([\"git\", \"-C\", str(REPO_DIR), \"fetch\", \"origin\", \"+main:refs/remotes/origin/main\"], check=True)\n"
+            "        subprocess.run([\"git\", \"-C\", str(REPO_DIR), \"checkout\", \"-f\", \"main\"], check=True)\n"
+            "        subprocess.run([\"git\", \"-C\", str(REPO_DIR), \"reset\", \"--hard\", \"refs/remotes/origin/main\"], check=True)\n"
+            "        subprocess.run([\"git\", \"-C\", str(REPO_DIR), \"clean\", \"-fd\"], check=True)\n"
             "    elif REPO_DIR.exists():\n"
-            '        raise RuntimeError(f"Git 저장소가 아닌 경로가 이미 존재합니다: {REPO_DIR}")\n'
+            "        raise RuntimeError(f\"Git 저장소가 아닌 경로가 이미 존재합니다: {REPO_DIR}\")\n"
             "    else:\n"
-            '        subprocess.run(["git", "clone", "--depth", "1", "--branch", "main", REPO_URL, str(REPO_DIR)], check=True)\n'
+            "        subprocess.run([\"git\", \"clone\", \"--depth\", \"1\", \"--branch\", \"main\", REPO_URL, str(REPO_DIR)], check=True)\n"
             "\n"
-            '    USED_COMMIT = subprocess.check_output(["git", "-C", str(REPO_DIR), "rev-parse", "HEAD"], text=True).strip()\n'
-            '    print("GitHub commit:", USED_COMMIT)\n'
+            "    USED_COMMIT = subprocess.check_output([\"git\", \"-C\", str(REPO_DIR), \"rev-parse\", \"HEAD\"], text=True).strip()\n"
+            "    print(\"GitHub commit:\", USED_COMMIT)\n"
             "\n"
-            '    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "-e", str(REPO_DIR)], check=True)\n'
-            "    if str(REPO_DIR) not in sys.path:\n"
-            "        sys.path.insert(0, str(REPO_DIR))\n"
-            '    OUTPUT_ROOT = Path("/content/rmm-output")\n'
+            "    subprocess.run([sys.executable, \"-m\", \"pip\", \"install\", \"-q\", \"-e\", str(REPO_DIR)], check=True)\n"
+            "    # Colab keeps imported Python objects even when git reset updates the files.\n"
+            "    # An outdated LuauCodeGenerator plus fresh source linecache previously\n"
+            "    # produced mismatched design evidence and old weapon code after git sync.\n"
+            "    import importlib\n"
+            "    import linecache\n"
+            "    stale = [name for name in tuple(sys.modules)\n"
+            "             if name == \"roblox_mod_ai\" or name.startswith(\"roblox_mod_ai.\")]\n"
+            "    for name in stale:\n"
+            "        sys.modules.pop(name, None)\n"
+            "    importlib.invalidate_caches()\n"
+            "    linecache.clearcache()\n"
+            "    if str(REPO_DIR) in sys.path:\n"
+            "        sys.path.remove(str(REPO_DIR))\n"
+            "    sys.path.insert(0, str(REPO_DIR))\n"
+            "    # Invalidate previously created session/proposal objects as well.\n"
+            "    for name in (\"session\", \"FINAL_PLAN_REPLY\", \"BUILD_RESULT\"):\n"
+            "        globals().pop(name, None)\n"
+            "    print(\"[sync] Invalidated\", len(stale), \"cached RMM modules\")\n"
+            "    os.environ[\"RMM_SOURCE_COMMIT\"] = USED_COMMIT\n"
+            "    import roblox_mod_ai\n"
+            "    assert Path(roblox_mod_ai.__file__).resolve().is_relative_to(REPO_DIR.resolve()), (\n"
+            "        \"MRM was imported from a different installation; refusing mixed-version build\")\n"
+            "    print(\"[sync] Imported repository:\", roblox_mod_ai.__file__)\n"
+            "    OUTPUT_ROOT = Path(\"/content/rmm-output\")\n"
             "else:\n"
             "    REPO_DIR = Path.cwd()\n"
-            '    OUTPUT_ROOT = REPO_DIR / "rmm-output"\n'
-            '    print("Local workspace detected:", REPO_DIR)\n'
+            "    OUTPUT_ROOT = REPO_DIR / \"rmm-output\"\n"
+            "    print(\"Local workspace detected:\", REPO_DIR)\n"
             "\n"
             "OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)\n"
-            'print(f"Output directory initialized at: {OUTPUT_ROOT}")\n'
+            "print(f\"Output directory initialized at: {OUTPUT_ROOT}\")\n"
             "\n"
             "\n"
             "# Install third-party CLI tools and start the model HERE, not in the status cell.\n"
@@ -148,7 +169,6 @@ def build_notebook() -> None:
             "    print(\"[setup] Model:\", MODEL_READY[\"model_id\"], flush=True)\n"
             "    print(\"[setup] API:\", MODEL_READY[\"url\"], flush=True)\n"
             "print(\"[setup] Environment setup complete.\", flush=True)\n"
-
         ),
         id="setup",
     )
