@@ -63,6 +63,19 @@ local sessionData:""")
         task.spawn(callback, player)
     end
 """)
+    # The standalone Script now snapshots Coins/Level/Stage/OwnedItems before
+    # every session renewal. This callable host variant instead delegates that
+    # entire operation to savePlayerData(player, false), which performs the
+    # same snapshot and keeps the session lease. Remove the template's
+    # redundant pre-renewal snapshot, otherwise Selene correctly reports
+    # shadowing and four unused variables in generated PlayerDataManager.luau.
+    snapshot_start = source.index(
+        "            -- Persist live session progress during each lease renewal."
+    )
+    renewal_start = source.index(
+        "            local renewed, current = retryWithBackoff", snapshot_start
+    )
+    source = source[:snapshot_start] + source[renewal_start:]
     begin = source.index("            local renewed, current = retryWithBackoff")
     end = source.index('                player:Kick("Your profile session lock', begin)
     source = source[:begin] + "            if not savePlayerData(player, false) then\n" + source[end:]
