@@ -77,6 +77,9 @@ def test_fallback_still_rejects_genuinely_unclosed_if(monkeypatch):
     original = luau_analyzer.shutil.which
     monkeypatch.setattr(luau_analyzer.shutil, "which",
                         lambda name: None if name == "stylua" else original(name))
-    source = "--!strict\\nif true then\\n    print('missing end')\\n"
+    source = """--!strict
+if true then
+    print('missing end')
+"""
     analyzer = luau_analyzer.LuauStaticAnalyzer()
     assert any(d.rule == "UNBALANCED_BLOCKS" for d in analyzer.analyze_source(source))
