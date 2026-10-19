@@ -13,6 +13,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local statusRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("RoundStatus") :: RemoteEvent
 
 local MIN_PLAYERS = 2
+local MAX_FIGHTERS = 16
 local COUNTDOWN = 5
 local ROUND_DURATION = 120
 local INTERMISSION = 8
@@ -34,6 +35,7 @@ local function eligible(): {Player}
         local humanoid = char and char:FindFirstChildOfClass("Humanoid")
         if humanoid and humanoid.Health > 0 then
             table.insert(roster, player)
+            if #roster >= MAX_FIGHTERS then break end
         end
     end
     return roster
@@ -71,12 +73,21 @@ task.spawn(function()
         local fighters: {[Player]: Humanoid} = {}
         local connections: {RBXScriptConnection} = {}
         local alive: {[Player]: boolean} = {}
+        local spawnSlot = 0
         for _, player in ready do
             local character = player.Character
             local humanoid = character and character:FindFirstChildOfClass("Humanoid")
             if humanoid and humanoid.Health > 0 then
                 fighters[player] = humanoid
                 alive[player] = true
+                -- Place fighters on an inside-the-ring grid, never at the lobby spawn.
+                spawnSlot += 1
+                local arena = workspace:FindFirstChild("CombatArena")
+                if arena and character then
+                    local x = ((spawnSlot - 1) % 4 - 1.5) * 8
+                    local z = (math.floor((spawnSlot - 1) / 4) - 1.5) * 8
+                    character:PivotTo(CFrame.new(x, 5, z))
+                end
                 player:SetAttribute("InArenaRound", true)
                 table.insert(connections, humanoid.Died:Connect(function()
                     alive[player] = false
@@ -119,6 +130,8 @@ task.spawn(function()
             if coins and coins:IsA("IntValue") then
                 coins.Value += VICTORY_REWARD
             end
+            local wins = leaderstats and leaderstats:FindFirstChild("Wins")
+            if wins and wins:IsA("IntValue") then wins.Value += 1 end
             announce("Winner", winner.DisplayName .. " wins! +" .. VICTORY_REWARD .. " coins", INTERMISSION)
         else
             announce("Draw", "No winner this round", INTERMISSION)
