@@ -151,6 +151,17 @@ class RobloxCodeRepairAgent:
             " | ".join(source_clauses)
             if source_clauses else proposal.requested_prompt
         )
+        detail = proposal.game_design.get("detailed_implementation_plan") or {}
+        plan_requirements = [
+            row for row in detail.get("required_functions", [])
+            if row.get("id") in owned_requirements
+        ]
+        model_steps = {
+            rid: steps for rid, steps in
+            (detail.get("ai_planning", {}).get("requirements") or {}).items()
+            if rid in owned_requirements
+        }
+
         # A previous degenerate generated source is diagnostic evidence,
         # not a useful few-shot example for the model. Never copy hundreds
         # of repeated declarations into its next generation prompt.
@@ -199,7 +210,7 @@ class RobloxCodeRepairAgent:
             f"{economy_guidance}"
             f"Owned user requirement: {scoped_user_request}\n"
             f"File: {module.file_path}\nModule: {module.name}\n"
-            f"Module intent: {module.description}\n"
+            f"Module intent: {module.description}\n"\n            f"Approved detailed requirement contracts: {str(plan_requirements)[:2300]}\\n"\n            f"Pre-coding AI implementation steps for this module: {str(model_steps)[:2200]}\\n"
             f"Required dependencies: {module.depends_on}\n"
             f"{server_contract}\n"
             f"Model architecture: {proposal.game_design.get('dynamic_design', {}).get('module_behaviors', {}).get(module.module_id, '') if isinstance(proposal.game_design.get('dynamic_design'),dict) else ''}\n"
