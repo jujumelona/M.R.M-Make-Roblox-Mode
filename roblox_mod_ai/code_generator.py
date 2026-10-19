@@ -502,6 +502,41 @@ local lastPurchaseByUserId: {{ [number]: number }} = {{}}
 local MAX_SHOP_DISTANCE = 18
 local PURCHASE_COOLDOWN = 0.35
 
+-- Permanent shop items must be restored after a new character spawns.
+-- Keep the spell server-owned and exclude the caster from raycasts.
+local function grantMagicStaff(player: Player): boolean
+    local backpack = player:FindFirstChildOfClass("Backpack")
+    if not backpack then return false end
+    local character = player.Character
+    if backpack:FindFirstChild("Arcane Staff")
+        or (character and character:FindFirstChild("Arcane Staff")) then
+        return true
+    end
+    local tool = Instance.new("Tool")
+    tool.Name = SHOP_ITEMS.magic_staff.name
+    tool.RequiresHandle = false
+    local lastCast = 0
+    tool.Activated:Connect(function()
+        if player.Parent ~= Players then return end
+        if os.clock() - lastCast < 1 then return end
+        local caster = player.Character
+        local humanoid = caster and caster:FindFirstChildOfClass("Humanoid")
+        local castRoot = caster and caster:FindFirstChild("HumanoidRootPart")
+        if not caster or not humanoid or humanoid.Health <= 0
+            or not castRoot or not castRoot:IsA("BasePart") then return end
+        lastCast = os.clock()
+        local params = RaycastParams.new()
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        params.FilterDescendantsInstances = {{caster}}
+        local ray = workspace:Raycast(castRoot.Position, castRoot.CFrame.LookVector * 30, params)
+        local targetModel = ray and ray.Instance:FindFirstAncestorOfClass("Model")
+        local target = targetModel and targetModel:FindFirstChildOfClass("Humanoid")
+        if target and targetModel ~= caster then target:TakeDamage(20) end
+    end)
+    tool.Parent = backpack
+    return true
+end
+
 local function handlePurchase(player: Player, itemId: string): (boolean, string)
     -- Roblox RemoteFunction arguments are UNTRUSTED, regardless of Luau type annotations.
     if typeof(itemId) ~= "string" or #itemId > 48 then
@@ -559,22 +594,10 @@ local function handlePurchase(player: Player, itemId: string): (boolean, string)
         if not humanoid then coinsVal.Value += item.price; return false, "Character unavailable" end
         humanoid.Health = math.min(humanoid.Health + 50, humanoid.MaxHealth)
     elseif itemId == "magic_staff" then
-        local tool = Instance.new("Tool")
-        tool.Name = item.name
-        tool.RequiresHandle = false
-        local lastCast = 0
-        tool.Activated:Connect(function()
-            if os.clock() - lastCast < 1 then return end
-            lastCast = os.clock()
-            local caster = player.Character
-            local castRoot = caster and caster:FindFirstChild("HumanoidRootPart")
-            if not castRoot or not castRoot:IsA("BasePart") then return end
-            local ray = workspace:Raycast(castRoot.Position, castRoot.CFrame.LookVector * 30)
-            local targetModel = ray and ray.Instance:FindFirstAncestorOfClass("Model")
-            local target = targetModel and targetModel:FindFirstChildOfClass("Humanoid")
-            if target and targetModel ~= caster then target:TakeDamage(20) end
-        end)
-        tool.Parent = player:FindFirstChildOfClass("Backpack")
+        if not grantMagicStaff(player) then
+            coinsVal.Value += item.price
+            return false, "Backpack unavailable"
+        end
     else
         coinsVal.Value += item.price
         return false, "Unimplemented item"
@@ -606,9 +629,14 @@ local function restoreEquipment(player: Player, character: Model)
         humanoid.MaxHealth += 50
         humanoid.Health += 50
     end
+    if owned:FindFirstChild("magic_staff") then
+        player:WaitForChild("Backpack", 10)
+        grantMagicStaff(player)
+    end
 end
 local function onAdded(player: Player)
     player.CharacterAdded:Connect(function(char) restoreEquipment(player, char) end)
+    if player.Character then task.spawn(restoreEquipment, player, player.Character) end
 end
 Players.PlayerAdded:Connect(onAdded)
 for _, player in Players:GetPlayers() do onAdded(player) end
