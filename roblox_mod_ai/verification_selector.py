@@ -45,6 +45,9 @@ def make_verification_report(
 
     real_place = not source_only and not addon_mode
     from_tool("stylua", "stylua", "formatter/parser", applicable=not source_only)
+    wally_info = tool_results.get("wally") or {}
+    from_tool("wally_dependencies", "wally", "external Wally package install",
+              applicable=not source_only and wally_info.get("status") != "not_applicable")
     from_tool("selene", "selene", "Lua/Luau linter", applicable=not source_only)
     from_tool("luau_analyze", "luau_analyze", "optional standalone Luau analyzer",
               applicable=not source_only)
