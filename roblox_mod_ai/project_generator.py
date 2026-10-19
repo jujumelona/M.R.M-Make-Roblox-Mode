@@ -36,16 +36,21 @@ class RobloxProjectGenerator:
         # A dynamic server-only mechanic can legitimately need ZERO Remotes.
         # Never inject unrelated combat/obby/shop defaults merely because
         # the semantic architect declared an empty Remote map.
-        declared_remotes = {} if dynamic else {
-            "AttackRequest": "RemoteEvent",
-            "DamageEvent": "RemoteEvent",
-            "ShopPurchase": "RemoteFunction",
-            "UpdateStats": "RemoteEvent",
-            "StageChanged": "RemoteEvent",
-            "ResetToStage": "RemoteEvent",
-            "ClickRequest": "RemoteEvent",
-            "ButtonPurchased": "RemoteEvent",
-        }
+        declared_remotes: dict[str, str] = {}
+        if not dynamic:
+            owned = {module.name for module in proposal.modules}
+            if "CombatSystem" in owned:
+                declared_remotes["AttackRequest"] = "RemoteEvent"
+            if "ShopService" in owned:
+                declared_remotes["ShopPurchase"] = "RemoteFunction"
+                declared_remotes["ShopWeaponUse"] = "RemoteEvent"
+            if "ObbyService" in owned:
+                declared_remotes["StageChanged"] = "RemoteEvent"
+                declared_remotes["ResetToStage"] = "RemoteEvent"
+            if "SimulatorService" in owned:
+                declared_remotes["ClickRequest"] = "RemoteEvent"
+            if "TycoonService" in owned:
+                declared_remotes["ButtonPurchased"] = "RemoteEvent"
         # A round is inserted only for an explicit arena request. Keep the
         # private server-owned lifecycle event out of unrelated game genres.
         if any(m.module_id == "mod_arena_round" for m in proposal.modules):
@@ -59,6 +64,9 @@ class RobloxProjectGenerator:
 
         features = proposal.game_design.get("features", {})
         counts = proposal.game_design.get("requested_counts", {})
+        # In round-based games, lobby spawn and economy points must not be
+        # placed inside the combat ring (which is centered on world origin).
+        round_lobby = any(m.module_id == "mod_arena_round" for m in proposal.modules)
         world: dict[str, Any] = {"$className": "Workspace"}
         host_world_actions = dynamic.get("host_world_actions") or {}
         declared_world_names = {
@@ -101,7 +109,7 @@ class RobloxProjectGenerator:
                     "$className": "Part",
                     "$properties": {
                         "Anchored": True, "CanCollide": False, "CanTouch": True,
-                        "Size": [2, 2, 2], "Position": [index * 6 - 15, 3, 8],
+                        "Size": [2, 2, 2], "Position": [index * 6 - 15, 3, 68 if round_lobby else 8],
                         "Color": [1, 0.82, 0], "Shape": "Ball",
                     },
                 }
@@ -111,7 +119,7 @@ class RobloxProjectGenerator:
                 "$className": "Folder",
                 "ShopCounter": {
                     "$className": "Part",
-                    "$properties": {"Anchored": True, "Size": [10, 4, 4], "Position": [15, 2, 0]},
+                    "$properties": {"Anchored": True, "Size": [10, 4, 4], "Position": [15, 2, 60 if round_lobby else 0]},
                     "ShopPrompt": {
                         "$className": "ProximityPrompt",
                         "$properties": {"ActionText": "Open Shop", "ObjectText": "Merchant"},
@@ -156,7 +164,7 @@ class RobloxProjectGenerator:
             "Anchored": True, "Size": [512, 20, 512], "Position": [0, -10, 0],
         }}
         world["SpawnLocation"] = {"$className": "SpawnLocation", "$properties": {
-            "Anchored": True, "Size": [12, 1, 12], "Position": [0, 1, 0],
+            "Anchored": True, "Size": [12, 1, 12], "Position": [0, 1, 60 if round_lobby else 0],
         }}
         rep_packages = proposal.game_design.get("ui_backend") == "fusion"
         server_packages = proposal.game_design.get("storage_backend") == "profilestore"
