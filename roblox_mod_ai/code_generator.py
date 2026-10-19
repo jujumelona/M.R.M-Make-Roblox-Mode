@@ -337,9 +337,42 @@ local function onPlayerAdded(player: Player)
         while player.Parent == Players and sessionLocks[userId] == sessionToken do
             task.wait(45)
             if player.Parent ~= Players or sessionLocks[userId] ~= sessionToken then break end
+            -- Persist live session progress during each lease renewal. The old
+            -- template only refreshed lockUntil and lost all coins/inventory
+            -- earned since joining if a server crashed before PlayerRemoving.
+            local profile = sessionData[userId]
+            if not profile then break end
+            local stats = player:FindFirstChild("leaderstats")
+            if stats then
+                local coins = stats:FindFirstChild("Coins")
+                local level = stats:FindFirstChild("Level")
+                local stage = stats:FindFirstChild("Stage")
+                if coins and coins:IsA("IntValue") then profile.coins = coins.Value end
+                if level and level:IsA("IntValue") then profile.level = level.Value end
+                if stage and stage:IsA("IntValue") then profile.stage = stage.Value end
+            end
+            local owned = player:FindFirstChild("OwnedItems")
+            if owned then
+                local inventory = {{}}
+                for _, marker in owned:GetChildren() do
+                    if marker:IsA("StringValue") then
+                        table.insert(inventory, marker.Name)
+                    end
+                end
+                profile.inventory = inventory
+            end
+            local coinsSnapshot = profile.coins
+            local levelSnapshot = profile.level
+            local stageSnapshot = profile.stage
+            local inventorySnapshot = profile.inventory
             local renewed, current = retryWithBackoff(function()
                 return PlayerDataStore:UpdateAsync(key, function(stored)
                     if not stored or stored.lockToken ~= sessionToken then return nil end
+                    stored.coins = coinsSnapshot
+                    stored.level = levelSnapshot
+                    stored.stage = stageSnapshot
+                    stored.inventory = inventorySnapshot
+                    stored.lastSaved = os.time()
                     stored.lockUntil = os.time() + 120
                     return stored
                 end)
