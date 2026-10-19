@@ -65,11 +65,23 @@ class OpenCloudRuntimeVerifier:
         key = os.environ.get("ROBLOX_OPEN_CLOUD_API_KEY", "")
         universe = os.environ.get("ROBLOX_TEST_UNIVERSE_ID", "")
         place = os.environ.get("ROBLOX_TEST_PLACE_ID", "")
-        if not key or not universe.isdecimal() or not place.isdecimal() or (
-            os.environ.get("RMM_ALLOW_TEST_PLACE_PUBLISH") != "1"
-        ):
+        missing = []
+        if not key:
+            missing.append("ROBLOX_OPEN_CLOUD_API_KEY")
+        if not universe.isdecimal() or int(universe or "0") <= 0:
+            missing.append("ROBLOX_TEST_UNIVERSE_ID")
+        if not place.isdecimal() or int(place or "0") <= 0:
+            missing.append("ROBLOX_TEST_PLACE_ID")
+        if os.environ.get("RMM_ALLOW_TEST_PLACE_PUBLISH") != "1":
+            missing.append("RMM_ALLOW_TEST_PLACE_PUBLISH=1")
+        if missing:
+            # The compiled project has not failed a Roblox engine test. No
+            # engine test could start without a separate, explicitly approved
+            # disposable test place. Never fake a pass or silently publish.
             return {
                 "passed": False, "executed": False,
+                "status": "verification_setup_required",
+                "missing_requirements": missing,
                 "reason": "Dedicated test Place ID, Universe ID, API key, and explicit publish opt-in required",
             }
 
