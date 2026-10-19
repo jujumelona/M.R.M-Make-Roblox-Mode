@@ -29,6 +29,16 @@ def _plan():
     return p, data, feature
 
 
+def test_callable_profile_uses_single_renewal_snapshot_path():
+    _, data, _ = _plan()
+    # The callable form uses savePlayerData(player, false), which collects the
+    # current live stats, persists inventory and renews the session lease.
+    # Redundant standalone pre-renewal locals caused five Selene warnings.
+    assert "if not savePlayerData(player, false) then" in data.code
+    assert "local coinsSnapshot" not in data.code
+    assert "local inventorySnapshot" not in data.code
+
+
 def test_generated_gameplay_uses_callable_host_profile_service():
     p, data, feature = _plan()
     assert data.file_path == "src/server/PlayerDataManager.luau"
