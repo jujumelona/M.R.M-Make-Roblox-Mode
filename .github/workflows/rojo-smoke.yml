@@ -74,7 +74,7 @@ jobs:
         run: python tools/verify_host_profile_e2e.py
       - name: Run standalone pure Luau rules in Lune
         run: lune run tests/economy_logic
-      - name: Generate source only (release must remain unverified)
+      - name: Generate source only (Studio gameplay must remain unverified)
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -83,7 +83,8 @@ jobs:
           session = CompleteRobloxAISession(output_root=root)
           session.plan("코인 수집, 상점 시스템, 리더보드가 포함된 검투 아레나")
           result = session.build(source_only=True)
-          assert not result.success, "Source-only is not a release"
+          assert result.success and result.metadata["release_status"] == "source_only", result.metadata
+          assert result.playtest_report.total_tests == 0, "No engine test was run"
           assert result.analysis_report.passed, result.analysis_report.to_dict()
           assert result.metadata["acceptance"]["passed"], result.metadata["acceptance"]
           Path(".rmm-smoke/location.txt").write_text(result.project_dir, encoding="utf-8")
@@ -161,7 +162,8 @@ jobs:
           session=CompleteRobloxAISession(output_root=Path(".rmm-addon-stage"))
           session.plan("코인 수집 상점 리더보드",project_mode="existing_experience_addon")
           out=session.build(source_only=True)
-          assert out.metadata["addon_prepared"] and not out.success, out.metadata
+          assert out.metadata["addon_prepared"] and out.success, out.metadata
+          assert out.metadata["release_status"] == "addon_packaged", out.metadata
           assert not out.rbxlx_path and not (Path(out.project_dir)/"default.project.json").exists()
           inspection=prepare_owned_addon(Path(out.project_dir), owner)
           assert inspection["passed"], inspection
@@ -202,7 +204,7 @@ jobs:
           assert plan.ready_to_build
           assert plan.authored_plan.proposal.game_design["dynamic_design"]
           build=sess.build(source_only=True)
-          assert not build.success and build.metadata["acceptance"]["passed"], build.metadata
+          assert build.success and build.metadata["release_status"] == "source_only" and build.metadata["acceptance"]["passed"], build.metadata
           root=Path(build.project_dir)
           assert (root/"src/server/CustomPetHatching.luau").is_file()
           assert (root/"src/server/RMMServerBootstrap.server.luau").is_file()
