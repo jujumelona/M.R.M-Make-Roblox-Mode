@@ -554,7 +554,39 @@ game:BindToClose(function()
 end)
 """
         if module.module_id == "mod_player_data" and module.kind == ModuleKind.SERVER_MODULE:
+            # Dynamic server modules have their own queued-player and
+            # save/release path in host_player_data.render_callable_player_data.
             return render_callable_player_data(source)
+        # The standalone Script has no queued-profile coordinator. When a
+        # PlayerRemoving event occurs during the asynchronous UpdateAsync,
+        # onPlayerRemoving sees no sessionData and cannot release the newly
+        # acquired lease. Recheck player presence after acquisition and
+        # atomically release only the lease token created by this request.
+        stale_session_marker = "    local data: PlayerData = rawData :: PlayerData"
+        if source.count(stale_session_marker) != 1:
+            raise ValueError("PlayerDataManager lease-release anchor drifted")
+        source = source.replace(stale_session_marker, """    if player.Parent ~= Players then
+        -- The player disconnected while acquisition was waiting on Roblox
+        -- DataStore. PlayerRemoving already ran before sessionData existed.
+        if not studioEphemeral[userId] then
+            local released, _, releaseErr = retryWithBackoff(function()
+                return activeStore():UpdateAsync(key, function(current)
+                    if not current or current.lockToken ~= sessionToken then
+                        return nil -- Never release another server's lease.
+                    end
+                    current.lockToken = nil
+                    current.lockUntil = nil
+                    return current
+                end)
+            end, 4)
+            if not released then
+                warn("Could not release departed player's just-acquired lease: " .. tostring(releaseErr))
+            end
+        end
+        studioEphemeral[userId] = nil
+        return -- Do not create phantom leaderstats for departed players.
+    end
+""" + stale_session_marker, 1)
         return source
 
     # 3. Real Shop & Economy System
