@@ -180,10 +180,30 @@ class LuauCodeGenerator:
                 "NetworkRemotes.RemoteTypes = {\n" + type_rows + "\n}\n"
                 "return NetworkRemotes\n"
             )
+        # The host chooses exact Remotes from actual module ownership. A
+        # tycoon/obby remote in a combat game is a broken architecture.
+        owned = {m.name for m in proposal.modules}
+        routes: dict[str, str] = {}
+        if "CombatSystem" in owned:
+            routes["AttackRequest"] = "RemoteEvent"
+        if "ShopService" in owned:
+            routes["ShopPurchase"] = "RemoteFunction"
+            routes["ShopWeaponUse"] = "RemoteEvent"
+        if "ObbyService" in owned:
+            routes["StageChanged"] = "RemoteEvent"
+            routes["ResetToStage"] = "RemoteEvent"
+        if "SimulatorService" in owned:
+            routes["ClickRequest"] = "RemoteEvent"
+        if "TycoonService" in owned:
+            routes["ButtonPurchased"] = "RemoteEvent"
+        if "ArenaRoundService" in owned:
+            routes["RoundStatus"] = "RemoteEvent"
+        remote_rows = "\\n".join('    ' + name + ' = "' + name + '",' for name in routes)
+        remote_classes = "\\n".join('    ' + name + ' = "' + kind + '",' for name, kind in routes.items())
         return f"""--!strict
 -- Module: {module.name}
 -- Service: ReplicatedStorage
--- Description: Shared RemoteEvent/RemoteFunction definitions, game constants, and strict types.
+-- Network declarations are derived from generated game feature ownership.
 
 local {module.name} = {{}}
 
@@ -199,26 +219,12 @@ export type PlayerDataRecord = {{
     sessionLock: string?,
 }}
 
-export type ShopItem = {{
-    id: string,
-    name: string,
-    price: number,
-    itemType: string,
+{module.name}.Remotes = {{
+{{remote_rows}}
 }}
 
-{module.name}.Remotes = {{
-    -- Combat
-    AttackRequest = "AttackRequest",
-    DamageEvent = "DamageEvent",
-    -- Shop & Economy
-    ShopPurchase = "ShopPurchase",
-    UpdateStats = "UpdateStats",
-    -- Obby & Stages
-    StageChanged = "StageChanged",
-    ResetToStage = "ResetToStage",
-    -- Tycoon & Simulator
-    ClickRequest = "ClickRequest",
-    ButtonPurchased = "ButtonPurchased",
+{module.name}.RemoteTypes = {{
+{{remote_classes}}
 }}
 
 {module.name}.Config = {{
