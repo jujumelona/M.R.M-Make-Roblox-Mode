@@ -52,6 +52,7 @@ def inspect_compiled_place(proposal: RobloxProposal, compiled: Path,
         parents={child:parent for parent in root.iter() for child in parent}
         items=[(_name(e),e.attrib.get("class",""),e) for e in elems]
         names={n for n,_,_ in items}
+        dynamic=proposal.game_design.get("dynamic_design") or {}
         check("place.root",True)
         for m in proposal.modules:
             expected=None
@@ -68,11 +69,14 @@ def inspect_compiled_place(proposal: RobloxProposal, compiled: Path,
                     and not m.file_path.endswith(".server.luau")):
                 target_class = "ModuleScript"
             # Older authored plans declared dynamic .server.luau Scripts.
-            # Production normalizes them to requireable ModuleScripts plus
-            # a host bootstrap. Audit the REAL compiled and on-disk type;
+            # Production normalizes them and the builtin dynamic profile to
+            # requireable ModuleScripts plus a host bootstrap. Audit the REAL compiled and on-disk type;
             # never skip source equality or treat arbitrary Scripts as modules.
             source_file = m.file_path
-            if (source_root is not None and m.module_id.startswith("dyn_")
+            migrated_profile = (bool(dynamic) and m.module_id == "mod_player_data"
+                                and m.name == "PlayerDataManager"
+                                and proposal.game_design.get("storage_backend", "builtin") == "builtin")
+            if (source_root is not None and (m.module_id.startswith("dyn_") or migrated_profile)
                     and m.file_path.startswith("src/server/")
                     and m.file_path.endswith(".server.luau")):
                 candidate = m.file_path[:-len(".server.luau")] + ".luau"
@@ -101,7 +105,6 @@ def inspect_compiled_place(proposal: RobloxProposal, compiled: Path,
                 check("module.source."+m.name,
                       bool(original) and compiled_source is not None
                       and _normalized(compiled_source)==original)
-        dynamic=proposal.game_design.get("dynamic_design") or {}
         if (source_root is not None and dynamic and
                 (Path(source_root) / "src/server/RMMServerBootstrap.server.luau").is_file()):
             bootstrap = [e for name, kind, e in items

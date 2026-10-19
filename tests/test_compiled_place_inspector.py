@@ -1,4 +1,5 @@
 from pathlib import Path
+import pytest
 from roblox_mod_ai.rbxlx_inspector import inspect_compiled_place
 from roblox_mod_ai.spec import RobloxProposal, RobloxModuleSpec
 
@@ -68,3 +69,33 @@ def test_compiled_script_in_wrong_service_rejected(tmp_path:Path):
     assert not result["passed"]
     assert any(c["id"]=="module.MyGameplay" and not c["passed"]
                for c in result["checks"])
+
+
+@pytest.mark.parametrize("design,expected", [
+    ({"dynamic_design": {"remotes": {}}}, True),
+    ({}, False),
+    ({"dynamic_design": {"remotes": {}}, "storage_backend": "profilestore"}, False),
+])
+def test_saved_builtin_profile_plan_audits_actual_migrated_module(tmp_path, design, expected):
+    import xml.etree.ElementTree as ET
+    compiled, proposal = _compiled_fixture(tmp_path)
+    module = proposal.modules[0]
+    module.module_id = "mod_player_data"
+    module.name = "PlayerDataManager"
+    module.file_path = "src/server/PlayerDataManager.server.luau"
+    proposal.game_design = design
+    actual_source = tmp_path / "src/server/PlayerDataManager.luau"
+    (tmp_path / "src/server/MyGameplay.server.luau").rename(actual_source)
+    xml = ET.parse(compiled)
+    script = xml.getroot().find("./Item/Item")
+    script.set("class", "ModuleScript")
+    script.find("./Properties/string").text = module.name
+    xml.write(compiled, encoding="unicode")
+    result = inspect_compiled_place(proposal, compiled, source_root=tmp_path)
+    assert result["passed"] is expected, result
+    if expected:
+        actual_source.write_text("print('changed after build')", encoding="utf-8")
+        result = inspect_compiled_place(proposal, compiled, source_root=tmp_path)
+        assert not result["passed"], "Migration must not skip compiled-source equality"
+        assert any(c["id"] == "module.source.PlayerDataManager" and not c["passed"]
+                   for c in result["checks"])
