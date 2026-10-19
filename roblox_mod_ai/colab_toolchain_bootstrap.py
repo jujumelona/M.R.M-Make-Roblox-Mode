@@ -169,7 +169,7 @@ def setup_colab_toolchain(install_dir: str | Path = "/content/rmm-tools/bin",
                 else:
                     with tempfile.TemporaryDirectory(prefix="rmm-luau-parse-") as scratch:
                         fixture = Path(scratch) / "valid.luau"
-                        fixture.write_text("--!strict\\nlocal n = 1\\n", encoding="utf-8")
+                        fixture.write_text("--!strict\nlocal n = 1\n", encoding="utf-8")
                         proc = subprocess.run([str(destination), "--only-parse", str(fixture)],
                                               capture_output=True, text=True, timeout=15)
                         if proc.returncode:
