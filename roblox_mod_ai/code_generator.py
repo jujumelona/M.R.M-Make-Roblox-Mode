@@ -559,6 +559,8 @@ end)
         if game:GetAttribute("ArenaRoundActive") ~= true
             or player:GetAttribute("InArenaRound") ~= true then return end
 """
+        weapon_item = ('    magic_staff = {{ name = "Arcane Staff", price = 150, itemType = "Weapon" }},\n'
+                       if proposal.game_design.get("features", {}).get("is_combat") else "")
         return f"""--!strict
 -- Service: ServerScriptService
 -- Script: {module.name}
@@ -570,22 +572,19 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local EconomyRules = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("EconomyRules"))
 
 local remotesFolder = ReplicatedStorage:WaitForChild("Remotes")
-local purchaseFunction = remotesFolder:FindFirstChild("ShopPurchase") :: RemoteFunction?
-if not purchaseFunction then
-    purchaseFunction = Instance.new("RemoteFunction")
-    purchaseFunction.Name = "ShopPurchase"
-    purchaseFunction.Parent = remotesFolder
-end
+local purchaseFunction = remotesFolder:WaitForChild("ShopPurchase") :: RemoteFunction
+local weaponUse = remotesFolder:WaitForChild("ShopWeaponUse") :: RemoteEvent
 
 -- Catalog of items available in the shop
 local SHOP_ITEMS: {{ [string]: {{ name: string, price: number, itemType: string }} }} = {{
     speed_boots = {{ name = "Speed Boots", price = 50, itemType = "Gear" }},
-    magic_staff = {{ name = "Arcane Staff", price = 150, itemType = "Weapon" }},
+{weapon_item.rstrip()}
     shield = {{ name = "Iron Shield", price = 100, itemType = "Armor" }},
     health_potion = {{ name = "Health Potion", price = 25, itemType = "Consumable" }},
 }}
 
 local lastPurchaseByUserId: {{ [number]: number }} = {{}}
+local lastCastByUserId: {{ [number]: number }} = {{}}
 local MAX_SHOP_DISTANCE = 18
 local PURCHASE_COOLDOWN = 0.35
 
@@ -602,41 +601,43 @@ local function grantMagicStaff(player: Player): boolean
     local tool = Instance.new("Tool")
     tool.Name = SHOP_ITEMS.magic_staff.name
     tool.RequiresHandle = false
-    local lastCast = 0
-    tool.Activated:Connect(function()
-        if player.Parent ~= Players then return end
-        if os.clock() - lastCast < 1 then return end
-        local caster = player.Character
-        local humanoid = caster and caster:FindFirstChildOfClass("Humanoid")
-        local castRoot = caster and caster:FindFirstChild("HumanoidRootPart")
-        if not caster or not humanoid or humanoid.Health <= 0
-            or not castRoot or not castRoot:IsA("BasePart") then return end
-{arena_weapon_guard}
-        lastCast = os.clock()
-        local params = RaycastParams.new()
-        params.FilterType = Enum.RaycastFilterType.Exclude
-        params.FilterDescendantsInstances = {{caster}}
-        local ray = workspace:Raycast(castRoot.Position, castRoot.CFrame.LookVector * 30, params)
-        local targetModel = ray and ray.Instance:FindFirstAncestorOfClass("Model")
-        local target = targetModel and targetModel:FindFirstChildOfClass("Humanoid")
-        if target and targetModel ~= caster and target.Health > 0 then
-            -- A cast is evaluated on the server; the client cannot choose a target.
-            -- PvP arena participants are enrolled by ArenaRoundService.
-            if game:GetAttribute("ArenaRoundActive") then
-                local opponent = Players:GetPlayerFromCharacter(targetModel)
-                if not opponent or not opponent:GetAttribute("InArenaRound") then return end
-            end
-            -- Credit is centralized in CombatSystem for both melee and staff.
-            local credit = ServerScriptService:FindFirstChild("RMMCombatCredit")
-            if credit and credit:IsA("BindableEvent") then
-                credit:Fire(player, target)
-            end
-            target:TakeDamage(20)
-        end
-    end)
+    -- Client LocalScript owns activation. This server script owns damage.
     tool.Parent = backpack
     return true
 end
+
+-- Remote clients can supply only the weapon identifier. The server checks
+-- equip state, paid ownership, round membership, cooldown and raycast hit.
+weaponUse.OnServerEvent:Connect(function(player: Player, weaponId: any)
+    if typeof(weaponId) ~= "string" or weaponId ~= "magic_staff" then return end
+    if not SHOP_ITEMS.magic_staff or player.Parent ~= Players then return end
+    local owned = player:FindFirstChild("OwnedItems")
+    if not owned or not owned:FindFirstChild("magic_staff") then return end
+    local caster = player.Character
+    local weapon = caster and caster:FindFirstChild("Arcane Staff")
+    local humanoid = caster and caster:FindFirstChildOfClass("Humanoid")
+    local castRoot = caster and caster:FindFirstChild("HumanoidRootPart")
+    if not weapon or not weapon:IsA("Tool") or not humanoid or humanoid.Health <= 0
+        or not castRoot or not castRoot:IsA("BasePart") then return end
+{arena_weapon_guard}
+    local now = os.clock()
+    if now - (lastCastByUserId[player.UserId] or -10000) < 1 then return end
+    lastCastByUserId[player.UserId] = now
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = {{caster}}
+    local ray = workspace:Raycast(castRoot.Position, castRoot.CFrame.LookVector * 30, params)
+    local targetModel = ray and ray.Instance:FindFirstAncestorOfClass("Model")
+    local target = targetModel and targetModel:FindFirstChildOfClass("Humanoid")
+    if not target or target.Health <= 0 or targetModel == caster then return end
+    if game:GetAttribute("ArenaRoundActive") then
+        local opponent = Players:GetPlayerFromCharacter(targetModel)
+        if not opponent or opponent:GetAttribute("InArenaRound") ~= true then return end
+    end
+    local credit = ServerScriptService:FindFirstChild("RMMCombatCredit")
+    if credit and credit:IsA("BindableEvent") then credit:Fire(player, target) end
+    target:TakeDamage(20)
+end)
 
 local function handlePurchase(player: Player, itemId: string): (boolean, string)
     -- Roblox RemoteFunction arguments are UNTRUSTED, regardless of Luau type annotations.
@@ -719,6 +720,7 @@ end
 purchaseFunction.OnServerInvoke = handlePurchase
 Players.PlayerRemoving:Connect(function(player)
     lastPurchaseByUserId[player.UserId] = nil
+    lastCastByUserId[player.UserId] = nil
 end)
 
 local function restoreEquipment(player: Player, character: Model)
