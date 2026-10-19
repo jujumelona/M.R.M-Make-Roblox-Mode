@@ -5,7 +5,8 @@ Supports:
 - Wally (wally install)
 - Selene (selene lint)
 - StyLua (stylua format)
-- RobloxStudio MCP bridge (npx robloxstudio-mcp)
+- Roblox Studio MCP is a built-in LOCAL Studio feature, not an npm bridge.
+  Studio MCP is configured on the Windows machine in the bundled project kit.
 """
 
 from __future__ import annotations
@@ -41,7 +42,11 @@ class ToolchainStatus:
 
 
 class RobloxToolchainManager:
-    """Detects, connects, and executes official Roblox development binaries."""
+    """Detects and executes installed Roblox development command-line tools.
+
+    The built-in Roblox Studio MCP server cannot be considered connected merely
+    because npx exists in Colab or the local shell.
+    """
 
     def __init__(self) -> None:
         self.rojo_path = shutil.which("rojo")
@@ -81,7 +86,6 @@ class RobloxToolchainManager:
             "Wally": status.wally_available,
             "Selene": status.selene_available,
             "StyLua": status.stylua_available,
-            "NPX (Studio Bridge)": status.npx_available,
         }
 
     def generate_rokit_manifest(self) -> str:
