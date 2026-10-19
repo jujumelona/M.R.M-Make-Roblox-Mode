@@ -830,13 +830,37 @@ statusLabel.Size = UDim2.fromOffset(280, 58)
 statusLabel.Position = UDim2.fromOffset(10, 260)
 statusLabel.Parent = panel
 
+-- Display a real cooldown indicator when the purchased weapon is used.
+-- This client timer is visual only; the server independently rate-limits casts.
+local cooldownHint = Instance.new("TextLabel")
+cooldownHint.Name = "StaffCooldown"
+cooldownHint.Size = UDim2.fromOffset(190, 34)
+cooldownHint.Position = UDim2.fromOffset(16, 188)
+cooldownHint.TextScaled = true
+cooldownHint.Visible = false
+cooldownHint.Parent = gui
+local nextStaffCast = 0
+
 -- Tool.Activated only fires for client input in a LocalScript.
 -- Send an item id; the server alone validates targets and applies damage.
 local bound: {{ [Tool]: boolean }} = {{}}
 local function bindTool(child: Instance)
     if not child:IsA("Tool") or child.Name ~= "Arcane Staff" or bound[child] then return end
     bound[child] = true
-    child.Activated:Connect(function() weaponUse:FireServer("magic_staff") end)
+    child.Activated:Connect(function()
+        local now = os.clock()
+        if now < nextStaffCast then return end
+        nextStaffCast = now + 1
+        weaponUse:FireServer("magic_staff")
+        cooldownHint.Visible = true
+        task.spawn(function()
+            while os.clock() < nextStaffCast do
+                cooldownHint.Text = string.format("Staff: %.1fs", nextStaffCast - os.clock())
+                task.wait(0.1)
+            end
+            cooldownHint.Visible = false
+        end)
+    end)
 end
 local backpack = localPlayer:WaitForChild("Backpack")
 backpack.ChildAdded:Connect(bindTool)
