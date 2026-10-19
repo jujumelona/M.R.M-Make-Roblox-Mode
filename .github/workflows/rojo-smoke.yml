@@ -35,7 +35,9 @@ jobs:
             tests/test_host_client_transport.py \
             tests/test_host_world_prompt.py \
             tests/test_purchase_request_semantics.py \
-            tests/test_uploaded_service_recovery.py
+            tests/test_uploaded_service_recovery.py \
+            tests/test_source_repair_cycle.py \
+            tests/test_detailed_plan_and_source_review.py
       - name: Install real Roblox toolchain
         uses: paradoxum-games/setup-rokit@v3
         with:
