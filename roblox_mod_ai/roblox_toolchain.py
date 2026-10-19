@@ -106,21 +106,55 @@ selene = "Kampfkarren/selene@0.27.1"
 stylua = "JohnnyMorganz/StyLua@2.0.2"
 """
 
+    @staticmethod
+    def _authored_luau_files(target_dir: str | Path) -> list[Path]:
+        """Only source owned by this generated game; never vendored dependencies.
+
+        StyLua / luau-analyze called with the project directory previously
+        descended into Wally's Packages/DevPackages/_Index, where third-party
+        Luau versions and generated artifacts are outside MRM's control.
+        """
+        root = Path(target_dir).resolve()
+        files: list[Path] = []
+        for owned in ("src", "tests"):
+            base = root / owned
+            if not base.is_dir():
+                continue
+            for source in base.rglob("*"):
+                if (source.is_file() and source.suffix in (".lua", ".luau")
+                        and not source.is_symlink()
+                        and not any(part in ("Packages", "DevPackages", "_Index",
+                                             "node_modules", ".git")
+                                    for part in source.relative_to(base).parts)):
+                    files.append(source)
+        return sorted(files)
+
     def run_stylua(self, target_dir: str | Path) -> dict[str, Any]:
-        """Runs StyLua formatter on all Luau code in target_dir."""
-        path = str(Path(target_dir).resolve())
+        """Format only MRM-authored scripts, not installed Wally/Jest packages."""
+        files = self._authored_luau_files(target_dir)
+        if not files:
+            return {"success": False, "executed": False,
+                    "message": "No authored Lua/Luau sources in src/ or tests/"}
         if not self.stylua_path:
-            return {"success": True, "executed": False, "message": "StyLua not in PATH, skipped"}
+            return {"success": True, "executed": False,
+                    "message": "StyLua not in PATH, skipped"}
         try:
-            res = subprocess.run([self.stylua_path, path], capture_output=True, text=True, timeout=15)
+            # Files are explicit operands, so third-party Packages/DevPackages
+            # cannot cause parser failures or be rewritten by our formatter.
+            res = subprocess.run([self.stylua_path, *(str(file) for file in files)],
+                                 cwd=str(Path(target_dir).resolve()),
+                                 capture_output=True, text=True, timeout=60)
             return {
                 "success": res.returncode == 0,
                 "executed": True,
+                "checked_authored_files": len(files),
+                "scope": "src/ and tests/ only",
                 "stdout": res.stdout,
                 "stderr": res.stderr,
             }
         except Exception as exc:
-            return {"success": False, "executed": True, "error": str(exc)}
+            return {"success": False, "executed": True,
+                    "checked_authored_files": len(files), "error": str(exc)}
 
     def run_selene(self, target_dir: str | Path) -> dict[str, Any]:
         """Runs Selene linter on all Luau code in target_dir."""
@@ -160,19 +194,22 @@ stylua = "JohnnyMorganz/StyLua@2.0.2"
             return {"success": False, "executed": True, "error": str(exc)}
 
     def run_luau_analyze(self, target_dir: str | Path) -> dict[str, Any]:
-        """Run actual Luau CLI analyzer across generated Luau source files."""
+        """Analyze MRM-owned production Luau, not Wally/Jest dependencies."""
         tool = shutil.which("luau-analyze")
         if not tool:
             return {"success": False, "executed": False, "message": "luau-analyze missing"}
-        paths = sorted(str(p) for p in Path(target_dir).rglob("*.luau") if "/tests/" not in p.as_posix())
+        paths = [str(p) for p in self._authored_luau_files(target_dir)
+                 if "src" in p.relative_to(Path(target_dir).resolve()).parts]
         if not paths:
-            return {"success": False, "executed": False, "message": "no source scripts"}
+            return {"success": False, "executed": False, "message": "no authored source scripts"}
         try:
             res = subprocess.run([tool, *paths], capture_output=True, text=True, timeout=60)
             return {"success": res.returncode == 0, "executed": True,
-                    "stdout": res.stdout, "stderr": res.stderr}
+                    "checked_authored_files": len(paths),
+                    "scope": "src/ only", "stdout": res.stdout, "stderr": res.stderr}
         except Exception as exc:
-            return {"success": False, "executed": True, "error": str(exc)}
+            return {"success": False, "executed": True,
+                    "checked_authored_files": len(paths), "error": str(exc)}
 
     def run_rojo_build(self, project_json: str | Path, output_file: str | Path) -> dict[str, Any]:
         """Executes 'rojo build -o <output> <project_json>'."""
