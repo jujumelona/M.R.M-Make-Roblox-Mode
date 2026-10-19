@@ -109,7 +109,7 @@ def main() -> None:
             if result.project_zip_path:
                 print(f"📦 Project ZIP File: {result.project_zip_path}")
         else:
-            print("\n❌ Build failed during validation or playtests.")
+            print("\nBuild failed during planning, code generation, lint, or Rojo packaging.")
             sys.exit(1)
 
     elif args.command == "analyze":
