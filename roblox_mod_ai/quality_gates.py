@@ -92,8 +92,11 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
             'typeof(itemId) ~= "string"', 'PURCHASE_COOLDOWN', 'MAX_SHOP_DISTANCE',
             'humanoid.Health <= 0', 'ShopStalls'),
               "RemoteFunction type, distance, character and rate validated by server")
-        check("shop.effect", has("ShopService", "speed_boots", "WalkSpeed", "health_potion", "Humanoid", "Activated:Connect"),
-              "Shop has measurable speed/health/combat effects, not empty items")
+        check("shop.effect", has("ShopService", "speed_boots", "WalkSpeed", "health_potion", "Humanoid",
+                                  "weaponUse.OnServerEvent", 'typeof(weaponId) ~= "string"')
+              and has("ShopController", "child.Activated:Connect", 'weaponUse:FireServer("magic_staff")')
+              and "tool.Activated:Connect" not in source.get("ShopService", ""),
+              "Tool.Activated is client-only; authoritative server validates every weapon request")
         check("shop.ui", has("ShopController", "ScreenGui", "TextButton", "InvokeServer", "ProximityPrompt"),
               "GUI buttons invoke purchase RemoteFunction")
         check("shop.world", bool(world.get("ShopStalls", {}).get("ShopCounter", {}).get("ShopPrompt")),
@@ -125,6 +128,26 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
     if has_arena_round:
         check("arena.placement", has("ArenaRoundService", "CombatArena", "PivotTo", "spawnSlot"),
               "Each enrolled arena fighter must be placed inside the combat ring")
+        # A working round arena needs an out-of-combat lobby. A spawn, shop or
+        # collectible placed between its walls lets spectators enter combat.
+        arena = world.get("CombatArena", {})
+        def position(row: dict) -> list:
+            return row.get("$properties", {}).get("Position", [])
+        west, east = position(arena.get("West", {})), position(arena.get("East", {}))
+        south, north = position(arena.get("South", {})), position(arena.get("North", {}))
+        if all(len(p) == 3 for p in (west, east, south, north)):
+            def inside_ring(p: list) -> bool:
+                return len(p) == 3 and west[0] < p[0] < east[0] and south[2] < p[2] < north[2]
+            spawn = position(world.get("SpawnLocation", {}))
+            shop = position(world.get("ShopStalls", {}).get("ShopCounter", {}))
+            coins = [position(value) for key, value in world.get("Coins", {}).items()
+                     if key.startswith("Coin")]
+            check("arena.lobby_separation", not inside_ring(spawn)
+                  and (not features.get("is_shop") or not inside_ring(shop))
+                  and not any(inside_ring(p) for p in coins),
+                  "Lobby spawn, shop and pickups must be outside the fighting ring")
+        else:
+            check("arena.lobby_separation", False, "Arena walls are missing positional geometry")
         check("arena.result_statistics", has("ArenaRoundService", '"Wins"', "wins.Value += 1"),
               "Every match winner receives a persisted win statistic")
         check("arena.unauthorized_damage", has("CombatSystem", "ArenaRoundActive", "InArenaRound"),
@@ -276,6 +299,25 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
                   "Model-declared 3D objects materialized in real Rojo tree")
     check("network.remotes", remotes_present,
           "Declared network Remotes in new Place or additive owner-only overlay")
+    if not addon_mode and not proposal.game_design.get("dynamic_design"):
+        actual_remotes = config.get("tree", {}).get("ReplicatedStorage", {}).get("Remotes", {})
+        expected = set()
+        owned_names = {m.name for m in proposal.modules}
+        for owner_name, remote_names in (
+            ("CombatSystem", ("AttackRequest",)),
+            ("ShopService", ("ShopPurchase", "ShopWeaponUse")),
+            ("ArenaRoundService", ("RoundStatus",)),
+            ("ObbyService", ("StageChanged", "ResetToStage")),
+            ("TycoonService", ("ButtonPurchased",)),
+            ("SimulatorService", ("ClickRequest",)),
+        ):
+            if owner_name in owned_names:
+                expected.update(remote_names)
+        check("network.exact_owned_remotes", set(actual_remotes) - {"$className"} == expected,
+              "Every published Remote belongs to an installed subsystem; no generic unused attack/stage channels")
+        bridge = source.get("NetworkRemotes", "")
+        check("network.shared_matches_rojo", all(f'{name} = "{name}"' in bridge for name in expected),
+              "Shared Remote names match the built Studio project")
     if addon_mode:
         check("addon.non_destructive", not (root / "default.project.json").exists()
               and (root / "addon.manifest.json").exists()
