@@ -13,6 +13,7 @@ from .pre_design_research import RobloxPreDesignResearch
 from .dynamic_architect import RobloxDynamicArchitect, DynamicDesignError, dynamic_design_enabled
 from .gameplay_contract import build_gameplay_contract, arena_round_requested
 from .implementation_blueprint import build_implementation_blueprint
+from .detailed_plan import build_detailed_plan
 from .server_modules import normalize_dynamic_server_modules
 from .project_modes import validate_mode
 from .model_router import ModelRouter
@@ -497,6 +498,7 @@ class RobloxGameDesignPlanner:
         normalize_dynamic_server_modules(proto_proposal)
         proto_proposal.game_design["gameplay_contract"] = build_gameplay_contract(proto_proposal)
         proto_proposal.game_design["implementation_blueprint"] = build_implementation_blueprint(proto_proposal)
+        proto_proposal.game_design["detailed_implementation_plan"] = build_detailed_plan(proto_proposal)
         test_specs: list[RobloxTestSpec] = self.test_runner.generate_default_test_specs(proto_proposal)
         proto_proposal.tests = test_specs
         proto_proposal.target = RobloxTarget()
@@ -520,6 +522,7 @@ class RobloxGameDesignPlanner:
                 "dynamic_design": "model_proposed_unverified" if dynamic_design else "none",
                 "gameplay_contract": proto_proposal.game_design["gameplay_contract"],
                 "implementation_blueprint": proto_proposal.game_design["implementation_blueprint"],
+                "detailed_implementation_plan": proto_proposal.game_design["detailed_implementation_plan"],
             },
         )
         authored_plan.create_checkpoint(note=f"Initial {primary_genre} plan generation")
