@@ -12,6 +12,7 @@ from .api import CompleteRobloxAISession
 from .creator_store import RobloxCreatorStoreCatalog
 from .official_docs import RobloxOfficialDocs
 from .studio_bridge import StudioMCPClient
+from .implementation_blueprint import audit_implementation_blueprint
 from .luau_analyzer import LuauStaticAnalyzer
 from .open_cloud import RobloxOpenCloudClient
 from .playtest_runner import RobloxPlaytestRunner
@@ -129,6 +130,32 @@ class RobloxMCPServer:
                     },
                     "required": ["prompt"],
                 },
+            },
+            {
+                "name": "roblox_plan_audit",
+                "description": "Inspect the current full requirement-to-module blueprint, integration obligations and unverified Studio tests. Fails on stale or unowned design.",
+                "inputSchema": {"type": "object", "properties": {}},
+            },
+            {
+                "name": "roblox_studio_inspect",
+                "description": "Read actual connected local Studio state, tree, source or logs. No fabricated Studio responses.",
+                "inputSchema": {"type": "object", "properties": {
+                    "tool": {"type": "string", "enum": [
+                        "get_studio_state", "list_roblox_studios",
+                        "search_game_tree", "inspect_instance", "script_read",
+                        "script_search", "script_grep", "get_console_output"]},
+                    "arguments": {"type": "object"}}, "required": ["tool"]},
+            },
+            {
+                "name": "roblox_studio_action",
+                "description": "Perform an explicitly authorized local Studio playtest, input or Luau action; never deploys or simulates a running engine.",
+                "inputSchema": {"type": "object", "properties": {
+                    "tool": {"type": "string", "enum": [
+                        "start_stop_play", "execute_luau", "character_navigation",
+                        "user_keyboard_input", "user_mouse_input"]},
+                    "arguments": {"type": "object"},
+                    "allow_write": {"type": "boolean", "default": False}},
+                    "required": ["tool", "allow_write"]},
             },
             {
                 "name": "roblox_project_write",
@@ -263,7 +290,27 @@ class RobloxMCPServer:
                     "plan_text": reply.message,
                     "approval_hash": reply.approval_hash,
                     "modules": [m.to_dict() for m in reply.authored_plan.proposal.modules],
+                    "implementation_blueprint": reply.authored_plan.proposal.game_design.get("implementation_blueprint"),
                 }
+
+            elif tool_name == "roblox_plan_audit":
+                if not self.session.authored_plan:
+                    return {"passed": False, "error": "No active proposal loaded"}
+                return audit_implementation_blueprint(self.session.authored_plan.proposal)
+
+            elif tool_name == "roblox_studio_inspect":
+                requested = str(arguments.get("tool", ""))
+                from .studio_bridge import ALLOWED_READ
+                if requested not in ALLOWED_READ:
+                    return {"passed": False, "error": "Studio read tool not approved"}
+                return self.studio_bridge.run(requested, arguments.get("arguments") or {})
+
+            elif tool_name == "roblox_studio_action":
+                requested = str(arguments.get("tool", ""))
+                from .studio_bridge import ALLOWED_ACTIONS
+                if requested not in ALLOWED_ACTIONS or arguments.get("allow_write") is not True:
+                    return {"passed": False, "error": "Explicit Studio action approval required"}
+                return self.studio_bridge.run(requested, arguments.get("arguments") or {}, allow_write=True)
 
             elif tool_name == "roblox_project_write":
                 rel_path = arguments.get("file_path", "")
