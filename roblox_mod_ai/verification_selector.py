@@ -51,8 +51,11 @@ def make_verification_report(
     from_tool("selene", "selene", "Lua/Luau linter", applicable=not source_only)
     from_tool("luau_analyze", "luau_analyze", "optional standalone Luau analyzer",
               applicable=not source_only)
-    from_tool("lune_economy", "lune_economy", "pure generated EconomyRules unit tests",
-              applicable=(not source_only and bool(tool_results.get("lune_economy_applicable"))))
+    from_tool("luau_compile", "luau_compile", "official OSS Luau parser for all authored source",
+              applicable=not source_only)
+    from_tool("lune_offline", "lune_offline",
+              "every explicitly offline-compatible Luau test discovered in tests/",
+              applicable=(not source_only and tool_results.get("offline_test_count", 0) > 0))
     from_tool("rojo_build", "rojo", "Rojo-built local Place", applicable=real_place)
     structure = tool_results.get("compiled_structure")
     if not real_place:
