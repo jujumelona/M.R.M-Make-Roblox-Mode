@@ -44,7 +44,12 @@ def test_potion_does_not_charge_full_health_players_for_no_effect():
 def test_match_cannot_start_without_profile_and_leaving_ring_forfeits():
     code = render_arena_round_service()
     assert 'stats:FindFirstChild("Coins")' in code
-    assert "local ARENA_LIMIT = 18" in code
+    assert "local ARENA_MARGIN = 3" in code
+    assert "arena:GetBoundingBox()" in code
+    assert "frame:PointToObjectSpace(root.Position)" in code
+    assert "arenaFrame * CFrame.new(x, arenaSize.Y * 0.5 + 2, z)" in code
+    assert "Arena geometry is missing" in code
+    assert "math.abs(root.Position.X)" not in code
     assert "and inArena(player) then" in code
     assert 'player:SetAttribute("InArenaRound", false)' in code
     assert 'announce("Winner"' in code
