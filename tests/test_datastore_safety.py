@@ -28,7 +28,10 @@ def test_datastore_code_safety_patterns():
     assert "player:Kick(" in code
     assert "if not success then" in code
     assert "if not success or lockedByOther or rawData == nil then" in code
-    assert "PlayerDataStore:UpdateAsync(key" in code
+    # Lazy resolution avoids cloud DataStore calls in unpublished Studio previews.
+    assert "activeStore():UpdateAsync(key" in code
+    assert 'if RunService:IsStudio() and game.GameId == 0 then' in code
+    assert "if studioEphemeral[userId] then" in code
     assert "current.lockToken ~= sessionLocks[userId]" in code
     assert "stored.lockUntil = os.time() + 120" in code
     assert 'owned.Name = "OwnedItems"' in code
