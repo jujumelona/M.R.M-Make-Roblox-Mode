@@ -18,6 +18,12 @@ _INVALID_CALLS = (
     (r"\bgame\s*:\s*GetServices\s*\(", "game:GetServices is invalid; request one named service using GetService"),
     (r"\bgame\s*[.:]\s*GetPlayers\s*\(", "game does not implement GetPlayers; use Players:GetPlayers()"),
     (r"\bgame\s*\.\s*_PlayerService\b", "game._PlayerService is not a Roblox service"),
+    # Recorded broken shop generation passed nil to the authenticated-player
+    # profile API, then treated the result as a server-global inventory.
+    (r"\b(?:PlayerDataManager|services\s*\.\s*PlayerDataManager)\s*[.:]\s*GetState\s*\(\s*nil\s*[,)]",
+     "PlayerDataManager.GetState requires the authenticated Player, not nil"),
+    (r"\bMarketplaceItemService\s*[.:]\s*(?:BuyAsync|SellAsync)\s*\(",
+     "MarketplaceItemService BuyAsync/SellAsync is not a Roblox in-game currency API"),
 )
 
 
