@@ -56,6 +56,11 @@ def build_gameplay_contract(proposal: Any) -> dict[str, Any]:
     else:
         mode, ending = "open_ended", "repeatable_progress"
     units: list[dict] = []
+    if "GameObjectiveController" in names:
+        units.append(_unit("onboarding", "GameObjectiveController",
+            ["GameObjective", "GameActionHint", "toggle.Activated"],
+            "read the objective and the first action",
+            "briefing is visible and can be toggled"))
     if "CoinCollector" in names:
         units.append(_unit("collect", "CoinCollector",
             ["GetPlayerFromCharacter", ".Touched:Connect", ".Value +="],
