@@ -14,6 +14,7 @@ from .server_modules import render_dynamic_server_bootstrap
 from .host_client import render_host_client
 from .host_player_data import render_callable_player_data
 from .gameplay_round import render_arena_round_service, render_arena_round_controller
+from .gameplay_onboarding import render_game_objectives
 from .model_router import ModelRouter
 from .spec import ModuleKind, RobloxModuleSpec, RobloxProposal
 
@@ -83,6 +84,8 @@ class LuauCodeGenerator:
         """Dispatches Luau code generation to specialized genre and subsystem engines."""
         # Authored novel mechanics must NEVER be dispatched to same-name
         # first-party templates whose behavior was not contract-matched.
+        if module.module_id == "mod_game_objective":
+            return render_game_objectives(proposal)
         if module.module_id == "mod_arena_round":
             return render_arena_round_service()
         if module.module_id == "mod_arena_round_controller":
