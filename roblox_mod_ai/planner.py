@@ -627,9 +627,9 @@ class RobloxGameDesignPlanner:
         ) or "- No official document content fetched; not evidence-grounded"
         pending = ", ".join(ledger.get("unimplemented_facets", [])) or "none"
         contract = proposal.game_design.get("gameplay_contract", {})
-        units_md = "\\n".join(
+        units_md = "\n".join(
             f"- **{unit['id']}**: {unit['action']} → {unit['observable']} "
-            f"(owner: \`{unit['owner']}\`)"
+            f"(owner: `{unit['owner']}`)"
             for unit in contract.get("units", [])
         ) or "- No implemented gameplay action owned yet"
         return f"""# 🎮 Roblox Experience Plan: {proposal.game_title} (Genre: {genre})
