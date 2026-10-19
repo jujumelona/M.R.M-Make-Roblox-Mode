@@ -68,3 +68,32 @@ def test_lease_renewal_saves_current_currency_and_inventory():
     assert "stored.lastSaved = os.time()" in source
     assert "stored.lockUntil = os.time() + 120" in source
     assert "if not stored or stored.lockToken ~= sessionToken then return nil end" in source
+
+
+def test_offline_studio_preview_does_not_resolve_cloud_data_store_or_kick_players():
+    generator = LuauCodeGenerator()
+    source = generator._generate_safe_datastore_service(
+        SimpleNamespace(name="PlayerDataManager", module_id="mod_player_data",
+                        kind="data_store"), None)
+    assert 'local RunService = game:GetService("RunService")' in source
+    assert 'if RunService:IsStudio() and game.GameId == 0 then' in source
+    assert 'studioEphemeral[userId] = true' in source
+    assert 'if studioEphemeral[userId] then continue end' in source
+    assert 'return true -- Preview data is intentionally NOT persisted' in source
+    assert 'local function activeStore(): GlobalDataStore' in source
+    assert 'return activeStore():UpdateAsync' in source
+    assert 'warn("RMM Studio local preview: using memory-only profile' in source
+    assert 'player:Kick("Profile is unavailable or active on another server' in source
+
+
+def test_combat_kill_rewards_are_server_owned_and_limited_to_credited_deaths():
+    generator = LuauCodeGenerator()
+    source = generator._generate_combat_service(SimpleNamespace(name="CombatSystem"), None)
+    assert "local KNOCKOUT_REWARD_COINS = 25" in source
+    assert "local function trackKnockout(targetHumanoid: Humanoid, attacker: Player)" in source
+    assert "targetHumanoid.Died:Connect(function()" in source
+    assert "if credit.player.Parent ~= Players then return end" in source
+    assert "os.clock() - credit.time > 8" in source
+    assert "coins.Value += KNOCKOUT_REWARD_COINS" in source
+    assert "trackKnockout(targetHumanoid, player)" in source
+    assert source.index("if distance > MAX_REACH") < source.index("trackKnockout(targetHumanoid, player)")
