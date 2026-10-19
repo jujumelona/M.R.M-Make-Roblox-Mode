@@ -49,6 +49,11 @@ class RobloxPipelineResult:
     def to_dict(self) -> dict[str, Any]:
         return {
             "success": self.success,
+            # Build completion is distinct from verified Roblox engine behavior.
+            # Keep success fail-closed until the real test place and Studio
+            # multiplayer receipt pass; expose the usable compiled artifact.
+            "build_ready": bool(self.metadata.get("build_ready", False)),
+            "release_status": self.metadata.get("release_status", "unverified"),
             "game_title": self.game_title,
             "rbxlx_path": self.rbxlx_path,
             "project_zip_path": self.project_zip_path,
