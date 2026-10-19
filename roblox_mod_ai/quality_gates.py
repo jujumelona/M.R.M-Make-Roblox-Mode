@@ -11,6 +11,7 @@ from .dynamic_wiring import inspect_dynamic_remote_wiring, _mask_strings, _witho
 from .server_interface_audit import inspect_dynamic_server_interfaces
 from .luau_api_sanity import invalid_luau_apis
 from .request_contract import ledger_complete, implementation_facets
+from .gameplay_contract import validate_gameplay_contract
 
 
 def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict:
@@ -58,6 +59,15 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
               "Same original request and feature ledger used for pre-design and production")
         check("planning.request_coverage", ledger_complete(proposal.requested_prompt, ledger),
               "No known requested gameplay silently omitted from implementation")
+    # A newer authored game plan has a source-bound gameplay lifecycle.
+    # Legacy isolated module tests are still source-only fixtures; do not
+    # invent a verified ending for older incomplete saved proposals.
+    if "gameplay_contract" in proposal.game_design:
+        for lifecycle in validate_gameplay_contract(proposal, root):
+            check(lifecycle["id"], lifecycle["passed"], lifecycle["detail"])
+    elif pre and proposal.game_design.get("project_mode") == "new_experience":
+        check("lifecycle.present", False,
+              "Re-plan this legacy game to include objectives, progression and outcome ownership")
     if coin_requested:
         requested_count = int(proposal.game_design.get("requested_counts", {}).get("coins", 6))
         actual_count = len([k for k in world.get("Coins", {}) if k.startswith("Coin")])
