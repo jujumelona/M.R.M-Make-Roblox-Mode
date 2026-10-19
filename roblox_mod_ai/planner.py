@@ -491,7 +491,11 @@ class RobloxGameDesignPlanner:
             assets=unique_assets,
         )
 
-        # Canonicalize host-owned dynamic services *before* freezing the\n        # requirement-to-module blueprint. Execution must never introduce\n        # surprise bootstrap modules after the plan was signed.\n        normalize_dynamic_server_modules(proto_proposal)\n        proto_proposal.game_design["gameplay_contract"] = build_gameplay_contract(proto_proposal)
+        # Canonicalize host-owned dynamic services *before* freezing the
+        # requirement-to-module blueprint. Execution must never introduce
+        # surprise bootstrap modules after the plan was signed.
+        normalize_dynamic_server_modules(proto_proposal)
+        proto_proposal.game_design["gameplay_contract"] = build_gameplay_contract(proto_proposal)
         proto_proposal.game_design["implementation_blueprint"] = build_implementation_blueprint(proto_proposal)
         test_specs: list[RobloxTestSpec] = self.test_runner.generate_default_test_specs(proto_proposal)
         proto_proposal.tests = test_specs
