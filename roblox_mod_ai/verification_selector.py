@@ -55,6 +55,15 @@ def make_verification_report(
             "AI source inspection failed or found quoted blocking problems",
             source_review.get("reason", ""))
 
+    repair = tool_results.get("ai_source_repair")
+    if isinstance(repair, dict):
+        put("ai_defect_repair", "passed" if repair.get("passed") is True else "failed",
+            "documented root-cause plans, edits, offline rechecks and fresh AI source review",
+            str(repair.get("reason", ""))[:300])
+    else:
+        put("ai_defect_repair", "not_applicable",
+            "AI correction is only required when source review found blocking defects")
+
     real_place = not source_only and not addon_mode
     from_tool("stylua", "stylua", "formatter/parser", applicable=not source_only)
     wally_info = tool_results.get("wally") or {}
