@@ -1163,6 +1163,32 @@ local function updateCoins()
 end
 coins.Changed:Connect(updateCoins)
 updateCoins()
+
+-- Follow the current Humanoid across respawns; the HUD must not freeze on
+-- the first character's health or accumulate duplicate event connections.
+local health = Instance.new("TextLabel")
+health.Name = "HealthDisplay"
+health.Size = UDim2.fromOffset(190, 44)
+health.Position = UDim2.fromOffset(16, 66)
+health.TextScaled = true
+health.Parent = gui
+local healthChanged: RBXScriptConnection? = nil
+local maxHealthChanged: RBXScriptConnection? = nil
+
+local function bindCharacter(character: Model)
+    if healthChanged then healthChanged:Disconnect() end
+    if maxHealthChanged then maxHealthChanged:Disconnect() end
+    local humanoid = character:WaitForChild("Humanoid") :: Humanoid
+    local function updateHealth()
+        health.Text = "HP: " .. tostring(math.ceil(math.max(0, humanoid.Health)))
+            .. "/" .. tostring(math.ceil(humanoid.MaxHealth))
+    end
+    healthChanged = humanoid.HealthChanged:Connect(updateHealth)
+    maxHealthChanged = humanoid:GetPropertyChangedSignal("MaxHealth"):Connect(updateHealth)
+    updateHealth()
+end
+localPlayer.CharacterAdded:Connect(bindCharacter)
+if localPlayer.Character then task.spawn(bindCharacter, localPlayer.Character) end
 """
 
     def _generate_modding_system(self, module: RobloxModuleSpec, proposal: RobloxProposal) -> str:
