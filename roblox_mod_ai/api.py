@@ -16,6 +16,7 @@ from .orchestrator import RobloxPipelineResult, RobloxProductionOrchestrator
 from .planner import RobloxGameDesignPlanner
 from .request_contract import ledger_complete
 from .implementation_blueprint import audit_implementation_blueprint
+from .detailed_plan import audit_detailed_plan
 from .spec import RobloxProposal
 
 
@@ -39,7 +40,8 @@ class CompleteChatReply:
         # Replan them before codegen instead of producing a second broken ZIP.
         if (research.get("schema") == "rmm/pre-design-rag-v1"
                 and proposal.game_design.get("project_mode", "new_experience") == "new_experience"):
-            return bool(is_complete and audit_implementation_blueprint(proposal)["passed"])
+            return bool(is_complete and audit_implementation_blueprint(proposal)["passed"]
+                        and audit_detailed_plan(proposal)["passed"])
         return bool(is_complete)
 
 
