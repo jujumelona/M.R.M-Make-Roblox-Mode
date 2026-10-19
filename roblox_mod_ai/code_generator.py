@@ -225,7 +225,14 @@ local DataStoreService = game:GetService("DataStoreService")
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
 
-local PlayerDataStore = DataStoreService:GetDataStore("RMM_ExperienceData_v1")
+-- Do not even resolve a cloud DataStore while loading an unpublished
+-- local Studio file. Production calls this lazily and remains fail-closed.
+local PlayerDataStore: GlobalDataStore? = nil
+local function activeStore(): GlobalDataStore
+    if PlayerDataStore then return PlayerDataStore end
+    PlayerDataStore = DataStoreService:GetDataStore("RMM_ExperienceData_v1")
+    return PlayerDataStore
+end
 
 type PlayerData = {{
     coins: number,
@@ -285,7 +292,7 @@ local function onPlayerAdded(player: Player)
         warn("RMM Studio local preview: using memory-only profile; progress will not persist.")
     else
         success, rawData, err = retryWithBackoff(function()
-            return PlayerDataStore:UpdateAsync(key, function(current)
+            return activeStore():UpdateAsync(key, function(current)
                 if current and current.lockToken and current.lockToken ~= sessionToken
                     and (current.lockUntil or 0) > os.time() then
                     lockedByOther = true
@@ -388,7 +395,7 @@ local function onPlayerAdded(player: Player)
             local stageSnapshot = profile.stage
             local inventorySnapshot = profile.inventory
             local renewed, current = retryWithBackoff(function()
-                return PlayerDataStore:UpdateAsync(key, function(stored)
+                return activeStore():UpdateAsync(key, function(stored)
                     if not stored or stored.lockToken ~= sessionToken then return nil end
                     stored.coins = coinsSnapshot
                     stored.level = levelSnapshot
@@ -443,7 +450,7 @@ local function savePlayerData(player: Player): boolean
     local key = getPlayerKey(userId)
 
     local success, savedData, err = retryWithBackoff(function()
-        return PlayerDataStore:UpdateAsync(key, function(current)
+        return activeStore():UpdateAsync(key, function(current)
             if not current or current.lockToken ~= sessionLocks[userId] then
                 return nil -- never overwrite another server's profile
             end
