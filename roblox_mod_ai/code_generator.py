@@ -767,6 +767,13 @@ local function onAdded(player: Player)
     player.ChildAdded:Connect(function(child)
         if child.Name == "OwnedItems" and child:IsA("Folder") and player.Character then
             restoreEquipment(player, player.Character)
+        elseif child.Name == "Backpack" and child:IsA("Backpack") then
+            -- Roblox may create/reset the Backpack after the saved inventory
+            -- and character are ready. Re-granting is harmless (deduplicated).
+            local owned = player:FindFirstChild("OwnedItems")
+            if owned and owned:FindFirstChild("magic_staff") then
+                grantMagicStaff(player)
+            end
         end
     end)
     if player.Character then task.spawn(onCharacter, player.Character) end
