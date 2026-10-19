@@ -32,7 +32,7 @@ def test_real_arena_plan_produces_connected_round_result_and_replay(tmp_path, mo
     onboarding = (root / "src/client/GameObjectiveController.client.luau").read_text(encoding="utf-8")
     assert 'goal.Name = "GameObjective"' in onboarding
     assert 'hint.Name = "GameActionHint"' in onboarding
-    assert "검투 아레나" in onboarding
+    assert "아레나 경기에서 승리하세요." in onboarding
     assert "toggle.Activated:Connect" in onboarding
     round_service = (root / "src/server/ArenaRoundService.server.luau").read_text(encoding="utf-8")
     combat = (root / "src/server/CombatSystem.server.luau").read_text(encoding="utf-8")
