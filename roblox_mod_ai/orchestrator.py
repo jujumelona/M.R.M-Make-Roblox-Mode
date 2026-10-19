@@ -20,6 +20,7 @@ from .request_traceability import build_request_traceability
 from .local_studio import install_local_studio_checks
 from .verification_selector import make_verification_report
 from .source_review import review_generated_sources
+from .source_repair_cycle import run_source_repair_cycle
 from .gameplay_contract import make_studio_playtest_scenarios
 from .rbxlx_inspector import inspect_compiled_place
 import hashlib
@@ -159,7 +160,7 @@ class RobloxProductionOrchestrator:
             "module_prompt_scope.py", "server_modules.py", "economy_core.py", "host_client.py",
             "luau_service_contract.py", "request_semantics.py", "host_player_data.py",
             "roblox_toolchain.py", "verification_selector.py",
-            "detailed_plan.py", "source_review.py",
+            "detailed_plan.py", "source_review.py", "source_repair_cycle.py",
         )
         component_fingerprints = {
             component: hashlib.sha256(
@@ -566,10 +567,75 @@ class RobloxProductionOrchestrator:
             (output_dir / "ai_source_review.json").write_text(
                 json.dumps(ai_review, indent=2, ensure_ascii=False), encoding="utf-8")
             if ai_review["status"] == "issues_found":
-                return {"passed": False,
-                        "error": "AI source reinspection found quoted blocking defects",
-                        "findings": [row for row in ai_review["findings"]
-                                     if row["severity"] == "blocking"]}
+                # A review is an observation, not the end of the workflow.
+                # For model-authored modules: diagnose -> plan -> patch ->
+                # rerun real available validators -> inspect the new source.
+                def verify_review_repair() -> dict:
+                    observed = {}
+                    if not source_only:
+                        formatter = self.toolchain.run_stylua(output_dir)
+                        observed["stylua"] = formatter
+                        if formatter.get("executed") and not formatter.get("success"):
+                            return {"passed": False, "reason": "StyLua failed",
+                                    "tools": observed}
+                    latest_analysis, latest_acceptance = check_static()
+                    observed["static"] = {
+                        "analysis": latest_analysis.passed,
+                        "acceptance": latest_acceptance["passed"],
+                        "failed_checks": [v["id"] for v in
+                                          latest_acceptance["checks"] if not v["passed"]],
+                    }
+                    if not latest_analysis.passed or not latest_acceptance["passed"]:
+                        return {"passed": False, "reason": "Static or contract regression",
+                                "tools": observed}
+                    if not source_only:
+                        for key, call in (
+                            ("selene", lambda: self.toolchain.run_selene(output_dir)),
+                            ("luau_analyze", lambda: self.toolchain.run_luau_analyze(output_dir)),
+                            ("luau_compile", lambda: self.toolchain.run_luau_compile(output_dir)),
+                            ("lune_offline", lambda: self.toolchain.run_lune_offline_suite(output_dir)),
+                        ):
+                            tool = call()
+                            observed[key] = tool
+                            if tool.get("executed") and not tool.get("success"):
+                                return {"passed": False,
+                                        "reason": "Real " + key + " regression",
+                                        "tools": observed}
+                            if key == "selene" and not tool.get("executed"):
+                                return {"passed": False, "reason": "Mandatory Selene not executed",
+                                        "tools": observed}
+                    return {"passed": True, "tools": observed}
+
+                repair = run_source_repair_cycle(
+                    proposal, output_dir, self.router, ai_review,
+                    verify=verify_review_repair,
+                    review_again=lambda: review_generated_sources(
+                        proposal, output_dir, self.router),
+                    max_rounds=int(os.environ.get("RMM_AI_REPAIR_ROUNDS", "3")),
+                )
+                tool_results["ai_source_repair"] = repair
+                (output_dir / "ai_source_repair.json").write_text(
+                    json.dumps(repair, indent=2, ensure_ascii=False),
+                    encoding="utf-8")
+                trajectory.record(
+                    "static", "AI source defect repair and re-review",
+                    {"status": repair["status"], "rounds": len(repair["attempts"]),
+                     "reason": repair["reason"],
+                     "changed_files": repair["changed_files"]},
+                    passed=repair["passed"],
+                )
+                if not repair["passed"]:
+                    return {"passed": False,
+                            "error": "AI defect repair exhausted or blocked: " + repair["reason"],
+                            "repair_history": repair["attempts"],
+                            "findings": [row for row in ai_review["findings"]
+                                         if row["severity"] == "blocking"]}
+                ai_review = repair["final_review"]
+                tool_results["ai_source_review"] = ai_review
+                (output_dir / "ai_source_review.json").write_text(
+                    json.dumps(ai_review, indent=2, ensure_ascii=False),
+                    encoding="utf-8")
+                analysis_report, acceptance = check_static()
             if ai_review["status"] == "failed":
                 return {"passed": False, "error": "AI source review could not finish",
                         "diagnostic": ai_review.get("reason", "")}
