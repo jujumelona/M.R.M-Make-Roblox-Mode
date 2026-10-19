@@ -560,13 +560,13 @@ end)
         # Shop weapons must obey the same active-round restrictions as melee.
         # Standalone shops must not inherit a PvP arena that was never requested.
         arena_weapon_guard = ""
-        if any(m.module_id == "mod_arena_round" for m in proposal.modules):
+        if proposal is not None and any(m.module_id == "mod_arena_round" for m in proposal.modules):
             arena_weapon_guard = """
         if game:GetAttribute("ArenaRoundActive") ~= true
             or player:GetAttribute("InArenaRound") ~= true then return end
 """
         weapon_item = ('    magic_staff = { name = "Arcane Staff", price = 150, itemType = "Weapon" },\n'
-                       if proposal.game_design.get("features", {}).get("is_combat") else "")
+                       if proposal is None or proposal.game_design.get("features", {}).get("is_combat") else "")
         return f"""--!strict
 -- Service: ServerScriptService
 -- Script: {module.name}
