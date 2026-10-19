@@ -27,6 +27,12 @@ RELEASES = {
     "selene": ("Kampfkarren/selene", "0.27.1", "selene-0.27.1-linux.zip"),
     "stylua": ("JohnnyMorganz/StyLua", "v2.0.2", "stylua-linux-x86_64.zip"),
 }
+# Optional official Linux releases: real tests/grammar checks should be
+# installed automatically, but network failure must not block game creation.
+OPTIONAL_RELEASES = {
+    "lune": ("lune-org/lune", "v0.11.0", "lune-0.11.0-linux-x86_64.zip"),
+    "luau-compile": ("luau-lang/luau", "0.743", "luau-ubuntu.zip"),
+}
 _MAX_ARCHIVE_BYTES = 100 * 1024 * 1024
 
 
@@ -143,6 +149,39 @@ def setup_colab_toolchain(install_dir: str | Path = "/content/rmm-tools/bin",
                 )
             installed[name] = str(destination)
             _log(f"{name}: {version}")
+    # Optional executable-only validators. Their absence is reported later as
+    # NOT RUN, never a successful compile/test and never a missing API key.
+    if os.environ.get("RMM_INSTALL_OPTIONAL_TOOLS", "1") != "0":
+        for name, (repository, tag, filename) in OPTIONAL_RELEASES.items():
+            destination = bin_dir / name
+            try:
+                if not destination.is_file():
+                    url = f"https://github.com/{repository}/releases/download/{tag}/{filename}"
+                    _log(f"installing optional {name} ({tag})")
+                    with tempfile.TemporaryDirectory(prefix="rmm-optional-") as scratch:
+                        downloaded = Path(scratch) / filename
+                        _download(url, downloaded)
+                        _extract_executable(downloaded, name, destination)
+                if name == "lune":
+                    version = _command_version(destination)
+                    if tag.removeprefix("v") not in version:
+                        raise ToolchainInstallError("Lune version mismatch: " + version)
+                else:
+                    with tempfile.TemporaryDirectory(prefix="rmm-luau-parse-") as scratch:
+                        fixture = Path(scratch) / "valid.luau"
+                        fixture.write_text("--!strict\\nlocal n = 1\\n", encoding="utf-8")
+                        proc = subprocess.run([str(destination), "--only-parse", str(fixture)],
+                                              capture_output=True, text=True, timeout=15)
+                        if proc.returncode:
+                            raise ToolchainInstallError("Luau compiler parser failed: " + proc.stderr[:200])
+                installed[name] = str(destination)
+                _log(name + ": optional validator ready")
+            except (ToolchainInstallError, OSError, subprocess.TimeoutExpired) as exc:
+                # Optional tools must not break mandatory Rojo production. Keep
+                # the failed binary out of PATH so the later runner reports NOT RUN.
+                if destination.is_file():
+                    destination.unlink()
+                _log(f"optional {name} unavailable: {type(exc).__name__}: {exc}")
     checks = RobloxToolchainManager().check_tools()
     missing = [name for name in ("Rojo", "Wally", "Selene", "StyLua")
                if not checks.get(name, False)]
