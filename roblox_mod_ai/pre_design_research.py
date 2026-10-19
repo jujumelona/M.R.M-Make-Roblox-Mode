@@ -130,9 +130,24 @@ def _documentation_relevant(facet: str, url: str, excerpt: str) -> bool:
     terms = _REQUIRED_DOC_TERMS.get(facet)
     if not terms:
         return True
-    # A page about catalog inventory or avatar validation does not prove a
-    # combat or in-game currency implementation. Check concrete API terms.
-    searchable = (str(url) + " " + str(excerpt)).casefold()
+    # Search snippets can include generic "Humanoid" on art/rigging pages;
+    # these are not evidence for CombatSystem's TakeDamage API.
+    url_text = str(url).casefold()
+    body = str(excerpt).casefold()
+    if facet == "combat":
+        return ("takedamage" in body
+                and ("/reference/engine/classes/humanoid" in url_text
+                     or "humanoid:takedamage" in body
+                     or "humanoid.takedamage" in body))
+    if facet == "coins":
+        return ("/reference/engine/classes/basepart" in url_text
+                and ("basepart.touched" in body or "event: basepart.touched" in body))
+    if facet == "shop":
+        return ("/reference/engine/classes/proximityprompt" in url_text
+                and ("triggered" in body or "proximityprompt" in body))
+    # For other known facets, a concrete class/member signal in an official
+    # Creator page is still required. Unknown novel mechanics remain unfiltered.
+    searchable = (url_text + " " + body)
     return any(term in searchable for term in terms)
 
 
