@@ -264,6 +264,94 @@ print("RMM_LUNE_ECONOMY_PASS")
             return {"success": False, "executed": True, "status": "failed",
                     "error": str(exc)}
 
+    @staticmethod
+    def discover_offline_tests(project_dir: str | Path) -> list[Path]:
+        """Only explicitly offline-compatible test sources, independent of genre.
+
+        Jest/TestEZ *.spec.luau, Roblox-engine scripts and third-party files are
+        not inferred to be runnable in Lune.
+        """
+        root = Path(project_dir).resolve()
+        test_root = root / "tests"
+        if not test_root.is_dir():
+            return []
+        matches = []
+        for path in sorted(test_root.rglob("*.luau")):
+            if path.is_symlink() or not path.is_file():
+                continue
+            relative = path.relative_to(test_root)
+            if any(part in ("Packages", "DevPackages", "_Index", "node_modules")
+                   for part in relative.parts):
+                continue
+            if relative.parts[0] == "offline" or path.name.endswith(".offline.luau"):
+                matches.append(path)
+        return matches
+
+    def run_lune_offline_suite(self, project_dir: str | Path) -> dict[str, Any]:
+        """Execute every authored offline unit test using installed OSS Lune.
+
+        Zero discovered tests is NOT_APPLICABLE, never a fabricated pass.
+        Actual process exit codes are evidence; no marker-only shortcuts.
+        """
+        root = Path(project_dir).resolve()
+        cases = self.discover_offline_tests(root)
+        if not cases:
+            return {"success": False, "executed": False, "status": "not_applicable",
+                    "reason": "No offline-compatible Luau test sources",
+                    "test_count": 0, "tests": []}
+        binary = shutil.which("lune")
+        if not binary:
+            return {"success": False, "executed": False, "status": "not_run",
+                    "reason": "Lune binary not installed", "test_count": len(cases),
+                    "tests": [{"file": str(p.relative_to(root)), "status": "not_run"}
+                              for p in cases]}
+        outputs: list[dict[str, Any]] = []
+        for case in cases:
+            name = str(case.relative_to(root))
+            try:
+                proc = subprocess.run([binary, "run", str(case)], cwd=str(root),
+                                      capture_output=True, text=True, timeout=45)
+                passed = proc.returncode == 0
+                outputs.append({"file": name, "status": "passed" if passed else "failed",
+                                "exit_code": proc.returncode,
+                                "stdout": proc.stdout[-1600:],
+                                "stderr": proc.stderr[-1600:]})
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                outputs.append({"file": name, "status": "failed", "error": str(exc)})
+        success = all(t["status"] == "passed" for t in outputs)
+        return {"success": success, "executed": True,
+                "status": "passed" if success else "failed",
+                "scope": "explicit tests/offline/**/*.luau or *.offline.luau; no Roblox engine",
+                "test_count": len(outputs), "passed_count": sum(
+                    t["status"] == "passed" for t in outputs), "tests": outputs}
+
+    def run_luau_compile(self, target_dir: str | Path) -> dict[str, Any]:
+        """Optional official OSS Luau parser/compiler over authored scripts.
+
+        '--only-parse' checks grammar without requiring Roblox globals at
+        runtime; compiled bytecode is never executed as a substitute for Studio.
+        """
+        root = Path(target_dir).resolve()
+        binary = shutil.which("luau-compile")
+        if not binary:
+            return {"success": False, "executed": False, "status": "not_run",
+                    "reason": "Official luau-compile CLI not installed"}
+        files = self._authored_luau_files(root)
+        if not files:
+            return {"success": False, "executed": False, "status": "not_applicable",
+                    "reason": "No authored Luau sources"}
+        try:
+            # Official CLI parses all given source files without running any.
+            proc = subprocess.run([binary, "--only-parse", *map(str, files)],
+                                  cwd=str(root), capture_output=True, text=True, timeout=65)
+            return {"success": proc.returncode == 0, "executed": True,
+                    "status": "passed" if proc.returncode == 0 else "failed",
+                    "checked_authored_files": len(files),
+                    "stdout": proc.stdout[-3000:], "stderr": proc.stderr[-3000:]}
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return {"success": False, "executed": True, "status": "failed",
+                    "error": str(exc)}
+
     def run_rojo_build(self, project_json: str | Path, output_file: str | Path) -> dict[str, Any]:
         """Executes 'rojo build -o <output> <project_json>'."""
         p_json = str(Path(project_json).resolve())
