@@ -81,3 +81,18 @@ def test_staff_purchase_refunds_if_persistent_gear_cannot_be_delivered():
     assert 'coinsVal.Value += item.price' in src
     assert 'return false, "Backpack unavailable"' in src
     assert 'marker.Name = itemId' in src
+
+
+def test_staff_input_is_rebound_each_time_roblox_replaces_backpack():
+    src = LuauCodeGenerator()._generate_shop_controller(
+        SimpleNamespace(name="ShopController"), _proposal()
+    )
+    assert 'localPlayer.ChildAdded:Connect(onBackpack)' in src
+    assert 'if not child:IsA("Backpack") or observedBackpack == child then return end' in src
+    assert 'if backpackConnection then backpackConnection:Disconnect() end' in src
+    assert 'backpackConnection = child.ChildAdded:Connect(bindTool)' in src
+    assert 'for _, tool in child:GetChildren() do bindTool(tool) end' in src
+    assert 'localPlayer:FindFirstChildOfClass("Backpack")' in src
+    assert 'if characterConnection then characterConnection:Disconnect() end' in src
+    assert 'child.Destroying:Connect(function() bound[child] = nil end)' in src
+    assert 'local backpack = localPlayer:WaitForChild("Backpack")' not in src
