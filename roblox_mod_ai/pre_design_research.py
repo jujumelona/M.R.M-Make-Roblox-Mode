@@ -13,6 +13,7 @@ import re
 import inspect
 from typing import Any
 from .model_router import ModelRouter
+from .request_semantics import request_semantic_errors
 
 from .creator_store import RobloxCreatorStoreCatalog
 from .official_docs import RobloxOfficialDocs
@@ -198,6 +199,8 @@ class RobloxPreDesignResearch:
                 "distinct spans. Include only the requested mechanics. "
                 "Do NOT combine different actions into a single behavior. "
                 "Each query must describe the actual mechanic and applicable Roblox APIs. "
+                "Use original_prompt to resolve fragments; ordinary game buying/trading "
+                "uses earned game currency, never unsolicited Robux monetization. "
                 "Maximum 24 behaviors per clause.\\n"
                 + json.dumps({"original_prompt": prompt, "clauses": [
                     item for item in ledger["requirements"] if item["id"] in pending
@@ -205,6 +208,9 @@ class RobloxPreDesignResearch:
                 role="planner", temperature=0.1,
             )
             rows = raw.get("behaviors", []) if isinstance(raw, dict) else []
+            semantic_errors = request_semantic_errors(rows, prompt)
+            if semantic_errors:
+                raise ValueError("; ".join(semantic_errors))
             if not isinstance(rows, list) or len(rows) > 48:
                 raise ValueError("Invalid response length")
             new_requirements: list[dict[str, str]] = []
@@ -278,9 +284,13 @@ class RobloxPreDesignResearch:
                             "implementation intent and Roblox API documentation query. "
                             "Do not invent new actions. Chunks are independently owned "
                             "source obligations, even when two relate to the same system.\\n"
-                            + json.dumps({"chunks": missing}, ensure_ascii=False),
+                            + json.dumps({"chunks": missing, "original_prompt": prompt,
+                                          "scope": "classify_only_provided_chunks"}, ensure_ascii=False),
                             role="planner", temperature=0.1,
                         )
+                        semantic_errors = request_semantic_errors(output, prompt)
+                        if semantic_errors:
+                            raise ValueError("; ".join(semantic_errors))
                         classified.update(valid_chunk_classification(output, missing))
                     except Exception as exc:
                         print("[RMM research] Chunk classification retry " +
@@ -296,9 +306,13 @@ class RobloxPreDesignResearch:
                                 "Describe this ONE exact user-authored gameplay fragment "
                                 "as a specific Roblox action and API query; never invent "
                                 "or merge gameplay.\\n" +
-                                json.dumps({"chunks": [chunk]}, ensure_ascii=False),
+                                json.dumps({"chunks": [chunk], "original_prompt": prompt,
+                                            "scope": "classify_only_provided_chunks"}, ensure_ascii=False),
                                 role="planner", temperature=0.1,
                             )
+                            semantic_errors = request_semantic_errors(output, prompt)
+                            if semantic_errors:
+                                raise ValueError("; ".join(semantic_errors))
                             classified.update(valid_chunk_classification(output, [chunk]))
                             if chunk["chunk_id"] in classified:
                                 break

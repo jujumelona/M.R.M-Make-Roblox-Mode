@@ -78,7 +78,7 @@ class ArbitraryPromptSemanticTransport:
         assert options["max_tokens"] <= 2600
         for other_id, (_, _, other_clause, _) in self.entries.items():
             if other_id != fid:
-                assert other_clause not in prompt
+                assert other_clause not in json.dumps(payload["source_requirements"], ensure_ascii=False)
         return {"systems": [
             {
                 "name": label + ("Phase" + str(i) if self.systems_per_feature > 1 else ""),
@@ -241,6 +241,7 @@ def test_unrelated_weather_module_coder_never_receives_pet_or_currency_examples(
             self.prompts.append(prompt)
             raise RuntimeError("recorded only")
     from roblox_mod_ai.agent_loop import RobloxCodeRepairAgent, LuauGenerationError
+    monkeypatch.setenv("RMM_ENABLE_MODEL_GENERATION", "1")
     recorded = Recorder()
     server = next(m for m in proposal.modules if m.module_id.startswith("dyn_"))
     with pytest.raises(LuauGenerationError):

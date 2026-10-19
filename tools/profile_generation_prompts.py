@@ -25,7 +25,18 @@ class PromptRecorder:
 
 
 def capture(proposal: RobloxProposal) -> dict:
+    previous = os.environ.get("RMM_ENABLE_MODEL_GENERATION")
     os.environ["RMM_ENABLE_MODEL_GENERATION"] = "1"
+    try:
+        return _capture(proposal)
+    finally:
+        if previous is None:
+            os.environ.pop("RMM_ENABLE_MODEL_GENERATION", None)
+        else:
+            os.environ["RMM_ENABLE_MODEL_GENERATION"] = previous
+
+
+def _capture(proposal: RobloxProposal) -> dict:
     research = proposal.game_design.get("pre_design_research") or {}
     ledger = research.get("ledger") or {}
     requirements = {r["id"]: r.get("statement", "")

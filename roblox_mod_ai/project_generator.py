@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -265,6 +266,19 @@ JestGlobals = "roblox/jest-globals@=3.20.0"
             file_rel = module.file_path
             dest = target_dir / file_rel
             dest.parent.mkdir(parents=True, exist_ok=True)
+            # A previous .server.luau variant auto-runs even after the same
+            # service is migrated to a requireable .luau ModuleScript. Rojo
+            # includes the entire source folder, so retire that exact stale
+            # variant outside src while preserving its original bytes.
+            if (module.file_path.startswith("src/server/")
+                    and module.file_path.endswith(".luau")
+                    and not module.file_path.endswith(".server.luau")):
+                legacy = dest.with_name(dest.stem + ".server.luau")
+                if legacy.is_file():
+                    digest = hashlib.sha256(legacy.read_bytes()).hexdigest()[:12]
+                    retired = target_dir / "retired_sources" / (legacy.stem + "-" + digest + ".luau")
+                    retired.parent.mkdir(parents=True, exist_ok=True)
+                    legacy.replace(retired)
             dest.write_text(module.code, encoding="utf-8")
             paths_created[module.name] = dest
 

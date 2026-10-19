@@ -34,12 +34,13 @@ class FakeLocalModel:
             {"id": req, "statement": source, "source": "user_prompt"}
         ]
         assert "overall_game_context" not in payload
-        assert payload["game_context"] == {"scope": "only_this_source_clause"}
+        assert payload["game_context"]["scope"] == "only_this_source_clause"
+        assert payload["game_context"]["original_request"] == _PROMPT
         # The earlier request was copied wholesale into every model call:
         # the mining feature then wrote ship construction and 14 remotes.
         for other_id, other_fid, other_source, _ in _SPACE:
             if other_fid != fid:
-                assert other_source not in prompt
+                assert other_source not in json.dumps(payload["source_requirements"], ensure_ascii=False)
         behavior = (
             "Server validates alien NPC enemy combat damage, defeat and health."
             if fid == "intent-alien" else

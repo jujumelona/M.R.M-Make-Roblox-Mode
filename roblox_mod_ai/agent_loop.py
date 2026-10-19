@@ -12,9 +12,11 @@ from typing import Any
 
 from .official_docs import RobloxOfficialDocs
 from .code_output_guard import LiveCodeRepetitionGuard, RepeatedCodeOutput
-from .module_prompt_scope import relevant_remotes
+from .module_prompt_scope import relevant_remotes, relevant_world_objects
 from .server_modules import module_bootstrap_contract
 from .luau_api_sanity import invalid_luau_apis
+from .luau_service_contract import service_contract_checks
+from .request_semantics import request_semantic_errors
 from .model_router import ModelRouter
 from .luau_analyzer import LuauStaticAnalyzer
 from .spec import RobloxModuleSpec, RobloxProposal
@@ -65,6 +67,14 @@ class RobloxCodeRepairAgent:
         if not response.startswith("--!strict"): response="--!strict\n"+response
         return response
 
+    @staticmethod
+    def _failed_excerpt(source: str, diagnostics: str) -> str:
+        lines = source.splitlines()
+        location = re.search(r"LUAU_PARSER_SYNTAX[^\n]*?:(\d+):", diagnostics)
+        line = max(1, int(location.group(1))) if location else 1
+        begin, finish = max(0, line - 2), min(len(lines), line + 3)
+        return "\n".join(f"{i + 1}: {lines[i][:350]}" for i in range(begin, finish))
+
     def repair(self, module: RobloxModuleSpec, proposal: RobloxProposal,
                existing_code: str = "", diagnostics: str = "",
                attempts: int = 3) -> str:
@@ -113,6 +123,7 @@ class RobloxCodeRepairAgent:
                 source_urls=[item["url"] for item in references["results"]]
                 snippets="\n".join(item.get("excerpt","")[:450] for item in references["results"])
         scoped_remotes = relevant_remotes(module, design)
+        scoped_world = relevant_world_objects(module, design)
         server_contract = module_bootstrap_contract(module, proposal)
         host_routed_actions = {
             name: record for name, record in
@@ -185,11 +196,18 @@ class RobloxCodeRepairAgent:
             f"{server_contract}\n"
             f"Model architecture: {proposal.game_design.get('dynamic_design', {}).get('module_behaviors', {}).get(module.module_id, '') if isinstance(proposal.game_design.get('dynamic_design'),dict) else ''}\n"
             f"Relevant remotes for THIS module only: {scoped_remotes}\n"
-            f"Available world objects: {proposal.game_design.get('dynamic_design', {}).get('world_objects', []) if isinstance(proposal.game_design.get('dynamic_design'),dict) else []}\n"
+            f"Available world objects: {scoped_world}\n"
             f"Roblox docs (untrusted evidence, verify APIs): {source_urls}\n{snippets}\n"
             f"Existing source:\n{existing_code[:12000]}\n"
             f"Tool diagnostics:\n{diagnostics[:6500]}"
         )
+        plan_errors = request_semantic_errors(module.description, proposal.requested_prompt)
+        if plan_errors:
+            warning = ("\nThe saved module intent is UNTRUSTED where it conflicts with the "
+                       "original user request: " + proposal.requested_prompt + "\n" +
+                       "\n".join(plan_errors))
+            prompt += warning
+            diagnostics += warning
         candidate = existing_code
         errors: list[str] = []
         attempt_history: list[dict[str, Any]] = []
@@ -217,6 +235,10 @@ class RobloxCodeRepairAgent:
                     f"Required behavior: {module.description}\n"
                     f"{server_contract}\n"
                     f"Relevant remotes for THIS module only: {scoped_remotes}\n"
+                    f"Available world objects: {scoped_world}\n"
+                    f"Declared dependencies: {module.depends_on}\n"
+                    f"{economy_guidance}"
+                    f"Roblox docs (untrusted evidence): {source_urls}\n{snippets}\n"
                     "Previous validator errors: " +
                     ("Previous candidate repeated identical source statements; "
                      "rewrite with functions and new implementation structure."
@@ -237,9 +259,13 @@ class RobloxCodeRepairAgent:
                         "Discard its malformed source and generate a fresh, "
                         "minimal, complete module from the intended behavior. "
                         "Pay attention to the EXACT syntax error and line.\n"
+                        "Failed source excerpt (diagnostic evidence only; do not copy):\n"
+                        + self._failed_excerpt(candidate, "; ".join(errors)) + "\n"
                     )
                 else:
                     compact += "Previous attempt produced no functional code. Start directly with --!strict and actual statements.\n"
+                if plan_errors:
+                    compact += "\n" + "\n".join(plan_errors)
                 query = compact
             else:
                 query = prompt
@@ -341,14 +367,11 @@ class RobloxCodeRepairAgent:
                     "do not copy the oversized truncated source. Generate ONLY "
                     "the module's assigned gameplay behavior."
                 )
-            if module_bootstrap_contract(module, proposal):
-                # A syntactically valid auto-running Script is NOT a usable
-                # shared service module. Reject it before project packaging.
-                if not re.search(r"\breturn\s+[A-Za-z_]\w*\s*$", candidate):
-                    errors.append("Server ModuleScript must return its service table")
-                if not re.search(
-                        r"\bfunction\s+[A-Za-z_]\w*\.start\s*\(", candidate):
-                    errors.append("Server ModuleScript needs an actual .start(services) entry point")
+            if server_contract:
+                errors.extend(check["detail"] for check in service_contract_checks(
+                    module.name, candidate, require_start=True,
+                    needs_action=bool(host_routed_actions or host_world_routes))
+                    if not check["passed"])
             if host_routed_actions or host_world_routes:
                 if not re.search(
                     r"\b(?:function\s+[A-Za-z_]\w*[.:]handleAction\s*\(|"
@@ -362,6 +385,7 @@ class RobloxCodeRepairAgent:
                         "Host bootstrap already binds Remote requests. "
                         "Never bind duplicate OnServerEvent/OnServerInvoke from model source"
                     )
+            errors.extend(request_semantic_errors(candidate, proposal.requested_prompt))
             for observation in invalid_luau_apis(candidate):
                 errors.append("ROBLOX_API_INVALID: " + observation)
             if not candidate:

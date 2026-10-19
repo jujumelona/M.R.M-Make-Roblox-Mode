@@ -17,6 +17,7 @@ from typing import Any
 from .spec import ModuleKind, RobloxModuleSpec, RobloxService
 from .model_router import ModelRouter
 from .request_contract import implementation_facets
+from .request_semantics import request_semantic_errors
 from .host_architecture import SEMANTIC_FACET_SCHEMA, expand_semantic_facet
 
 _VALID_NAME = re.compile(r"^[A-Z][A-Za-z0-9]{2,58}$")
@@ -211,6 +212,10 @@ def _normalize_remote_rows(raw: Any) -> tuple[list[dict[str, str]], list[str]]:
 def _clean_model_json(response: dict[str, Any], ledger: dict[str, Any],
                       existing_names: set[str]) -> dict[str, Any]:
     if not isinstance(response, dict): raise DynamicDesignError("Architecture must be JSON object")
+    semantic_errors = request_semantic_errors(
+        response, ledger.get("request_context", ledger.get("original_prompt", "")))
+    if semantic_errors:
+        raise DynamicDesignError("; ".join(semantic_errors))
     required_ids = _normalize_requirements(ledger)
     if not required_ids: raise DynamicDesignError("No original user requirements recorded")
     records = response.get("modules")
@@ -701,12 +706,13 @@ class RobloxDynamicArchitect:
             # (e.g. alien combat). Do not enforce them on a mining-only slice.
             slice_request = " ".join(str(r.get("statement", "")) for r in subset)
             slice_ledger = {"requirements": subset, "facets": [facet],
-                            "original_prompt": slice_request}
+                            "original_prompt": slice_request, "request_context": prompt}
             excerpts = [{"url": e["url"], "text": str(e.get("excerpt", ""))[:650]}
                         for e in docs if e.get("facet") == facet_id][:2]
             payload = {"feature_id": facet_id, "feature": facet,
                        "source_requirements": subset,
-                       "game_context": {"scope": "only_this_source_clause"},
+                       "game_context": {"scope": "only_this_source_clause",
+                                        "original_request": prompt},
                        "existing_module_names": sorted(reserved_modules),
                        "existing_remote_names": sorted(reserved_remotes),
                        "existing_world_object_names": sorted(reserved_objects),
@@ -744,6 +750,10 @@ class RobloxDynamicArchitect:
                 "Luau code, Remote names/types, JSON source IDs, module roles, "
                 "file paths, Roblox coordinates, geometries, template scripts "
                 "or generic engine boilerplate. The host generates those. "
+                "The complete original_request is context for ambiguous nouns, "
+                "currency and progression only; source_requirements defines this "
+                "feature's exclusive implementation ownership. Ordinary purchases "
+                "use earned game currency; never invent Robux monetization. "
                 "Each system MUST directly implement the user's single "
                 "source_requirements clause. No unrelated systems. "
                 "Do not claim a world has been built or gameplay tested. "
@@ -752,7 +762,8 @@ class RobloxDynamicArchitect:
                     "feature_id": facet_id,
                     "feature": facet,
                     "source_requirements": subset,
-                    "game_context": {"scope": "only_this_source_clause"},
+                    "game_context": {"scope": "only_this_source_clause",
+                                        "original_request": prompt},
                     "official_references": excerpts,
                 }, ensure_ascii=False)
             )
@@ -821,6 +832,9 @@ class RobloxDynamicArchitect:
                     # explicit modules; validate that legacy contract exactly
                     # as before rather than silently breaking existing files.
                     if "systems" in draft:
+                        semantic_errors = request_semantic_errors(draft, prompt)
+                        if semantic_errors:
+                            raise DynamicDesignError("; ".join(semantic_errors))
                         draft = expand_semantic_facet(
                             draft, facet_id=facet_id,
                             requirement_ids=owned_ids,
@@ -913,6 +927,11 @@ class RobloxDynamicArchitect:
         # means the whole game is compiled or gameplay tested.
         result = _clean_model_json(
             combined, ledger, {m.name for m in existing_modules})
+        module_ids = {module.name: module.module_id for module in result["modules"]}
+        result["module_world_objects"] = {
+            module_ids[row["name"]]: [item["name"] for item in part.get("world_objects", [])]
+            for part in accepted_parts for row in part.get("modules", [])
+        }
         # Only semantic-only host-authored plans opt into the host Remote
         # gateway. Legacy full-module JSON retains its current explicit
         # source wiring so saved projects are not silently rewritten.
@@ -958,8 +977,7 @@ class RobloxDynamicArchitect:
                     # arbitrary server handler with fabricated payloads.
                     host_actions[remote]["max_args"] = 0
                     host_client_actions[client_name] = binding
-            if host_client_actions:
-                result["host_client_actions"] = host_client_actions
+            result["host_client_actions"] = host_client_actions
             # A Roblox ProximityPrompt already renders a cross-platform
             # object interaction. Host owns its Instance and server callback;
             # no fabricated client module or client-to-server Remote.

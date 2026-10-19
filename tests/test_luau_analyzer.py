@@ -46,4 +46,4 @@ function badFunction()
     assert "DATASTORE_UNSAFE_PCALL" in rules_triggered
     assert "DEPRECATED_GLOBAL_WAIT" in rules_triggered
     assert "DEPRECATED_GLOBAL_SPAWN" in rules_triggered
-    assert "UNBALANCED_BLOCKS" in rules_triggered
+    assert rules_triggered & {"UNBALANCED_BLOCKS", "LUAU_PARSER_SYNTAX"}
