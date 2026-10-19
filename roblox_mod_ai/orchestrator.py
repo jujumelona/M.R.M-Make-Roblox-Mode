@@ -564,6 +564,11 @@ class RobloxProductionOrchestrator:
             ready = stage(TaskStage.LINT_AND_SELF_CORRECT, lint)
         if ready:
             ready = stage(TaskStage.PACKAGE, package)
+        # Packaging and engine verification are independent outcomes. A
+        # missing Roblox test place must not erase the verified Rojo artifact,
+        # but neither may it be reported as a successful Studio playtest.
+        build_ready = bool(ready and not source_only and not addon_mode
+                           and rbxlx_path and zip_path)
         if ready and not source_only and not addon_mode:
             runtime = OpenCloudRuntimeVerifier().run(proposal, Path(rbxlx_path))
             # Open Cloud smoke proves server structure and DataStore only; it does not
@@ -574,6 +579,9 @@ class RobloxProductionOrchestrator:
             runtime["passed"] = bool(runtime["server_smoke_passed"] and real_multiplayer["passed"])
             ready = stage(TaskStage.PLAYTEST, lambda: {
                 "passed": runtime["passed"], "scope": "server engine + Studio multiplayer",
+                "status": runtime.get("status", "runtime_checked"),
+                "missing_requirements": runtime.get("missing_requirements", []),
+                "artifact_ready": build_ready,
                 "error": runtime.get("reason", real_multiplayer.get("reason", "runtime verification incomplete"))})
             playtest_report = PlaytestReport(
                 passed=ready, total_tests=2,
@@ -609,6 +617,14 @@ class RobloxProductionOrchestrator:
             build_mode=build_mode, generated_files=[m.file_path for m in proposal.modules],
             metadata={"acceptance": acceptance, "runtime": runtime, "tool_results": tool_results,
                       "errors": errors, "source_only": source_only,
+                      "build_ready": build_ready,
+                      "release_status": (
+                          "verified" if receipt.overall_success
+                          else "verification_setup_required" if build_ready
+                              and runtime.get("status") == "verification_setup_required"
+                          else "runtime_unverified_or_failed" if build_ready
+                          else "build_incomplete"
+                      ),
                       "agent_trajectory": str(trajectory.path),
                       "failure_logs_zip": failure_logs_zip,
                       "project_mode": proposal.game_design.get("project_mode", "new_experience"),
