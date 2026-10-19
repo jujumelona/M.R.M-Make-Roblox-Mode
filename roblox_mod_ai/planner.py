@@ -13,6 +13,7 @@ from .pre_design_research import RobloxPreDesignResearch
 from .dynamic_architect import RobloxDynamicArchitect, DynamicDesignError, dynamic_design_enabled
 from .gameplay_contract import build_gameplay_contract, arena_round_requested
 from .implementation_blueprint import build_implementation_blueprint
+from .server_modules import normalize_dynamic_server_modules
 from .project_modes import validate_mode
 from .model_router import ModelRouter
 from .playtest_runner import RobloxPlaytestRunner
@@ -490,7 +491,7 @@ class RobloxGameDesignPlanner:
             assets=unique_assets,
         )
 
-        proto_proposal.game_design["gameplay_contract"] = build_gameplay_contract(proto_proposal)
+        # Canonicalize host-owned dynamic services *before* freezing the\n        # requirement-to-module blueprint. Execution must never introduce\n        # surprise bootstrap modules after the plan was signed.\n        normalize_dynamic_server_modules(proto_proposal)\n        proto_proposal.game_design["gameplay_contract"] = build_gameplay_contract(proto_proposal)
         proto_proposal.game_design["implementation_blueprint"] = build_implementation_blueprint(proto_proposal)
         test_specs: list[RobloxTestSpec] = self.test_runner.generate_default_test_specs(proto_proposal)
         proto_proposal.tests = test_specs
