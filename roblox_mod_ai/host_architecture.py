@@ -68,20 +68,20 @@ def _pascal(value: str, fallback: str) -> str:
 # an omitted acceptance label from *model-authored* state changes and visible
 # feedback. Never invent gameplay rules or waive an explicitly bad label.
 _STATE_CHANGE = re.compile(
-    r"\\b(?:adds?|added|appl(?:y|ies|ied)|awards?|grants?|gains?|"
+    r"\b(?:adds?|added|appl(?:y|ies|ied)|awards?|grants?|gains?|"
     r"updates?|updated|changes?|changed|sets?|saves?|stores?|records?|"
     r"deducts?|deducted|decrements?|increments?|consumes?|converts?|"
     r"spawns?|creates?|removes?|destroys?|teleports?|unlocks?|"
-    r"deals?|damages?|heals?|equips?|rewards?|depletes?)\\b", re.I,
+    r"deals?|damages?|heals?|equips?|rewards?|depletes?)\b", re.I,
 )
 _VISIBLE_FEEDBACK = re.compile(
-    r"\\b(?:shows?|displays?|updates?|reflects?|sees?|receives?|"
-    r"notifies?|appears?|renders?|visible|feedback)\\b", re.I,
+    r"\b(?:shows?|displays?|updates?|reflects?|sees?|receives?|"
+    r"notifies?|appears?|renders?|visible|feedback)\b", re.I,
 )
 _POST_ACTION = re.compile(
-    r"\\b(?:after|then|on success|successfully|confirmed|success|"
+    r"\b(?:after|then|on success|successfully|confirmed|success|"
     r"result|received|earned|reward|gain|updated|changes?|"
-    r"rejected|completion|complete|status|notification|progress)\\b", re.I,
+    r"rejected|completion|complete|status|notification|progress)\b", re.I,
 )
 
 
