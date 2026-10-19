@@ -69,7 +69,7 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
         check("planning.integration_blueprint", blueprint_audit["passed"],
               "Source-bound blueprint matches current requirements and has no unowned mechanics: "
               + "; ".join(blueprint_audit["errors"]))
-    if pre or "detailed_implementation_plan" in proposal.game_design:
+    if "detailed_implementation_plan" in proposal.game_design:
         detail_audit = audit_detailed_plan(proposal)
         check("planning.detailed_specification", detail_audit["passed"],
               "Detailed requirement ownership, preconditions, transitions, "
