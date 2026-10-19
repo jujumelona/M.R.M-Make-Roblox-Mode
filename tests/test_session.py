@@ -28,7 +28,8 @@ def test_session_plan_revise_build(tmp_path: Path):
     assert revised_reply.authored_plan.revision_count == 1
     assert len(revised_reply.authored_plan.checkpoints) >= 2
     # No invented magic prefab: an unimplemented new feature must remain blocked.
-    assert not revised_reply.ready_to_build\n    assert not any("MagicAbilities" in m.name for m in revised_reply.authored_plan.proposal.modules)
+    assert not revised_reply.ready_to_build
+    assert not any("MagicAbilities" in m.name for m in revised_reply.authored_plan.proposal.modules)
 
     # 4. Reload plan in fresh session
     new_session = CompleteRobloxAISession(output_root=output_dir)
