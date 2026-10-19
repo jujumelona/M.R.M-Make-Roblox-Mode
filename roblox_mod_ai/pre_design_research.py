@@ -524,7 +524,9 @@ class RobloxPreDesignResearch:
         # actions already have concrete, host-owned implementation owners.
         semantic = ([] if ledger.get("atomic_intents") or
                     ledger.get("decomposition_pending") or
-                    (requested_ids and requested_ids <= covered_by_host) else
+                    (requested_ids and requested_ids <= covered_by_host
+                     and not ledger.get("unimplemented_facets")
+                     and not ledger.get("unmatched_requirements")) else
                     self._propose_semantic_searches(prompt, ledger))
         if semantic:
             # Search expansion is evidence retrieval, NOT a user-authored
