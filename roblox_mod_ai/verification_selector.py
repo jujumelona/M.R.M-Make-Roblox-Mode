@@ -28,8 +28,10 @@ def make_verification_report(
             return
         info = tool_results.get(key)
         if not isinstance(info, dict) or info.get("executed") is not True:
-            reason = (info.get("reason") or info.get("message") or "Tool not executed")
-            if isinstance(info, dict) else "No execution result recorded"
+            reason = (
+                info.get("reason") or info.get("message") or "Tool not executed"
+                if isinstance(info, dict) else "No execution result recorded"
+            )
             put(name, "not_run", scope, str(reason))
             return
         put(name, "passed" if info.get("success", info.get("passed")) is True
