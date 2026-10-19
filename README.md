@@ -4,7 +4,7 @@
 
 > **M.M.M(Make Minecraft Mode)**의 핵심 아키텍처와 로컬 GGUF 모델 파이프라인을 재활용하여 구현된 **Roblox 전용 AI 경험 제작 자동화 프레임워크**입니다.
 
-장르별 생성 템플릿으로 Luau·Rojo 프로젝트를 구성하고 요구사항 충족 검사를 수행합니다. 실제 `.rbxlx`는 Rojo로 컴파일된 경우에만 생성됩니다. **코드 생성·검증·Rojo 빌드 성공은 제작 완료로 처리**하고, 실제 Roblox Studio 플레이테스트 여부는 별도로 기록합니다. API 키나 테스트용 Place 게시를 기본 빌드에서 요구하지 않습니다.
+장르별 생성 템플릿으로 Luau·Rojo 프로젝트를 구성하고 요구사항 충족 검사를 수행합니다. 실제 `.rbxlx`는 Rojo로 컴파일된 경우에만 생성됩니다. **코드 생성·정적 검사·Rojo 빌드 성공은 오프라인 생성 완료일 뿐, 실제 게임플레이 완성이나 릴리스 인증이 아닙니다.** Roblox Studio 플레이테스트 결과는 별도 증거로 기록합니다. API 키나 테스트용 Place 게시를 기본 빌드에서 요구하지 않습니다.
 
 ---
 
@@ -104,6 +104,19 @@ Roblox 공식 도구 규격을 준수하는 `default.project.json`을 자동 생
 ### 3. Roblox Open Cloud 배포 (선택 사항, 게임 제작과 무관)
 `RobloxOpenCloudClient`를 통해 Studio를 직접 켜지 않고도 GitHub Actions CI/CD 또는 터미널에서 Open Cloud API로 게임 버전을 자동 배포할 수 있습니다:
 - 환경변수 설정: `ROBLOX_OPEN_CLOUD_API_KEY`, `ROBLOX_UNIVERSE_ID`, `ROBLOX_PLACE_ID`
+
+## 상세 구현 설계 및 MCP 검증 (기본 적용)
+
+모든 새 게임은 코드 작성 전에 `implementation_blueprint`를 생성합니다. 장르 키워드 몇 개를 감지했다고 사용자 게임을 완성했다고 판단하지 않습니다.
+
+- **요구사항 추적**: 원문 요구 → 메커니즘 → 실제 모듈·파일·소유권 → 승인 조건. 담당 모듈이 없거나 기능이 누락되면 생성 전 차단합니다.
+- **행동 상세화**: 각 메커니즘의 입력, 사전조건, 서버 상태 변경, 플레이어 피드백, 거부해야 할 조작, 저장 동작을 기획에 기록합니다.
+- **통합 계약**: 코인→상점, 구매→전투, 전투→리더보드, 아레나 참가→전투→승패/재시작 등 요청된 기능 간 연결을 개별적으로 검증합니다. 임의의 상점/아레나를 모든 게임에 강제하지 않습니다.
+- **수정 요청**: 기존 기능 목록에 한두 개 키워드만 이어 붙이지 않고 전체 원문+수정사항을 기준으로 모듈과 연결 관계를 재기획합니다.
+- **오프라인 차단**: `roblox_plan_audit`가 이전 계획의 누락·오염을 확인하고, `quality_gates.py`가 생성된 Lua 소스/맵과 blueprint를 대조합니다. 변경된 `implementation_blueprint.json`은 Rojo 프로젝트 ZIP에도 저장됩니다.
+- **실전 검증**: Studio MCP 또는 로컬 Studio CLI에서 플레이어 조작/서버 로그/멀티플레이/저장을 실제 실행해야 runtime-verified 상태를 인정합니다. 단순히 시나리오를 생성했다는 사실은 성공이 아닙니다.
+
+RMM의 MCP 서버(`python -m roblox_mod_ai.mcp_server`)는 `roblox_plan_experience`, `roblox_plan_audit`, `roblox_api_search`, `roblox_official_docs_search`, `roblox_luau_validate`와 로컬 Studio 전용 `roblox_studio_inspect` / `roblox_studio_action`을 제공합니다. Studio에서 지원하는 실제 도구만 허용하며 입력·실행은 로컬 연결 및 명시적인 `allow_write=true`에 따라 동작합니다. Colab만 사용하는 경우 Studio MCP가 자동으로 연결되지는 않으며, 게시 API 키는 기본 코드 생성에 필요하지 않습니다.
 
 ## 범용 게임플레이 완료 계약 (기본 적용)
 
