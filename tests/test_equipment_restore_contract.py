@@ -17,7 +17,8 @@ def _proposal():
 def test_saved_items_are_populated_before_folder_is_published_to_player():
     generator = LuauCodeGenerator()
     src = generator._generate_safe_datastore_service(
-        SimpleNamespace(name="PlayerDataManager"), _proposal()
+        SimpleNamespace(name="PlayerDataManager", module_id="mod_player_data",
+                        kind="data_store"), _proposal()
     )
     create = src.index('local owned = Instance.new("Folder")')
     markers = src.index("for _, id in data.inventory", create)
@@ -35,6 +36,7 @@ def test_paid_equipment_restores_on_profile_arrival_without_ten_second_timeout()
     assert 'child.Name == "OwnedItems" and child:IsA("Folder")' in src
     assert 'restoreEquipment(player, player.Character)' in src
     assert 'player.CharacterAdded:Connect(onCharacter)' in src
+    assert 'child.Name == "Backpack" and child:IsA("Backpack")' in src
     assert 'player.Character ~= character' in src
 
 
