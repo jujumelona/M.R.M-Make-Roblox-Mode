@@ -154,6 +154,20 @@ def expand_semantic_facet(
             raise HostArchitectureError("Gameplay system needs observable result")
         if re.search(r"\b(TODO|stub|placeholder|implement later)\b", server, re.I):
             raise HostArchitectureError("Unimplemented gameplay cannot pass host plan")
+        # Never accept an explicit server-authority bypass merely because
+        # the same behavior also promises a visible client result. A real
+        # uploaded combat proposal said the server can apply attack results
+        # "without validating" even though the preceding sentence claimed
+        # to validate the target. Reject the contradiction at plan time.
+        if re.search(
+            r"\b(?:without\s+(?:\w+\s+){0,4}validat(?:ing|ion)|"
+            r"(?:skip|skips|bypass|bypasses)\s+(?:\w+\s+){0,3}"
+            r"(?:validat(?:ion|ing)|checks?|verification)|"
+            r"(?:does\s+not|doesn't|never)\s+validat(?:e|es))\b",
+            server, re.I,
+        ):
+            raise HostArchitectureError(
+                "Server behavior explicitly bypasses action validation")
         if input_mode not in {"custom", "host_button", "world_prompt"}:
             raise HostArchitectureError("Unknown input mode")
         if input_mode == "world_prompt" and interaction != "event":
