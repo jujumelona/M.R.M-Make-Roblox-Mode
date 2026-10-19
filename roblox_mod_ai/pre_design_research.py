@@ -10,7 +10,8 @@ import hashlib
 import json
 import os
 import re
-import inspect
+import ast
+from pathlib import Path
 from typing import Any
 from .model_router import ModelRouter
 from .request_semantics import request_semantic_errors
@@ -18,6 +19,33 @@ from .request_semantics import request_semantic_errors
 from .creator_store import RobloxCreatorStoreCatalog
 from .official_docs import RobloxOfficialDocs
 from .roblox_api_catalog import RobloxAPICatalog
+
+def _fresh_generator_method_source(name: str) -> str | None:
+    """Read a method from the current on-disk AST, never notebook linecache.
+
+    inspect.getsource(method) can report an unrelated line when Colab has
+    imported an older module and Git sync shifted function line numbers.
+    Invalid/missing source is not evidence and must not get a source hash.
+    """
+    source_path = Path(__file__).resolve().with_name("code_generator.py")
+    try:
+        content = source_path.read_text(encoding="utf-8")
+        tree = ast.parse(content, filename=str(source_path))
+    except (OSError, SyntaxError, UnicodeError):
+        return None
+    for node in tree.body:
+        if isinstance(node, ast.ClassDef) and node.name == "LuauCodeGenerator":
+            for child in node.body:
+                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) and child.name == name:
+                    if child.end_lineno is None:
+                        return None
+                    lines = content.splitlines(keepends=True)
+                    extracted = "".join(lines[child.lineno - 1:child.end_lineno])
+                    if "def " + name + "(" not in extracted:
+                        return None
+                    return extracted
+    return None
+
 
 # Search vocabulary only. These hints are never compulsory game systems.
 # Unknown requirements are kept in the ledger instead of being mapped to combat.
@@ -547,9 +575,14 @@ class RobloxPreDesignResearch:
             for name in method_names[:2]:
                 method=getattr(LuauCodeGenerator,name,None)
                 if method is None: continue
-                try:
-                    body=inspect.getsource(method)
-                except (OSError,TypeError): continue
+                body = _fresh_generator_method_source(name)
+                if not body:
+                    failures.append({
+                        "facet": facet["id"],
+                        "provider": "local_project_source",
+                        "reason": "Cannot verify on-disk source for " + name,
+                    })
+                    continue
                 evidence.append({
                     "facet":facet["id"],
                     "provider":"local_project_source",
