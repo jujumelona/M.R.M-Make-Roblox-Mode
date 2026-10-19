@@ -16,7 +16,9 @@ def test_explicit_owned_addon_has_no_baseplace_and_no_rojo_replace(tmp_path: Pat
     root = Path(result.project_dir)
     assert result.metadata["acceptance"]["passed"], result.metadata["acceptance"]
     assert result.metadata["addon_prepared"] is True
-    assert result.success is False  # No real Studio execution
+    assert result.success is True  # Owned additive sources prepared, no Studio claim.
+    assert result.metadata["release_status"] == "addon_packaged"
+    assert result.playtest_report.total_tests == 0
     assert not (root / "default.project.json").exists()
     assert not result.rbxlx_path
     assert Path(result.project_zip_path).is_file()
