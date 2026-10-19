@@ -88,15 +88,15 @@ jobs:
               offline = root / "tests" / "offline"
               offline.mkdir(parents=True)
               (offline / "sample_motion.luau").write_text(
-                  "--!strict\\nassert(math.abs(0.4 + 0.6 - 1) < 1e-6)\\n",
+                  "--!strict\nassert(math.abs(0.4 + 0.6 - 1) < 1e-6)\n",
                   encoding="utf-8")
               (offline / "sample_rules.luau").write_text(
-                  "--!strict\\nassert(math.max(3, 5) == 5)\\n",
+                  "--!strict\nassert(math.max(3, 5) == 5)\n",
                   encoding="utf-8")
               result = RobloxToolchainManager().run_lune_offline_suite(root)
               assert result["executed"] and result["success"] and result["test_count"] == 2, result
               (offline / "sample_rules.luau").write_text(
-                  "--!strict\\nassert(false, 'regression')\\n", encoding="utf-8")
+                  "--!strict\nassert(false, 'regression')\n", encoding="utf-8")
               fail = RobloxToolchainManager().run_lune_offline_suite(root)
               assert fail["executed"] and not fail["success"], fail
               assert any(x["status"] == "failed" for x in fail["tests"]), fail
