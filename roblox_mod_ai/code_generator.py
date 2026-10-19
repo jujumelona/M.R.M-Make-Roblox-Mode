@@ -601,17 +601,32 @@ local PURCHASE_COOLDOWN = 0.35
 local function grantMagicStaff(player: Player): boolean
     if not SHOP_ITEMS.magic_staff then return false end
     local backpack = player:FindFirstChildOfClass("Backpack")
-    if not backpack then return false end
-    local character = player.Character
-    if backpack:FindFirstChild("Arcane Staff")
-        or (character and character:FindFirstChild("Arcane Staff")) then
-        return true
+    local starterGear = player:FindFirstChildOfClass("StarterGear")
+    -- The purchase transaction must not charge for an item that cannot be
+    -- persisted across Roblox's automatic Backpack replacement on respawn.
+    if not backpack or not starterGear then return false end
+
+    local toolName = SHOP_ITEMS.magic_staff.name
+    local template = starterGear:FindFirstChild(toolName)
+    if template and not template:IsA("Tool") then return false end
+    if not template then
+        local newTool = Instance.new("Tool")
+        newTool.Name = toolName
+        newTool.RequiresHandle = false
+        -- StarterGear is player-specific and automatically re-cloned into
+        -- the player's replacement Backpack after each character spawn.
+        newTool.Parent = starterGear
+        template = newTool
     end
-    local tool = Instance.new("Tool")
-    tool.Name = SHOP_ITEMS.magic_staff.name
-    tool.RequiresHandle = false
-    -- Client LocalScript owns activation. This server script owns damage.
-    tool.Parent = backpack
+
+    -- StarterGear covers future respawns; also grant once immediately when
+    -- purchasing or loading saved inventory on an existing character.
+    local character = player.Character
+    if not backpack:FindFirstChild(toolName)
+        and not (character and character:FindFirstChild(toolName)) then
+        local copy = template:Clone()
+        copy.Parent = backpack
+    end
     return true
 end
 
@@ -767,9 +782,10 @@ local function onAdded(player: Player)
     player.ChildAdded:Connect(function(child)
         if child.Name == "OwnedItems" and child:IsA("Folder") and player.Character then
             restoreEquipment(player, player.Character)
-        elseif child.Name == "Backpack" and child:IsA("Backpack") then
-            -- Roblox may create/reset the Backpack after the saved inventory
-            -- and character are ready. Re-granting is harmless (deduplicated).
+        elseif (child.Name == "Backpack" and child:IsA("Backpack"))
+            or (child.Name == "StarterGear" and child:IsA("StarterGear")) then
+            -- Account for either engine-created container arriving after
+            -- the persistent profile; grantMagicStaff is idempotent.
             local owned = player:FindFirstChild("OwnedItems")
             if owned and owned:FindFirstChild("magic_staff") then
                 grantMagicStaff(player)
