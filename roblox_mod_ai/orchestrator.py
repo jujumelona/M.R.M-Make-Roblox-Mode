@@ -17,6 +17,7 @@ from .agent_trajectory import AgentTrajectory
 from .quality_gates import acceptance_obligations, make_artifact_manifest
 from .request_traceability import build_request_traceability
 from .local_studio import install_local_studio_checks
+from .gameplay_contract import make_studio_playtest_scenarios
 from .rbxlx_inspector import inspect_compiled_place
 import hashlib
 import zipfile
@@ -373,6 +374,10 @@ class RobloxProductionOrchestrator:
                 (output_dir / "gameplay_contract.json").write_text(
                     json.dumps(proposal.game_design["gameplay_contract"],
                                indent=2, ensure_ascii=False), encoding="utf-8")
+                (output_dir / "gameplay_playtest_scenarios.json").write_text(
+                    json.dumps(make_studio_playtest_scenarios(
+                        proposal.game_design["gameplay_contract"]),
+                        indent=2, ensure_ascii=False), encoding="utf-8")
             (output_dir / "rokit.toml").write_text(self.toolchain.generate_rokit_manifest(), encoding="utf-8")
             (output_dir / "aftman.toml").write_text(self.toolchain.generate_aftman_manifest(), encoding="utf-8")
             if not source_only:
