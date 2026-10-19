@@ -198,8 +198,8 @@ class LuauCodeGenerator:
             routes["ButtonPurchased"] = "RemoteEvent"
         if "ArenaRoundService" in owned:
             routes["RoundStatus"] = "RemoteEvent"
-        remote_rows = "\\n".join('    ' + name + ' = "' + name + '",' for name in routes)
-        remote_classes = "\\n".join('    ' + name + ' = "' + kind + '",' for name, kind in routes.items())
+        remote_rows = "\n".join('    ' + name + ' = "' + name + '",' for name in routes)
+        remote_classes = "\n".join('    ' + name + ' = "' + kind + '",' for name, kind in routes.items())
         return f"""--!strict
 -- Module: {module.name}
 -- Service: ReplicatedStorage
@@ -220,11 +220,11 @@ export type PlayerDataRecord = {{
 }}
 
 {module.name}.Remotes = {{
-{{remote_rows}}
+{remote_rows}
 }}
 
 {module.name}.RemoteTypes = {{
-{{remote_classes}}
+{remote_classes}
 }}
 
 {module.name}.Config = {{
