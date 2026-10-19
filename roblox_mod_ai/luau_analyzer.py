@@ -146,6 +146,10 @@ class LuauStaticAnalyzer:
         # Rule 2: Syntax and Keyword Balance
         block_starts = ["function", "if", "for", "while", "do"]
         open_blocks = 0
+        # Multi-line elseif conditions have their 'then' on another line.
+        # Treat the entire elseif as continuation of the original if block,
+        # never as an additional opening scope.
+        pending_elseif = False
         in_multiline_comment = False
         in_multiline_string = False
 
@@ -227,9 +231,14 @@ class LuauStaticAnalyzer:
 
             # Syntax block counting
             tokens = re.findall(r"\b(function|if|for|while|do|then|end|repeat|until)\b", code_line)
-            # "elseif ... then" continues an existing if block, not a new block.
-            if re.search(r"\belseif\b.*\bthen\b", code_line) and "then" in tokens:
+            # 'elseif <condition> then' continues an existing if.
+            # On multiline conditions the 'then' arrives on a later line.
+            # The old same-line regex wrongly failed valid generated shops.
+            if re.search(r"\belseif\b", code_line):
+                pending_elseif = True
+            if pending_elseif and "then" in tokens:
                 tokens.remove("then")
+                pending_elseif = False
             for token in tokens:
                 if token in {"function", "do", "repeat"}:
                     open_blocks += 1
