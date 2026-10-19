@@ -16,7 +16,7 @@ from .agent_loop import RobloxCodeRepairAgent, LuauGenerationError
 from .agent_trajectory import AgentTrajectory
 from .quality_gates import acceptance_obligations, make_artifact_manifest
 from .request_traceability import build_request_traceability
-from .runtime_verification import OpenCloudRuntimeVerifier
+from .local_studio import install_local_studio_checks
 from .rbxlx_inspector import inspect_compiled_place
 import hashlib
 import zipfile
@@ -49,9 +49,7 @@ class RobloxPipelineResult:
     def to_dict(self) -> dict[str, Any]:
         return {
             "success": self.success,
-            # Build completion is distinct from verified Roblox engine behavior.
-            # Keep success fail-closed until the real test place and Studio
-            # multiplayer receipt pass; expose the usable compiled artifact.
+            # Source/package completion is not proof of a successful Roblox playtest.
             "build_ready": bool(self.metadata.get("build_ready", False)),
             "release_status": self.metadata.get("release_status", "unverified"),
             "game_title": self.game_title,
@@ -109,12 +107,12 @@ class RobloxProductionOrchestrator:
         errors: list[str] = []
         tool_results: dict[str, dict] = {}
         acceptance: dict = {"passed": False, "checks": []}
-        runtime: dict = {"passed": False, "executed": False, "reason": "not run"}
+        runtime: dict = {"passed": False, "executed": False, "status": "not_run",
+                         "reason": "Roblox Studio has not tested this build"}
         analysis_report = LuauAnalysisReport(passed=False)
         playtest_report = PlaytestReport(
-            passed=False, total_tests=1, passed_count=0, failed_count=1, duration_ms=0,
-            results=[TestCaseResult(name="Real Roblox engine and multiplayer tests", passed=False, duration_ms=0,
-                                    message="No verified Roblox engine execution")],
+            passed=False, total_tests=0, passed_count=0, failed_count=0, duration_ms=0,
+            results=[],  # No fabricated failure: an engine test was not requested or run.
         )
         rbxlx_path = ""
         zip_path = ""
@@ -569,48 +567,36 @@ class RobloxProductionOrchestrator:
             ready = stage(TaskStage.LINT_AND_SELF_CORRECT, lint)
         if ready:
             ready = stage(TaskStage.PACKAGE, package)
-        # Packaging and engine verification are independent outcomes. A
-        # missing Roblox test place must not erase the verified Rojo artifact,
-        # but neither may it be reported as a successful Studio playtest.
+        # Offline production is the default contract. Packaging must succeed
+        # without Roblox account secrets, test IDs, network publishing, or a
+        # Studio receipt. Engine checks are a separate *optional* local action.
         build_ready = bool(ready and not source_only and not addon_mode
                            and rbxlx_path and zip_path)
-        if ready and not source_only and not addon_mode:
-            runtime = OpenCloudRuntimeVerifier().run(proposal, Path(rbxlx_path))
-            # Open Cloud smoke proves server structure and DataStore only; it does not
-            # prove client-server user interactions or join/leave restore.
-            real_multiplayer = self._validate_studio_receipt(Path(rbxlx_path))
-            runtime["multiplayer"] = real_multiplayer
-            runtime["server_smoke_passed"] = bool(runtime.get("passed"))
-            runtime["passed"] = bool(runtime["server_smoke_passed"] and real_multiplayer["passed"])
-            ready = stage(TaskStage.PLAYTEST, lambda: {
-                "passed": runtime["passed"], "scope": "server engine + Studio multiplayer",
-                "status": runtime.get("status", "runtime_checked"),
-                "missing_requirements": runtime.get("missing_requirements", []),
-                "artifact_ready": build_ready,
-                "error": runtime.get("reason", real_multiplayer.get("reason", "runtime verification incomplete"))})
-            playtest_report = PlaytestReport(
-                passed=ready, total_tests=2,
-                passed_count=int(bool(runtime.get("server_smoke_passed"))) + int(real_multiplayer["passed"]),
-                failed_count=2 - (int(bool(runtime.get("server_smoke_passed"))) + int(real_multiplayer["passed"])),
-                duration_ms=0,
-                results=[
-                    TestCaseResult(name="Open Cloud server+DataStore", passed=bool(runtime.get("server_smoke_passed")),
-                                   duration_ms=0, message=str(runtime.get("reason", runtime.get("state")))),
-                    TestCaseResult(name="Studio multiplayer + persistence restore", passed=real_multiplayer["passed"],
-                                   duration_ms=0, message=str(real_multiplayer.get("reason", "evidence accepted"))),
-                ],
-            )
-        receipt.overall_success = bool(ready and not source_only and not addon_mode)
-        (output_dir / "work_receipt.json").write_text(json.dumps(receipt.to_dict(), indent=2), encoding="utf-8")
+        artifact_ready = bool(ready and (
+            build_ready or (addon_mode and zip_path) or source_only
+        ))
+        receipt.overall_success = artifact_ready
+        release_status = (
+            "built_unverified" if build_ready
+            else "addon_packaged" if artifact_ready and addon_mode
+            else "source_only" if artifact_ready and source_only
+            else "build_incomplete"
+        )
+        # The final artifact still needs a real Studio test before calling it
+        # gameplay-verified. The separate local test never publishes anything.
+        runtime["artifact_ready"] = artifact_ready
+        (output_dir / "work_receipt.json").write_text(
+            json.dumps(receipt.to_dict(), indent=2), encoding="utf-8")
         failure_logs_zip = ""
-        if not receipt.overall_success:
+        if not artifact_ready:
             failure_logs_zip = str(trajectory.failure_bundle(
-                "; ".join(errors) or "Engine verification evidence missing",
+                "; ".join(errors) or "Production checks failed",
                 receipt=receipt.to_dict(), tool_results=tool_results))
             print("[RMM agent] failure logs: " + failure_logs_zip, flush=True)
         else:
-            trajectory.record("result", "verified release",
-                              {"place": rbxlx_path}, passed=True)
+            trajectory.record("result", "build artifacts created; Studio playtest not run",
+                              {"place": rbxlx_path, "zip": zip_path,
+                               "release_status": release_status}, passed=True)
         elapsed_ms = (time.perf_counter() - start) * 1000
         return RobloxPipelineResult(
             success=receipt.overall_success,
@@ -623,13 +609,7 @@ class RobloxProductionOrchestrator:
             metadata={"acceptance": acceptance, "runtime": runtime, "tool_results": tool_results,
                       "errors": errors, "source_only": source_only,
                       "build_ready": build_ready,
-                      "release_status": (
-                          "verified" if receipt.overall_success
-                          else "verification_setup_required" if build_ready
-                              and runtime.get("status") == "verification_setup_required"
-                          else "runtime_unverified_or_failed" if build_ready
-                          else "build_incomplete"
-                      ),
+                      "release_status": release_status,
                       "agent_trajectory": str(trajectory.path),
                       "failure_logs_zip": failure_logs_zip,
                       "project_mode": proposal.game_design.get("project_mode", "new_experience"),
