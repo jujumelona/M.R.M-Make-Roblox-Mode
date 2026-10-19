@@ -101,8 +101,16 @@ _LOCAL_README = """# Local Roblox Studio checks - no API key
 The project ZIP includes compiled_place.rbxlx. Extract the entire archive
 onto the Windows PC with Roblox Studio installed.
 
-- Double-click compiled_place.rbxlx to open it in Studio. Press Play to
-  manually test gameplay, combat, shop UI, interactions and persistence.
+- Double-click compiled_place.rbxlx to open it in Studio. Use Play for
+  solo coin pickup, HUD and shop checks only. A round-based PvP game will
+  correctly remain in Waiting with one player.
+- For actual arena combat, use Studio's Test tab multiplayer controls:
+  start a local server with at least 2 clients, wait for the countdown,
+  fight, confirm winner/Wins/KOs/rewards, then replay and test disconnects.
+  A single-client Play session is NOT evidence that PvP works.
+- Persistence must be tested separately in a suitable published test
+  experience with DataStore access; an unpublished offline Place uses
+  memory-only profiles and cannot prove save/rejoin behavior.
 - Optional local edit-mode structural smoke:
   powershell -ExecutionPolicy Bypass -File .\\local_studio\\run_smoke.ps1
   It runs the official Studio CLI against the local file and writes
