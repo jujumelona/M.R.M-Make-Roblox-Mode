@@ -686,6 +686,11 @@ local function handlePurchase(player: Player, itemId: string): (boolean, string)
     if itemId ~= "health_potion" and owned and owned:FindFirstChild(itemId) then
         return false, "Already owned"
     end
+    -- Consumables must have an actual effect before spending currency.
+    -- A full-health player should not silently lose coins for no benefit.
+    if itemId == "health_potion" and humanoid.Health >= humanoid.MaxHealth then
+        return false, "Health is already full"
+    end
 
     -- Deduct currency server-authoritatively
     coinsVal.Value = EconomyRules.charge(coinsVal.Value, item.price) :: number
