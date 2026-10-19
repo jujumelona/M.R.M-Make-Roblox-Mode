@@ -512,8 +512,19 @@ class RobloxPreDesignResearch:
         ledger = self._decompose_compound(prompt, build_request_ledger(prompt))
         # A source-anchored atomic decomposition already supplies its own exact,
         # feature-specific searches. Query expansion cannot supersede it.
+        requested_ids = {r["id"] for r in ledger.get("requirements", [])}
+        covered_by_host = {
+            rid for facet in ledger.get("facets", [])
+            if facet.get("implemented_by_builtin") and facet.get("implementation_key")
+            for rid in facet.get("requirements", [])
+        }
+        # A stock in-game shop does not need an unrelated Marketplace service,
+        # and ordinary coins do not imply DataStore2. Never ask the small AI
+        # to invent supplementary search facets when all original requested
+        # actions already have concrete, host-owned implementation owners.
         semantic = ([] if ledger.get("atomic_intents") or
-                    ledger.get("decomposition_pending") else
+                    ledger.get("decomposition_pending") or
+                    (requested_ids and requested_ids <= covered_by_host) else
                     self._propose_semantic_searches(prompt, ledger))
         if semantic:
             # Search expansion is evidence retrieval, NOT a user-authored
