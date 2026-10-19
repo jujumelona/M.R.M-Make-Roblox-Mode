@@ -1,0 +1,237 @@
+"""Evidence-led review -> root cause -> change plan -> patch -> checks -> re-review.
+
+No Roblox Studio execution. Every edit is scoped to model-authored sources,
+is reverted if validation regresses, and the full history is persisted.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from pathlib import Path
+from typing import Any, Callable
+
+from .agent_loop import RobloxCodeRepairAgent
+
+SCHEMA = "rmm/source-repair-cycle-v1"
+HOST_OWNED_IDS = {
+    "mod_game_objective", "mod_arena_round", "mod_arena_round_controller",
+    "mod_dynamic_server_bootstrap", "mod_player_data", "mod_network_bridge",
+}
+
+
+def _hash(source: str) -> str:
+    return hashlib.sha256(source.encode("utf-8")).hexdigest()
+
+
+def _blocking(report: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        item for item in report.get("findings", [])
+        if isinstance(item, dict) and item.get("severity") == "blocking"
+    ]
+
+
+def _plan_change(module: Any, issues: list[dict[str, Any]], router: Any,
+                 proposal: Any) -> dict[str, Any]:
+    """A second AI call diagnoses actual quoted defects before touching code."""
+    result = router.complete_json(
+        prompt=(
+            "Produce a scoped Roblox Luau defect repair plan ONLY. Do not write "
+            "source code yet. Analyze root causes, affected states and how to "
+            "fix the observed defects while keeping the original game behavior. "
+            "Return JSON with file:string, root_cause:string, change_strategy:string, "
+            "invariants:array of strings, regression_tests:array of strings. "
+            "No new files. No removal of requested functionality. Do not disable "
+            "checks or mark Roblox engine tests passed.\n"
+            + json.dumps({
+                "file": module.file_path,
+                "module": module.name,
+                "requirements": [
+                    req for req in (proposal.game_design.get(
+                        "detailed_implementation_plan") or {}).get(
+                            "required_functions", [])
+                    if module.name in req.get("owner_modules", [])
+                ][:8],
+                "real_source_findings": issues,
+            }, ensure_ascii=False, default=str)[:7000]
+        ),
+        role="planner", temperature=0, max_tokens=1100,
+    )
+    if not isinstance(result, dict) or result.get("file") != module.file_path:
+        raise ValueError("Repair plan changed the source filename or returned invalid JSON")
+    for field in ("root_cause", "change_strategy"):
+        if not isinstance(result.get(field), str) or len(result[field].strip()) < 8:
+            raise ValueError("Repair plan has no specific " + field)
+    for field in ("invariants", "regression_tests"):
+        values = result.get(field)
+        if not isinstance(values, list) or not values or any(
+            not isinstance(item, str) or not item.strip() for item in values
+        ):
+            raise ValueError("Repair plan omits required " + field)
+    return {
+        "file": module.file_path,
+        "root_cause": result["root_cause"][:800],
+        "change_strategy": result["change_strategy"][:1000],
+        "invariants": result["invariants"][:12],
+        "regression_tests": result["regression_tests"][:12],
+    }
+
+
+def run_source_repair_cycle(
+    proposal: Any,
+    root: Path,
+    router: Any,
+    initial_review: dict[str, Any],
+    *,
+    verify: Callable[[], dict[str, Any]],
+    review_again: Callable[[], dict[str, Any]],
+    max_rounds: int = 3,
+    agent_factory: Callable[..., Any] = RobloxCodeRepairAgent,
+) -> dict[str, Any]:
+    """Retry until clean review or a bounded, explained failure.
+
+    'verify' must execute actual available static/OSS checks and return
+    {passed:bool,...}; 'review_again' must inspect the changed disk sources.
+    Model-only reassurance is not a passing validation.
+    """
+    root = Path(root)
+    max_rounds = max(1, min(5, int(max_rounds)))
+    report = {
+        "schema": SCHEMA, "passed": False, "status": "not_run",
+        "attempts": [], "initial_review": initial_review,
+        "final_review": initial_review, "changed_files": [],
+        "reason": "", "scope": "static_and_offline_only_no_roblox_studio",
+    }
+    if initial_review.get("status") != "issues_found":
+        report["status"] = ("not_applicable" if initial_review.get(
+            "status") == "not_run" else "failed")
+        report["reason"] = "No confirmed blocking findings eligible for repair"
+        return report
+    modules = {m.file_path: m for m in proposal.modules}
+    seen: set[str] = set()
+    changed: set[str] = set()
+    current = initial_review
+    for round_number in range(1, max_rounds + 1):
+        findings = _blocking(current)
+        if not findings:
+            report.update(status="passed", passed=True, final_review=current,
+                          reason="No remaining source-grounded blocking findings")
+            break
+        by_file: dict[str, list[dict[str, Any]]] = {}
+        for item in findings:
+            by_file.setdefault(str(item.get("file")), []).append(item)
+        step: dict[str, Any] = {
+            "round": round_number, "findings": findings,
+            "plans": [], "edits": [], "validation": None,
+            "review": None, "status": "started",
+        }
+        report["attempts"].append(step)
+        selected = []
+        for file_path in sorted(by_file):
+            module = modules.get(file_path)
+            if module is None:
+                step["status"] = "blocked"
+                report["reason"] = "Review referenced unknown module: " + file_path
+                break
+            # An AI patch to a first-party template would be regenerated at
+            # the next build and can bypass security. Require generator fix.
+            if not module.module_id.startswith("dyn_") or module.module_id in HOST_OWNED_IDS:
+                step["status"] = "blocked"
+                report["reason"] = (
+                    "First-party host template needs generator-level repair: " + file_path)
+                break
+            selected.append(module)
+        if step["status"] == "blocked":
+            report["status"] = "blocked"
+            break
+        originals: dict[str, str] = {}
+        candidates: dict[str, str] = {}
+        try:
+            for module in selected:
+                path = root / module.file_path
+                if not path.is_file():
+                    raise ValueError("Missing source file: " + module.file_path)
+                original = path.read_text(encoding="utf-8")
+                originals[module.file_path] = original
+                expected_hash = current.get("source_sha256", {}).get(module.file_path)
+                if expected_hash != _hash(original):
+                    raise ValueError("Source changed since AI review: " + module.file_path)
+            signature = _hash(json.dumps({
+                "findings": sorted((x["file"], x.get("issue"), x.get("quote"))
+                                   for x in findings),
+                "source": {k: _hash(v) for k, v in sorted(originals.items())},
+            }, ensure_ascii=False, sort_keys=True))
+            if signature in seen:
+                raise ValueError("No progress: identical source and defect set repeated")
+            seen.add(signature)
+
+            agent = agent_factory(router=router)
+            for module in selected:
+                issues = by_file[module.file_path]
+                plan = _plan_change(module, issues, router, proposal)
+                step["plans"].append(plan)
+                diagnostic = (
+                    "Code review found concrete defects in existing source. "
+                    "Repair only the specified module, preserve requested behavior. "
+                    "Do not disable checks. Correct the root cause, not only the "
+                    "line quoted as evidence. Repair plan and observations:\n"
+                    + json.dumps({"plan": plan, "findings": issues},
+                                 ensure_ascii=False)[:6000]
+                )
+                original = originals[module.file_path]
+                candidate = agent.repair(
+                    module, proposal, existing_code=original,
+                    diagnostics=diagnostic, attempts=2,
+                )
+                if not isinstance(candidate, str) or candidate == original or not candidate.strip():
+                    raise ValueError("Repair produced no substantive source change")
+                candidates[module.file_path] = candidate
+                step["edits"].append({
+                    "file": module.file_path, "before_sha256": _hash(original),
+                    "after_sha256": _hash(candidate),
+                })
+            # Apply all candidates transactionally. Failed verification/review
+            # restores the exact original bytes and the in-memory module code.
+            for module in selected:
+                value = candidates[module.file_path]
+                (root / module.file_path).write_text(value, encoding="utf-8")
+                module.code = value
+            validation = verify()
+            step["validation"] = validation
+            if not isinstance(validation, dict) or validation.get("passed") is not True:
+                raise ValueError("Source validation failed after patch; revert required")
+            newer = review_again()
+            step["review"] = newer
+            if newer.get("status") not in ("issues_found", "reviewed_no_blockers") or not newer.get("fully_covered"):
+                raise ValueError("Fresh AI source review incomplete; revert required")
+            if newer.get("status") == "reviewed_no_blockers":
+                step["status"] = "passed"
+                current = newer
+                changed.update(candidates)
+                report.update(passed=True, status="passed", final_review=newer,
+                              reason="Defects corrected; deterministic checks and fresh AI review passed")
+                break
+            # Evidence remained or changed; keep patch ONLY if exact blocking
+            # count decreases. Otherwise rollback and request a different plan.
+            if len(_blocking(newer)) >= len(findings):
+                raise ValueError("Blocking source defects did not decrease; revert required")
+            current = newer
+            changed.update(candidates)
+            step["status"] = "improved_needs_next_round"
+            report["final_review"] = newer
+        except Exception as exc:
+            for module in selected:
+                if module.file_path in originals:
+                    (root / module.file_path).write_text(
+                        originals[module.file_path], encoding="utf-8")
+                    module.code = originals[module.file_path]
+            step["status"] = "reverted"
+            step["reason"] = type(exc).__name__ + ": " + str(exc)[:500]
+            report["reason"] = step["reason"]
+            report["status"] = "failed"
+            break
+    else:
+        report["status"] = "exhausted"
+        report["reason"] = "Review still contains blocking defects after maximum repair rounds"
+    report["changed_files"] = sorted(changed)
+    return report
