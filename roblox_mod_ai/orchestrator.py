@@ -19,6 +19,7 @@ from .quality_gates import acceptance_obligations, make_artifact_manifest
 from .request_traceability import build_request_traceability
 from .local_studio import install_local_studio_checks
 from .verification_selector import make_verification_report
+from .source_review import review_generated_sources
 from .gameplay_contract import make_studio_playtest_scenarios
 from .rbxlx_inspector import inspect_compiled_place
 import hashlib
@@ -158,6 +159,7 @@ class RobloxProductionOrchestrator:
             "module_prompt_scope.py", "server_modules.py", "economy_core.py", "host_client.py",
             "luau_service_contract.py", "request_semantics.py", "host_player_data.py",
             "roblox_toolchain.py", "verification_selector.py",
+            "detailed_plan.py", "source_review.py",
         )
         component_fingerprints = {
             component: hashlib.sha256(
@@ -203,6 +205,7 @@ class RobloxProductionOrchestrator:
                 "host_world_actions": design.get("host_world_actions", {}),
                 "module_requirements": design.get("module_requirements", {}),
                 "module_behaviors": design.get("module_behaviors", {}),
+                "detailed_plan": proposal.game_design.get("detailed_implementation_plan", {}),
                 "evidence": [{
                     "facet": e.get("facet"), "url": e.get("url"),
                     "sha": e.get("content_sha256"),
@@ -382,6 +385,10 @@ class RobloxProductionOrchestrator:
 
         def materialize():
             created = self.project_generator.materialize_project_tree(proposal, output_dir)
+            if proposal.game_design.get("detailed_implementation_plan"):
+                (output_dir / "detailed_implementation_plan.json").write_text(
+                    json.dumps(proposal.game_design["detailed_implementation_plan"],
+                               indent=2, ensure_ascii=False), encoding="utf-8")
             # Recognize reusable offline contracts from the actual generated
             # project. This is never decided by the user's genre/prompt.
             self.toolchain.stage_lune_economy_test(output_dir)
@@ -551,7 +558,23 @@ class RobloxProductionOrchestrator:
                 if unit.get("executed") and not unit.get("success"):
                     return {"passed": False, "error": "Offline Luau tests failed",
                             "diagnostic": unit}
-            return {"passed": True, "static_checks": len(acceptance["checks"])}
+            # A second pass compares the actually written, formatted source
+            # against each original requirement. It can run in Colab using
+            # the already loaded local GGUF; Roblox Studio is NOT invoked.
+            ai_review = review_generated_sources(proposal, output_dir, self.router)
+            tool_results["ai_source_review"] = ai_review
+            (output_dir / "ai_source_review.json").write_text(
+                json.dumps(ai_review, indent=2, ensure_ascii=False), encoding="utf-8")
+            if ai_review["status"] == "issues_found":
+                return {"passed": False,
+                        "error": "AI source reinspection found quoted blocking defects",
+                        "findings": [row for row in ai_review["findings"]
+                                     if row["severity"] == "blocking"]}
+            if ai_review["status"] == "failed":
+                return {"passed": False, "error": "AI source review could not finish",
+                        "diagnostic": ai_review.get("reason", "")}
+            return {"passed": True, "static_checks": len(acceptance["checks"]),
+                    "ai_source_review": ai_review["status"]}
 
         def package():
             nonlocal rbxlx_path, zip_path, build_mode
