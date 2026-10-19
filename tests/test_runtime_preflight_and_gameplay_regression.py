@@ -51,8 +51,9 @@ def test_shop_owned_magic_staff_survives_respawn_and_avoids_self_hit():
     assert "local function grantMagicStaff(player: Player): boolean" in source
     assert 'if owned:FindFirstChild("magic_staff") then' in source
     assert 'params.FilterDescendantsInstances = {caster}' in source
-    assert 'player:WaitForChild("Backpack", 10)' in source
-    assert 'if player.Character then task.spawn(restoreEquipment' in source
+    assert 'child.Name == "Backpack" and child:IsA("Backpack")' in source
+    assert 'if player.Character then task.spawn(onCharacter' in source
+    assert 'player.ChildAdded:Connect(function(child)' in source
     assert 'if not grantMagicStaff(player) then' in source
 
 
