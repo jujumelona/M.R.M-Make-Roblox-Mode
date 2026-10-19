@@ -230,3 +230,27 @@ def test_host_explicit_invalid_observable_is_not_silently_replaced():
     data["systems"][0]["observable_result"] = "ok"
     with pytest.raises(HostArchitectureError, match="observable result"):
         _convert(data)
+
+
+def test_host_deduplicates_identical_gameplay_with_different_labels():
+    raw = _semantic()
+    repeated = copy.deepcopy(raw["systems"][0])
+    repeated["name"] = "SameMiningUnderAnotherLabel"
+    raw["systems"].append(repeated)
+    result = _convert(raw)
+    assert len(result["modules"]) == 2
+    assert len(result["remotes"]) == 1
+    assert len(result["acceptance"]) == 1
+    assert len(result["world_objects"]) == 1
+
+
+def test_host_keeps_two_distinct_actions_when_effects_differ():
+    raw = _semantic()
+    other = copy.deepcopy(raw["systems"][0])
+    other["name"] = "SpecialOreMining"
+    other["server_behavior"] = (
+        "Server checks proximity to rare ore and updates a separate mineral inventory.")
+    raw["systems"].append(other)
+    result = _convert(raw)
+    assert len(result["modules"]) == 4
+    assert len(result["remotes"]) == 2

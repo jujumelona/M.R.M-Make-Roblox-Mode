@@ -133,6 +133,7 @@ def expand_semantic_facet(
     used_remotes = set(reserved_remotes)
     used_objects = set(reserved_objects)
     seed = hashlib.sha256(facet_id.encode("utf-8")).hexdigest()[:6].upper()
+    seen_behaviors: set[tuple[Any, ...]] = set()
     for index, system in enumerate(systems):
         if not isinstance(system, dict):
             raise HostArchitectureError("Invalid gameplay system")
@@ -178,6 +179,18 @@ def expand_semantic_facet(
             not isinstance(item, str) or not item.strip() for item in world
         ):
             raise HostArchitectureError("world_entities must be short names, not geometry")
+
+        # A small planner can propose the identical action under several
+        # different names. Do not create two server writers/Remotes for one
+        # literal gameplay transition. Different targets or outcomes remain
+        # distinct; this is exact semantic deduplication, not keyword reuse.
+        behavior_signature = (
+            server.strip(), client.strip(), interaction, input_mode,
+            tuple(world), observable.strip(),
+        )
+        if behavior_signature in seen_behaviors:
+            continue
+        seen_behaviors.add(behavior_signature)
 
         prefix = _pascal(name, "Gameplay")
         suffix = seed + str(index + 1)
