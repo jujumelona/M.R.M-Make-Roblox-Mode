@@ -8,7 +8,7 @@ PROFILESTORE_SERVER = """--!strict
 -- ProfileStore owns autosave, lease conflict handling and session closing.
 local Players = game:GetService("Players")
 local ProfileStore = require(game:GetService("ServerScriptService"):WaitForChild("ServerPackages"):WaitForChild("ProfileStore"))
-local template = {coins=0, level=1, stage=1, clicks=0, inventory={}}
+local template = {coins=0, level=1, stage=1, clicks=0, wins=0, kos=0, inventory={}}
 local store = ProfileStore.New("RMM_ExperienceData_ProfileStore_v1", template)
 local profiles = {}
 
@@ -29,7 +29,7 @@ local function loadPlayer(player: Player)
     local stats = Instance.new("Folder")
     stats.Name = "leaderstats"
     stats.Parent = player
-    for _, entry in {{"Coins", "coins"}, {"Level", "level"}, {"Stage", "stage"}} do
+    for _, entry in {{"Coins", "coins"}, {"Level", "level"}, {"Stage", "stage"}, {"Wins", "wins"}, {"KOs", "kos"}} do
         local value = Instance.new("IntValue")
         value.Name = entry[1]
         value.Value = profile.Data[entry[2]]
@@ -71,7 +71,7 @@ Players.PlayerRemoving:Connect(function(player)
         profiles[player] = nil
         local stats = player:FindFirstChild("leaderstats")
         if stats then
-            for name, field in {Coins="coins", Level="level", Stage="stage"} do
+            for name, field in {Coins="coins", Level="level", Stage="stage", Wins="wins", KOs="kos"} do
                 local val = stats:FindFirstChild(name)
                 if val then profile.Data[field] = val.Value end
             end
