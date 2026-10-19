@@ -61,6 +61,29 @@ class RobloxOfficialDocs:
         _, start=max(blocks)
         return text[start:start+max_len]
 
+    def read_exact(self, url: str, member: str) -> dict:
+        """Fetch a known, canonical Creator API page instead of lexically ranked art pages.
+
+        A requested API member must occur in real fetched documentation.
+        Missing or unreachable pages return explicit failures, never inferred
+        signatures or a search hit falsely called verified.
+        """
+        if not self.safe_url(url) or not member.strip():
+            return {"results": [], "source": url, "error": "Invalid exact API lookup"}
+        try:
+            body = self._get(url)
+            match = re.search(re.escape(member), body, flags=re.IGNORECASE)
+            if not match:
+                return {"results": [], "source": url,
+                        "error": "Requested API member absent from fetched page"}
+            start = max(0, match.start() - 150)
+            excerpt = body[start:start + 1500]
+            return {"results": [{"url": url, "excerpt": excerpt, "score": 1}],
+                    "source": url, "error": None}
+        except (httpx.HTTPError, ValueError, TypeError) as exc:
+            return {"results": [], "source": url,
+                    "error": f"{type(exc).__name__}: {str(exc)[:180]}"}
+
     def search(self,query: str,limit: int=6,with_excerpt: bool=True)->dict:
         tokens=self._words(query)
         if not tokens:
