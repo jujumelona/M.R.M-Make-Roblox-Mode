@@ -8,7 +8,7 @@ from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
 
-from roblox_mod_ai.detailed_plan import build_detailed_plan, audit_detailed_plan
+from roblox_mod_ai.detailed_plan import build_detailed_plan, audit_detailed_plan, enrich_detailed_plan
 from roblox_mod_ai.source_review import review_generated_sources
 
 
@@ -154,3 +154,53 @@ def test_model_error_fails_review_when_explicitly_enabled(tmp_path, monkeypatch)
     res = review_generated_sources(p, tmp_path, Broken())
     assert res["status"] == "failed"
     assert not res["fully_covered"]
+
+
+def test_model_elaborates_each_original_requirement_with_state_and_negative_cases(monkeypatch):
+    monkeypatch.setenv("RMM_ENABLE_AI_DETAILED_PLAN", "1")
+    p = example()
+    plan = build_detailed_plan(p)
+    class Planner:
+        def __init__(self):
+            self.calls = []
+        def complete_json(self, **kw):
+            self.calls.append(kw)
+            return {
+                "steps": ["check fuel", "move in permitted state"],
+                "preconditions": ["a valid ship is present"],
+                "server_state_changes": ["fuel decreases"],
+                "client_feedback": ["updated fuel appears in HUD"],
+                "failure_cases": ["zero fuel denies movement"],
+                "cross_module_interfaces": ["ship service sends fuel to client"],
+                "offline_verification": ["zero fuel input keeps ship position fixed"],
+            }
+    ai = Planner()
+    enriched = enrich_detailed_plan(plan, ai)
+    p.game_design["detailed_implementation_plan"] = enriched
+    assert enriched["ai_planning"]["status"] == "enriched"
+    assert set(enriched["ai_planning"]["requirements"]) == {"req-01"}
+    assert "server_state_changes" in enriched["ai_planning"]["requirements"]["req-01"]
+    assert len(ai.calls) == 1
+    assert ai.calls[0]["role"] == "planner"
+    assert audit_detailed_plan(p)["passed"]
+
+
+def test_model_plan_fails_closed_on_empty_or_incomplete_steps(monkeypatch):
+    monkeypatch.setenv("RMM_ENABLE_AI_DETAILED_PLAN", "1")
+    p = example()
+    class Missing:
+        def complete_json(self, **kw):
+            return {"steps": ["something"]}
+    planned = enrich_detailed_plan(build_detailed_plan(p), Missing())
+    p.game_design["detailed_implementation_plan"] = planned
+    assert planned["ai_planning"]["status"] == "failed"
+    assert not audit_detailed_plan(p)["passed"]
+
+
+def test_ai_planning_skips_if_model_generation_disabled(monkeypatch):
+    monkeypatch.setenv("RMM_ENABLE_MODEL_GENERATION", "0")
+    monkeypatch.setenv("RMM_MODEL_BASE_URL", "http://localhost:9999")
+    monkeypatch.delenv("RMM_ENABLE_AI_DETAILED_PLAN", raising=False)
+    p = example()
+    planned = enrich_detailed_plan(build_detailed_plan(p), object())
+    assert planned["ai_planning"]["status"] == "not_run"
