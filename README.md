@@ -133,15 +133,20 @@ RMM의 MCP 서버(`python -m roblox_mod_ai.mcp_server`)는 `roblox_plan_experien
 
 **검증 경계:** 생성된 테스트 시나리오는 *미실행*이며, 정적 소스 검증이나 Rojo 성공을 Roblox Studio에서의 실제 플레이/멀티플레이 성공으로 표시하지 않습니다. 런타임 검증에는 로컬 Studio 테스트가 필요합니다.
 
-## 자동 검증 실행 범위 선택
+## 프롬프트·장르에 독립적인 자동 검증
 
-**RMM은 실행 가능한 도구와 현재 게임의 기능만 선택합니다.** 기본 Colab/Linux에서는 요구사항·실제 소스·Rojo Place 구조 검증을 실행하고, 설치된 StyLua·Selene을 사용합니다. `luau-analyze`가 있다면 별도의 분석을 수행합니다. 상점 게임이고 **Lune이 설치되어 있을 때만** 배포되는 `src/shared/EconomyRules.luau`의 순수 경제 계산 테스트를 실제 실행합니다.
+RMM은 게임 이름, 사용자 프롬프트, `is_shop`/`is_combat` 같은 장르별 플래그로 **검증 도구나 실행할 테스트를 선택하지 않습니다**. 실제 프로젝트 파일과 설치된 도구를 기준으로 선택합니다.
 
-**Wally는 Fusion UI나 ProfileStore를 사용하는 경우에만 필요**합니다. 기본 UI·내장 DataStore를 사용하는 게임은 외부 패키지 설치를 건너뜁니다.
+- **모든 새 프로젝트**: 요구사항-모듈 연결/실제 소스 검사, StyLua 포맷·문법, Selene 린트, Rojo `.rbxlx` 빌드 및 파일/월드/Remote 연결 검사를 수행합니다. 설치된 공식 `luau-compile`의 `--only-parse`, `luau-analyze`도 별도 검사합니다.
+- **임의 장르의 순수 로직**: `tests/offline/**/*.luau` 또는 `tests/**/*.offline.luau`를 자동 발견합니다. 실제 Lune을 사용할 수 있으면 **모든 발견된 테스트**를 각각 실행하고, 종료 코드와 로그를 남깁니다. 스크립트가 하나라도 실패하면 빌드도 실패합니다.
+- **게임 엔진 의존 테스트**: Jest/TestEZ `*.spec.luau`, UI, RemoteEvent, DataStore 등의 엔진 테스트는 일반 Lune에서 성공한 것으로 취급하지 않습니다. Studio가 없는 Colab에서는 `not_run`으로 구분하고 게임에 맞는 로컬 Studio 테스트 시나리오를 함께 생성합니다.
+- **의존성 설치**: 게임에 Fusion UI/외부 ProfileStore 같은 실제 외부 패키지 의존성이 있을 때만 Wally를 실행합니다. 기본 게임의 사용하지 않는 Wally 패키지는 다운로드하지 않습니다.
 
-모든 제작 결과 폴더와 완전한 ZIP 안의 `verification_report.json`을 보면 개별 검사가 `passed`, `failed`, `not_run`, `not_applicable` 중 무엇인지 확인할 수 있습니다. 실행되지 않은 Lune·Studio 테스트는 성공에 합산되지 않습니다. 실제 Roblox Studio 실행은 이 컴퓨터에서 로컬 Studio 검사를 별도로 실행해야 하며, **Colab에서 Studio 멀티플레이가 실행됐다고 표시하지 않습니다.**
+Colab 부트스트랩은 공식 GitHub 릴리스에서 Lune 0.11.0과 Luau CLI 0.743을 **선택적으로 자동 설치**합니다. 이 선택적 다운로드가 실패해도 Rojo 제작은 이어집니다. 검증 실행 여부는 결과 ZIP 내부의 `verification_report.json`에 `passed` / `failed` / `not_run` / `not_applicable`로 기록됩니다.
 
-**선택하지 않는 도구:** 고정된 평가 작업과 Open Cloud 키가 필요한 OpenGameEval은 임의의 생성 게임 검증에 자동 연결하지 않습니다. Studio MCP 및 서드파티 Studio 플러그인은 Colab에 설치하지 않으며, Windows Studio를 직접 조작하지도 않습니다. 실제 플레이테스트가 필요하면 기존 ZIP에 포함된 로컬 Studio 검사 안내를 따릅니다.
+순수 Luau 테스트는 엔진을 시뮬레이션하지 않습니다. 테스트 커버리지를 높이려면 게임의 계산·규칙·상태 전이를 Roblox 서비스 접근과 분리한 순수 모듈로 구현하고, 그 모듈에 대한 실제 예상값 검사를 `tests/offline/`에 추가해야 합니다. 존재하지 않는 테스트를 실행했다고 주장하거나, 빈 테스트를 실행해 게임플레이를 검증했다고 판단해서는 안 됩니다. 사용자·모델이 생성한 코드를 실행하는 작업이므로 신뢰하지 않는 테스트는 격리된 환경에서 실행해야 합니다.
+
+**기본적으로 선택하지 않는 도구:** 별도 Open Cloud 키와 지정된 평가 작업이 필요한 OpenGameEval, 원격 Colab에서 실행할 수 없는 Studio MCP·멀티플레이 도구입니다. Studio 검증은 Windows의 로컬 환경에서 별도 실행합니다.
 
 ## 로컬 Roblox Studio 검증 (기본 제작에는 API 키 불필요)
 
