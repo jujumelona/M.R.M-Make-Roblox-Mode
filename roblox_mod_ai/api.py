@@ -15,6 +15,7 @@ from .model_router import ModelRouter
 from .orchestrator import RobloxPipelineResult, RobloxProductionOrchestrator
 from .planner import RobloxGameDesignPlanner
 from .request_contract import ledger_complete
+from .implementation_blueprint import audit_implementation_blueprint
 from .spec import RobloxProposal
 
 
@@ -30,9 +31,16 @@ class CompleteChatReply:
     def ready_to_build(self) -> bool:
         research = self.authored_plan.proposal.game_design.get("pre_design_research", {})
         ledger = research.get("ledger", {})
-        return (ledger_complete(self.authored_plan.proposal.requested_prompt, ledger)
-                and (any(self.authored_plan.proposal.game_design.get("features", {}).values())
-                     or bool(self.authored_plan.proposal.game_design.get("dynamic_design"))))
+        proposal = self.authored_plan.proposal
+        is_complete = (ledger_complete(proposal.requested_prompt, ledger)
+                       and (any(proposal.game_design.get("features", {}).values())
+                            or bool(proposal.game_design.get("dynamic_design"))))
+        # Imported stale plans may have nonempty modules but blank acceptance.
+        # Replan them before codegen instead of producing a second broken ZIP.
+        if (research.get("schema") == "rmm/pre-design-rag-v1"
+                and proposal.game_design.get("project_mode", "new_experience") == "new_experience"):
+            return bool(is_complete and audit_implementation_blueprint(proposal)["passed"])
+        return bool(is_complete)
 
 
 class CompleteRobloxAISession:
