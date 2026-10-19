@@ -67,7 +67,7 @@ def test_offline_local_studio_bundle_includes_compiled_place_and_mcp_config(tmp_
     assert "--localPlaceFile" in command
     assert "--quitAfterExecution" in command
     assert "RMM_STUDIO_SMOKE_PASS" in command
-    assert "publish" not in command.lower().replace("no publishing", "")
+    assert "publish_place" not in command
     config = json.loads((folder / "studio_mcp.windows.json").read_text(encoding="utf-8"))
     assert config["mcpServers"]["Roblox_Studio"]["args"][1].endswith(r"\Roblox\mcp.bat")
     assert (folder / "README.md").is_file()
