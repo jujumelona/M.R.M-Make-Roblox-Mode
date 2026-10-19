@@ -34,9 +34,11 @@ def test_work_graph_receipt_and_build_mode(tmp_path: Path):
     plan = session.plan("코인 상점과 검투가 합쳐진 아레나 게임")
 
     result = session.build(plan, run_name="test_work_graph", source_only=True)
-    assert result.success is False
+    assert result.success is True  # Explicit source-only artifact was generated.
+    assert result.metadata["release_status"] == "source_only"
+    assert result.playtest_report.total_tests == 0
     assert result.work_receipt is not None
-    assert result.work_receipt.overall_success is False
+    assert result.work_receipt.overall_success is True
 
     # Verify stage progression in receipt
     stage_names = [s.stage.value for s in result.work_receipt.stages]
