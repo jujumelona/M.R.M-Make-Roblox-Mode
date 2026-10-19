@@ -33,11 +33,21 @@ def fake_docs_client():
         assert request.url.host == "create.roblox.com"
         if request.url.path == "/docs/llms.txt":
             return httpx.Response(200, text=index)
-        return httpx.Response(200, text=(
-            "# Roblox API reference\n\n"
-            "ProximityPrompt Roblox RemoteFunction gameplay interactions and "
-            "server DataStoreService UpdateAsync NPC PathfindingService.\n"
-        ))
+        # Exact-member official retrieval deliberately rejects unrelated
+        # documentation. Mock representative, member-specific Creator pages
+        # instead of returning the same generic body for every API class.
+        canonical_pages = {
+            "/docs/reference/engine/classes/BasePart.md":
+                "# BasePart\\nEvent: BasePart.Touched(otherPart: BasePart)",
+            "/docs/reference/engine/classes/ProximityPrompt.md":
+                "# ProximityPrompt\\nEvent: ProximityPrompt.Triggered(player)",
+            "/docs/reference/engine/classes/Humanoid.md":
+                "# Humanoid\\nHumanoid:TakeDamage(amount: number)",
+            "/docs/reference/engine/classes/DataStoreService.md":
+                "# DataStoreService\\nDataStoreService:GetOrderedDataStore(name)",
+        }
+        body = canonical_pages.get(request.url.path)
+        return httpx.Response(200, text=body or "# Unrelated documentation")
     return httpx.Client(transport=httpx.MockTransport(respond))
 
 
@@ -130,7 +140,7 @@ def test_no_search_fabrication_when_provider_unavailable():
         assert result["status"]=="unresolved"
         assert not any(x["provider"]=="official_docs" for x in result["evidence"])
         assert result["provider_failures"]
-        assert all(q["status"]=="no_fetched_evidence" for q in result["queries"])
+        assert all(q["status"] in ("no_fetched_relevant_evidence", "provider_error") for q in result["queries"])
 
 
 def test_docs_offline_is_labelled_not_a_real_fetch():
