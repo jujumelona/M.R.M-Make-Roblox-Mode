@@ -37,6 +37,7 @@ def test_paid_equipment_restores_on_profile_arrival_without_ten_second_timeout()
     assert 'restoreEquipment(player, player.Character)' in src
     assert 'player.CharacterAdded:Connect(onCharacter)' in src
     assert 'child.Name == "Backpack" and child:IsA("Backpack")' in src
+    assert 'child.Name == "StarterGear" and child:IsA("StarterGear")' in src
     assert 'player.Character ~= character' in src
 
 
@@ -51,3 +52,32 @@ def test_shield_restoration_is_idempotent_and_does_not_overheal_on_race():
     assert set_flag in src
     assert shield in src
     assert src.index(guard) < src.index(set_flag) < src.index(shield)
+
+
+def test_startergear_is_seeded_before_live_staff_delivery_and_deduplicated():
+    src = LuauCodeGenerator()._generate_shop_service(
+        SimpleNamespace(name="ShopService"), _proposal()
+    )
+    start = src.index('local function grantMagicStaff(player: Player): boolean')
+    end = src.index('-- Remote clients can supply only the weapon identifier.', start)
+    staff = src[start:end]
+    assert 'player:FindFirstChildOfClass("Backpack")' in staff
+    assert 'player:FindFirstChildOfClass("StarterGear")' in staff
+    assert 'if not backpack or not starterGear then return false end' in staff
+    assert 'local template = starterGear:FindFirstChild(toolName)' in staff
+    assert 'newTool.Parent = starterGear' in staff
+    assert 'local copy = template:Clone()' in staff
+    assert 'copy.Parent = backpack' in staff
+    assert staff.index("newTool.Parent = starterGear") < staff.index("copy.Parent = backpack")
+    assert 'not backpack:FindFirstChild(toolName)' in staff
+    assert 'character and character:FindFirstChild(toolName)' in staff
+
+
+def test_staff_purchase_refunds_if_persistent_gear_cannot_be_delivered():
+    src = LuauCodeGenerator()._generate_shop_service(
+        SimpleNamespace(name="ShopService"), _proposal()
+    )
+    assert 'if not grantMagicStaff(player) then' in src
+    assert 'coinsVal.Value += item.price' in src
+    assert 'return false, "Backpack unavailable"' in src
+    assert 'marker.Name = itemId' in src
