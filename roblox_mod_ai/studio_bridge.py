@@ -11,7 +11,7 @@ import platform
 from pathlib import Path
 from typing import Any
 
-ALLOWED_READ = frozenset({"get_studio_state", "search_game_tree",
+ALLOWED_READ = frozenset({"get_studio_state", "screen_capture", "skill", "search_game_tree",
     "inspect_instance", "script_read", "script_search", "script_grep",
     "get_console_output", "list_roblox_studios"})
 ALLOWED_ACTIONS = frozenset({"start_stop_play", "execute_luau",
@@ -51,6 +51,9 @@ class StudioMCPClient:
                 return {"passed":not bool(result.isError),
                         "tool":tool_name,
                         "content":[str(x.text) for x in result.content if getattr(x,"type",None)=="text"],
+                        "media":[{"mimeType":getattr(x, "mimeType", "image/png"),
+                                  "data":str(getattr(x, "data", ""))}
+                                 for x in result.content if getattr(x, "type", None)=="image"],
                         "executed":True}
 
     def run(self, tool_name: str, arguments: dict[str,Any] | None = None,
