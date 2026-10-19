@@ -36,6 +36,7 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
         return name in files and files[name].is_file() and all(t in source.get(name, "") for t in tokens)
 
     addon_mode = proposal.game_design.get("project_mode") == "existing_experience_addon"
+    config: dict = {}
     try:
         if addon_mode:
             manifest = json.loads((root / "addon.manifest.json").read_text(encoding="utf-8"))
