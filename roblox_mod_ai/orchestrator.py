@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 import traceback
 from dataclasses import dataclass, field
@@ -161,6 +162,15 @@ class RobloxProductionOrchestrator:
                 (Path(__file__).resolve().parent / component).read_bytes()
             ).hexdigest()
             for component in generation_components
+        }
+        # Report the exact Colab clone revision and generation source digests
+        # in failure ZIPs so a stale interpreter is identifiable on the next run.
+        tool_results["source_provenance"] = {
+            "executed": True,
+            "git_commit": os.environ.get("RMM_SOURCE_COMMIT", ""),
+            "orchestrator_disk_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            "code_generator_disk_sha256": component_fingerprints["code_generator.py"],
+            "module_cache_reset_requested": bool(os.environ.get("RMM_SOURCE_COMMIT")),
         }
 
         def checkpoint_signature(module):
@@ -636,6 +646,7 @@ class RobloxProductionOrchestrator:
                       "errors": errors, "source_only": source_only,
                       "build_ready": build_ready,
                       "release_status": release_status,
+                      "source_commit": os.environ.get("RMM_SOURCE_COMMIT", ""),
                       "agent_trajectory": str(trajectory.path),
                       "failure_logs_zip": failure_logs_zip,
                       "project_mode": proposal.game_design.get("project_mode", "new_experience"),
