@@ -568,9 +568,19 @@ class RobloxGameDesignPlanner:
         pending = ", ".join(ledger.get("unimplemented_facets", [])) or "none"
         contract = proposal.game_design.get("gameplay_contract", {})
         blueprint = proposal.game_design.get("implementation_blueprint") or {}
+        requirement_acceptance_md = "\n".join(
+            f"- **{item['id']}** {item['source']} -> {item['acceptance'] or 'BLOCKED: NO ACCEPTANCE'} "
+            f"(owners: {', '.join(item['owners']) or 'UNASSIGNED'})"
+            for item in blueprint.get("requirements", [])
+        ) or "- No source-bound requirement acceptance"
         mechanics_md = "\n".join(
             f"- **{m['id']}**: owners={', '.join(m['owners']) or 'UNASSIGNED'}; "
-            f"files={', '.join(m['files']) or 'NONE'}; runtime=NOT RUN"
+            f"files={', '.join(m['files']) or 'NONE'}; runtime=NOT RUN\n"
+            f"  - Precondition: {m.get('precondition', 'Covered by authored novel contract')}\n"
+            f"  - Interaction: {m.get('interaction', m.get('acceptance', 'Novel authored action'))}\n"
+            f"  - Observable: {m.get('postcondition', m.get('acceptance', 'No observable outcome'))}\n"
+            f"  - Invalid inputs: {m.get('rejection', 'Reject unauthorized input')}\n"
+            f"  - Persistence: {m.get('persistence', 'Declared by game contract')}"
             for m in blueprint.get("mechanics", [])
         ) or "- No assigned mechanics"
         integrations_md = "\n".join(
@@ -618,7 +628,9 @@ class RobloxGameDesignPlanner:
 ## 2. Implementation Blueprint (before code generation)
 - **Schema**: {blueprint.get("schema", "MISSING")}
 - **Ready for code generation**: {blueprint.get("ready_for_codegen", False)} (not Studio verified)
-- **Module implementation and responsibility map**
+### Requirement-specific observable acceptance
+{requirement_acceptance_md}
+### Module implementation and responsibility map
 {mechanics_md}
 ### Cross-system contracts and exploit cases
 {integrations_md}
