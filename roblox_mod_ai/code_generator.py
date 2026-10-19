@@ -759,6 +759,7 @@ end)
 -- Description: Server-authoritative parkour manager: tracks checkpoints and handles hazard collisions.
 
 local Players = game:GetService("Players")
+local lastStage = {max(1, min(int(proposal.game_design.get("requested_counts", {}).get("stages", 5)), 128))}
 
 local function setupPlayerSpawn(player: Player)
     player.CharacterAdded:Connect(function(character)
@@ -796,9 +797,13 @@ task.defer(function()
                     local stageVal = leaderstats:FindFirstChild("Stage") :: IntValue?
                     local padStage = tonumber(pad.Name:gsub("Stage", "")) or 1
 
-                    if stageVal and padStage == stageVal.Value + 1 then
+                    if stageVal and (padStage == stageVal.Value + 1
+                        or (padStage == lastStage and stageVal.Value == lastStage)) then
                         stageVal.Value = padStage
                         pad.Color = Color3.fromRGB(0, 255, 100)
+                        if padStage == lastStage and not player:GetAttribute("ObbyComplete") then
+                            player:SetAttribute("ObbyComplete", true)
+                        end
                     end
                 end)
             end
@@ -834,6 +839,25 @@ local SoundService = game:GetService("SoundService")
 local localPlayer = Players.LocalPlayer
 local leaderstats = localPlayer:WaitForChild("leaderstats")
 local stageVal = leaderstats:WaitForChild("Stage") :: IntValue
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "RMMStageStatus"
+gui.ResetOnSpawn = false
+gui.Parent = localPlayer:WaitForChild("PlayerGui")
+local completion = Instance.new("TextLabel")
+completion.Name = "StageCompletion"
+completion.Size = UDim2.fromOffset(260, 48)
+completion.Position = UDim2.fromOffset(16, 122)
+completion.TextScaled = true
+completion.Parent = gui
+local function refreshCompletion()
+    completion.Text = localPlayer:GetAttribute("ObbyComplete")
+        and "Course completed! Replay anytime."
+        or ("Checkpoint " .. tostring(stageVal.Value))
+end
+localPlayer:GetAttributeChangedSignal("ObbyComplete"):Connect(refreshCompletion)
+stageVal.Changed:Connect(refreshCompletion)
+refreshCompletion()
 
 stageVal.Changed:Connect(function(newStage)
     print("Stage reached: " .. tostring(newStage))
