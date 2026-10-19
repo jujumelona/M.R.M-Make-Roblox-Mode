@@ -62,6 +62,8 @@ def test_lease_renewal_saves_current_currency_and_inventory():
         SimpleNamespace(name="PlayerDataManager", module_id="mod_player_data",
                         kind="data_store"), None)
     assert "stored.coins = coinsSnapshot" in source
+    assert 'local ownedInventory = player:FindFirstChild("OwnedItems")' in source
+    assert "in ownedInventory:GetChildren()" in source
     assert "stored.inventory = inventorySnapshot" in source
     assert "stored.lastSaved = os.time()" in source
     assert "stored.lockUntil = os.time() + 120" in source
