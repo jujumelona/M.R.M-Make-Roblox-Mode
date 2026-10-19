@@ -382,7 +382,8 @@ class RobloxProductionOrchestrator:
         def materialize():
             created = self.project_generator.materialize_project_tree(proposal, output_dir)
             tool_results["lune_economy_applicable"] = bool(
-                self.toolchain.stage_lune_economy_test(output_dir))
+                proposal.game_design.get("features", {}).get("is_shop")
+                and self.toolchain.stage_lune_economy_test(output_dir))
             if proposal.game_design.get("gameplay_contract"):
                 (output_dir / "gameplay_contract.json").write_text(
                     json.dumps(proposal.game_design["gameplay_contract"],
