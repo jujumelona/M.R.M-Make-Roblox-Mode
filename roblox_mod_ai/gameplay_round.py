@@ -18,6 +18,7 @@ local ROUND_DURATION = 120
 local INTERMISSION = 8
 local VICTORY_REWARD = 100
 
+game:SetAttribute("ArenaRoundActive", false)
 local phase = "Waiting"
 local message = "Waiting for another fighter"
 local timeLeft = 0
@@ -39,6 +40,7 @@ local function eligible(): {Player}
 end
 
 Players.PlayerAdded:Connect(function(player)
+    player:SetAttribute("InArenaRound", false)
     task.defer(function()
         if player.Parent == Players then
             statusRemote:FireClient(player, phase, message, timeLeft)
@@ -75,12 +77,21 @@ task.spawn(function()
             if humanoid and humanoid.Health > 0 then
                 fighters[player] = humanoid
                 alive[player] = true
+                player:SetAttribute("InArenaRound", true)
                 table.insert(connections, humanoid.Died:Connect(function()
                     alive[player] = false
+                    player:SetAttribute("InArenaRound", false)
                 end))
             end
         end
-        if #ready < MIN_PLAYERS then continue end
+        local fighterCount = 0
+        for _ in fighters do fighterCount += 1 end
+        if fighterCount < MIN_PLAYERS then
+            for _, conn in connections do conn:Disconnect() end
+            for player in fighters do player:SetAttribute("InArenaRound", false) end
+            continue
+        end
+        game:SetAttribute("ArenaRoundActive", true)
         local winner: Player? = nil
         for remaining = ROUND_DURATION, 0, -1 do
             local survivors: {Player} = {}
@@ -97,7 +108,11 @@ task.spawn(function()
             announce("Active", "Fight! Last fighter standing wins", remaining)
             task.wait(1)
         end
+        game:SetAttribute("ArenaRoundActive", false)
         for _, conn in connections do conn:Disconnect() end
+        for player in fighters do
+            if player.Parent == Players then player:SetAttribute("InArenaRound", false) end
+        end
         if winner and winner.Parent == Players then
             local leaderstats = winner:FindFirstChild("leaderstats")
             local coins = leaderstats and leaderstats:FindFirstChild("Coins")
