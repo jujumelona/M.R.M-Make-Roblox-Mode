@@ -4,7 +4,7 @@
 
 > **M.M.M(Make Minecraft Mode)**의 핵심 아키텍처와 로컬 GGUF 모델 파이프라인을 재활용하여 구현된 **Roblox 전용 AI 경험 제작 자동화 프레임워크**입니다.
 
-장르별 생성 템플릿으로 Luau·Rojo 프로젝트를 구성하고 요구사항 충족 검사를 수행합니다. 실제 `.rbxlx`는 Rojo로 컴파일된 경우에만 생성되며, **실제 Roblox 엔진 및 Studio 멀티플레이 테스트 전에는 완료로 판정하지 않습니다.**
+장르별 생성 템플릿으로 Luau·Rojo 프로젝트를 구성하고 요구사항 충족 검사를 수행합니다. 실제 `.rbxlx`는 Rojo로 컴파일된 경우에만 생성됩니다. **코드 생성·검증·Rojo 빌드 성공은 제작 완료로 처리**하고, 실제 Roblox Studio 플레이테스트 여부는 별도로 기록합니다. API 키나 테스트용 Place 게시를 기본 빌드에서 요구하지 않습니다.
 
 ---
 
@@ -18,8 +18,8 @@
 | **코드 생성** | Java / Fabric | **Luau / Roblox API** | `--!strict` 타이핑, ServerScriptService (서버 권한), StarterPlayerScripts (클라이언트), ReplicatedStorage (공유 모듈/RemoteEvent) |
 | **프로젝트 생성** | Fabric 프로젝트 | **Roblox Studio 프로젝트** | 업계 표준 Rojo `default.project.json` 생성 및 2-Way 라이브 싱크 지원 |
 | **코드 검사** | Java / Gradle | **Luau 분석·타입 검사** | 정적 구문 분석, 블록 밸런스 검사, 비권장 글로벌(`wait()`, `spawn()`) 검출, DataStore `pcall` 누락 검사 (`LuauStaticAnalyzer`) |
-| **실행 테스트** | Minecraft GameTest | **Roblox Studio Playtest** | 가짜 시뮬레이션 성공 제거. Open Cloud 실제 서버와 StudioTestService 멀티플레이 테스트 증거를 요구 |
-| **최종 출력** | JAR + ZIP | **.rbxlx + 프로젝트 ZIP** | Rojo 실제 빌드 성공 시 `.rbxlx`와 동일 프로젝트 ZIP 생성. 실패 시 대체 XML 성공 처리 금지 |
+| **실행 테스트** | Minecraft GameTest | **Roblox Studio Playtest** | 가짜 테스트 통과 금지. 기본은 오프라인 빌드 성공이며, 로컬 Studio CLI 구조 검사·Studio Play·내장 MCP 테스트는 별도 검증 |
+| **최종 출력** | JAR + ZIP | **.rbxlx + 프로젝트 ZIP** | Rojo 성공 시 `.rbxlx`가 포함된 ZIP과 로컬 Studio 검사 도구 생성. 실제 플레이테스트는 미실행으로 별도 표기 |
 | **수정·재실행** | 기존 계획·체크포인트 재사용 | **동일한 방식 구현** | 체크포인트 기반으로 기존 계획을 보존하면서 피드백 반영 및 점진적 재빌드 (`session.revise()`) |
 
 > [!NOTE]
@@ -101,9 +101,20 @@ Roblox 공식 도구 규격을 준수하는 `default.project.json`을 자동 생
 ### 2. 무설치 네이티브 `.rbxlx` 더블클릭 실행
 **Rojo CLI가 필수입니다.** 자체 XML 대체 생성기는 릴리스 경로에서 사용하지 않습니다. Roblox Studio에서 열리는 것만으로 실제 게임 동작이 검증되지 않습니다.
 
-### 3. Roblox Open Cloud 배포
+### 3. Roblox Open Cloud 배포 (선택 사항, 게임 제작과 무관)
 `RobloxOpenCloudClient`를 통해 Studio를 직접 켜지 않고도 GitHub Actions CI/CD 또는 터미널에서 Open Cloud API로 게임 버전을 자동 배포할 수 있습니다:
 - 환경변수 설정: `ROBLOX_OPEN_CLOUD_API_KEY`, `ROBLOX_UNIVERSE_ID`, `ROBLOX_PLACE_ID`
+
+## 로컬 Roblox Studio 검증 (기본 제작에는 API 키 불필요)
+
+- RMM은 Luau 생성, 정적 검사, Rojo 빌드와 ZIP 생성까지만 기본 실행합니다.
+- 성공한 ZIP에 **compiled_place.rbxlx**가 들어 있습니다. Windows에서 압축 해제 후 Roblox Studio로 열어 Play할 수 있습니다.
+- ZIP의 **local_studio/run_smoke.ps1**는 공식 Studio CLI로 로컬 Place의 인스턴스 구조를 검사합니다. **게임플레이·멀티플레이·DataStore 복원은 검증하지 않습니다.**
+- AI가 실제 Studio에서 스크립트를 읽고 수정하거나 Play 테스트를 조작해야 할 경우, **Studio Assistant > Manage MCP Servers > Enable Studio as MCP server**를 켜고 신뢰하는 로컬 AI 클라이언트에서 MCP로 연결합니다. ZIP의 **local_studio/studio_mcp.windows.json**을 참고할 수 있습니다.
+- 파일 실시간 동기화는 Rojo CLI와 Studio 플러그인을 설치해 rojo serve로 연결합니다.
+- **Colab 자체에는 Windows Roblox Studio가 없으므로, 사용자의 PC에서 Studio를 실행하는 테스트는 별도 로컬 작업**입니다. 게임 게시·Open Cloud API 키는 개발의 필수 조건이 아닙니다.
+
+관련 공식 문서: https://create.roblox.com/docs/studio/command-line-interface, https://create.roblox.com/docs/studio/mcp, https://rojo.space
 
 ## 🧠 작은 AI(Small Models) 지원: MCP & Skills 생태계
 
