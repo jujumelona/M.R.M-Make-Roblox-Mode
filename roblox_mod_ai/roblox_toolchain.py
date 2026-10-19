@@ -158,6 +158,24 @@ lune = "lune-org/lune@0.11.0"
             return {"success": False, "executed": True,
                     "checked_authored_files": len(files), "error": str(exc)}
 
+    def run_stylua_check(self, target_dir: str | Path) -> dict[str, Any]:
+        """Parse/format-check without mutating the source under AI review."""
+        files = self._authored_luau_files(target_dir)
+        if not files:
+            return {"executed": False, "success": False, "reason": "No authored Luau files"}
+        if not self.stylua_path:
+            return {"executed": False, "success": False, "reason": "StyLua unavailable"}
+        try:
+            proc = subprocess.run(
+                [self.stylua_path, "--check", *(str(f) for f in files)],
+                cwd=str(Path(target_dir).resolve()),
+                capture_output=True, text=True, timeout=60)
+            return {"executed": True, "success": proc.returncode == 0,
+                    "checked_authored_files": len(files),
+                    "stdout": proc.stdout[-2500:], "stderr": proc.stderr[-2500:]}
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return {"executed": True, "success": False, "error": str(exc)}
+
     def run_selene(self, target_dir: str | Path) -> dict[str, Any]:
         """Runs Selene linter on all Luau code in target_dir."""
         path = str(Path(target_dir).resolve())
