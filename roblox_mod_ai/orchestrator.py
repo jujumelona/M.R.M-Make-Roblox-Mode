@@ -242,7 +242,7 @@ class RobloxProductionOrchestrator:
                     # the host Remote ingress or no-argument client UI.
                     dynamic_contract = proposal.game_design.get("dynamic_design") or {}
                     is_host_generated = (
-                        module.module_id == "mod_dynamic_server_bootstrap"
+                        module.module_id in ("mod_arena_round", "mod_arena_round_controller", "mod_dynamic_server_bootstrap")
                         or (module.module_id == "mod_player_data" and module.file_path.endswith("/PlayerDataManager.luau"))
                         or (module.module_id.startswith("dyn_")
                             and module.name in
@@ -369,6 +369,10 @@ class RobloxProductionOrchestrator:
 
         def materialize():
             created = self.project_generator.materialize_project_tree(proposal, output_dir)
+            if proposal.game_design.get("gameplay_contract"):
+                (output_dir / "gameplay_contract.json").write_text(
+                    json.dumps(proposal.game_design["gameplay_contract"],
+                               indent=2, ensure_ascii=False), encoding="utf-8")
             (output_dir / "rokit.toml").write_text(self.toolchain.generate_rokit_manifest(), encoding="utf-8")
             (output_dir / "aftman.toml").write_text(self.toolchain.generate_aftman_manifest(), encoding="utf-8")
             if not source_only:
