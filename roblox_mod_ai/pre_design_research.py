@@ -419,10 +419,13 @@ class RobloxPreDesignResearch:
                     ledger.get("decomposition_pending") else
                     self._propose_semantic_searches(prompt, ledger))
         if semantic:
+            # Search expansion is evidence retrieval, NOT a user-authored
+            # gameplay requirement. The previous promotion to
+            # unimplemented_facets forced stock coin/shop/combat requests into
+            # extra LLM-authored services (DataStore2 and fictitious marketplace
+            # APIs), duplicating the actual currency and purchase writers.
+            # Keep the searches and their source IDs for audit/retrieval only.
             ledger["facets"] = ledger["facets"] + semantic
-            ledger["unimplemented_facets"] = sorted(set(
-                ledger["unimplemented_facets"] + [x["id"] for x in semantic]
-            ))
             covered={rid for f in ledger["facets"] for rid in f["requirements"]}
             ledger["unmatched_requirements"] = [r["id"] for r in ledger["requirements"]
                                                   if r["id"] not in covered]
