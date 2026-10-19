@@ -1,6 +1,6 @@
 # Uploaded code generation failures implementation plan
 
-> Execute inline using superpowers:executing-plans. User authorizes continuous fixes and checkpoint commits/pushes to main.
+> Execute inline using superpowers:executing-plans. User authorizes continuous fixes and checkpoint commits/pushes to a review branch.
 
 **Goal:** Correct the uploaded Roblox planning/generation failures and the failing current CI without claiming untested gameplay success.
 
@@ -11,7 +11,7 @@
 **Spec:** Uploaded failure ZIP and authored proposal; original game request remains binding.
 
 ## Global constraints
-- Work in this dedicated checkout; push verified checkpoints to main as requested.
+- Work in this dedicated checkout; push verified checkpoints to the review branch; main push was blocked by automatic approval.
 - Retain complete failed source/history and checkpoints. Do not silently ship missing mechanics.
 - No unsupported claims about a running model or Roblox Studio playtest.
 - Do not turn in-game currency into Robux monetization without explicit original request.
@@ -30,10 +30,10 @@
 - [x] Run full tests, commit and push this checkpoint.
 
 ### Task 2: Ground planning in complete request semantics
-- [ ] Add regressions for original in-game purchases and incomplete source clauses.
-- [ ] Supply complete request as context while limiting each facet's implementation ownership.
-- [ ] Reject unsolicited Robux requirements with repair diagnostics.
-- [ ] Run tests, commit and push.
+- [x] Add regressions for original in-game purchases and incomplete source clauses.
+- [x] Supply complete request as context while limiting each facet's implementation ownership.
+- [x] Reject unsolicited Robux requirements with repair diagnostics.
+- [x] Run tests, commit and push.
 
 ### Task 3: Make repair use a concrete host service contract
 - [ ] Reproduce uploaded malformed/empty/undefined service outputs before implementation.

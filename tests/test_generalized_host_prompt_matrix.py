@@ -78,7 +78,7 @@ class ArbitraryPromptSemanticTransport:
         assert options["max_tokens"] <= 2600
         for other_id, (_, _, other_clause, _) in self.entries.items():
             if other_id != fid:
-                assert other_clause not in prompt
+                assert other_clause not in json.dumps(payload["source_requirements"], ensure_ascii=False)
         return {"systems": [
             {
                 "name": label + ("Phase" + str(i) if self.systems_per_feature > 1 else ""),
