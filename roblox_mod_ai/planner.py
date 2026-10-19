@@ -11,6 +11,7 @@ from .authored_plan import RobloxAuthoredPlan
 from .creator_store import RobloxCreatorStoreCatalog
 from .pre_design_research import RobloxPreDesignResearch
 from .dynamic_architect import RobloxDynamicArchitect, DynamicDesignError, dynamic_design_enabled
+from .gameplay_contract import build_gameplay_contract, arena_round_requested
 from .project_modes import validate_mode
 from .model_router import ModelRouter
 from .playtest_runner import RobloxPlaytestRunner
@@ -403,6 +404,31 @@ class RobloxGameDesignPlanner:
                        {"NetworkRemotes", "PlayerDataManager"}]
             features = {key: False for key in features}
 
+        # Only explicitly round-based *new* arena experiences get a finite
+        # match loop. Do not impose PvP endings on tycoons, sandboxes or addons.
+        if arena_round_requested(prompt, features, dynamic=bool(dynamic_design),
+                                 addon=project_mode == "existing_experience_addon"):
+            modules.extend([
+                RobloxModuleSpec(
+                    module_id="mod_arena_round",
+                    name="ArenaRoundService",
+                    kind=ModuleKind.SERVER_SCRIPT,
+                    file_path="src/server/ArenaRoundService.server.luau",
+                    roblox_service=RobloxService.SERVER_SCRIPT_SERVICE,
+                    description="Host-owned waiting, countdown, match, win/draw/timeout, payout and replay lifecycle.",
+                    depends_on=["mod_network_bridge", "mod_player_data", "mod_combat_core"],
+                ),
+                RobloxModuleSpec(
+                    module_id="mod_arena_round_controller",
+                    name="RoundController",
+                    kind=ModuleKind.CLIENT_SCRIPT,
+                    file_path="src/client/RoundController.client.luau",
+                    roblox_service=RobloxService.STARTER_PLAYER_SCRIPTS,
+                    description="Visible waiting/round/result UI; never decides winners client-side.",
+                    depends_on=["mod_network_bridge", "mod_arena_round"],
+                ),
+            ])
+
         # 4. Generate Test Specs tailored to the generated modules
         unresolved = bool(research["ledger"].get("decomposition_pending") or
                           research["ledger"].get("unimplemented_facets") or
@@ -449,6 +475,7 @@ class RobloxGameDesignPlanner:
             assets=unique_assets,
         )
 
+        proto_proposal.game_design["gameplay_contract"] = build_gameplay_contract(proto_proposal)
         test_specs: list[RobloxTestSpec] = self.test_runner.generate_default_test_specs(proto_proposal)
         proto_proposal.tests = test_specs
         proto_proposal.target = RobloxTarget()
@@ -470,6 +497,7 @@ class RobloxGameDesignPlanner:
                 "research_queries": research["queries"],
                 "research_status": research["status"],
                 "dynamic_design": "model_proposed_unverified" if dynamic_design else "none",
+                "gameplay_contract": proto_proposal.game_design["gameplay_contract"],
             },
         )
         authored_plan.create_checkpoint(note=f"Initial {primary_genre} plan generation")
@@ -562,6 +590,8 @@ class RobloxGameDesignPlanner:
         # Update test specs
         proposal.tests = self.test_runner.generate_default_test_specs(proposal)
 
+        proposal.game_design["gameplay_contract"] = build_gameplay_contract(proposal)
+        plan.structured_sections["gameplay_contract"] = proposal.game_design["gameplay_contract"]
         # Update plan text and checkpoint
         plan.revision_count += 1
         plan.text = self._render_plan_markdown(proposal)
@@ -596,6 +626,12 @@ class RobloxGameDesignPlanner:
             if item.get("provider") == "official_docs" and item.get("url")
         ) or "- No official document content fetched; not evidence-grounded"
         pending = ", ".join(ledger.get("unimplemented_facets", [])) or "none"
+        contract = proposal.game_design.get("gameplay_contract", {})
+        units_md = "\\n".join(
+            f"- **{unit['id']}**: {unit['action']} → {unit['observable']} "
+            f"(owner: \`{unit['owner']}\`)"
+            for unit in contract.get("units", [])
+        ) or "- No implemented gameplay action owned yet"
         return f"""# 🎮 Roblox Experience Plan: {proposal.game_title} (Genre: {genre})
 
 > **Prompt**: {proposal.requested_prompt}
@@ -611,16 +647,26 @@ class RobloxGameDesignPlanner:
 ### Fetched Roblox Creator documentation
 {evidence_lines}
 
-## 1. Architectural Subsystems (Topological Order)
+## 1. Lifecycle & Completion Contract
+- **Loop type**: {contract.get("mode", "not_defined")}
+- **Objective**: {contract.get("objective", "not_defined")}
+- **Outcome**: {contract.get("completion_kind", "not_defined")}
+- **Replay**: {contract.get("reentry", "not_defined")}
+- **Exceptions**: {", ".join(contract.get("exceptions", []))}
+- **Engine status**: NOT RUN (source-only plan)
+### Authored gameplay connections
+{units_md}
+
+## 2. Architectural Subsystems (Topological Order)
 {modules_md}
 
-## 2. Creator Store Assets (Verified & Sanitized)
+## 3. Creator Store Assets (Verified & Sanitized)
 {assets_md}
 
-## 3. Playtest & TestEZ Specifications
+## 4. Playtest & TestEZ Specifications
 {tests_md}
 
-## 4. Production Strategy
+## 5. Production Strategy
 - **Client/Server Division**: Strict server authority over transactions, health, and physics to eliminate client injection.
 - **Data Persistence**: Safe DataStoreService with session-locking, exponential backoff, and BindToClose completion waiting.
 - **Sync & Deployment**: Full Rojo `default.project.json` live-sync and `.rbxlx` direct Studio launcher.
