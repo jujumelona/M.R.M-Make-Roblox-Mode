@@ -96,8 +96,13 @@ def implementation_facets(ledger: dict[str, Any]) -> list[dict[str, Any]]:
     facets = ledger.get("facets", [])
     if not isinstance(facets, list):
         return []
+    # Query expansion only gathers API/documentation evidence. It must
+    # never add an independent gameplay obligation or server state writer,
+    # even when the plan was persisted by an older RMM version.
+    facets = [f for f in facets
+              if isinstance(f, dict) and not f.get("model_query_only")]
     if ledger.get("decomposition_method") != "source_anchored_model":
-        return [f for f in facets if isinstance(f, dict)]
+        return facets
     requirements = {
         entry["id"]: clean(entry.get("statement", ""))
         for entry in ledger.get("requirements", [])
