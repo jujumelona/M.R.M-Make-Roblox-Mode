@@ -185,6 +185,8 @@ export type PlayerDataRecord = {{
     level: number,
     stage: number,
     clicks: number,
+    wins: number,
+    kos: number,
     inventory: {{ string }},
     sessionLock: string?,
 }}
@@ -247,6 +249,8 @@ type PlayerData = {{
     level: number,
     stage: number,
     clicks: number,
+    wins: number,
+    kos: number,
     inventory: {{ string }},
     lockToken: string?,
     lastSaved: number,
@@ -295,7 +299,7 @@ local function onPlayerAdded(player: Player)
     if RunService:IsStudio() and game.GameId == 0 then
         studioEphemeral[userId] = true
         success = true
-        rawData = {{ coins = 0, level = 1, stage = 1, clicks = 0,
+        rawData = {{ coins = 0, level = 1, stage = 1, clicks = 0, wins = 0, kos = 0,
             inventory = {{}}, lastSaved = os.time() }}
         warn("RMM Studio local preview: using memory-only profile; progress will not persist.")
     else
@@ -308,7 +312,7 @@ local function onPlayerAdded(player: Player)
                 end
                 lockedByOther = false
                 current = current or {{
-                    coins = 0, level = 1, stage = 1, clicks = 0,
+                    coins = 0, level = 1, stage = 1, clicks = 0, wins = 0, kos = 0,
                     inventory = {{}}, lastSaved = os.time(),
                 }}
                 current.lockToken = sessionToken
@@ -319,7 +323,7 @@ local function onPlayerAdded(player: Player)
         if not success and RunService:IsStudio() then
             studioEphemeral[userId] = true
             success = true
-            rawData = {{ coins = 0, level = 1, stage = 1, clicks = 0,
+            rawData = {{ coins = 0, level = 1, stage = 1, clicks = 0, wins = 0, kos = 0,
                 inventory = {{}}, lastSaved = os.time() }}
             warn("RMM Studio DataStore unavailable: temporary memory-only profile; no cloud data was changed.")
         end
@@ -330,6 +334,9 @@ local function onPlayerAdded(player: Player)
         return
     end
     local data: PlayerData = rawData :: PlayerData
+    -- Upgrade existing profiles without erasing earned data.
+    data.wins = math.max(0, tonumber(data.wins) or 0)
+    data.kos = math.max(0, tonumber(data.kos) or 0)
     data.lockToken = sessionToken
     data.lastSaved = os.time()
 
@@ -358,6 +365,15 @@ local function onPlayerAdded(player: Player)
         end
     end
 
+    local winsVal = Instance.new("IntValue")
+    winsVal.Name = "Wins"
+    winsVal.Value = data.wins
+    winsVal.Parent = leaderstats
+    local kosVal = Instance.new("IntValue")
+    kosVal.Name = "KOs"
+    kosVal.Value = data.kos
+    kosVal.Parent = leaderstats
+
     local levelVal = Instance.new("IntValue")
     levelVal.Name = "Level"
     levelVal.Value = data.level
@@ -384,6 +400,10 @@ local function onPlayerAdded(player: Player)
                 local coins = stats:FindFirstChild("Coins")
                 local level = stats:FindFirstChild("Level")
                 local stage = stats:FindFirstChild("Stage")
+                local wins = stats:FindFirstChild("Wins")
+                local kos = stats:FindFirstChild("KOs")
+                if wins and wins:IsA("IntValue") then profile.wins = wins.Value end
+                if kos and kos:IsA("IntValue") then profile.kos = kos.Value end
                 if coins and coins:IsA("IntValue") then profile.coins = coins.Value end
                 if level and level:IsA("IntValue") then profile.level = level.Value end
                 if stage and stage:IsA("IntValue") then profile.stage = stage.Value end
@@ -401,6 +421,8 @@ local function onPlayerAdded(player: Player)
             local coinsSnapshot = profile.coins
             local levelSnapshot = profile.level
             local stageSnapshot = profile.stage
+            local winsSnapshot = profile.wins
+            local kosSnapshot = profile.kos
             local inventorySnapshot = profile.inventory
             local renewed, current = retryWithBackoff(function()
                 return activeStore():UpdateAsync(key, function(stored)
@@ -408,6 +430,8 @@ local function onPlayerAdded(player: Player)
                     stored.coins = coinsSnapshot
                     stored.level = levelSnapshot
                     stored.stage = stageSnapshot
+                    stored.wins = winsSnapshot
+                    stored.kos = kosSnapshot
                     stored.inventory = inventorySnapshot
                     stored.lastSaved = os.time()
                     stored.lockUntil = os.time() + 120
@@ -439,6 +463,10 @@ local function savePlayerData(player: Player): boolean
         if level then data.level = level.Value end
         local stage = leaderstats:FindFirstChild("Stage") :: IntValue?
         if stage then data.stage = stage.Value end
+        local wins = leaderstats:FindFirstChild("Wins") :: IntValue?
+        if wins then data.wins = wins.Value end
+        local kos = leaderstats:FindFirstChild("KOs") :: IntValue?
+        if kos then data.kos = kos.Value end
     end
 
     local owned = player:FindFirstChild("OwnedItems")
@@ -515,6 +543,14 @@ end)
 
     # 3. Real Shop & Economy System
     def _generate_shop_service(self, module: RobloxModuleSpec, proposal: RobloxProposal) -> str:
+        # Shop weapons must obey the same active-round restrictions as melee.
+        # Standalone shops must not inherit a PvP arena that was never requested.
+        arena_weapon_guard = ""
+        if any(m.module_id == "mod_arena_round" for m in proposal.modules):
+            arena_weapon_guard = """
+        if game:GetAttribute("ArenaRoundActive") ~= true
+            or player:GetAttribute("InArenaRound") ~= true then return end
+"""
         return f"""--!strict
 -- Service: ServerScriptService
 -- Script: {module.name}
@@ -566,6 +602,7 @@ local function grantMagicStaff(player: Player): boolean
         local castRoot = caster and caster:FindFirstChild("HumanoidRootPart")
         if not caster or not humanoid or humanoid.Health <= 0
             or not castRoot or not castRoot:IsA("BasePart") then return end
+{arena_weapon_guard}
         lastCast = os.clock()
         local params = RaycastParams.new()
         params.FilterType = Enum.RaycastFilterType.Exclude
@@ -573,7 +610,15 @@ local function grantMagicStaff(player: Player): boolean
         local ray = workspace:Raycast(castRoot.Position, castRoot.CFrame.LookVector * 30, params)
         local targetModel = ray and ray.Instance:FindFirstAncestorOfClass("Model")
         local target = targetModel and targetModel:FindFirstChildOfClass("Humanoid")
-        if target and targetModel ~= caster then target:TakeDamage(20) end
+        if target and targetModel ~= caster and target.Health > 0 then
+            -- A cast is evaluated on the server; the client cannot choose a target.
+            -- PvP arena participants are enrolled by ArenaRoundService.
+            if game:GetAttribute("ArenaRoundActive") then
+                local opponent = Players:GetPlayerFromCharacter(targetModel)
+                if not opponent or not opponent:GetAttribute("InArenaRound") then return end
+            end
+            target:TakeDamage(20)
+        end
     end)
     tool.Parent = backpack
     return true
@@ -1056,6 +1101,8 @@ local function trackKnockout(targetHumanoid: Humanoid, attacker: Player)
         if coins and coins:IsA("IntValue") then
             coins.Value += KNOCKOUT_REWARD_COINS
         end
+        local kos = leaderstats and leaderstats:FindFirstChild("KOs")
+        if kos and kos:IsA("IntValue") then kos.Value += 1 end
     end)
     targetHumanoid.Destroying:Connect(function()
         knockoutCredits[targetHumanoid] = nil
