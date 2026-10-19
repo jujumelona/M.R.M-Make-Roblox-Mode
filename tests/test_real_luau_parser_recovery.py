@@ -133,7 +133,8 @@ def test_parser_failure_switches_to_scoped_plain_repair_without_json_loop(monkey
                 return BAD_SOURCE
             assert "line 3, column 33" in prompt
             assert "Previous invalid Luau source:" not in prompt
-            assert "function validateCredit(player): void?" not in prompt
+            assert "Failed source excerpt" in prompt
+            assert BAD_SOURCE not in prompt
             return ("--!strict\n"
                     "local function debit(balance: number, amount: number): number\n"
                     "    return math.max(0, balance - amount)\n"
@@ -195,7 +196,7 @@ def test_failure_zip_contains_both_original_and_recovery_model_attempts(tmp_path
             pass
         def repair(self, *args, **kwargs):
             raise LuauGenerationError(
-                "EconomyLedger", BAD_SOURCE,
+                "EconomyLedger", BAD_SOURCE + "-- second attempt",
                 ["parser rejected line 5"], history=recovery)
 
     monkeypatch.setattr(workspace.code_generator,
@@ -211,6 +212,8 @@ def test_failure_zip_contains_both_original_and_recovery_model_attempts(tmp_path
         in_zip = "failed_candidates/" + module.file_path + ".attempts.json"
         assert in_zip in bundle.namelist()
         assert json.loads(bundle.read(in_zip))["recovery_attempts"] == recovery
+        latest = bundle.read("failed_candidates/" + module.file_path).decode("utf-8")
+        assert latest == recovery[-1]["candidate"]
 
 
 

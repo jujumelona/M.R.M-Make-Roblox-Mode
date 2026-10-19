@@ -36,13 +36,19 @@
 - [x] Run tests, commit and push.
 
 ### Task 3: Make repair use a concrete host service contract
-- [ ] Reproduce uploaded malformed/empty/undefined service outputs before implementation.
-- [ ] Preserve scoped facts across retries and give concrete simple Luau scaffold, exact API usage and failure lines.
-- [ ] Reject undefined export tables, incompatible start signatures and empty gameplay implementations.
-- [ ] Trace host persistence access and fix callable registry contract if needed.
-- [ ] Verify source recovery/failure history, tests, commit and push.
+- [x] Reproduce uploaded malformed/empty/undefined service outputs before implementation.
+- [x] Preserve scoped facts across retries and give concrete simple Luau scaffold, exact API usage and failure lines.
+- [x] Reject undefined export tables, incompatible start signatures and empty gameplay implementations.
+- [x] Trace host persistence access; confirmed missing callable API and split its runtime fix into Task 4.
+- [x] Verify source recovery/failure history, tests, commit and push.
 
-### Task 4: Verify complete pipeline and record evidence
+### Task 4: Expose and verify host-owned player progress persistence
+- [ ] Reproduce the missing callable host service with normalization and actual Lune runtime tests.
+- [ ] Adapt baseline player data to a server ModuleScript for dynamic games; host owns readiness, namespaced state, periodic save and session lease.
+- [ ] Prevent stale auto-running variants from being compiled after role migration.
+- [ ] Verify save/reload and lease retention/release in actual generated Luau; commit and push.
+
+### Task 5: Verify complete pipeline and record evidence
 - [ ] Run full Python suite with coverage, notebook validation and real available Luau tooling.
 - [ ] Check pushed SHA CI, investigate failures while continuing local verification.
 - [ ] Review final diff; document actual scope and unresolved environment/model/Studio limits.

@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 
 from .spec import ModuleKind, RobloxModuleSpec, RobloxProposal, RobloxService
+from .luau_service_contract import exported_methods
 
 _BOOTSTRAP_ID = "mod_dynamic_server_bootstrap"
 _BOOTSTRAP_NAME = "RMMServerBootstrap"
@@ -257,7 +258,13 @@ def module_bootstrap_contract(module: RobloxModuleSpec, proposal: RobloxProposal
                 and m.file_path.endswith(".luau")
                 and not m.file_path.endswith(".server.luau")]
     contract = (
-        "SERVER MODULE CONTRACT: file ends in .luau and is a server-only "
+        "SERVER MODULE CONTRACT: Begin with --!strict, then local Service = {}. "
+        "Use that SAME local table for all exported methods; finish with return Service. "
+        "Keep function syntax simple: function Service.start(services), with dot "
+        "and exactly the services argument, never self. Keep --!strict but avoid "
+        "custom type aliases, casts, TypeScript arrays/as const or void syntax. "
+        "Implement real initialization/actions; a no-op function is not sufficient. "
+        "File ends in .luau and is a server-only "
         "ModuleScript, NOT a .server.luau auto-running Script. Return a table "
         "of callable functions at the end. Expose "
         "function Service.start(services) for module-local state and "
@@ -269,6 +276,18 @@ def module_bootstrap_contract(module: RobloxModuleSpec, proposal: RobloxProposal
         ". Do not require any .server.luau Scripts, "
         "or write client methods on the server."
     )
+    actual_apis = {
+        m.name: {method: detail["params"]
+                 for method, detail in exported_methods(m.code)[1].items()}
+        for m in proposal.modules
+        if m.name != module.name and m.code and m.file_path.startswith("src/server/")
+        and not m.file_path.endswith(".server.luau")
+    }
+    contract += (" Actual already-generated callable APIs (method: parameters): "
+                 + json.dumps(actual_apis) +
+                 ". Do not guess methods on other registry entries. "
+                 "PlayerDataManager.server.luau is an auto-running Script, not "
+                 "a callable service. Use only declared host data APIs when available.")
     # Never bring a currency subsystem into unrelated races, puzzles or
     # weather-only experiences as a misleading few-shot prompt.
     if "EconomyLedger" in registry and module.name != "EconomyLedger":

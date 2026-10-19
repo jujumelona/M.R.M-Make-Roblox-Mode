@@ -103,6 +103,7 @@ def _module_sources(proposal: RobloxProposal) -> None:
                 "--!strict\n"
                 f"local {name} = {{}}\n"
                 f"function {name}.start(_services)\n"
+                f'    workspace:SetAttribute("{name}Started", true)\n'
                 "end\n"
             )
             if remote_names or host_world_targets:
@@ -117,7 +118,7 @@ def _module_sources(proposal: RobloxProposal) -> None:
             raise AssertionError("Unsupported role and path: " + module.file_path)
 
 
-def run_case(name: str, rows, root: Path, router_cls) -> dict:
+def run_case(name: str, rows, root: Path, router_cls, *, expected_remotes: int | None = None) -> dict:
     ledger = _ledger(rows)
     router = router_cls(rows)
     network = RobloxModuleSpec(
@@ -148,7 +149,8 @@ def run_case(name: str, rows, root: Path, router_cls) -> dict:
     contracts = inspect_dynamic_server_interfaces(proposal)
     assert wiring["passed"], (name, wiring)
     assert contracts["passed"], (name, contracts)
-    expected_remotes = sum(row[4] != "none" for row in rows)
+    if expected_remotes is None:
+        expected_remotes = sum(row[4] != "none" for row in rows)
     assert len(design["remotes"]) == expected_remotes
     assert len(design.get("host_actions", {})) == expected_remotes
     assert len(design["modules"]) == len(rows) + expected_remotes
@@ -252,7 +254,8 @@ def main() -> None:
             name, rows, root,
             ButtonsOnlyRouter if name == "HostButtonsTwo"
             else NativeWorldPromptRouter if name == "NativeWorldPrompt"
-            else ArbitraryPromptSemanticTransport)
+            else ArbitraryPromptSemanticTransport,
+            expected_remotes=0 if name == "NativeWorldPrompt" else None)
         receipts.append(receipt)
         print("GENERIC ROBLOX HOST COMPILE PASS", name,
               receipt["source_facet_count"], "features",

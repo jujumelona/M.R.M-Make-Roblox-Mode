@@ -927,6 +927,11 @@ class RobloxDynamicArchitect:
         # means the whole game is compiled or gameplay tested.
         result = _clean_model_json(
             combined, ledger, {m.name for m in existing_modules})
+        module_ids = {module.name: module.module_id for module in result["modules"]}
+        result["module_world_objects"] = {
+            module_ids[row["name"]]: [item["name"] for item in part.get("world_objects", [])]
+            for part in accepted_parts for row in part.get("modules", [])
+        }
         # Only semantic-only host-authored plans opt into the host Remote
         # gateway. Legacy full-module JSON retains its current explicit
         # source wiring so saved projects are not silently rewritten.

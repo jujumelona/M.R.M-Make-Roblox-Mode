@@ -10,6 +10,7 @@ import re
 from typing import Any
 
 from .spec import RobloxProposal
+from .luau_service_contract import service_contract_checks, exported_methods
 from .dynamic_wiring import _mask_strings, _without_comments
 
 _NAME = r"[A-Za-z_][A-Za-z0-9_]*"
@@ -40,30 +41,8 @@ def inspect_dynamic_server_interfaces(proposal: RobloxProposal) -> dict[str, Any
     checks: list[dict[str, Any]] = []
     exports: dict[str, set[str]] = {}
     for name, module in services.items():
-        # The host keeps server ModuleScripts private. Check the returned
-        # service table before resolving method names across files.
-        source = _mask_strings(_without_comments(module.code))
-        returned = _RETURN.search(source.strip())
-        declaration = returned.group(1) if returned else None
-        declared_tables = set(_LOCAL.findall(source))
-        checks.append({
-            "id": "service.export." + name,
-            "passed": bool(declaration and declaration in declared_tables),
-            "detail": "A server ModuleScript must return a locally owned service table",
-        })
-        methods = {
-            method
-            for table_name, method in
-            [*_EXPORT_FUNCTION.findall(source), *_EXPORT_ASSIGN.findall(source)]
-            if table_name == declaration
-        }
-        exports[name] = methods
-        if module.kind == "server_module":
-            checks.append({
-                "id": "service.start." + name,
-                "passed": "start" in methods,
-                "detail": "Bootstrap must call an exported start method",
-            })
+        _, methods = exported_methods(module.code)
+        exports[name] = set(methods)
         host_routed = [
             remote for remote, action in
             (dynamic.get("host_actions") or {}).items()
@@ -75,13 +54,10 @@ def inspect_dynamic_server_interfaces(proposal: RobloxProposal) -> dict[str, Any
             if isinstance(action, dict) and action.get("service") == name
         ]
         host_routed.extend(world_routed)
+        checks.extend(service_contract_checks(
+            name, module.code, require_start=module.kind == "server_module",
+            needs_action=bool(host_routed)))
         if host_routed:
-            checks.append({
-                "id": "service.handleAction." + name,
-                "passed": "handleAction" in methods,
-                "detail": "Host gateway invokes exported handleAction; "
-                          "routes: " + ", ".join(sorted(host_routed)),
-            })
             source_without_comments = _mask_strings(_without_comments(module.code))
             checks.append({
                 "id": "service.hostGatewayNoManualBinding." + name,

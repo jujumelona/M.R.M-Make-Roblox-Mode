@@ -56,3 +56,17 @@ def relevant_remotes(module: Any, design: dict[str, Any]) -> dict[str, str]:
             if stem and stem & description_tokens:
                 result[name] = kind
     return result
+
+
+def relevant_world_objects(module: Any, design: dict[str, Any]) -> list[dict[str, Any]]:
+    """New scoped plans carry host-authored world ownership, including empty lists.
+
+    Legacy imported plans without this mapping retain their declared world until
+    replanned; name similarity is not evidence of authoritative ownership.
+    """
+    world = design.get("world_objects") or []
+    owners = design.get("module_world_objects")
+    if isinstance(owners, dict) and module.module_id in owners:
+        names = set(owners[module.module_id])
+        return [item for item in world if item.get("name") in names]
+    return world
