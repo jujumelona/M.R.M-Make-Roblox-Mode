@@ -211,6 +211,59 @@ stylua = "JohnnyMorganz/StyLua@2.0.2"
             return {"success": False, "executed": True,
                     "checked_authored_files": len(paths), "error": str(exc)}
 
+    @staticmethod
+    def stage_lune_economy_test(project_dir: str | Path) -> Path | None:
+        """Create an executable *pure Luau* test only for games with economy rules.
+
+        This test does not start Roblox Studio or validate in-game remotes.
+        It tests the actual EconomyRules.luau shipped in this project.
+        """
+        root = Path(project_dir).resolve()
+        rules = root / "src" / "shared" / "EconomyRules.luau"
+        if not rules.is_file():
+            return None
+        path = root / "tests" / "economy_contract.luau"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("""--!strict
+-- Executable offline contract for the SAME rules shipped with this Place.
+local Rules = require("../src/shared/EconomyRules")
+assert(Rules.canAfford(50, 50) == true)
+assert(Rules.canAfford(49, 50) == false)
+assert(Rules.canAfford(-10, 5) == false)
+assert(Rules.canAfford(100, -25) == false)
+assert(Rules.canAfford(1, 0) == false)
+assert(Rules.canAfford(100, math.huge) == false)
+assert(Rules.canAfford(100, 0 / 0) == false)
+assert(Rules.canAfford(10.5, 5) == false)
+assert(Rules.charge(75, 50) == 25)
+assert(Rules.charge(0, 50) == nil)
+print("RMM_LUNE_ECONOMY_PASS")
+""", encoding="utf-8")
+        return path
+
+    def run_lune_economy_test(self, project_dir: str | Path) -> dict[str, Any]:
+        """Execute only a safe engine-independent unit suite if Lune exists."""
+        root = Path(project_dir).resolve()
+        case = root / "tests" / "economy_contract.luau"
+        if not case.is_file():
+            return {"success": False, "executed": False, "status": "not_applicable",
+                    "reason": "No generated offline EconomyRules test for this game"}
+        binary = shutil.which("lune")
+        if not binary:
+            return {"success": False, "executed": False, "status": "not_run",
+                    "reason": "Lune is not installed; pure Luau test skipped"}
+        try:
+            result = subprocess.run([binary, "run", str(case)], cwd=str(root),
+                                    capture_output=True, text=True, timeout=45)
+            passed = result.returncode == 0 and "RMM_LUNE_ECONOMY_PASS" in result.stdout
+            return {"success": passed, "executed": True,
+                    "status": "passed" if passed else "failed",
+                    "scope": "generated EconomyRules only; no Roblox engine",
+                    "stdout": result.stdout[-2000:], "stderr": result.stderr[-2000:]}
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return {"success": False, "executed": True, "status": "failed",
+                    "error": str(exc)}
+
     def run_rojo_build(self, project_json: str | Path, output_file: str | Path) -> dict[str, Any]:
         """Executes 'rojo build -o <output> <project_json>'."""
         p_json = str(Path(project_json).resolve())
