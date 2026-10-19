@@ -32,6 +32,11 @@ def build_request_traceability(proposal: RobloxProposal,
     source_modules = {module.name: module for module in proposal.modules}
     assignments = dynamic.get("module_requirements") or {}
     facet_assignments = dynamic.get("module_facets") or {}
+    blueprint = proposal.game_design.get("implementation_blueprint") or {}
+    blueprint_requirements = {
+        item["id"]: item for item in blueprint.get("requirements", [])
+        if item.get("id")
+    }
     entries = []
     unresolved = set(ledger.get("unmatched_requirements") or [])
     unimplemented = set(ledger.get("unimplemented_facets") or [])
@@ -53,6 +58,12 @@ def build_request_traceability(proposal: RobloxProposal,
                 for name in _BUILTIN_FACET_MODULES.get(facet["id"], ()):
                     if name in source_modules:
                         owned[name] = source_modules[name]
+        # Composite behaviors (arena round, UI feedback, persistence) may
+        # be owned by multiple modules that one keyword facet alone misses.
+        planned = blueprint_requirements.get(rid) or {}
+        for name in planned.get("owners", []):
+            if name in source_modules:
+                owned[name] = source_modules[name]
         files = []
         for module in owned.values():
             # The produced file is authoritative: Windows may write CRLF
@@ -69,7 +80,9 @@ def build_request_traceability(proposal: RobloxProposal,
                                   if exists and data.strip() else None),
             })
         blocked = rid in unresolved or rid in pending or bool(relevant_ids & unimplemented)
-        acceptance_text = dynamic.get("acceptance", {}).get(rid) if dynamic else None
+        acceptance_text = (dynamic.get("acceptance", {}).get(rid)
+                           if dynamic else planned.get("acceptance"))
+        acceptance_text = acceptance_text or None
         if blocked or not files:
             stage = "unresolved"
         elif all(item["source_present"] for item in files):
