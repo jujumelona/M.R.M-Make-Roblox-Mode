@@ -15,7 +15,8 @@ SCHEMA = "rmm/source-review-v1"
 
 def _configured() -> bool:
     choice = os.environ.get("RMM_ENABLE_AI_SOURCE_REVIEW", "auto").lower()
-    if choice == "0":
+    if choice == "0" or (choice == "auto" and
+                         os.environ.get("RMM_ENABLE_MODEL_GENERATION") == "0"):
         return False
     return choice == "1" or bool(
         os.environ.get("ROBLOX_LLAMA_SERVER_URL") or
