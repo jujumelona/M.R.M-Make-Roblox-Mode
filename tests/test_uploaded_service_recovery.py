@@ -29,6 +29,13 @@ def _plan():
     "local SpaceModeService = {}\nfunction Service.start(services)\nworkspace:SetAttribute('ModeActive', true)\nend\nreturn SpaceModeService",
     "local Service = {}\nfunction Service.start(self, services)\nself.services = services\nend\nreturn Service",
     "local Service = {}\nfunction Service:start(services)\nself.services = services\nend\nreturn Service",
+    "local Service = {}\nfunction Service.start(services) return 0 end\nreturn Service",
+    "local Service = {}\nfunction Service.start(services) return 'active' end\nreturn Service",
+    "local Service = {}\nfunction Service.start(services) return {} end\nreturn Service",
+    "local Service = {}\nfunction Service.start(services) return {ready = true, count = 3} end\nreturn Service",
+    "local Service = {}\nfunction Service.start(player, services) services.PlayerDataManager.OnReady(print) end\nreturn Service",
+    "local Service = {}\ndo\nlocal Service = {}\nfunction Service.start(services) workspace:SetAttribute('Ready', true) end\nend\nreturn Service",
+    "local Service = {}\nfunction Service.start(services) workspace:SetAttribute('Ready', true) end\nService = {}\nreturn Service",
 ])
 def test_incomplete_or_wrong_bootstrap_contract_does_not_pass(monkeypatch, code):
     monkeypatch.setenv("RMM_ENABLE_MODEL_GENERATION", "1")
@@ -37,6 +44,9 @@ def test_incomplete_or_wrong_bootstrap_contract_does_not_pass(monkeypatch, code)
     module, plan = _plan()
     with pytest.raises(LuauGenerationError):
         RobloxCodeRepairAgent(Model()).repair(module, plan, attempts=1)
+    from roblox_mod_ai.server_interface_audit import inspect_dynamic_server_interfaces
+    module.code = code
+    assert not inspect_dynamic_server_interfaces(plan)["passed"]
 
 
 def test_syntax_retry_keeps_world_behavior_and_start_scaffold(monkeypatch):
@@ -106,3 +116,29 @@ def test_coder_only_receives_world_objects_owned_by_this_module(monkeypatch):
     RobloxCodeRepairAgent(Model()).repair(module, plan, attempts=1)
     assert "LaunchStation" in queries[0]
     assert "UnrelatedAlien" not in queries[0]
+
+
+@pytest.mark.parametrize("value", ["0", "'active'", "{}", "{ready = true}"])
+def test_constant_only_host_action_is_rejected_at_generation_and_final_audit(monkeypatch, value):
+    from roblox_mod_ai.server_interface_audit import inspect_dynamic_server_interfaces
+    monkeypatch.setenv("RMM_ENABLE_MODEL_GENERATION", "1")
+    module, plan = _plan()
+    plan.game_design["dynamic_design"]["host_actions"] = {
+        "Activate": {"service": module.name, "kind": "RemoteFunction"}}
+    module.code = ("local Service = {}\nfunction Service.start(services)\n"
+                   "workspace:SetAttribute('Ready', true)\nend\n"
+                   "function Service.handleAction(player, services) return " + value +
+                   " end\nreturn Service")
+    class Model:
+        def complete(self, *args, **kwargs): return module.code
+    with pytest.raises(LuauGenerationError):
+        RobloxCodeRepairAgent(Model()).repair(module, plan, attempts=1)
+    assert not inspect_dynamic_server_interfaces(plan)["passed"]
+
+
+def test_bootstrap_does_not_accept_a_second_required_argument():
+    from roblox_mod_ai.server_interface_audit import inspect_dynamic_server_interfaces
+    module, plan = _plan()
+    module.code = ("local Service = {}\nfunction Service.start(player, services)\n"
+                   "services.PlayerDataManager.OnReady(print)\nend\nreturn Service")
+    assert not inspect_dynamic_server_interfaces(plan)["passed"]

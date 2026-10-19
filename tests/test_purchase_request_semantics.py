@@ -29,6 +29,12 @@ def _case(statement="채굴로 모은 게임 돈으로 우주선을 구매하고
     "채굴로 모은 게임 돈으로 우주선을 구매하고 업그레이드한다",
     "Buy spaceship parts with credits earned by mining",
     "Robux를 사용하지 않고 게임 돈으로 우주선 구매",
+    "Upgrade ships without using Robux; use game credits",
+    "Do not charge Robux for the spaceship",
+    "Don't use Robux; buy with earned credits",
+    "Robux isn't allowed; use earned credits",
+    "Robux is not allowed; use earned credits",
+    "로벅스가 아닌 게임에서 모은 돈으로 구매",
 ])
 def test_in_game_purchases_cannot_be_replaced_with_robux(user_request):
     ledger, raw = _case(user_request)

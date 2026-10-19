@@ -150,7 +150,7 @@ class RobloxProductionOrchestrator:
         generation_components = (
             "orchestrator.py", "agent_loop.py", "code_generator.py",
             "module_prompt_scope.py", "server_modules.py", "economy_core.py", "host_client.py",
-            "luau_service_contract.py", "request_semantics.py",
+            "luau_service_contract.py", "request_semantics.py", "host_player_data.py",
         )
         component_fingerprints = {
             component: hashlib.sha256(
@@ -240,6 +240,7 @@ class RobloxProductionOrchestrator:
                     dynamic_contract = proposal.game_design.get("dynamic_design") or {}
                     is_host_generated = (
                         module.module_id == "mod_dynamic_server_bootstrap"
+                        or (module.module_id == "mod_player_data" and module.file_path.endswith("/PlayerDataManager.luau"))
                         or (module.module_id.startswith("dyn_")
                             and module.name in
                             dynamic_contract.get("host_client_actions", {}))
@@ -286,7 +287,7 @@ class RobloxProductionOrchestrator:
                     if failed_code:
                         debug_path = output_dir / "failed_candidates" / module.file_path
                         debug_path.parent.mkdir(parents=True, exist_ok=True)
-                        debug_path.write_text(failed_code, encoding="utf-8")
+                        debug_path.write_bytes(failed_code.encode("utf-8"))
                     # Keep every failed model candidate and parser observation,
                     # not just the last truncated version.
                     attempt_path = output_dir / "failed_candidates" / (
@@ -340,7 +341,7 @@ class RobloxProductionOrchestrator:
                         if isinstance(repair_error, LuauGenerationError):
                             latest_path = output_dir / "failed_candidates" / module.file_path
                             latest_path.parent.mkdir(parents=True, exist_ok=True)
-                            latest_path.write_text(repair_error.candidate, encoding="utf-8")
+                            latest_path.write_bytes(repair_error.candidate.encode("utf-8"))
                             attempt_record["last_failed_source_stage"] = "recovery"
                             attempt_record["last_diagnostics"] = repair_error.diagnostics
                         attempt_record["recovery_attempts"] = (

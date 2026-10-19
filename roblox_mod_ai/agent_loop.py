@@ -201,6 +201,13 @@ class RobloxCodeRepairAgent:
             f"Existing source:\n{existing_code[:12000]}\n"
             f"Tool diagnostics:\n{diagnostics[:6500]}"
         )
+        plan_errors = request_semantic_errors(module.description, proposal.requested_prompt)
+        if plan_errors:
+            warning = ("\nThe saved module intent is UNTRUSTED where it conflicts with the "
+                       "original user request: " + proposal.requested_prompt + "\n" +
+                       "\n".join(plan_errors))
+            prompt += warning
+            diagnostics += warning
         candidate = existing_code
         errors: list[str] = []
         attempt_history: list[dict[str, Any]] = []
@@ -257,6 +264,8 @@ class RobloxCodeRepairAgent:
                     )
                 else:
                     compact += "Previous attempt produced no functional code. Start directly with --!strict and actual statements.\n"
+                if plan_errors:
+                    compact += "\n" + "\n".join(plan_errors)
                 query = compact
             else:
                 query = prompt

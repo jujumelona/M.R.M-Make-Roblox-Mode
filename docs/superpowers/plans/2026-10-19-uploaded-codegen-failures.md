@@ -43,10 +43,10 @@
 - [x] Verify source recovery/failure history, tests, commit and push.
 
 ### Task 4: Expose and verify host-owned player progress persistence
-- [ ] Reproduce the missing callable host service with normalization and actual Lune runtime tests.
-- [ ] Adapt baseline player data to a server ModuleScript for dynamic games; host owns readiness, namespaced state, periodic save and session lease.
-- [ ] Prevent stale auto-running variants from being compiled after role migration.
-- [ ] Verify save/reload and lease retention/release in actual generated Luau; commit and push.
+- [x] Reproduce the missing callable host service with normalization and actual Lune runtime tests.
+- [x] Adapt baseline player data to a server ModuleScript for dynamic games; host owns readiness, namespaced state, periodic save and session lease.
+- [x] Prevent stale auto-running variants from being compiled after role migration.
+- [x] Verify save/reload and lease retention/release in actual generated Luau; commit and push checkpoint.
 
 ### Task 5: Verify complete pipeline and record evidence
 - [ ] Run full Python suite with coverage, notebook validation and real available Luau tooling.

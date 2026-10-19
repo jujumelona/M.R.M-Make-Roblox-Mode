@@ -23,7 +23,10 @@ def normalize_dynamic_server_modules(proposal: RobloxProposal) -> bool:
     changed = False
     names = set()
     for module in proposal.modules:
-        if not module.module_id.startswith("dyn_"):
+        host_data = (module.module_id == "mod_player_data"
+                     and module.name == "PlayerDataManager"
+                     and proposal.game_design.get("storage_backend", "builtin") == "builtin")
+        if not module.module_id.startswith("dyn_") and not host_data:
             continue
         if module.roblox_service != RobloxService.SERVER_SCRIPT_SERVICE:
             continue
@@ -31,6 +34,8 @@ def normalize_dynamic_server_modules(proposal: RobloxProposal) -> bool:
                 ".server.luau"):
             module.file_path = module.file_path[:-len(".server.luau")] + ".luau"
             module.kind = ModuleKind.SERVER_MODULE
+            if host_data:
+                module.code = ""
             # Startup ordering and services injection are owned by bootstrap,
             # not by a phantom dependency on the ReplicatedStorage bridge.
             module.depends_on = []
@@ -64,12 +69,12 @@ def normalize_dynamic_server_modules(proposal: RobloxProposal) -> bool:
 def render_dynamic_server_bootstrap(proposal: RobloxProposal) -> str:
     modules = sorted(
         (module for module in proposal.modules
-         if module.module_id.startswith("dyn_")
+         if (module.module_id.startswith("dyn_") or module.module_id == "mod_player_data")
          and module.roblox_service == RobloxService.SERVER_SCRIPT_SERVICE
          and module.file_path.startswith("src/server/")
          and module.file_path.endswith(".luau")
          and not module.file_path.endswith(".server.luau")),
-        key=lambda m: m.name,
+        key=lambda m: (m.module_id != "mod_player_data", m.name),
     )
     if not modules:
         raise ValueError("No server modules to bootstrap")
@@ -253,7 +258,7 @@ def module_bootstrap_contract(module: RobloxModuleSpec, proposal: RobloxProposal
     if not (module.module_id.startswith("dyn_")
             and module.kind == ModuleKind.SERVER_MODULE):
         return ""
-    registry = [m.name for m in proposal.modules if m.module_id.startswith("dyn_")
+    registry = [m.name for m in proposal.modules if (m.module_id.startswith("dyn_") or m.module_id == "mod_player_data")
                 and m.roblox_service == RobloxService.SERVER_SCRIPT_SERVICE
                 and m.file_path.endswith(".luau")
                 and not m.file_path.endswith(".server.luau")]
@@ -285,9 +290,18 @@ def module_bootstrap_contract(module: RobloxModuleSpec, proposal: RobloxProposal
     }
     contract += (" Actual already-generated callable APIs (method: parameters): "
                  + json.dumps(actual_apis) +
-                 ". Do not guess methods on other registry entries. "
-                 "PlayerDataManager.server.luau is an auto-running Script, not "
-                 "a callable service. Use only declared host data APIs when available.")
+                 ". Do not guess methods on other registry entries.")
+    if "PlayerDataManager" in actual_apis:
+        contract += (
+            " Host profile API: services.PlayerDataManager.GetState(player, namespace) "
+            "returns a LIVE server-only table or nil until profile load completes. "
+            "Use your exact module name as namespace, check nil, and store only "
+            "JSON-compatible values. Host saves changes periodically and on leave; "
+            "never create a separate DataStore. services.PlayerDataManager.OnReady(callback) "
+            "runs callback(player) for existing and future ready profiles. "
+            "Bootstrap starts this data service before gameplay modules.")
+    elif any(m.name == "PlayerDataManager" for m in proposal.modules):
+        contract += " The legacy PlayerDataManager Script has no callable registry API."
     # Never bring a currency subsystem into unrelated races, puzzles or
     # weather-only experiences as a misleading few-shot prompt.
     if "EconomyLedger" in registry and module.name != "EconomyLedger":

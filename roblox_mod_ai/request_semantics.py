@@ -16,14 +16,18 @@ _MONETIZATION = re.compile(
 
 
 def _positive_monetization(text: str) -> bool:
+    text = re.sub(r"(?i)\b(don|doesn|isn|aren|wasn|weren|shouldn|mustn|can|won)['’]t\b",
+                  lambda match: {"don": "do", "doesn": "does", "isn": "is", "aren": "are",
+                                 "wasn": "was", "weren": "were", "shouldn": "should",
+                                 "mustn": "must", "can": "can", "won": "will"}[match.group(1).lower()] + " not", text)
     for mention in _MONETIZATION.finditer(text):
         before = text[max(0, mention.start() - 30):mention.start()]
         after = text[mention.end():mention.end() + 28]
-        if re.search(r"\b(?:no|without|never|avoid|disable|prohibit)\s*(?:use\s+of\s+)?$|"
-                     r"\b(?:do|does|must|should)\s+not\s+(?:use\s+)?$", before, re.I):
+        if re.search(r"\b(?:no|without|never|avoid|disable|prohibit)\b(?:\W+\w+){0,3}\W*$|"
+                     r"\b(?:do|does|must|should|will)\s+not\b(?:\W+\w+){0,3}\W*$", before, re.I):
             continue
-        if re.match(r"(?:을|를|는|은)?\s*(?:사용하지|쓰지|없이|금지|불가|없|안\s*쓰)|"
-                    r"\s+(?:(?:is|are)\s+)?(?:not\s+used|disabled|forbidden)", after, re.I):
+        if re.match(r"(?:을|를|는|은|가|이)?\s*(?:사용하지|쓰지|없이|금지|불가|없|안\s*쓰|아닌|아니라|말고)|"
+                    r"\s+(?:(?:is|are)\s+)?(?:not\s+(?:used|allowed|required|enabled)|disabled|forbidden)", after, re.I):
             continue
         return True
     return False

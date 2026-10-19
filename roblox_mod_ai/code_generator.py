@@ -12,8 +12,9 @@ from .agent_loop import RobloxCodeRepairAgent
 from .economy_core import is_supported_economy_ledger, render_economy_ledger
 from .server_modules import render_dynamic_server_bootstrap
 from .host_client import render_host_client
+from .host_player_data import render_callable_player_data
 from .model_router import ModelRouter
-from .spec import RobloxModuleSpec, RobloxProposal
+from .spec import ModuleKind, RobloxModuleSpec, RobloxProposal
 
 
 class LuauCodeGenerator:
@@ -214,7 +215,7 @@ return {module.name}
 
     # 2. Production-Grade DataStore Service with Session Locking & Backoff
     def _generate_safe_datastore_service(self, module: RobloxModuleSpec, proposal: RobloxProposal) -> str:
-        return f"""--!strict
+        source = f"""--!strict
 -- Service: ServerScriptService
 -- Script: {module.name}
 -- Description: Production-grade player data persistence with session locking, exponential backoff, and BindToClose waiting.
@@ -433,6 +434,9 @@ game:BindToClose(function()
     end
 end)
 """
+        if module.module_id == "mod_player_data" and module.kind == ModuleKind.SERVER_MODULE:
+            return render_callable_player_data(source)
+        return source
 
     # 3. Real Shop & Economy System
     def _generate_shop_service(self, module: RobloxModuleSpec, proposal: RobloxProposal) -> str:

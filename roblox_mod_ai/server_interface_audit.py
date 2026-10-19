@@ -36,7 +36,7 @@ def inspect_dynamic_server_interfaces(proposal: RobloxProposal) -> dict[str, Any
         if module.file_path.startswith("src/server/")
         and module.file_path.endswith(".luau")
         and not module.file_path.endswith(".server.luau")
-        and module.module_id.startswith("dyn_")
+        and (module.module_id.startswith("dyn_") or module.module_id == "mod_player_data")
     }
     checks: list[dict[str, Any]] = []
     exports: dict[str, set[str]] = {}

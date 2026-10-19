@@ -22,7 +22,7 @@ _METHOD = re.compile(
 )
 _EMPTY = re.compile(
     r"\s*(?::\s*(?:\([^\n]*?\)|[A-Za-z_]\w*\??))?\s*"
-    r"(?:return\s*(?:(?:true|false|nil)\s*)?)?end\b"
+    r"(?:return\s*(?:(?:true|false|nil|[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|\{[^()]*\})\s*)?)?end\b"
 )
 
 
@@ -30,8 +30,16 @@ def exported_methods(code: str) -> tuple[str | None, dict[str, dict[str, Any]]]:
     source = _mask_strings(_without_comments(code))
     returned = _RETURN.search(source.strip())
     table = returned.group(1) if returned else None
-    if table not in set(_LOCAL.findall(source)):
+    declarations = _LOCAL.findall(source)
+    if table is None or declarations.count(table) != 1:
         return None, {}
+    # Only an unshadowed, immutable binding is a reliable exported table.
+    assignments = re.findall(r"(?<![\w.:])" + re.escape(table) + r"(?:\s*:[^=\n]+)?\s*=(?!=)", source)
+    if len(assignments) != 1:
+        return None, {}
+    for params in re.findall(r"\bfunction[^()]*\(([^)]*)\)", source):
+        if re.search(r"(?:^|,)\s*" + re.escape(table) + r"\s*(?=:|,|$)", params):
+            return None, {}
     methods = {}
     for method in _METHOD.finditer(source):
         owner = method.group("table") or method.group("assigned_table")
@@ -47,6 +55,18 @@ def exported_methods(code: str) -> tuple[str | None, dict[str, dict[str, Any]]]:
     return table, methods
 
 
+def _parameter_count(parameters: str) -> int:
+    if not parameters.strip():
+        return 0
+    depth = 0
+    count = 1
+    for char in parameters:
+        if char in "({[<": depth += 1
+        elif char in ")}]>": depth = max(0, depth - 1)
+        elif char == "," and depth == 0: count += 1
+    return count
+
+
 def service_contract_checks(name: str, code: str, *, require_start: bool,
                             needs_action: bool) -> list[dict[str, Any]]:
     table, methods = exported_methods(code)
@@ -59,7 +79,8 @@ def service_contract_checks(name: str, code: str, *, require_start: bool,
                        "detail": "Server ModuleScript needs an actual exported .start(services) entry point"})
         checks.append({"id": "service.startSignature." + name,
                        "passed": bool(start and start["separator"] == "."
-                                      and not re.match(r"self\b", start["params"])),
+                                      and not re.match(r"self\b", start["params"])
+                                      and _parameter_count(start["params"]) <= 1),
                        "detail": "Bootstrap calls Service.start(services) with dot syntax; no implicit self argument"})
         checks.append({"id": "service.implementation." + name,
                        "passed": any(not method["empty"] for method in methods.values()),

@@ -33,7 +33,9 @@ jobs:
             tests/test_space_seven_facets_e2e.py \
             tests/test_generalized_host_prompt_matrix.py \
             tests/test_host_client_transport.py \
-            tests/test_host_world_prompt.py
+            tests/test_host_world_prompt.py \
+            tests/test_purchase_request_semantics.py \
+            tests/test_uploaded_service_recovery.py
       - name: Install real Roblox toolchain
         uses: paradoxum-games/setup-rokit@v3
         with:
@@ -64,6 +66,12 @@ jobs:
           assert not [x for x in analyzer.analyze_source(valid)
                       if x.severity == "ERROR"], "Real parser rejected valid Luau"
           PY
+      - name: Reproduce uploaded responses and execute actual generated player persistence
+        env:
+          RMM_REQUIRE_REAL_LUAU_PARSER: "1"
+        run: python -m pytest -q tests/test_uploaded_service_recovery.py tests/test_callable_host_data.py
+      - name: Compile callable host profile with real Roblox tools
+        run: python tools/verify_host_profile_e2e.py
       - name: Run standalone pure Luau rules in Lune
         run: lune run tests/economy_logic
       - name: Generate source only (release must remain unverified)
@@ -288,6 +296,7 @@ jobs:
             .rmm-smoke/
             .rmm-code-e2e/
             .rmm-economy-e2e/
+            .rmm-host-profile/
             .rmm-space-assembly/
             .rmm-general-assembly/
             .rmm-dynamic-smoke/
