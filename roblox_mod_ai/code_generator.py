@@ -746,6 +746,8 @@ for _, player in Players:GetPlayers() do onAdded(player) end
 """
 
     def _generate_shop_controller(self, module: RobloxModuleSpec, proposal: RobloxProposal) -> str:
+        weapon_row = ('    {{"magic_staff", "Arcane Staff - 150"}},\n'
+                      if proposal.game_design.get("features", {}).get("is_combat") else "")
         return f"""--!strict
 -- Service: StarterPlayerScripts
 -- Script: {module.name}
@@ -758,9 +760,19 @@ local SoundService = game:GetService("SoundService")
 local localPlayer = Players.LocalPlayer
 local remotesFolder = ReplicatedStorage:WaitForChild("Remotes")
 local purchaseFunction = remotesFolder:WaitForChild("ShopPurchase") :: RemoteFunction
+local weaponUse = remotesFolder:WaitForChild("ShopWeaponUse") :: RemoteEvent
+local statusLabel: TextLabel? = nil
 
 local function requestBuy(itemId: string)
-    local success, message = purchaseFunction:InvokeServer(itemId)
+    local callOk, success, message = pcall(function()
+        return purchaseFunction:InvokeServer(itemId)
+    end)
+    if not callOk then
+        success, message = false, "Shop server unavailable"
+    end
+    if statusLabel then
+        statusLabel.Text = tostring(message)
+    end
     if success then
         print("Shop Success: " .. message)
         local sound = SoundService:FindFirstChild("PurchaseCashRegisterSound") :: Sound?
@@ -777,13 +789,13 @@ gui.ResetOnSpawn = false
 gui.Parent = localPlayer:WaitForChild("PlayerGui")
 local panel = Instance.new("Frame")
 panel.Name = "ShopPanel"
-panel.Size = UDim2.fromOffset(300, 290)
-panel.Position = UDim2.new(0.5, -150, 0.5, -145)
+panel.Size = UDim2.fromOffset(300, 326)
+panel.Position = UDim2.new(0.5, -150, 0.5, -163)
 panel.Visible = false
 panel.Parent = gui
 local items = {{
     {{"speed_boots", "Speed Boots - 50"}},
-    {{"magic_staff", "Arcane Staff - 150"}},
+{weapon_row.rstrip()}
     {{"shield", "Iron Shield - 100"}},
     {{"health_potion", "Health Potion - 25"}},
 }}
@@ -803,6 +815,32 @@ close.Position = UDim2.fromOffset(10, 213)
 close.Size = UDim2.new(1, -20, 0, 42)
 close.Parent = panel
 close.Activated:Connect(function() panel.Visible = false end)
+statusLabel = Instance.new("TextLabel")
+statusLabel.Name = "PurchaseResult"
+statusLabel.Text = "Select an item"
+statusLabel.TextWrapped = true
+statusLabel.Size = UDim2.fromOffset(280, 58)
+statusLabel.Position = UDim2.fromOffset(10, 260)
+statusLabel.Parent = panel
+
+-- Tool.Activated only fires for client input in a LocalScript.
+-- Send an item id; the server alone validates targets and applies damage.
+local bound: {{ [Tool]: boolean }} = {{}}
+local function bindTool(child: Instance)
+    if not child:IsA("Tool") or child.Name ~= "Arcane Staff" or bound[child] then return end
+    bound[child] = true
+    child.Activated:Connect(function() weaponUse:FireServer("magic_staff") end)
+end
+local backpack = localPlayer:WaitForChild("Backpack")
+backpack.ChildAdded:Connect(bindTool)
+for _, child in backpack:GetChildren() do bindTool(child) end
+local function onCharacter(char: Model)
+    char.ChildAdded:Connect(bindTool)
+    for _, child in char:GetChildren() do bindTool(child) end
+end
+localPlayer.CharacterAdded:Connect(onCharacter)
+if localPlayer.Character then onCharacter(localPlayer.Character) end
+
 local function connectPrompt(prompt: ProximityPrompt)
     prompt.Triggered:Connect(function() panel.Visible = true end)
 end
