@@ -44,10 +44,10 @@ def make_studio_smoke(proposal: RobloxProposal, project: dict[str, Any]) -> str:
             parent = 'game:GetService("ServerScriptService")'
             kind = "Script" if path.endswith(".server.luau") else "ModuleScript"
         elif path.startswith("src/client/"):
-            parent = 'game:GetService("StarterPlayer"):WaitForChild("StarterPlayerScripts")'
+            parent = 'game:GetService("StarterPlayer"):FindFirstChild("StarterPlayerScripts")'
             kind = "LocalScript"
         elif path.startswith("src/shared/"):
-            parent = 'game:GetService("ReplicatedStorage"):WaitForChild("Shared")'
+            parent = 'game:GetService("ReplicatedStorage"):FindFirstChild("Shared")'
             kind = "ModuleScript"
         else:
             continue
@@ -57,7 +57,7 @@ def make_studio_smoke(proposal: RobloxProposal, project: dict[str, Any]) -> str:
             continue
         kind = entry.get("$className") if isinstance(entry, dict) else None
         if kind in ("RemoteEvent", "RemoteFunction"):
-            add('game:GetService("ReplicatedStorage"):WaitForChild("Remotes")', name, kind)
+            add('game:GetService("ReplicatedStorage"):FindFirstChild("Remotes")', name, kind)
     for name, entry in world.items():
         if str(name).startswith("$"):
             continue
