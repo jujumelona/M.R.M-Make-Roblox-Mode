@@ -151,7 +151,7 @@ def test_invalid_typed_syntax_retry_uses_plain_luau_contract(monkeypatch):
         def complete(self, prompt, **kwargs):
             prompts.append(prompt)
             if len(prompts) == 1:
-                return "local Service = {}\nfunction Service.start(services) :: ?() end\nreturn Service"
+                return "local Service = {}\nfunction Service.start(services)\nlocal broken = (number)[]\n"
             return ("local Service = {}\nfunction Service.start(services)\n"
                     "workspace:SetAttribute('ModeActive', true)\nend\nreturn Service")
     RobloxCodeRepairAgent(Model()).repair(module, plan, attempts=2)
