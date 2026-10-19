@@ -219,7 +219,9 @@ def build_implementation_blueprint(proposal: Any) -> dict[str, Any]:
         "source_of_truth": "request_ledger_and_modules",
         "requirements": requirements, "mechanics": mechanics,
         "integration_contracts": integrations, "studio_scenarios": scenarios,
-        "module_order": [m.module_id for m in proposal.modules],
+        # Stable roster fingerprint. Topological scheduling is allowed to reorder
+        # modules without changing the requirements or verified ownership.
+        "module_order": sorted(m.module_id for m in proposal.modules),
         "verification_pipeline": [
             "requirements_and_design", "module_and_remote_contracts",
             "Luau_static_and_API", "Rojo_place_build",
