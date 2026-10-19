@@ -18,6 +18,7 @@ from .agent_trajectory import AgentTrajectory
 from .quality_gates import acceptance_obligations, make_artifact_manifest
 from .request_traceability import build_request_traceability
 from .local_studio import install_local_studio_checks
+from .verification_selector import make_verification_report
 from .gameplay_contract import make_studio_playtest_scenarios
 from .rbxlx_inspector import inspect_compiled_place
 import hashlib
@@ -380,6 +381,8 @@ class RobloxProductionOrchestrator:
 
         def materialize():
             created = self.project_generator.materialize_project_tree(proposal, output_dir)
+            tool_results["lune_economy_applicable"] = bool(
+                self.toolchain.stage_lune_economy_test(output_dir))
             if proposal.game_design.get("gameplay_contract"):
                 (output_dir / "gameplay_contract.json").write_text(
                     json.dumps(proposal.game_design["gameplay_contract"],
@@ -515,6 +518,15 @@ class RobloxProductionOrchestrator:
                                             "error":"Post-repair static/contract check failed"}
                                 continue
                         return {"passed": False, "error": f"{name} failed or skipped: {result}"}
+            # Lune is only capable of running standalone (non-engine) Luau
+            # units. Shop projects ship a test of their actual EconomyRules.
+            # An absent Lune executable is explicitly NOT RUN, not a pass.
+            if not source_only and tool_results.get("lune_economy_applicable"):
+                unit = self.toolchain.run_lune_economy_test(output_dir)
+                tool_results["lune_economy"] = unit
+                if unit.get("executed") and not unit.get("success"):
+                    return {"passed": False, "error": "Executable Lune economy test failed",
+                            "diagnostic": unit}
             return {"passed": True, "static_checks": len(acceptance["checks"])}
 
         def package():
@@ -612,6 +624,20 @@ class RobloxProductionOrchestrator:
             build_ready or (addon_mode and zip_path) or source_only
         ))
         receipt.overall_success = artifact_ready
+        # The report is written before the final ZIP repack so a downloaded
+        # game says exactly which tests RMM ACTUALLY executed and which it did not.
+        verification_report = make_verification_report(
+            source_only=source_only, addon_mode=addon_mode,
+            tool_results=tool_results,
+            analysis_passed=analysis_report.passed,
+            acceptance=acceptance, artifact_ready=artifact_ready,
+        )
+        (output_dir / "verification_report.json").write_text(
+            json.dumps(verification_report, indent=2, ensure_ascii=False),
+            encoding="utf-8")
+        tool_results["verification_selection"] = verification_report
+        print("[RMM VERIFY] " + json.dumps(verification_report["summary"]),
+              flush=True)
         release_status = (
             "built_unverified" if build_ready
             else "addon_packaged" if artifact_ready and addon_mode
@@ -687,7 +713,8 @@ class RobloxProductionOrchestrator:
             analysis_report=analysis_report, playtest_report=playtest_report,
             duration_ms=round(elapsed_ms, 2), work_receipt=receipt,
             build_mode=build_mode, generated_files=[m.file_path for m in proposal.modules],
-            metadata={"acceptance": acceptance, "runtime": runtime, "tool_results": tool_results,
+            metadata={"acceptance": acceptance, "runtime": runtime,
+                      "verification": verification_report, "tool_results": tool_results,
                       "errors": errors, "source_only": source_only,
                       "build_ready": build_ready,
                       "release_status": release_status,
