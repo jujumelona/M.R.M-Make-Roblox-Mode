@@ -41,12 +41,13 @@ def test_local_smoke_checks_real_module_roles_world_and_remote_types():
     proposal, project = _fixture()
     code = make_studio_smoke(proposal, project)
     assert 'checkChild(game:GetService("ServerScriptService"), "ShopService", "Script")' in code
-    assert 'checkChild(game:GetService("StarterPlayer"):WaitForChild("StarterPlayerScripts"), "ShopController", "LocalScript")' in code
-    assert 'checkChild(game:GetService("ReplicatedStorage"):WaitForChild("Shared"), "NetworkRemotes", "ModuleScript")' in code
+    assert 'checkChild(game:GetService("StarterPlayer"):FindFirstChild("StarterPlayerScripts"), "ShopController", "LocalScript")' in code
+    assert 'checkChild(game:GetService("ReplicatedStorage"):FindFirstChild("Shared"), "NetworkRemotes", "ModuleScript")' in code
     assert '"ShopPurchase", "RemoteFunction"' in code
     assert '"AttackRequest", "RemoteEvent"' in code
     assert '"CombatArena", "Model"' in code
     assert "RMM_STUDIO_SMOKE_PASS" in code
+    assert ":WaitForChild(" not in code
     assert "DataStore:SetAsync" not in code
 
 
