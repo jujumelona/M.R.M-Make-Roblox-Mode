@@ -13,6 +13,7 @@ from .economy_core import is_supported_economy_ledger, render_economy_ledger
 from .server_modules import render_dynamic_server_bootstrap
 from .host_client import render_host_client
 from .host_player_data import render_callable_player_data
+from .gameplay_round import render_arena_round_service, render_arena_round_controller
 from .model_router import ModelRouter
 from .spec import ModuleKind, RobloxModuleSpec, RobloxProposal
 
@@ -82,6 +83,10 @@ class LuauCodeGenerator:
         """Dispatches Luau code generation to specialized genre and subsystem engines."""
         # Authored novel mechanics must NEVER be dispatched to same-name
         # first-party templates whose behavior was not contract-matched.
+        if module.module_id == "mod_arena_round":
+            return render_arena_round_service()
+        if module.module_id == "mod_arena_round_controller":
+            return render_arena_round_controller()
         if module.module_id == "mod_dynamic_server_bootstrap":
             return render_dynamic_server_bootstrap(proposal)
         if is_supported_economy_ledger(module) and module.file_path.endswith("/EconomyLedger.luau"):
