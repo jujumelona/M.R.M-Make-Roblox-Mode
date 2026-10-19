@@ -1007,6 +1007,15 @@ end)
 
     # 7. Real Combat & Action System
     def _generate_combat_service(self, module: RobloxModuleSpec, proposal: RobloxProposal) -> str:
+        arena_guard = ""
+        if any(m.module_id == "mod_arena_round" for m in proposal.modules):
+            arena_guard = """
+    -- Arena PvP is legal only for two active server-enrolled contestants.
+    if not game:GetAttribute("ArenaRoundActive")
+        or not player:GetAttribute("InArenaRound") then return end
+    local opponent = Players:GetPlayerFromCharacter(targetCharacter)
+    if not opponent or not opponent:GetAttribute("InArenaRound") then return end
+"""
         return f"""--!strict
 -- Service: ServerScriptService
 -- Script: {module.name}
@@ -1053,7 +1062,7 @@ end
 
 attackRemote.OnServerEvent:Connect(function(player, targetCharacter: Model?)
     if not targetCharacter or not targetCharacter:IsA("Model") then return end
-
+{arena_guard}
     local userId = player.UserId
     local now = os.clock()
     if playerCooldowns[userId] and (now - playerCooldowns[userId]) < 0.4 then
