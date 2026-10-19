@@ -243,7 +243,7 @@ class RobloxProductionOrchestrator:
                     # the host Remote ingress or no-argument client UI.
                     dynamic_contract = proposal.game_design.get("dynamic_design") or {}
                     is_host_generated = (
-                        module.module_id in ("mod_arena_round", "mod_arena_round_controller", "mod_dynamic_server_bootstrap")
+                        module.module_id in ("mod_game_objective", "mod_arena_round", "mod_arena_round_controller", "mod_dynamic_server_bootstrap")
                         or (module.module_id == "mod_player_data" and module.file_path.endswith("/PlayerDataManager.luau"))
                         or (module.module_id.startswith("dyn_")
                             and module.name in
