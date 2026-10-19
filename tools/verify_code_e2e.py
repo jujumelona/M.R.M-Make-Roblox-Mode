@@ -56,12 +56,18 @@ def main():
         assert "src/server/CustomPetHatching.luau" in names
         assert "src/server/RMMServerBootstrap.server.luau" in names
         assert "pre_design_research.json" in names
+        assert "compiled_place.rbxlx" in names
+        assert "local_studio/run_smoke.ps1" in names
+        assert hashlib.sha256(z.read("compiled_place.rbxlx")).hexdigest() == hashlib.sha256(compiled.read_bytes()).hexdigest()
 
-    assert result.success is False
+    assert result.success is True, "Compiled project must be a successful offline build"
+    assert result.metadata["release_status"] == "built_unverified"
     assert result.metadata["runtime"]["passed"] is False
+    assert result.metadata["runtime"]["executed"] is False
+    assert result.playtest_report.total_tests == 0
     assert not result.playtest_report.passed
     stages=result.work_receipt.to_dict()["stages"]
-    assert any(s["stage"]=="playtest" and not s["success"] for s in stages)
+    assert not any(s["stage"] == "playtest" for s in stages)
     report={
         "schema":"rmm/code-e2e-v1",
         "plan_and_model":"deterministic fixture NOT actual MiMo",
@@ -74,6 +80,7 @@ def main():
                          result.metadata["acceptance"]["checks"] if x["id"].startswith("wiring.")},
         "studio_gameplay_passed":False,
         "open_cloud_verified":False,
+        "offline_build_success":result.success,
         "production_success":result.success,
         "compiled_place_sha256":hashlib.sha256(compiled.read_bytes()).hexdigest(),
         "stages":stages,
