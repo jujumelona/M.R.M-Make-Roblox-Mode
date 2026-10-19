@@ -577,6 +577,20 @@ class RobloxGameDesignPlanner:
         pending = ", ".join(ledger.get("unimplemented_facets", [])) or "none"
         contract = proposal.game_design.get("gameplay_contract", {})
         blueprint = proposal.game_design.get("implementation_blueprint") or {}
+        detailed = proposal.game_design.get("detailed_implementation_plan") or {}
+        model_plan = detailed.get("ai_planning") or {}
+        detailed_md = "\n".join(
+            f"- **{row['id']}** {row['original_request']}\\n"
+            f"  - Expected outcome: {row['expected_outcome']}\\n"
+            f"  - Owner source: {', '.join(row['owner_files']) or 'UNASSIGNED'}\\n"
+            f"  - Preconditions: {row['preconditions']}\\n"
+            f"  - Trigger/input: {row['input_or_trigger']}\\n"
+            f"  - State change: {row['server_state_changes']}\\n"
+            f"  - Invalid/edge inputs: {row['invalid_or_edge_inputs']}\\n"
+            f"  - Persistence: {row['persisted_state']}\\n"
+            f"  - AI implementation steps: {model_plan.get('requirements', {}).get(row['id'], 'NOT RUN')}"
+            for row in detailed.get("required_functions", [])
+        ) or "- No detailed requirements registered"
         requirement_acceptance_md = "\n".join(
             f"- **{item['id']}** {item['source']} -> {item['acceptance'] or 'BLOCKED: NO ACCEPTANCE'} "
             f"(owners: {', '.join(item['owners']) or 'UNASSIGNED'})"
@@ -648,16 +662,21 @@ class RobloxGameDesignPlanner:
 ### Blocking design gaps
 {blocked_md}
 
-## 3. Architectural Subsystems (Topological Order)
+## 3. Detailed requirement implementation (before source code)
+- Model planning: {model_plan.get("status", "not_run")}
+- Colab engine execution: EXCLUDED (source review and offline tests only)
+{detailed_md}
+
+## 4. Architectural Subsystems (Topological Order)
 {modules_md}
 
-## 4. Creator Store Assets (Verified & Sanitized)
+## 5. Creator Store Assets (Verified & Sanitized)
 {assets_md}
 
-## 5. Playtest & TestEZ Specifications
+## 6. Engine-only scenarios (NOT run in Colab)
 {tests_md}
 
-## 6. Production Strategy
+## 7. Production Strategy
 - **Client/Server Division**: Strict server authority over transactions, health, and physics to eliminate client injection.
 - **Data Persistence**: Safe DataStoreService with session-locking, exponential backoff, and BindToClose completion waiting.
 - **Sync & Deployment**: Full Rojo `default.project.json` live-sync and `.rbxlx` direct Studio launcher.
