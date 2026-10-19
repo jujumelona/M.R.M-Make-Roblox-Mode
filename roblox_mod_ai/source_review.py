@@ -62,6 +62,9 @@ def review_generated_sources(
             plan = contexts.get(module.name, {})
             reqs = [item for item in detail.get("required_functions", [])
                     if item["id"] in plan.get("requirements", [])]
+            ai_steps = {rid: item for rid, item in (
+                detail.get("ai_planning", {}).get("requirements") or {}).items()
+                if rid in plan.get("requirements", [])}
             for start in range(0, len(lines), max_lines_per_chunk):
                 end = min(len(lines), start + max_lines_per_chunk)
                 numbered = "\n".join(
@@ -82,6 +85,7 @@ def review_generated_sources(
                     "Module: " + module.name + "\n"
                     "Module contract: " + str(plan)[:1300] + "\n"
                     "Owned requirements: " + str(reqs)[:1500] + "\n"
+                    "Pre-coding detailed steps: " + str(ai_steps)[:1500] + "\n"
                     "Source lines:\n" + numbered
                 )
                 review = router.complete_json(
