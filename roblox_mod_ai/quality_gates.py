@@ -130,8 +130,13 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
         check("arena.unauthorized_damage", has("CombatSystem", "ArenaRoundActive", "InArenaRound"),
               "Combat server rejects attacks outside the active round")
     if features.get("is_combat") and leaderboard:
-        check("leaderboard.combat_records", has("PlayerDataManager", '"Wins"', '"KOs"', "stored.wins",
-                                                  "stored.kos", "data.wins", "data.kos")
+        if proposal.game_design.get("storage_backend") == "profilestore":
+            persisted_records = has("PlayerDataManager", "profile.Data", '"Wins"', '"KOs"',
+                                    'wins=0', 'kos=0')
+        else:
+            persisted_records = has("PlayerDataManager", '"Wins"', '"KOs"',
+                                    "stored.wins", "stored.kos", "data.wins", "data.kos")
+        check("leaderboard.combat_records", persisted_records
               and has("CombatSystem", '"KOs"', "kos.Value += 1"),
               "PvP win and knockout totals are saved and available as leaderstats")
     if features.get("is_shop") and features.get("is_combat"):
