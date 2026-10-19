@@ -121,6 +121,29 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
                 "MouseButton1", "ButtonR2", "SetTitle"),
               "Client submits attack request")
         check("combat.arena", bool(world.get("CombatArena")), "Arena walls in Rojo Workspace")
+    has_arena_round = any(m.module_id == "mod_arena_round" for m in proposal.modules)
+    if has_arena_round:
+        check("arena.placement", has("ArenaRoundService", "CombatArena", "PivotTo", "spawnSlot"),
+              "Each enrolled arena fighter must be placed inside the combat ring")
+        check("arena.result_statistics", has("ArenaRoundService", '"Wins"', "wins.Value += 1"),
+              "Every match winner receives a persisted win statistic")
+        check("arena.unauthorized_damage", has("CombatSystem", "ArenaRoundActive", "InArenaRound"),
+              "Combat server rejects attacks outside the active round")
+    if features.get("is_combat") and leaderboard:
+        check("leaderboard.combat_records", has("PlayerDataManager", '"Wins"', '"KOs"', "stored.wins",
+                                                  "stored.kos", "data.wins", "data.kos")
+              and has("CombatSystem", '"KOs"', "kos.Value += 1"),
+              "PvP win and knockout totals are saved and available as leaderstats")
+    if features.get("is_shop") and features.get("is_combat"):
+        check("combat.shop_credit", has("ShopService", "RMMCombatCredit", "credit:Fire")
+              and has("CombatSystem", "RMMCombatCredit", "trackKnockout"),
+              "Purchased weapon credits kills through the server combat pipeline")
+        if has_arena_round:
+            check("arena.shop_weapon_security",
+                  has("ShopService", "ArenaRoundActive", "InArenaRound",
+                      "GetPlayerFromCharacter"),
+                  "Shop weapons cannot damage spectators or bypass the round state")
+
     if features.get("is_obby"):
         requested = int(proposal.game_design.get("requested_counts", {}).get("stages", 5))
         actual = len([key for key in world.get("Checkpoints", {}) if key.startswith("Stage")])
