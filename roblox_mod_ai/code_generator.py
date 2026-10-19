@@ -893,6 +893,7 @@ local bound: {{ [Tool]: boolean }} = {{}}
 local function bindTool(child: Instance)
     if not child:IsA("Tool") or child.Name ~= "Arcane Staff" or bound[child] then return end
     bound[child] = true
+    child.Destroying:Connect(function() bound[child] = nil end)
     child.Activated:Connect(function()
         local now = os.clock()
         if now < nextStaffCast then return end
@@ -908,11 +909,25 @@ local function bindTool(child: Instance)
         end)
     end)
 end
-local backpack = localPlayer:WaitForChild("Backpack")
-backpack.ChildAdded:Connect(bindTool)
-for _, child in backpack:GetChildren() do bindTool(child) end
+-- Backpack is destroyed and recreated on every death. Rebind Tool input
+-- for the replacement instance rather than only observing the first Backpack.
+local observedBackpack: Backpack? = nil
+local backpackConnection: RBXScriptConnection? = nil
+local function onBackpack(child: Instance)
+    if not child:IsA("Backpack") or observedBackpack == child then return end
+    if backpackConnection then backpackConnection:Disconnect() end
+    observedBackpack = child
+    backpackConnection = child.ChildAdded:Connect(bindTool)
+    for _, tool in child:GetChildren() do bindTool(tool) end
+end
+localPlayer.ChildAdded:Connect(onBackpack)
+local initialBackpack = localPlayer:FindFirstChildOfClass("Backpack")
+if initialBackpack then onBackpack(initialBackpack) end
+
+local characterConnection: RBXScriptConnection? = nil
 local function onCharacter(char: Model)
-    char.ChildAdded:Connect(bindTool)
+    if characterConnection then characterConnection:Disconnect() end
+    characterConnection = char.ChildAdded:Connect(bindTool)
     for _, child in char:GetChildren() do bindTool(child) end
 end
 localPlayer.CharacterAdded:Connect(onCharacter)
