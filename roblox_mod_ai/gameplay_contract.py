@@ -216,3 +216,76 @@ def validate_gameplay_contract(proposal: Any, project_root: Path) -> list[dict]:
     check("engine_unverified", contract.get("engine_playtested") is False,
           "Static contract must never assert a Roblox Studio playtest happened")
     return checks
+
+
+def make_studio_playtest_scenarios(contract: dict[str, Any]) -> dict[str, Any]:
+    """Generate executable-intent scenarios for a local Studio MCP tester.
+
+    These are instructions and expected outcomes, NOT evidence they passed.
+    The local tester must collect its own actual run data before certification.
+    """
+    mode = contract.get("mode")
+    scenarios: list[dict[str, Any]] = []
+    for unit in contract.get("units", []):
+        scenarios.append({
+            "id": "interaction." + unit["id"],
+            "setup": "Open the generated .rbxlx in Roblox Studio Play mode",
+            "action": unit["action"],
+            "expect": unit["observable"],
+            "executed": False,
+        })
+    if mode == "round":
+        scenarios += [
+            {"id": "round.solo", "setup": "Only one test client connected",
+             "action": "Wait for game to start",
+             "expect": "Waiting state; no false victory and no damage before round start",
+             "executed": False},
+            {"id": "round.win", "setup": "Two test clients in the active round",
+             "action": "Defeat the other contestant with a valid attack",
+             "expect": "Server selects the last survivor, displays result and pays 100 coins",
+             "executed": False},
+            {"id": "round.disconnect", "setup": "Two contestants in an active round",
+             "action": "Disconnect one contestant",
+             "expect": "Disconnected player is ineligible; survivor wins",
+             "executed": False},
+            {"id": "round.draw", "setup": "Two contestants remain alive",
+             "action": "Let the match timer expire",
+             "expect": "Draw announced and no winner reward granted",
+             "executed": False},
+            {"id": "round.replay", "setup": "One completed match",
+             "action": "Remain connected through intermission",
+             "expect": "Characters reset, state returns to waiting or countdown, another round starts",
+             "executed": False},
+        ]
+    elif mode == "stage":
+        scenarios += [
+            {"id": "stage.finish", "setup": "Start at first checkpoint",
+             "action": "Visit each checkpoint in order and touch final platform",
+             "expect": "Server marks ObbyComplete and client displays completion",
+             "executed": False},
+            {"id": "stage.respawn", "setup": "Reach a checkpoint, then touch lava",
+             "action": "Respawn",
+             "expect": "Player returns to the most recent saved checkpoint",
+             "executed": False},
+        ]
+    elif mode == "addon":
+        scenarios.append({
+            "id": "addon.non_destructive",
+            "setup": "Owner opens an existing experience copy",
+            "action": "Install only the requested addon",
+            "expect": "Host world, saved player data and existing scripts stay intact",
+            "executed": False,
+        })
+    scenarios.append({
+        "id": "invalid-input", "setup": "Use a client with an invalid purchase or action",
+        "action": "Attempt an invalid, duplicate or unauthorized request",
+        "expect": "Server rejects it without granting unearned value",
+        "executed": False,
+    })
+    return {
+        "schema": "rmm/studio-playtest-scenarios-v1",
+        "mode": mode,
+        "verification": "not_run",
+        "note": "Descriptions of required local Roblox Studio scenarios, not passed tests",
+        "scenarios": scenarios,
+    }
