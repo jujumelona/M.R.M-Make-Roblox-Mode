@@ -125,9 +125,12 @@ def enrich_detailed_plan(plan: dict[str, Any], router: Any) -> dict[str, Any]:
     an explicit pre-approved stepwise specification rather than improvising.
     """
     option = os.environ.get("RMM_ENABLE_AI_DETAILED_PLAN", "auto").lower()
-    enabled = option == "1" or (option == "auto" and bool(
-        os.environ.get("ROBLOX_LLAMA_SERVER_URL")
-        or os.environ.get("RMM_MODEL_BASE_URL")))
+    enabled = option == "1" or (
+        option == "auto"
+        and os.environ.get("RMM_ENABLE_MODEL_GENERATION") != "0"
+        and bool(os.environ.get("ROBLOX_LLAMA_SERVER_URL")
+                 or os.environ.get("RMM_MODEL_BASE_URL"))
+    )
     plan["ai_planning"] = {"status": "not_run", "requirements": {},
                            "reason": "No local planning model configured"}
     if not enabled:
