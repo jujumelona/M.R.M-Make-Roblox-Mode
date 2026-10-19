@@ -636,6 +636,33 @@ class RobloxProductionOrchestrator:
                     json.dumps(ai_review, indent=2, ensure_ascii=False),
                     encoding="utf-8")
                 analysis_report, acceptance = check_static()
+                if not analysis_report.passed or not acceptance["passed"]:
+                    return {"passed": False,
+                            "error": "Final static acceptance regressed after source review repair"}
+                # Retain only VERIFIED repaired code in the checkpoint.
+                # Otherwise next Colab run resumes the stale pre-repair source
+                # and makes the same small AI repeat all failed attempts.
+                try:
+                    saved = json.loads(checkpoint_file.read_text(encoding="utf-8"))
+                except (OSError, ValueError, TypeError):
+                    saved = {}
+                items = saved.get("modules", {})
+                if not isinstance(items, dict):
+                    items = {}
+                for module in proposal.modules:
+                    if module.file_path not in repair["changed_files"]:
+                        continue
+                    final_source = (output_dir / module.file_path).read_text(encoding="utf-8")
+                    items[module.file_path] = {
+                        "input_sha256": checkpoint_signature(module),
+                        "source_sha256": hashlib.sha256(
+                            final_source.encode("utf-8")).hexdigest(),
+                    }
+                temporary = checkpoint_file.with_suffix(".json.tmp")
+                temporary.write_text(json.dumps({
+                    "schema": "rmm/codegen-checkpoint-v1", "modules": items,
+                }, indent=2, ensure_ascii=False), encoding="utf-8")
+                temporary.replace(checkpoint_file)
             if ai_review["status"] == "failed":
                 return {"passed": False, "error": "AI source review could not finish",
                         "diagnostic": ai_review.get("reason", "")}
