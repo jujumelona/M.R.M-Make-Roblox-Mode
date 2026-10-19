@@ -57,6 +57,9 @@ def test_duplicate_binary_and_symlink_payload_are_rejected(tmp_path):
 
 
 def test_four_tools_installed_and_visible_to_path(monkeypatch, tmp_path):
+    # This fixture mocks the four mandatory assets only. Optional tools use
+    # their own release tests and may be unavailable without blocking a build.
+    monkeypatch.setenv("RMM_INSTALL_OPTIONAL_TOOLS", "0")
     monkeypatch.setenv("PATH", "/usr/bin")
     monkeypatch.setattr(setup.platform, "system", lambda: "Linux")
     monkeypatch.setattr(setup.platform, "machine", lambda: "x86_64")
@@ -109,3 +112,35 @@ def test_generator_and_committed_notebook_agree_about_cells(tmp_path, monkeypatc
             assert "failure_logs_zip" in a
         elif index == 7:
             assert "DOWNLOAD_TARGETS.append(Path(failure_path))" in a
+
+
+def test_optional_official_lune_and_luau_release_assets_are_pinned():
+    assert setup.OPTIONAL_RELEASES["lune"] == (
+        "lune-org/lune", "v0.11.0", "lune-0.11.0-linux-x86_64.zip")
+    assert setup.OPTIONAL_RELEASES["luau-compile"] == (
+        "luau-lang/luau", "0.743", "luau-ubuntu.zip")
+
+
+def test_optional_download_failure_does_not_break_mandatory_tools(monkeypatch, tmp_path):
+    monkeypatch.setenv("PATH", "/usr/bin")
+    monkeypatch.setenv("RMM_INSTALL_OPTIONAL_TOOLS", "1")
+    monkeypatch.setattr(setup.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(setup.platform, "machine", lambda: "x86_64")
+    def download(url, target):
+        for name, (_, _, filename) in setup.RELEASES.items():
+            if target.name == filename:
+                with zipfile.ZipFile(target, "w") as archive:
+                    archive.writestr(name, "binary-placeholder")
+                return
+        raise setup.ToolchainInstallError("optional GitHub unavailable")
+    monkeypatch.setattr(setup, "_download", download)
+    monkeypatch.setattr(setup, "_command_version", lambda p:
+                        setup.RELEASES[p.name][1].removeprefix("v"))
+    monkeypatch.setattr(
+        setup.RobloxToolchainManager, "check_tools",
+        lambda self: dict.fromkeys(["Rojo", "Wally", "Selene", "StyLua"], True)
+    )
+    installed = setup.setup_colab_toolchain(tmp_path / "bin")
+    assert set(installed) == set(setup.RELEASES)
+    assert all(not (tmp_path / "bin" / name).exists()
+               for name in setup.OPTIONAL_RELEASES)
