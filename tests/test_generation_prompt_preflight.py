@@ -109,3 +109,18 @@ def test_long_nonempty_truncation_uses_plain_scoped_repair_not_whole_json(monkey
     assert model.calls[0][1]["max_tokens"] == 6000
     assert model.calls[1][1]["max_tokens"] == 6000
     assert "Return JSON" not in repair
+
+
+def test_prompt_capture_restores_model_generation_setting(monkeypatch):
+    """Profiling must not enable real inference for a later session."""
+    import os
+    from tools.profile_generation_prompts import capture
+    for previous in (None, "0", "auto"):
+        if previous is None:
+            monkeypatch.delenv("RMM_ENABLE_MODEL_GENERATION", raising=False)
+        else:
+            monkeypatch.setenv("RMM_ENABLE_MODEL_GENERATION", previous)
+        proposal = RobloxProposal(requested_prompt="profile only",
+                                  game_title="EmptyProfile", description="", game_design={})
+        assert capture(proposal)["model_executed"] is False
+        assert os.environ.get("RMM_ENABLE_MODEL_GENERATION") == previous

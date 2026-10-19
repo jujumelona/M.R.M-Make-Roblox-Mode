@@ -241,6 +241,7 @@ def test_unrelated_weather_module_coder_never_receives_pet_or_currency_examples(
             self.prompts.append(prompt)
             raise RuntimeError("recorded only")
     from roblox_mod_ai.agent_loop import RobloxCodeRepairAgent, LuauGenerationError
+    monkeypatch.setenv("RMM_ENABLE_MODEL_GENERATION", "1")
     recorded = Recorder()
     server = next(m for m in proposal.modules if m.module_id.startswith("dyn_"))
     with pytest.raises(LuauGenerationError):

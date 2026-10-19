@@ -109,7 +109,7 @@ def render_dynamic_server_bootstrap(proposal: RobloxProposal) -> str:
     if not actions and not world_actions:
         return source
     source += (
-        "\n-- Host-owned Remote ingress. AI never wires OnServerEvent itself.\n"
+        "\n-- Host-owned player action ingress. Domain services own only gameplay.\n"
         "local Players = game:GetService(\"Players\")\n"
         "local lastAction = setmetatable({}, {__mode = \"k\"})\n"
         "local function allowAction(player, actionName)\n"

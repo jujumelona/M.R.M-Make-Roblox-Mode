@@ -958,8 +958,7 @@ class RobloxDynamicArchitect:
                     # arbitrary server handler with fabricated payloads.
                     host_actions[remote]["max_args"] = 0
                     host_client_actions[client_name] = binding
-            if host_client_actions:
-                result["host_client_actions"] = host_client_actions
+            result["host_client_actions"] = host_client_actions
             # A Roblox ProximityPrompt already renders a cross-platform
             # object interaction. Host owns its Instance and server callback;
             # no fabricated client module or client-to-server Remote.
