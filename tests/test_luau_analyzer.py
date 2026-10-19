@@ -47,3 +47,36 @@ function badFunction()
     assert "DEPRECATED_GLOBAL_WAIT" in rules_triggered
     assert "DEPRECATED_GLOBAL_SPAWN" in rules_triggered
     assert rules_triggered & {"UNBALANCED_BLOCKS", "LUAU_PARSER_SYNTAX"}
+
+
+def test_multiline_elseif_does_not_create_phantom_block(monkeypatch):
+    """A real generated ShopService uses a two-line elseif expression."""
+    from roblox_mod_ai import luau_analyzer
+    original = luau_analyzer.shutil.which
+    monkeypatch.setattr(luau_analyzer.shutil, "which",
+                        lambda name: None if name == "stylua" else original(name))
+    source = """--!strict
+local function handle(player)
+    if not player then
+        return false
+    elseif (player.Name == "Backpack")
+        or (player.Name == "StarterGear") then
+        return true
+    end
+end
+return handle
+"""
+    analyzer = luau_analyzer.LuauStaticAnalyzer()
+    errors = [x for x in analyzer.analyze_source(source)
+              if x.rule == "UNBALANCED_BLOCKS" and x.severity == "ERROR"]
+    assert not errors, errors
+
+
+def test_fallback_still_rejects_genuinely_unclosed_if(monkeypatch):
+    from roblox_mod_ai import luau_analyzer
+    original = luau_analyzer.shutil.which
+    monkeypatch.setattr(luau_analyzer.shutil, "which",
+                        lambda name: None if name == "stylua" else original(name))
+    source = "--!strict\\nif true then\\n    print('missing end')\\n"
+    analyzer = luau_analyzer.LuauStaticAnalyzer()
+    assert any(d.rule == "UNBALANCED_BLOCKS" for d in analyzer.analyze_source(source))
