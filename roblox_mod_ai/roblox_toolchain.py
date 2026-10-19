@@ -222,11 +222,11 @@ stylua = "JohnnyMorganz/StyLua@2.0.2"
         rules = root / "src" / "shared" / "EconomyRules.luau"
         if not rules.is_file():
             return None
-        path = root / "tests" / "economy_contract.luau"
+        path = root / "tests" / "offline" / "economy_contract.luau"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("""--!strict
 -- Executable offline contract for the SAME rules shipped with this Place.
-local Rules = require("../src/shared/EconomyRules")
+local Rules = require("../../src/shared/EconomyRules")
 assert(Rules.canAfford(50, 50) == true)
 assert(Rules.canAfford(49, 50) == false)
 assert(Rules.canAfford(-10, 5) == false)
@@ -244,7 +244,7 @@ print("RMM_LUNE_ECONOMY_PASS")
     def run_lune_economy_test(self, project_dir: str | Path) -> dict[str, Any]:
         """Execute only a safe engine-independent unit suite if Lune exists."""
         root = Path(project_dir).resolve()
-        case = root / "tests" / "economy_contract.luau"
+        case = root / "tests" / "offline" / "economy_contract.luau"
         if not case.is_file():
             return {"success": False, "executed": False, "status": "not_applicable",
                     "reason": "No generated offline EconomyRules test for this game"}
