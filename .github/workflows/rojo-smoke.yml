@@ -74,6 +74,34 @@ jobs:
         run: python tools/verify_host_profile_e2e.py
       - name: Run standalone pure Luau rules in Lune
         run: lune run tests/economy_logic
+      - name: Execute genre-independent offline Luau tests in real Lune
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import shutil, tempfile
+          from roblox_mod_ai.roblox_toolchain import RobloxToolchainManager
+          assert shutil.which("lune"), "Rokit must install real Lune in CI"
+          with tempfile.TemporaryDirectory(prefix="rmm-any-genre-") as directory:
+              root = Path(directory)
+              offline = root / "tests" / "offline"
+              offline.mkdir(parents=True)
+              (offline / "sample_motion.luau").write_text(
+                  "--!strict\\nassert(math.abs(0.4 + 0.6 - 1) < 1e-6)\\n",
+                  encoding="utf-8")
+              (offline / "sample_rules.luau").write_text(
+                  "--!strict\\nassert(math.max(3, 5) == 5)\\n",
+                  encoding="utf-8")
+              result = RobloxToolchainManager().run_lune_offline_suite(root)
+              assert result["executed"] and result["success"] and result["test_count"] == 2, result
+              (offline / "sample_rules.luau").write_text(
+                  "--!strict\\nassert(false, 'regression')\\n", encoding="utf-8")
+              fail = RobloxToolchainManager().run_lune_offline_suite(root)
+              assert fail["executed"] and not fail["success"], fail
+              assert any(x["status"] == "failed" for x in fail["tests"]), fail
+          print("Generic Lune auto-discovery and real failure detection: PASS")
+          PY
       - name: Generate source only (Studio gameplay must remain unverified)
         run: |
           python - <<'PY'
