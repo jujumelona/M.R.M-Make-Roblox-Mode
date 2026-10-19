@@ -543,6 +543,14 @@ class RobloxProductionOrchestrator:
                         + str([x["id"] for x in structural["checks"] if not x["passed"]])}
             build_mode = "rojo_cli"
             rbxlx_path = str(place)
+            # Include the compiled Place in the downloadable ZIP (previously
+            # only the source folder was archived). Include a standalone
+            # Windows Studio local smoke kit; no credentials or publishing.
+            studio_kit = install_local_studio_checks(proposal, output_dir, place)
+            tool_results["local_studio_kit"] = {
+                "passed": True, "executed": False, "files_prepared": studio_kit,
+                "scope": "optional local edit-mode Instance checks",
+            }
             artifact_manifest = make_artifact_manifest(output_dir, place)
             (output_dir / "artifact_manifest.json").write_text(
                 json.dumps(artifact_manifest, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -555,6 +563,15 @@ class RobloxProductionOrchestrator:
                         return {"passed": False, "error": f"ZIP source mismatch: {relative}"}
                 if "artifact_manifest.json" not in names:
                     return {"passed": False, "error": "ZIP missing manifest"}
+                # The artifact isn't usable offline unless the executable
+                # compiled Place itself is bundled, not just its Luau sources.
+                if "compiled_place.rbxlx" not in names:
+                    return {"passed": False, "error": "ZIP missing compiled Roblox Place"}
+                if hashlib.sha256(archive.read("compiled_place.rbxlx")).hexdigest() != hashlib.sha256(place.read_bytes()).hexdigest():
+                    return {"passed": False, "error": "ZIP compiled Place hash mismatch"}
+                for member in ("structural_smoke.luau", "run_smoke.ps1", "README.md"):
+                    if "local_studio/" + member not in names:
+                        return {"passed": False, "error": "ZIP missing local Studio kit: " + member}
             zip_path = str(outzip)
             return {"passed": True, "mode": build_mode, "files": len(artifact_manifest["source_files"])}
 
