@@ -238,6 +238,10 @@ def run_source_repair_cycle(
             report["status"] = "retrying"
     else:
         report["status"] = "exhausted"
-        report["reason"] = "Review still contains blocking defects after maximum repair rounds"
+        last_failure = report["reason"]
+        report["reason"] = (
+            "Review still contains blocking defects after maximum repair rounds"
+            + ("; last failed attempt: " + last_failure if last_failure else "")
+        )
     report["changed_files"] = sorted(changed)
     return report
