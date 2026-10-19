@@ -109,3 +109,52 @@ def test_runtime_success_cannot_be_claimed_by_serialized_plan():
     assert "Static plan cannot mark Studio gameplay as verified" in (
         audit_implementation_blueprint(proposal)["errors"]
     )
+
+
+def test_dynamic_blueprint_survives_host_normalization_and_topological_sort():
+    from roblox_mod_ai.spec import RobloxProposal, RobloxModuleSpec, RobloxService, ModuleKind
+    from roblox_mod_ai.server_modules import normalize_dynamic_server_modules
+    shared = RobloxModuleSpec(
+        module_id="mod_network_bridge", name="NetworkRemotes",
+        kind=ModuleKind.SHARED_MODULE, file_path="src/shared/NetworkRemotes.luau",
+        roblox_service=RobloxService.REPLICATED_STORAGE)
+    profile = RobloxModuleSpec(
+        module_id="mod_player_data", name="PlayerDataManager",
+        kind=ModuleKind.DATA_STORE, file_path="src/server/PlayerDataManager.server.luau",
+        roblox_service=RobloxService.SERVER_SCRIPT_SERVICE)
+    game = RobloxModuleSpec(
+        module_id="dyn_pets", name="CustomPetHatching",
+        kind=ModuleKind.SERVER_SCRIPT, file_path="src/server/CustomPetHatching.server.luau",
+        roblox_service=RobloxService.SERVER_SCRIPT_SERVICE)
+    dynamic = {
+        "module_facets": {"dyn_pets": ["pets"]},
+        "acceptance_facets": {"pets": "Server hatches pet from egg"},
+        "module_requirements": {"dyn_pets": ["req-001"]},
+        "acceptance": {"req-001": "Server hatches pet from egg"},
+    }
+    proposal = RobloxProposal(
+        requested_prompt="펫 부화", game_title="PetTest", description="fixture",
+        modules=[shared, profile, game],
+        game_design={
+            "features": {}, "dynamic_design": dynamic, "storage_backend": "builtin",
+            "pre_design_research": {"ledger": {"requirements": [
+                {"id": "req-001", "statement": "펫 부화"}],
+                "facets": [{"id": "pets", "requirements": ["req-001"]}],
+                "unimplemented_facets": [], "unmatched_requirements": [],
+                "decomposition_pending": []}},
+        },
+    )
+    assert normalize_dynamic_server_modules(proposal)
+    names = {m.name for m in proposal.modules}
+    assert "RMMServerBootstrap" in names
+    assert next(m for m in proposal.modules if m.name == "PlayerDataManager").file_path.endswith(".luau")
+    proposal.game_design["implementation_blueprint"] = build_implementation_blueprint(proposal)
+    assert audit_implementation_blueprint(proposal)["passed"] is True
+    # Module ordering changes during resolve(), without changing owners.
+    proposal.modules.reverse()
+    assert audit_implementation_blueprint(proposal)["passed"] is True
+    # Idempotence is required: production cannot silently add another bootstrap.
+    assert not normalize_dynamic_server_modules(proposal)
+    assert audit_implementation_blueprint(proposal)["passed"] is True
+    proposal.modules = [m for m in proposal.modules if m.name != "CustomPetHatching"]
+    assert not audit_implementation_blueprint(proposal)["passed"]
