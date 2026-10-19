@@ -102,7 +102,8 @@ def main() -> None:
             print("\nExisting-Experience addon sources prepared (NOT verified or published).")
             print(f"Addon ZIP: {result.project_zip_path}")
         elif result.success:
-            print(f"\n✅ Build complete!")
+            print(f"\nBuild complete: {result.metadata.get('release_status', 'built_unverified')}")
+            print("Roblox Studio gameplay playtest: NOT RUN (optional local step).")
             if result.rbxlx_path:
                 print(f"🎮 Roblox Place File: {result.rbxlx_path}")
             if result.project_zip_path:
