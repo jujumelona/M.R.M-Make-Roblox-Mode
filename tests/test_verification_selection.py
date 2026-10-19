@@ -33,6 +33,7 @@ def test_colab_style_environment_never_reports_unexecuted_studio_success():
     assert report["schema"] == SCHEMA
     assert report["checks"]["stylua"]["status"] == "passed"
     assert report["checks"]["lune_economy"]["status"] == "not_run"
+    assert report["checks"]["wally_dependencies"]["status"] == "not_run"
     assert report["checks"]["studio_structure"]["status"] == "not_run"
     assert report["checks"]["studio_multiplayer"]["status"] == "not_run"
     assert report["checks"]["datastore_rejoin"]["status"] == "not_run"
@@ -96,3 +97,20 @@ def test_lune_is_selected_only_with_binary_and_test_file(tmp_path, monkeypatch):
                         lambda name: None if name == "lune" else real_which(name))
     skipped = manager.run_lune_economy_test(tmp_path)
     assert skipped["executed"] is False and skipped["status"] == "not_run"
+
+
+def test_builtin_game_does_not_try_network_dependency_install():
+    report = _report(tool_results={
+        "wally": {"executed": False, "status": "not_applicable",
+                  "reason": "Built-in UI/storage requires no external Wally packages"},
+    })
+    assert report["checks"]["wally_dependencies"]["status"] == "not_applicable"
+    assert report["checks"]["studio_multiplayer"]["status"] == "not_run"
+
+
+def test_required_fusion_or_profilestore_wally_failure_is_not_suppressed():
+    report = _report(tool_results={
+        "wally": {"executed": True, "success": False, "error": "network failed"},
+    }, artifact_ready=False)
+    assert report["checks"]["wally_dependencies"]["status"] == "failed"
+    assert report["checks"]["artifact"]["status"] == "failed"
