@@ -32,7 +32,7 @@ def _blocking(report: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _plan_change(module: Any, issues: list[dict[str, Any]], router: Any,
-                 proposal: Any) -> dict[str, Any]:
+                 proposal: Any, previous_failures: list[dict[str, Any]]) -> dict[str, Any]:
     """A second AI call diagnoses actual quoted defects before touching code."""
     result = router.complete_json(
         prompt=(
@@ -53,7 +53,8 @@ def _plan_change(module: Any, issues: list[dict[str, Any]], router: Any,
                     if module.name in req.get("owner_modules", [])
                 ][:8],
                 "real_source_findings": issues,
-            }, ensure_ascii=False, default=str)[:7000]
+                "previous_failed_repair_attempts": previous_failures[-3:],
+            }, ensure_ascii=False, default=str)[:8000]
         ),
         role="planner", temperature=0, max_tokens=1100,
     )
@@ -108,7 +109,7 @@ def run_source_repair_cycle(
         report["reason"] = "No confirmed blocking findings eligible for repair"
         return report
     modules = {m.file_path: m for m in proposal.modules}
-    seen: set[str] = set()
+    attempted_patches: set[tuple[str, str]] = set()
     changed: set[str] = set()
     current = initial_review
     for round_number in range(1, max_rounds + 1):
@@ -156,19 +157,15 @@ def run_source_repair_cycle(
                 expected_hash = current.get("source_sha256", {}).get(module.file_path)
                 if expected_hash != _hash(original):
                     raise ValueError("Source changed since AI review: " + module.file_path)
-            signature = _hash(json.dumps({
-                "findings": sorted((x["file"], x.get("issue"), x.get("quote"))
-                                   for x in findings),
-                "source": {k: _hash(v) for k, v in sorted(originals.items())},
-            }, ensure_ascii=False, sort_keys=True))
-            if signature in seen:
-                raise ValueError("No progress: identical source and defect set repeated")
-            seen.add(signature)
-
             agent = agent_factory(router=router)
             for module in selected:
                 issues = by_file[module.file_path]
-                plan = _plan_change(module, issues, router, proposal)
+                previous_failures = [
+                    {"round": prev["round"], "plans": prev["plans"],
+                     "reason": prev.get("reason", ""), "validation": prev.get("validation")}
+                    for prev in report["attempts"][:-1] if prev.get("status") == "reverted"
+                ]
+                plan = _plan_change(module, issues, router, proposal, previous_failures)
                 step["plans"].append(plan)
                 diagnostic = (
                     "Code review found concrete defects in existing source. "
@@ -185,6 +182,10 @@ def run_source_repair_cycle(
                 )
                 if not isinstance(candidate, str) or candidate == original or not candidate.strip():
                     raise ValueError("Repair produced no substantive source change")
+                fingerprint = (module.file_path, _hash(candidate))
+                if fingerprint in attempted_patches:
+                    raise ValueError("Same unsuccessful candidate repeated; stop retrying")
+                attempted_patches.add(fingerprint)
                 candidates[module.file_path] = candidate
                 step["edits"].append({
                     "file": module.file_path, "before_sha256": _hash(original),
@@ -228,8 +229,13 @@ def run_source_repair_cycle(
             step["status"] = "reverted"
             step["reason"] = type(exc).__name__ + ": " + str(exc)[:500]
             report["reason"] = step["reason"]
-            report["status"] = "failed"
-            break
+            # A failed patch does not end the process. Ask for a new root-cause
+            # plan using the previous failure evidence on the next attempt.
+            # A repeated identical candidate is a terminal no-progress signal.
+            if "Same unsuccessful candidate repeated" in step["reason"]:
+                report["status"] = "blocked"
+                break
+            report["status"] = "retrying"
     else:
         report["status"] = "exhausted"
         report["reason"] = "Review still contains blocking defects after maximum repair rounds"
