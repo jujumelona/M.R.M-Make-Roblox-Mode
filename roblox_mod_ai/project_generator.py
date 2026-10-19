@@ -247,6 +247,12 @@ JestGlobals = "roblox/jest-globals@=3.20.0"
             research_path.write_text(json.dumps(research, indent=2, ensure_ascii=False), encoding="utf-8")
             paths_created["pre_design_research"] = research_path
 
+        blueprint = proposal.game_design.get("implementation_blueprint")
+        if blueprint:
+            blueprint_path = target_dir / "implementation_blueprint.json"
+            blueprint_path.write_text(json.dumps(blueprint, indent=2, ensure_ascii=False), encoding="utf-8")
+            paths_created["implementation_blueprint"] = blueprint_path
+
         # Persist a source-aware ledger alongside the Rojo project. Planned
         # modules cannot masquerade as executed Roblox gameplay.
         trace_path = target_dir / "request_traceability.json"
