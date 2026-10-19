@@ -62,7 +62,7 @@ def test_departed_player_cannot_keep_newly_acquired_profile_lease():
         roblox_service=RobloxService.SERVER_SCRIPT_SERVICE,
     )
     src = LuauCodeGenerator().generate_module_code(module, RobloxProposal(
-        requested_prompt="Coins", game_title="RaceTest", description="", modules=[module]))
+        requested_prompt="Coins", game_title="RaceTest", description="", game_design={}, modules=[module]))
     loaded = src.index("if not success or lockedByOther or rawData == nil then")
     disconnected = src.index("if player.Parent ~= Players then", loaded)
     recorded = src.index("sessionData[userId] = data", loaded)
