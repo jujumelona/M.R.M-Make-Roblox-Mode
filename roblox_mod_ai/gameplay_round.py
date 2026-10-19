@@ -18,6 +18,8 @@ local COUNTDOWN = 5
 local ROUND_DURATION = 120
 local INTERMISSION = 8
 local VICTORY_REWARD = 100
+-- Default ring spans -20 to 20 studs. Give its walls a 2-stud margin.
+local ARENA_LIMIT = 18
 
 game:SetAttribute("ArenaRoundActive", false)
 local phase = "Waiting"
@@ -28,12 +30,23 @@ local function announce(nextPhase: string, text: string, remaining: number)
     phase, message, timeLeft = nextPhase, text, remaining
     statusRemote:FireAllClients(phase, message, timeLeft)
 end
+local function inArena(player: Player): boolean
+    local character = player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root or not root:IsA("BasePart") then return false end
+    return math.abs(root.Position.X) <= ARENA_LIMIT
+        and math.abs(root.Position.Z) <= ARENA_LIMIT
+end
+
 local function eligible(): {Player}
     local roster: {Player} = {}
     for _, player in Players:GetPlayers() do
         local char = player.Character
         local humanoid = char and char:FindFirstChildOfClass("Humanoid")
-        if humanoid and humanoid.Health > 0 then
+        -- Do not start before the server-owned profile and rewards exist.
+        local stats = player:FindFirstChild("leaderstats")
+        if humanoid and humanoid.Health > 0
+            and stats and stats:FindFirstChild("Coins") then
             table.insert(roster, player)
             if #roster >= MAX_FIGHTERS then break end
         end
@@ -108,8 +121,14 @@ task.spawn(function()
             local survivors: {Player} = {}
             for player, humanoid in fighters do
                 if alive[player] and player.Parent == Players
-                    and player.Character == humanoid.Parent and humanoid.Health > 0 then
+                    and player.Character == humanoid.Parent and humanoid.Health > 0
+                    and inArena(player) then
                     table.insert(survivors, player)
+                else
+                    alive[player] = false
+                    if player.Parent == Players then
+                        player:SetAttribute("InArenaRound", false)
+                    end
                 end
             end
             if #survivors <= 1 then
