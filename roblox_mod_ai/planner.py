@@ -429,6 +429,19 @@ class RobloxGameDesignPlanner:
                 ),
             ])
 
+        # New games always explain their concrete authored objective to players.
+        # Existing Experience addons must not install unrelated global UI.
+        if project_mode == "new_experience":
+            modules.append(RobloxModuleSpec(
+                module_id="mod_game_objective",
+                name="GameObjectiveController",
+                kind=ModuleKind.CLIENT_SCRIPT,
+                file_path="src/client/GameObjectiveController.client.luau",
+                roblox_service=RobloxService.STARTER_PLAYER_SCRIPTS,
+                description="Player-visible task briefing and first action with a toggle.",
+                depends_on=[],
+            ))
+
         # 4. Generate Test Specs tailored to the generated modules
         unresolved = bool(research["ledger"].get("decomposition_pending") or
                           research["ledger"].get("unimplemented_facets") or
