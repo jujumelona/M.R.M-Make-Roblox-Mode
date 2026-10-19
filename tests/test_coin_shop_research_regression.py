@@ -98,3 +98,20 @@ def test_explicitly_unvalidated_combat_must_fail_before_luau_generation():
                                   "statement": "리더보드가 포함된 검투 아레나 게임을 만들어줘."}],
             reserved_modules=set(), reserved_remotes=set(), reserved_objects=set(),
         )
+
+
+def test_reject_invalid_profile_and_marketplace_apis_from_failed_shop_log():
+    from roblox_mod_ai.luau_api_sanity import invalid_luau_apis
+
+    broken = """
+    local stock = services.PlayerDataManager.GetState(nil, "ShopStock")
+    MarketplaceItemService.BuyAsync(player, "sword")
+    """
+    failures = invalid_luau_apis(broken)
+    assert any("authenticated Player" in diagnostic for diagnostic in failures)
+    assert any("in-game currency" in diagnostic for diagnostic in failures)
+    valid = """
+    local profile = services.PlayerDataManager.GetState(player, "ShopStock")
+    if profile then profile.owned = true end
+    """
+    assert invalid_luau_apis(valid) == []
