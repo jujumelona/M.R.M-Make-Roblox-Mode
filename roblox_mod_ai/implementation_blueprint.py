@@ -165,11 +165,24 @@ def build_implementation_blueprint(proposal: Any) -> dict[str, Any]:
         ) | set(
             m.name for m in proposal.modules if m.module_id in novel
         ))
+        selected_behaviors = sorted(set(stock))
+        acceptance_items = [STOCK_BEHAVIORS[name]["postcondition"]
+                            for name in selected_behaviors if name in STOCK_BEHAVIORS]
+        if "is_combat" in selected_behaviors and any(
+            module.name == "ArenaRoundService" for module in proposal.modules
+        ):
+            acceptance_items.append(
+                "A minimum two-player match begins after countdown, pays the actual "
+                "survivor, handles disconnect/draw and returns everyone to the lobby")
+            owners = sorted(set(owners) | {"ArenaRoundService", "RoundController"})
+        authored_acceptance = (dyn.get("acceptance") or {}).get(rid, "")
+        acceptance = authored_acceptance or "; ".join(acceptance_items)
         requirements.append({
             "id": rid, "source": entry.get("statement", ""),
             "owners": owners,
-            "missing": not owners,
-            "acceptance": (dyn.get("acceptance") or {}).get(rid, ""),
+            "missing": not owners or not acceptance.strip(),
+            "acceptance": acceptance,
+            "acceptance_status": "planned_not_run",
         })
     scenarios = [{
         "id": "mechanic." + m["id"],
