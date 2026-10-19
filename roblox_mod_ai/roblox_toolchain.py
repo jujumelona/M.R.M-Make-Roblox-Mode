@@ -95,6 +95,7 @@ rojo = "rojo-rbx/rojo@7.4.4"
 wally = "UpliftGames/wally@0.3.2"
 selene = "Kampfkarren/selene@0.27.1"
 stylua = "JohnnyMorganz/StyLua@2.0.2"
+lune = "lune-org/lune@0.11.0"
 """
 
     def generate_aftman_manifest(self) -> str:
@@ -104,6 +105,7 @@ rojo = "rojo-rbx/rojo@7.4.4"
 wally = "UpliftGames/wally@0.3.2"
 selene = "Kampfkarren/selene@0.27.1"
 stylua = "JohnnyMorganz/StyLua@2.0.2"
+lune = "lune-org/lune@0.11.0"
 """
 
     @staticmethod
