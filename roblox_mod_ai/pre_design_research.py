@@ -110,6 +110,20 @@ _FOCUSED_DOC_QUERY = {
     "simulator": "RemoteEvent OnServerEvent",
     "magic": "Workspace Raycast",
 }
+# Direct official API member references for well-known host-owned mechanics.
+# Generic indexed search is a fallback, not allowed to replace an exact failed
+# call with a loosely related tutorial or avatar modeling page.
+_EXACT_DOC_MEMBERS = {
+    "coins": ("https://create.roblox.com/docs/reference/engine/classes/BasePart.md",
+              "BasePart.Touched"),
+    "combat": ("https://create.roblox.com/docs/reference/engine/classes/Humanoid.md",
+               "TakeDamage"),
+    "shop": ("https://create.roblox.com/docs/reference/engine/classes/ProximityPrompt.md",
+             "ProximityPrompt.Triggered"),
+    "leaderboard": ("https://create.roblox.com/docs/reference/engine/classes/DataStoreService.md",
+                    "GetOrderedDataStore"),
+}
+
 # Reject unrelated reference pages even if the lexical search returned them.
 # Dynamic/user-authored facets remain unfiltered since their API identity is
 # not known a priori.
@@ -636,7 +650,17 @@ class RobloxPreDesignResearch:
             try:
                 focused_query = _FOCUSED_DOC_QUERY.get(facet["id"], retrieval_query)
                 entry["official_lookup_query"] = focused_query
-                result = self.docs.search(focused_query, limit=_DOC_LIMIT, with_excerpt=True)
+                exact = _EXACT_DOC_MEMBERS.get(facet["id"])
+                if exact:
+                    result = self.docs.read_exact(*exact)
+                    entry["official_lookup_url"] = exact[0]
+                    if result.get("error"):
+                        entry["exact_api_lookup_error"] = str(result["error"])[:220]
+                        result = self.docs.search(focused_query, limit=_DOC_LIMIT,
+                                                  with_excerpt=True)
+                else:
+                    result = self.docs.search(focused_query, limit=_DOC_LIMIT,
+                                              with_excerpt=True)
                 if result.get("error"):
                     failures.append({"facet": facet["id"], "provider": "official_docs",
                                      "reason": str(result["error"])[:250]})
