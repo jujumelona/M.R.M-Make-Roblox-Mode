@@ -36,7 +36,7 @@ def render_game_objectives(proposal: RobloxProposal) -> str:
         else:
             # Custom genres cannot be assigned an invented win condition.
             goal = re.sub(
-                r"(?:게임|모드)?\\s*(?:을|를)?\\s*(?:만들어\\s*줘|만들어주세요|제작해\\s*줘|제작해주세요)[.!?\\s]*$",
+                r"(?:게임|모드)?\s*(?:을|를)?\s*(?:만들어\s*줘|만들어주세요|제작해\s*줘|제작해주세요)[.!?\s]*$",
                 "", proposal.requested_prompt.strip(), flags=re.I
             ).strip(" ,.!?")[:130] or str(contract.get("objective", "활동을 진행하세요."))
             hint = actions[0][:125] if actions else "맵을 탐색하세요."
@@ -49,7 +49,7 @@ def render_game_objectives(proposal: RobloxProposal) -> str:
         elif mode == "stage":
             goal, hint = "Reach the final checkpoint.", "Move to the first checkpoint."
         else:
-            goal = re.sub(r"^(?:create|make|build)\\s+(?:me\\s+)?(?:a\\s+)?", "",
+            goal = re.sub(r"^(?:create|make|build)\s+(?:me\s+)?(?:a\s+)?", "",
                           proposal.requested_prompt.strip(), flags=re.I)[:130]
             hint = actions[0][:125] if actions else "Explore the game world"
     quote_goal = json.dumps(goal, ensure_ascii=False)
@@ -69,7 +69,7 @@ goal.Position = UDim2.new(0.5, -230, 0, 18)
 goal.TextWrapped = true
 goal.TextScaled = true
 goal.BackgroundTransparency = 0.3
-goal.Text = ''' + json.dumps("목표: " if korean else "Goal: ") + ''' .. ''' + quote_goal + '''
+goal.Text = ''' + json.dumps("목표: " if korean else "Goal: ", ensure_ascii=False) + ''' .. ''' + quote_goal + '''
 goal.Parent = gui
 
 local hint = Instance.new("TextLabel")
@@ -79,7 +79,7 @@ hint.Position = UDim2.new(0.5, -230, 0, 86)
 hint.TextWrapped = true
 hint.TextScaled = true
 hint.BackgroundTransparency = 0.3
-hint.Text = ''' + json.dumps("시작: " if korean else "Start: ") + ''' .. ''' + quote_hint + '''
+hint.Text = ''' + json.dumps("시작: " if korean else "Start: ", ensure_ascii=False) + ''' .. ''' + quote_hint + '''
 hint.Parent = gui
 
 local toggle = Instance.new("TextButton")
