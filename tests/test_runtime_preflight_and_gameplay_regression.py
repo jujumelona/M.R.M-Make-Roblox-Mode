@@ -97,3 +97,14 @@ def test_combat_kill_rewards_are_server_owned_and_limited_to_credited_deaths():
     assert "coins.Value += KNOCKOUT_REWARD_COINS" in source
     assert "trackKnockout(targetHumanoid, player)" in source
     assert source.index("if distance > MAX_REACH") < source.index("trackKnockout(targetHumanoid, player)")
+
+
+def test_hud_updates_live_health_and_rebinds_after_respawn():
+    generator = LuauCodeGenerator()
+    src = generator._generate_hud_controller(SimpleNamespace(name="HUDController"), None)
+    assert 'health.Name = "HealthDisplay"' in src
+    assert "humanoid.HealthChanged:Connect(updateHealth)" in src
+    assert 'humanoid:GetPropertyChangedSignal("MaxHealth"):Connect(updateHealth)' in src
+    assert 'localPlayer.CharacterAdded:Connect(bindCharacter)' in src
+    assert "if healthChanged then healthChanged:Disconnect() end" in src
+    assert "if maxHealthChanged then maxHealthChanged:Disconnect() end" in src
