@@ -18,8 +18,15 @@ local COUNTDOWN = 5
 local ROUND_DURATION = 120
 local INTERMISSION = 8
 local VICTORY_REWARD = 100
--- Default ring spans -20 to 20 studs. Give its walls a 2-stud margin.
-local ARENA_LIMIT = 18
+-- Derive the ring's dimensions from the actual generated CombatArena model.
+-- Hard-coded world-space bounds break if the map is moved, rotated or resized.
+local ARENA_MARGIN = 3
+local function arenaBounds(): (CFrame?, Vector3?)
+    local arena = workspace:FindFirstChild("CombatArena")
+    if not arena or not arena:IsA("Model") then return nil, nil end
+    local frame, size = arena:GetBoundingBox()
+    return frame, size
+end
 
 game:SetAttribute("ArenaRoundActive", false)
 local phase = "Waiting"
@@ -34,8 +41,13 @@ local function inArena(player: Player): boolean
     local character = player.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
     if not root or not root:IsA("BasePart") then return false end
-    return math.abs(root.Position.X) <= ARENA_LIMIT
-        and math.abs(root.Position.Z) <= ARENA_LIMIT
+    local frame, size = arenaBounds()
+    if not frame or not size then return false end
+    local relative = frame:PointToObjectSpace(root.Position)
+    local extentX = math.max(0, size.X * 0.5 - ARENA_MARGIN)
+    local extentZ = math.max(0, size.Z * 0.5 - ARENA_MARGIN)
+    return math.abs(relative.X) <= extentX
+        and math.abs(relative.Z) <= extentZ
 end
 
 local function eligible(): {Player}
@@ -83,6 +95,12 @@ task.spawn(function()
         if cancelled then continue end
         ready = eligible()
         if #ready < MIN_PLAYERS then continue end
+        local arenaFrame, arenaSize = arenaBounds()
+        if not arenaFrame or not arenaSize then
+            announce("Waiting", "Arena geometry is missing", 0)
+            task.wait(2)
+            continue
+        end
         local fighters: {[Player]: Humanoid} = {}
         local connections: {RBXScriptConnection} = {}
         local alive: {[Player]: boolean} = {}
@@ -95,11 +113,14 @@ task.spawn(function()
                 alive[player] = true
                 -- Place fighters on an inside-the-ring grid, never at the lobby spawn.
                 spawnSlot += 1
-                local arena = workspace:FindFirstChild("CombatArena")
-                if arena and character then
-                    local x = ((spawnSlot - 1) % 4 - 1.5) * 8
-                    local z = (math.floor((spawnSlot - 1) / 4) - 1.5) * 8
-                    character:PivotTo(CFrame.new(x, 5, z))
+                if character then
+                    local width = math.max(0, arenaSize.X * 0.5 - ARENA_MARGIN)
+                    local depth = math.max(0, arenaSize.Z * 0.5 - ARENA_MARGIN)
+                    local gridX = ((spawnSlot - 1) % 4 - 1.5) / 1.5
+                    local gridZ = (math.floor((spawnSlot - 1) / 4) - 1.5) / 1.5
+                    local x = gridX * math.min(12, width * 0.70)
+                    local z = gridZ * math.min(12, depth * 0.70)
+                    character:PivotTo(arenaFrame * CFrame.new(x, arenaSize.Y * 0.5 + 2, z))
                 end
                 player:SetAttribute("InArenaRound", true)
                 table.insert(connections, humanoid.Died:Connect(function()
