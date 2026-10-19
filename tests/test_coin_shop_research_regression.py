@@ -76,6 +76,13 @@ def test_default_planner_uses_real_shop_coin_combat_templates_not_search_suggest
     assert {"ShopService", "ShopController", "CoinCollector",
             "CombatSystem", "CombatController"}.issubset(names)
     assert not any(name.startswith("MarketplaceItemServiceBuy") for name in names)
+    # The corrected route must also materialize the arena, coin pickup
+    # objects, merchant counter and the correct shop RPC in the Rojo tree.
+    from roblox_mod_ai.project_generator import RobloxProjectGenerator
+    tree = RobloxProjectGenerator(".").generate_rojo_project_json(proposal)["tree"]
+    world = tree["Workspace"]
+    assert {"Coins", "ShopStalls", "CombatArena"} <= set(world)
+    assert "ShopPurchase" in tree["ReplicatedStorage"]["Remotes"]
 
 
 def test_explicitly_unvalidated_combat_must_fail_before_luau_generation():
