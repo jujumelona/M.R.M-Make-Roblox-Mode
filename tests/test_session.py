@@ -27,9 +27,11 @@ def test_session_plan_revise_build(tmp_path: Path):
     revised_reply = session.revise("Add a magic staff and cooldown UI")
     assert revised_reply.authored_plan.revision_count == 1
     assert len(revised_reply.authored_plan.checkpoints) >= 2
-    # No invented magic prefab: an unimplemented new feature must remain blocked.
-    assert not revised_reply.ready_to_build
+    # The known shop+combat system already owns the purchasable magic staff.
+    # A separate unverified MagicAbilities prefab must not be invented.
+    assert revised_reply.ready_to_build
     assert not any("MagicAbilities" in m.name for m in revised_reply.authored_plan.proposal.modules)
+    assert any(m.name == "ShopService" for m in revised_reply.authored_plan.proposal.modules)
 
     # 4. Reload plan in fresh session
     new_session = CompleteRobloxAISession(output_root=output_dir)
@@ -38,13 +40,17 @@ def test_session_plan_revise_build(tmp_path: Path):
 
     # 5. Build
     build_result = new_session.build(run_name="test_run", source_only=True)
-    # A source-only build is not a verified Roblox game.
-    assert not build_result.success
+    # A successful source-only build is a valid artifact, NOT a tested game.
+    assert build_result.success, build_result.metadata.get("errors")
     assert not build_result.rbxlx_path
     assert not build_result.playtest_report.passed
-    # The revision requested MagicAbilities, which must not become a fake stub.
-    # With model generation disabled, source generation fails rather than claiming success.
-    assert build_result.analysis_report.passed is False
-    assert not (Path(build_result.project_dir) / "src/server/MagicAbilities.server.luau").exists()
-    assert any("RMM_ENABLE_MODEL_GENERATION" in message
-               for message in build_result.metadata["errors"])
+    assert build_result.playtest_report.total_tests == 0
+    assert build_result.analysis_report.passed is True
+    root = Path(build_result.project_dir)
+    assert not (root / "src/server/MagicAbilities.server.luau").exists()
+    shop = (root / "src/server/ShopService.server.luau").read_text(encoding="utf-8")
+    controller = (root / "src/client/ShopController.client.luau").read_text(encoding="utf-8")
+    assert "magic_staff" in shop and "lastCastByUserId" in shop
+    assert 'cooldownHint.Name = "StaffCooldown"' in controller
+    assert "nextStaffCast" in controller
+    assert build_result.metadata["release_status"] == "source_only"
