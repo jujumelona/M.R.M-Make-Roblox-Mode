@@ -558,6 +558,7 @@ end)
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
 local EconomyRules = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("EconomyRules"))
 
 local remotesFolder = ReplicatedStorage:WaitForChild("Remotes")
@@ -616,6 +617,11 @@ local function grantMagicStaff(player: Player): boolean
             if game:GetAttribute("ArenaRoundActive") then
                 local opponent = Players:GetPlayerFromCharacter(targetModel)
                 if not opponent or not opponent:GetAttribute("InArenaRound") then return end
+            end
+            -- Credit is centralized in CombatSystem for both melee and staff.
+            local credit = ServerScriptService:FindFirstChild("RMMCombatCredit")
+            if credit and credit:IsA("BindableEvent") then
+                credit:Fire(player, target)
             end
             target:TakeDamage(20)
         end
@@ -1071,6 +1077,7 @@ end)
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
+local ServerScriptService = game:GetService("ServerScriptService")
 
 local remotesFolder = ReplicatedStorage:WaitForChild("Remotes")
 local attackRemote = remotesFolder:FindFirstChild("AttackRequest") :: RemoteEvent?
@@ -1085,6 +1092,9 @@ local MAX_REACH = 15.0
 local KNOCKOUT_REWARD_COINS = 25
 local knockoutCredits: {{ [Humanoid]: {{ player: Player, time: number }} }} = {{}}
 local deathMonitored: {{ [Humanoid]: boolean }} = {{}}
+local combatCredit = Instance.new("BindableEvent")
+combatCredit.Name = "RMMCombatCredit"
+combatCredit.Parent = ServerScriptService
 
 local function trackKnockout(targetHumanoid: Humanoid, attacker: Player)
     knockoutCredits[targetHumanoid] = {{ player = attacker, time = os.clock() }}
@@ -1109,6 +1119,17 @@ local function trackKnockout(targetHumanoid: Humanoid, attacker: Player)
         deathMonitored[targetHumanoid] = nil
     end)
 end
+
+-- A BindableEvent is server-only; client RemoteEvents cannot forge staff credits.
+combatCredit.Event:Connect(function(player: Player, target: Humanoid)
+    if not player or player.Parent ~= Players or not target or not target:IsA("Humanoid") then return end
+    if game:GetAttribute("ArenaRoundActive") then
+        local victim = Players:GetPlayerFromCharacter(target.Parent)
+        if not victim or not victim:GetAttribute("InArenaRound")
+            or not player:GetAttribute("InArenaRound") then return end
+    end
+    trackKnockout(target, player)
+end)
 
 attackRemote.OnServerEvent:Connect(function(player, targetCharacter: Model?)
     if not targetCharacter or not targetCharacter:IsA("Model") then return end
