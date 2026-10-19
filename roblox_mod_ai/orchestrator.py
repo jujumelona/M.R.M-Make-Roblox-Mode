@@ -157,6 +157,7 @@ class RobloxProductionOrchestrator:
             "orchestrator.py", "agent_loop.py", "code_generator.py",
             "module_prompt_scope.py", "server_modules.py", "economy_core.py", "host_client.py",
             "luau_service_contract.py", "request_semantics.py", "host_player_data.py",
+            "roblox_toolchain.py", "verification_selector.py",
         )
         component_fingerprints = {
             component: hashlib.sha256(
@@ -381,9 +382,11 @@ class RobloxProductionOrchestrator:
 
         def materialize():
             created = self.project_generator.materialize_project_tree(proposal, output_dir)
-            tool_results["lune_economy_applicable"] = bool(
-                proposal.game_design.get("features", {}).get("is_shop")
-                and self.toolchain.stage_lune_economy_test(output_dir))
+            # Recognize reusable offline contracts from the actual generated
+            # project. This is never decided by the user's genre/prompt.
+            self.toolchain.stage_lune_economy_test(output_dir)
+            tool_results["offline_test_count"] = len(
+                self.toolchain.discover_offline_tests(output_dir))
             if proposal.game_design.get("gameplay_contract"):
                 (output_dir / "gameplay_contract.json").write_text(
                     json.dumps(proposal.game_design["gameplay_contract"],
@@ -533,14 +536,20 @@ class RobloxProductionOrchestrator:
                                             "error":"Post-repair static/contract check failed"}
                                 continue
                         return {"passed": False, "error": f"{name} failed or skipped: {result}"}
-            # Lune is only capable of running standalone (non-engine) Luau
-            # units. Shop projects ship a test of their actual EconomyRules.
-            # An absent Lune executable is explicitly NOT RUN, not a pass.
-            if not source_only and tool_results.get("lune_economy_applicable"):
-                unit = self.toolchain.run_lune_economy_test(output_dir)
-                tool_results["lune_economy"] = unit
+            if not source_only:
+                # Official Luau CLI grammar checking is optional when the
+                # binary is not installed; a real failure is never ignored.
+                compile_check = self.toolchain.run_luau_compile(output_dir)
+                tool_results["luau_compile"] = compile_check
+                if compile_check.get("executed") and not compile_check.get("success"):
+                    return {"passed": False, "error": "Official Luau parser failed",
+                            "diagnostic": compile_check}
+                # Run ALL explicitly offline-compatible tests, regardless
+                # of game type, source name, or module count.
+                unit = self.toolchain.run_lune_offline_suite(output_dir)
+                tool_results["lune_offline"] = unit
                 if unit.get("executed") and not unit.get("success"):
-                    return {"passed": False, "error": "Executable Lune economy test failed",
+                    return {"passed": False, "error": "Offline Luau tests failed",
                             "diagnostic": unit}
             return {"passed": True, "static_checks": len(acceptance["checks"])}
 
