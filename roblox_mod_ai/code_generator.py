@@ -1008,7 +1008,7 @@ end)
     # 7. Real Combat & Action System
     def _generate_combat_service(self, module: RobloxModuleSpec, proposal: RobloxProposal) -> str:
         arena_guard = ""
-        if any(m.module_id == "mod_arena_round" for m in proposal.modules):
+        if proposal is not None and any(m.module_id == "mod_arena_round" for m in proposal.modules):
             arena_guard = """
     -- Arena PvP is legal only for two active server-enrolled contestants.
     if not game:GetAttribute("ArenaRoundActive")
