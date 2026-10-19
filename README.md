@@ -133,6 +133,16 @@ RMM의 MCP 서버(`python -m roblox_mod_ai.mcp_server`)는 `roblox_plan_experien
 
 **검증 경계:** 생성된 테스트 시나리오는 *미실행*이며, 정적 소스 검증이나 Rojo 성공을 Roblox Studio에서의 실제 플레이/멀티플레이 성공으로 표시하지 않습니다. 런타임 검증에는 로컬 Studio 테스트가 필요합니다.
 
+## 자동 검증 실행 범위 선택
+
+**RMM은 실행 가능한 도구와 현재 게임의 기능만 선택합니다.** 기본 Colab/Linux에서는 요구사항·실제 소스·Rojo Place 구조 검증을 실행하고, 설치된 StyLua·Selene을 사용합니다. `luau-analyze`가 있다면 별도의 분석을 수행합니다. 상점 게임이고 **Lune이 설치되어 있을 때만** 배포되는 `src/shared/EconomyRules.luau`의 순수 경제 계산 테스트를 실제 실행합니다.
+
+**Wally는 Fusion UI나 ProfileStore를 사용하는 경우에만 필요**합니다. 기본 UI·내장 DataStore를 사용하는 게임은 외부 패키지 설치를 건너뜁니다.
+
+모든 제작 결과 폴더와 완전한 ZIP 안의 `verification_report.json`을 보면 개별 검사가 `passed`, `failed`, `not_run`, `not_applicable` 중 무엇인지 확인할 수 있습니다. 실행되지 않은 Lune·Studio 테스트는 성공에 합산되지 않습니다. 실제 Roblox Studio 실행은 이 컴퓨터에서 로컬 Studio 검사를 별도로 실행해야 하며, **Colab에서 Studio 멀티플레이가 실행됐다고 표시하지 않습니다.**
+
+**선택하지 않는 도구:** 고정된 평가 작업과 Open Cloud 키가 필요한 OpenGameEval은 임의의 생성 게임 검증에 자동 연결하지 않습니다. Studio MCP 및 서드파티 Studio 플러그인은 Colab에 설치하지 않으며, Windows Studio를 직접 조작하지도 않습니다. 실제 플레이테스트가 필요하면 기존 ZIP에 포함된 로컬 Studio 검사 안내를 따릅니다.
+
 ## 로컬 Roblox Studio 검증 (기본 제작에는 API 키 불필요)
 
 - RMM은 Luau 생성, 정적 검사, Rojo 빌드와 ZIP 생성까지만 기본 실행합니다.
