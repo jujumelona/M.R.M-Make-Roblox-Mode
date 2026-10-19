@@ -68,6 +68,46 @@ ASSET_HINTS: tuple[tuple[str, str], ...] = (
 _DOC_LIMIT = 2
 _MAX_FACETS = 10
 
+# Host-owned API lookup for known mechanics. A large natural-language query
+# ranks generic words like "validation" / "inventory" above relevant classes.
+# Preserve the user's full query in the audit; use exact relevant class names
+# to select documentation, without inventing signatures or live observations.
+_FOCUSED_DOC_QUERY = {
+    "coins": "BasePart Touched",
+    "shop": "ProximityPrompt Triggered",
+    "combat": "Humanoid TakeDamage",
+    "leaderboard": "DataStoreService GetOrderedDataStore",
+    "obby": "SpawnLocation checkpoint Touched",
+    "tycoon": "BasePart AssemblyLinearVelocity",
+    "simulator": "RemoteEvent OnServerEvent",
+    "magic": "Workspace Raycast",
+}
+# Reject unrelated reference pages even if the lexical search returned them.
+# Dynamic/user-authored facets remain unfiltered since their API identity is
+# not known a priori.
+_REQUIRED_DOC_TERMS = {
+    "coins": ("basepart", "touched"),
+    "shop": ("proximityprompt",),
+    "combat": ("humanoid", "takedamage"),
+    "leaderboard": ("leaderstats", "ordereddatastore", "datastoreservice"),
+    "obby": ("spawnlocation", "basepart", "touched"),
+    "tycoon": ("basepart", "assemblylinearvelocity"),
+    "simulator": ("remoteevent", "onserverevent"),
+    "magic": ("raycast",),
+}
+
+
+def _documentation_relevant(facet: str, url: str, excerpt: str) -> bool:
+    """Official origin is necessary but not sufficient to claim task grounding."""
+    terms = _REQUIRED_DOC_TERMS.get(facet)
+    if not terms:
+        return True
+    # A page about catalog inventory or avatar validation does not prove a
+    # combat or in-game currency implementation. Check concrete API terms.
+    searchable = (str(url) + " " + str(excerpt)).casefold()
+    return any(term in searchable for term in terms)
+
+
 
 def _clean(s: str) -> str:
     return " ".join(str(s).split()).strip()
@@ -546,7 +586,9 @@ class RobloxPreDesignResearch:
                 entry["status"] = "deferred_budget"
                 continue
             try:
-                result = self.docs.search(retrieval_query, limit=_DOC_LIMIT, with_excerpt=True)
+                focused_query = _FOCUSED_DOC_QUERY.get(facet["id"], retrieval_query)
+                entry["official_lookup_query"] = focused_query
+                result = self.docs.search(focused_query, limit=_DOC_LIMIT, with_excerpt=True)
                 if result.get("error"):
                     failures.append({"facet": facet["id"], "provider": "official_docs",
                                      "reason": str(result["error"])[:250]})
@@ -554,6 +596,11 @@ class RobloxPreDesignResearch:
                 for hit in result.get("results", []):
                     url, body = hit.get("url", ""), hit.get("excerpt", "")
                     if not url or not body or not RobloxOfficialDocs.safe_url(url):
+                        continue
+                    if not _documentation_relevant(facet["id"], url, body):
+                        entry["rejected_irrelevant_documents"] = (
+                            entry.get("rejected_irrelevant_documents", 0) + 1
+                        )
                         continue
                     key = (facet["id"], url)
                     if key in seen_urls:
@@ -569,7 +616,7 @@ class RobloxPreDesignResearch:
                         "query": query,
                     })
                     count += 1
-                entry["status"] = "evidence_found" if count else "no_fetched_evidence"
+                entry["status"] = "evidence_found" if count else "no_fetched_relevant_evidence"
                 entry["evidence_count"] = count
             except Exception as exc:
                 failures.append({"facet": facet["id"], "provider": "official_docs",
