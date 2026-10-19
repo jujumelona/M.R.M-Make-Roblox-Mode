@@ -114,7 +114,10 @@ class CompleteRobloxAISession:
         run_name: str = "production-run",
         source_only: bool = False,
     ) -> RobloxPipelineResult:
-        """Executes Luau generation, analysis, playtest, and builds .rbxlx + project ZIP."""
+        """Build Luau, validate the source and package offline Studio artifacts.
+
+        A verified engine gameplay test is a separate, optional local step.
+        """
         if isinstance(candidate, CompleteChatReply):
             target = candidate.authored_plan
         elif isinstance(candidate, (RobloxAuthoredPlan, RobloxProposal)):
