@@ -12,6 +12,7 @@ from .creator_store import RobloxCreatorStoreCatalog
 from .pre_design_research import RobloxPreDesignResearch
 from .dynamic_architect import RobloxDynamicArchitect, DynamicDesignError, dynamic_design_enabled
 from .gameplay_contract import build_gameplay_contract, arena_round_requested
+from .implementation_blueprint import build_implementation_blueprint
 from .project_modes import validate_mode
 from .model_router import ModelRouter
 from .playtest_runner import RobloxPlaytestRunner
@@ -448,7 +449,8 @@ class RobloxGameDesignPlanner:
                           research["ledger"].get("unmatched_requirements"))
         primary_genre = "Custom" if dynamic_design or unresolved or not any(features.values()) else "Combat"
         if not (dynamic_design or unresolved):
-            for g_name, active in [("Obby", features["is_obby"]), ("Shop", features["is_shop"]), ("Tycoon", features["is_tycoon"]), ("Simulator", features["is_simulator"]), ("Combat", features["is_combat"])]:
+            # Genre is the primary game loop, not the first incidental system.
+            for g_name, active in [("Combat", features["is_combat"]), ("Obby", features["is_obby"]), ("Tycoon", features["is_tycoon"]), ("Simulator", features["is_simulator"]), ("Shop", features["is_shop"])]:
                 if active:
                     primary_genre = g_name
                     break
@@ -489,6 +491,7 @@ class RobloxGameDesignPlanner:
         )
 
         proto_proposal.game_design["gameplay_contract"] = build_gameplay_contract(proto_proposal)
+        proto_proposal.game_design["implementation_blueprint"] = build_implementation_blueprint(proto_proposal)
         test_specs: list[RobloxTestSpec] = self.test_runner.generate_default_test_specs(proto_proposal)
         proto_proposal.tests = test_specs
         proto_proposal.target = RobloxTarget()
@@ -511,105 +514,29 @@ class RobloxGameDesignPlanner:
                 "research_status": research["status"],
                 "dynamic_design": "model_proposed_unverified" if dynamic_design else "none",
                 "gameplay_contract": proto_proposal.game_design["gameplay_contract"],
+                "implementation_blueprint": proto_proposal.game_design["implementation_blueprint"],
             },
         )
         authored_plan.create_checkpoint(note=f"Initial {primary_genre} plan generation")
         return authored_plan
 
     def revise(self, plan: RobloxAuthoredPlan, feedback: str) -> RobloxAuthoredPlan:
-        """Revise using the combined user scope; never silently lose novel mechanics."""
-        proposal = plan.proposal
-        # For any novel gameplay request, fully re-design against the combined
-        # requirement ledger instead of splicing in an unrelated prefab.
-        combined = proposal.requested_prompt + "\n" + feedback
-        new_research = self.researcher.research(combined)
-        if (proposal.game_design.get("dynamic_design") or
-                new_research["ledger"]["unimplemented_facets"] or
-                new_research["ledger"]["unmatched_requirements"]):
-            updated = self.plan(combined,
-                project_mode=proposal.game_design.get("project_mode", "new_experience"))
-            updated.revision_count = plan.revision_count + 1
-            updated.checkpoints = list(plan.checkpoints)
-            updated.create_checkpoint(note="Full request replan for novel Roblox mechanics")
-            return updated
-        proposal.requested_prompt += f" | Revision: {feedback}"
+        """Replan the entire combined request, never splice stale game modules.
 
-        # Same original request + revision is the search authority for every revision.
-        research = self.researcher.research(proposal.requested_prompt)
-        proposal.game_design["pre_design_research"] = research
-        plan.structured_sections["request_ledger"] = research["ledger"]
-        plan.structured_sections["research_queries"] = research["queries"]
-        plan.structured_sections["research_status"] = research["status"]
-        rev_features = self.detect_genres_and_features(feedback)
-        current_features = proposal.game_design.get("features", {})
-        for key, is_requested in rev_features.items():
-            if is_requested:
-                current_features[key] = True
-
-        # Dynamically append requested subsystems without duplicating
-        if rev_features["is_shop"] and not any(m.name == "ShopService" for m in proposal.modules):
-            proposal.modules.append(
-                RobloxModuleSpec(
-                    module_id="mod_shop_service",
-                    name="ShopService",
-                    kind=ModuleKind.SERVER_SCRIPT,
-                    file_path="src/server/ShopService.server.luau",
-                    roblox_service=RobloxService.SERVER_SCRIPT_SERVICE,
-                    description="Server-authoritative economy and shop transaction system.",
-                    depends_on=["mod_network_bridge", "mod_player_data"],
-                )
-            )
-            proposal.modules.append(
-                RobloxModuleSpec(
-                    module_id="mod_shop_controller",
-                    name="ShopController",
-                    kind=ModuleKind.CLIENT_SCRIPT,
-                    file_path="src/client/ShopController.client.luau",
-                    roblox_service=RobloxService.STARTER_PLAYER_SCRIPTS,
-                    description="Client shop interface handler.",
-                    depends_on=["mod_network_bridge", "mod_shop_service"],
-                )
-            )
-            for a in self.creator_store.search("Shop NPC", limit=1):
-                if not any(x.asset_id == a.asset_id for x in proposal.assets):
-                    proposal.assets.append(a)
-
-        if rev_features["is_magic"] and not any(m.name == "MagicAbilities" for m in proposal.modules):
-            proposal.modules.append(
-                RobloxModuleSpec(
-                    module_id="mod_magic_system",
-                    name="MagicAbilities",
-                    kind=ModuleKind.SERVER_SCRIPT,
-                    file_path="src/server/MagicAbilities.server.luau",
-                    roblox_service=RobloxService.SERVER_SCRIPT_SERVICE,
-                    description="Cooldown-managed magic spells and projectile raycasting.",
-                    depends_on=["mod_network_bridge", "mod_player_data"],
-                )
-            )
-
-        # Re-bind module evidence after every revision; old citations may refer
-        # to a different request or document state.
-        for module in proposal.modules:
-            topic = ("shop" if "Shop" in module.name else
-                     "magic" if "Magic" in module.name else
-                     "combat" if "Combat" in module.name else
-                     "coins" if "Coin" in module.name else None)
-            if topic:
-                module.evidence_refs = list(dict.fromkeys(
-                    item["url"] for item in research["evidence"]
-                    if item.get("provider") == "official_docs"
-                    and item.get("facet") == topic and item.get("url")
-                ))
-        # Update test specs
-        proposal.tests = self.test_runner.generate_default_test_specs(proposal)
-
-        proposal.game_design["gameplay_contract"] = build_gameplay_contract(proposal)
-        plan.structured_sections["gameplay_contract"] = proposal.game_design["gameplay_contract"]
-        # Update plan text and checkpoint
-        plan.revision_count += 1
-        plan.text = self._render_plan_markdown(proposal)
-        plan.create_checkpoint(note=f"Revision {plan.revision_count}: {feedback}")
-        return plan
+        A new shop, weapon, UI or world feature changes cross-feature security,
+        DataStore and playtest contracts. Incremental keyword appends previously
+        left the saved module graph and authored plan out of sync.
+        """
+        if not feedback or not feedback.strip():
+            raise ValueError("Revision feedback must not be empty")
+        updated = self.plan(
+            plan.proposal.requested_prompt + "\n" + feedback,
+            project_mode=plan.proposal.game_design.get("project_mode", "new_experience"),
+        )
+        updated.revision_count = plan.revision_count + 1
+        updated.checkpoints = list(plan.checkpoints)
+        updated.create_checkpoint(note="Full blueprint and requirement replan")
+        return updated
 
     def _render_plan_markdown(self, proposal: RobloxProposal) -> str:
         genre = proposal.game_design.get("genre", "Action")
@@ -640,6 +567,24 @@ class RobloxGameDesignPlanner:
         ) or "- No official document content fetched; not evidence-grounded"
         pending = ", ".join(ledger.get("unimplemented_facets", [])) or "none"
         contract = proposal.game_design.get("gameplay_contract", {})
+        blueprint = proposal.game_design.get("implementation_blueprint") or {}
+        mechanics_md = "\n".join(
+            f"- **{m['id']}**: owners={', '.join(m['owners']) or 'UNASSIGNED'}; "
+            f"files={', '.join(m['files']) or 'NONE'}; runtime=NOT RUN"
+            for m in blueprint.get("mechanics", [])
+        ) or "- No assigned mechanics"
+        integrations_md = "\n".join(
+            f"- **{row['id']}** ({', '.join(row['owners'])}): {row['expected']}; "
+            f"negative: {row['negative_test']}"
+            for row in blueprint.get("integration_contracts", [])
+        ) or "- No multi-system edge requested"
+        scenarios_md = "\n".join(
+            f"- **{case['id']}**: {case['action']} -> {case['expect']} [NOT RUN]"
+            for case in blueprint.get("studio_scenarios", [])
+        ) or "- No scenarios"
+        blocked_md = "\n".join(
+            "- " + issue for issue in blueprint.get("blocking_issues", [])
+        ) or "- none (design readiness only, not engine verification)"
         units_md = "\n".join(
             f"- **{unit['id']}**: {unit['action']} → {unit['observable']} "
             f"(owner: `{unit['owner']}`)"
@@ -670,16 +615,28 @@ class RobloxGameDesignPlanner:
 ### Authored gameplay connections
 {units_md}
 
-## 2. Architectural Subsystems (Topological Order)
+## 2. Implementation Blueprint (before code generation)
+- **Schema**: {blueprint.get("schema", "MISSING")}
+- **Ready for code generation**: {blueprint.get("ready_for_codegen", False)} (not Studio verified)
+- **Module implementation and responsibility map**
+{mechanics_md}
+### Cross-system contracts and exploit cases
+{integrations_md}
+### Detailed acceptance and real Studio/MCP test plan
+{scenarios_md}
+### Blocking design gaps
+{blocked_md}
+
+## 3. Architectural Subsystems (Topological Order)
 {modules_md}
 
-## 3. Creator Store Assets (Verified & Sanitized)
+## 4. Creator Store Assets (Verified & Sanitized)
 {assets_md}
 
-## 4. Playtest & TestEZ Specifications
+## 5. Playtest & TestEZ Specifications
 {tests_md}
 
-## 5. Production Strategy
+## 6. Production Strategy
 - **Client/Server Division**: Strict server authority over transactions, health, and physics to eliminate client injection.
 - **Data Persistence**: Safe DataStoreService with session-locking, exponential backoff, and BindToClose completion waiting.
 - **Sync & Deployment**: Full Rojo `default.project.json` live-sync and `.rbxlx` direct Studio launcher.
