@@ -351,10 +351,10 @@ local function onPlayerAdded(player: Player)
                 if level and level:IsA("IntValue") then profile.level = level.Value end
                 if stage and stage:IsA("IntValue") then profile.stage = stage.Value end
             end
-            local owned = player:FindFirstChild("OwnedItems")
-            if owned then
+            local ownedInventory = player:FindFirstChild("OwnedItems")
+            if ownedInventory then
                 local inventory = {{}}
-                for _, marker in owned:GetChildren() do
+                for _, marker in ownedInventory:GetChildren() do
                     if marker:IsA("StringValue") then
                         table.insert(inventory, marker.Name)
                     end
