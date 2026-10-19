@@ -59,7 +59,7 @@ def test_executable_optional_unit_failure_is_reported_not_silently_ignored():
         "lune_offline": {"executed": True, "success": False, "status": "failed",
                          "error": "Pure Luau test failed"},
     }, artifact_ready=False)
-    assert report["checks"]["lune_economy"]["status"] == "failed"
+    assert report["checks"]["lune_offline"]["status"] == "failed"
     assert report["checks"]["artifact"]["status"] == "failed"
     assert report["gameplay_verified"] is False
 
