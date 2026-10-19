@@ -984,6 +984,7 @@ end)
 -- Description: Server-authoritative combat: reach sanity checks, cooldown enforcement, and damage calculation.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
 
 local remotesFolder = ReplicatedStorage:WaitForChild("Remotes")
 local attackRemote = remotesFolder:FindFirstChild("AttackRequest") :: RemoteEvent?
@@ -995,6 +996,31 @@ end
 
 local playerCooldowns: {{ [number]: number }} = {{}}
 local MAX_REACH = 15.0
+local KNOCKOUT_REWARD_COINS = 25
+local knockoutCredits: {{ [Humanoid]: {{ player: Player, time: number }} }} = {{}}
+local deathMonitored: {{ [Humanoid]: boolean }} = {{}}
+
+local function trackKnockout(targetHumanoid: Humanoid, attacker: Player)
+    knockoutCredits[targetHumanoid] = {{ player = attacker, time = os.clock() }}
+    if deathMonitored[targetHumanoid] then return end
+    deathMonitored[targetHumanoid] = true
+    targetHumanoid.Died:Connect(function()
+        local credit = knockoutCredits[targetHumanoid]
+        knockoutCredits[targetHumanoid] = nil
+        deathMonitored[targetHumanoid] = nil
+        if not credit or os.clock() - credit.time > 8 then return end
+        if credit.player.Parent ~= Players then return end
+        local leaderstats = credit.player:FindFirstChild("leaderstats")
+        local coins = leaderstats and leaderstats:FindFirstChild("Coins")
+        if coins and coins:IsA("IntValue") then
+            coins.Value += KNOCKOUT_REWARD_COINS
+        end
+    end)
+    targetHumanoid.Destroying:Connect(function()
+        knockoutCredits[targetHumanoid] = nil
+        deathMonitored[targetHumanoid] = nil
+    end)
+end
 
 attackRemote.OnServerEvent:Connect(function(player, targetCharacter: Model?)
     if not targetCharacter or not targetCharacter:IsA("Model") then return end
@@ -1030,6 +1056,7 @@ attackRemote.OnServerEvent:Connect(function(player, targetCharacter: Model?)
     params.FilterDescendantsInstances = {{char}}
     local ray = workspace:Raycast(root.Position, targetRoot.Position - root.Position, params)
     if not ray or not ray.Instance:IsDescendantOf(targetCharacter) then return end
+    trackKnockout(targetHumanoid, player)
     targetHumanoid:TakeDamage(20)
 end)
 """
