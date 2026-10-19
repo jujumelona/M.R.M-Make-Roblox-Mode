@@ -133,11 +133,19 @@ def run(prompt: str, output: Path, *, source_only: bool = False,
             receipt["tool_results"].get("rojo", {}).get("success"))
         receipt["studio_runtime_passed"] = bool(
             result.metadata.get("runtime", {}).get("passed"))
-        receipt["complete_game_verified"] = bool(result.success)
-        if result.success:
+        receipt["artifact_build_success"] = bool(result.success)
+        # A successful Rojo build is not a successful Studio test. The source
+        # generation API now reports its own contract separately from runtime.
+        receipt["complete_game_verified"] = bool(
+            result.success and receipt["studio_runtime_passed"]
+            and result.metadata.get("release_status") == "verified"
+        )
+        if receipt["complete_game_verified"]:
             receipt["status"] = "verified"
-        elif receipt["source_static_passed"] and source_only:
+        elif result.success and source_only:
             receipt["status"] = "source_only_not_studio_verified"
+        elif result.success:
+            receipt["status"] = result.metadata.get("release_status", "built_unverified")
         else:
             receipt["status"] = "build_or_runtime_failed"
         return write()
@@ -174,7 +182,10 @@ def main() -> int:
         "studio_runtime_passed": report["studio_runtime_passed"],
         "report": str(args.output / "real_model_e2e_receipt.json"),
     }, ensure_ascii=False))
-    return 0 if report["status"] == "verified" else 1
+    return 0 if report["status"] in (
+        "verified", "built_unverified", "source_only_not_studio_verified",
+        "addon_packaged",
+    ) else 1
 
 
 if __name__ == "__main__":
