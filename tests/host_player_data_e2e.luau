@@ -108,7 +108,8 @@ function dataStoreService:GetDataStore(_) return store end
 local close
 local gameMock = {}
 function gameMock:GetService(name)
-    return ({Players = players, HttpService = http, DataStoreService = dataStoreService})[name]
+    return ({Players = players, HttpService = http, DataStoreService = dataStoreService,
+        RunService = {IsStudio = function() return false end}})[name]
 end
 function gameMock:BindToClose(callback) close = callback end
 local profile = luau.load(source, {environment = {
