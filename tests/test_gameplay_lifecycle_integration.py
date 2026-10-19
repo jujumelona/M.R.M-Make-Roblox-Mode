@@ -29,6 +29,11 @@ def test_real_arena_plan_produces_connected_round_result_and_replay(tmp_path, mo
     root = Path(result.project_dir)
     cfg = json.loads((root / "default.project.json").read_text(encoding="utf-8"))
     assert cfg["tree"]["ReplicatedStorage"]["Remotes"]["RoundStatus"]["$className"] == "RemoteEvent"
+    onboarding = (root / "src/client/GameObjectiveController.client.luau").read_text(encoding="utf-8")
+    assert 'goal.Name = "GameObjective"' in onboarding
+    assert 'hint.Name = "GameActionHint"' in onboarding
+    assert "검투 아레나" in onboarding
+    assert "toggle.Activated:Connect" in onboarding
     round_service = (root / "src/server/ArenaRoundService.server.luau").read_text(encoding="utf-8")
     combat = (root / "src/server/CombatSystem.server.luau").read_text(encoding="utf-8")
     assert "winner" in round_service
@@ -36,6 +41,7 @@ def test_real_arena_plan_produces_connected_round_result_and_replay(tmp_path, mo
     assert "ArenaRoundActive" in combat and "InArenaRound" in combat
     assert 'game:GetAttribute("ArenaRoundActive")' in combat
     checks = {x["id"]: x["passed"] for x in result.metadata["acceptance"]["checks"]}
+    assert checks["lifecycle.source.onboarding"]
     assert all(ok for key, ok in checks.items() if key.startswith("lifecycle."))
     recipe = json.loads((root / "gameplay_playtest_scenarios.json").read_text(encoding="utf-8"))
     assert recipe["verification"] == "not_run"
