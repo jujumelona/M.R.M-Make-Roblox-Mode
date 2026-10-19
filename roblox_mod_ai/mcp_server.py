@@ -143,7 +143,8 @@ class RobloxMCPServer:
                     "tool": {"type": "string", "enum": [
                         "get_studio_state", "list_roblox_studios",
                         "search_game_tree", "inspect_instance", "script_read",
-                        "script_search", "script_grep", "get_console_output"]},
+                        "script_search", "script_grep", "get_console_output",
+                        "screen_capture", "skill"]},
                     "arguments": {"type": "object"}}, "required": ["tool"]},
             },
             {
