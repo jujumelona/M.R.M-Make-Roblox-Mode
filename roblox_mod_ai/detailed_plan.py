@@ -5,6 +5,7 @@ It describes *what must be implemented*, not a claim that an engine ran.
 """
 from __future__ import annotations
 
+import os
 from typing import Any
 
 SCHEMA = "rmm/detailed-implementation-plan-v1"
@@ -117,6 +118,65 @@ def build_detailed_plan(proposal: Any) -> dict[str, Any]:
     }
 
 
+def enrich_detailed_plan(plan: dict[str, Any], router: Any) -> dict[str, Any]:
+    """Have the planning model flesh out EACH source-bound requirement.
+
+    This is separate from module code generation, so the coding agent receives
+    an explicit pre-approved stepwise specification rather than improvising.
+    """
+    option = os.environ.get("RMM_ENABLE_AI_DETAILED_PLAN", "auto").lower()
+    enabled = option == "1" or (option == "auto" and bool(
+        os.environ.get("ROBLOX_LLAMA_SERVER_URL")
+        or os.environ.get("RMM_MODEL_BASE_URL")))
+    plan["ai_planning"] = {"status": "not_run", "requirements": {},
+                           "reason": "No local planning model configured"}
+    if not enabled:
+        return plan
+    keys = ("steps", "preconditions", "server_state_changes",
+            "client_feedback", "failure_cases", "cross_module_interfaces",
+            "offline_verification")
+    outputs: dict[str, dict[str, list[str]]] = {}
+    try:
+        for req in plan["required_functions"]:
+            rid = req["id"]
+            prompt = (
+                "Create a DETAILED implementation specification for ONE original "
+                "Roblox game requirement. Keep the user's intended scope exactly. "
+                "Do NOT claim execution in Roblox Studio or invent additional "
+                "endings/features. Never write code yet. Return JSON with exactly "
+                "these arrays of actionable, specific statements: "
+                + ", ".join(keys) + ". All arrays must be nonempty. "
+                "Identify server authority, initial state, event or user input, "
+                "state transitions, player-visible feedback, edge cases and "
+                "dependencies. Prefer concrete state invariants over narration. "
+                "Original requirement: " + str(req["original_request"])[:500] +
+                "\nExpected outcome: " + str(req["expected_outcome"])[:650] +
+                "\nOwners: " + str(req["owner_files"])[:500] +
+                "\nKnown interfaces: " + str(plan["cross_module_connections"])[:1500]
+            )
+            data = router.complete_json(
+                prompt=prompt, role="planner", temperature=0,
+                max_tokens=1000)
+            if not isinstance(data, dict) or any(
+                not isinstance(data.get(k), list) or
+                not data[k] or not all(isinstance(v, str) and v.strip()
+                                      for v in data[k]) for k in keys
+            ):
+                raise ValueError("Invalid detailed requirement response: " + rid)
+            outputs[rid] = {k: [x.strip()[:400] for x in data[k][:8]]
+                            for k in keys}
+        plan["ai_planning"] = {
+            "status": "enriched", "requirements": outputs,
+            "reason": "Model-generated details require subsequent source review",
+        }
+    except (ValueError, TypeError, RuntimeError, KeyError, OSError) as exc:
+        plan["ai_planning"] = {
+            "status": "failed", "requirements": outputs,
+            "reason": type(exc).__name__ + ": " + str(exc)[:300],
+        }
+    return plan
+
+
 def audit_detailed_plan(proposal: Any) -> dict[str, Any]:
     actual = proposal.game_design.get("detailed_implementation_plan")
     expected = build_detailed_plan(proposal)
@@ -130,4 +190,12 @@ def audit_detailed_plan(proposal: Any) -> dict[str, Any]:
             if actual.get(key) != expected.get(key):
                 issues.append(key + " stale or does not match request and module graph")
     issues += expected["blocking_issues"]
+    model = (actual or {}).get("ai_planning") if isinstance(actual, dict) else None
+    if isinstance(model, dict):
+        if model.get("status") == "failed":
+            issues.append("AI detailed plan failed: " + str(model.get("reason", "")))
+        if model.get("status") == "enriched":
+            known = {r["id"] for r in expected["required_functions"]}
+            if set(model.get("requirements", {})) != known:
+                issues.append("AI detailed planning did not cover every authored requirement")
     return {"passed": not issues, "errors": issues, "expected": expected}
