@@ -109,7 +109,9 @@ def test_generic_pet_game_generates_custom_luau_world_and_remote(tmp_path,monkey
     assert "not gameplay behavior" in novel_test.test_code
     result=session.build(source_only=True)
     assert result.metadata["acceptance"]["passed"], result.metadata["acceptance"]
-    assert result.success is False # No Roblox engine used.
+    assert result.success is True  # Source generation completed; no engine verdict implied.
+    assert result.metadata["release_status"] == "source_only"
+    assert result.playtest_report.total_tests == 0 and not result.playtest_report.passed
     root=Path(result.project_dir)
     generated=(root/"src/server/CustomPetHatching.luau").read_text(encoding="utf-8")
     assert (root/"src/server/RMMServerBootstrap.server.luau").is_file()
