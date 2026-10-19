@@ -13,6 +13,7 @@ from .luau_api_sanity import invalid_luau_apis
 from .request_contract import ledger_complete, implementation_facets
 from .gameplay_contract import validate_gameplay_contract
 from .implementation_blueprint import audit_implementation_blueprint
+from .detailed_plan import audit_detailed_plan
 
 
 def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict:
@@ -68,6 +69,12 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
         check("planning.integration_blueprint", blueprint_audit["passed"],
               "Source-bound blueprint matches current requirements and has no unowned mechanics: "
               + "; ".join(blueprint_audit["errors"]))
+    if pre or "detailed_implementation_plan" in proposal.game_design:
+        detail_audit = audit_detailed_plan(proposal)
+        check("planning.detailed_specification", detail_audit["passed"],
+              "Detailed requirement ownership, preconditions, transitions, "
+              "edge cases, dependencies and validation match current plan: "
+              + "; ".join(detail_audit["errors"]))
     # A newer authored game plan has a source-bound gameplay lifecycle.
     # Legacy isolated module tests are still source-only fixtures; do not
     # invent a verified ending for older incomplete saved proposals.
