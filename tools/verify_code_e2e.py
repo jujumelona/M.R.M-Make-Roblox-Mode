@@ -31,7 +31,8 @@ def main():
     assert verification["checks"]["studio_structure"]["status"]=="not_run"
     assert verification["checks"]["rojo_build"]["status"]=="passed"
     assert verification["checks"]["compiled_structure"]["status"]=="passed"
-    assert verification["checks"]["lune_economy"]["status"]=="not_applicable"
+    assert verification["checks"]["lune_offline"]["status"]=="not_applicable"
+    assert verification["checks"]["luau_compile"]["status"] in ("passed","not_run")
     assert tools.get("wally", {}).get("status") == "not_applicable", tools.get("wally")
     for name in ("stylua","selene","rojo"):
         assert tools.get(name,{}).get("executed") is True,(name,tools.get(name))
