@@ -144,19 +144,22 @@ function Service.handleAction(player, services, ...)
             return {success = false, reason = "seller_left"}
         end
         local sellerInv = resources(services, seller)
-        local buyerInv = resources(services, player)
+        local buyerInv = services.PlayerDataManager.GetState(player, "RMMInventory")
+        local buyerResources = buyerInv and (buyerInv.resources or 0)
         local sellerCoins, buyerCoins = coinsOf(seller), coinsOf(player)
-        if not sellerInv or not buyerInv or not sellerCoins or not buyerCoins
+        if not sellerInv or not buyerInv or type(buyerResources) ~= "number"
+           or buyerResources ~= buyerResources or buyerResources < 0
+           or buyerResources % 1 ~= 0 or not sellerCoins or not buyerCoins
            or sellerInv.resources < 1 or buyerCoins.Value < PRICE
            or sellerCoins.Value > 2147483647 - PRICE
-           or buyerInv.resources >= 2147483647 then
+           or buyerResources >= 2147483647 then
             return {success = false, reason = "insufficient_balance"}
         end
         -- No yielding between checking and applying this transaction.
         -- Removing the offer first prevents replay from charging either party twice.
         offers[value] = nil
         sellerInv.resources -= 1
-        buyerInv.resources = buyerInv.resources + 1
+        buyerInv.resources = buyerResources + 1
         buyerCoins.Value -= PRICE
         sellerCoins.Value += PRICE
         return {success = true, price = PRICE,
