@@ -71,7 +71,7 @@ def scope_semantic_systems(
         names = [s.get("name") if isinstance(s, dict) else None
                  for s in systems]
         if all(isinstance(name, str) and name.strip() for name in names):
-            families = {re.sub(r"(?:Phase|Stage)\\d+$", "", name, flags=re.I)
+            families = {re.sub(r"(?:Phase|Stage)\d+$", "", name, flags=re.I)
                         for name in names}
             if len(families) == 1:
                 return raw, []
