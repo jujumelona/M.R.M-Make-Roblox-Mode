@@ -46,6 +46,8 @@ class LuauCodeGenerator:
                 mod.module_id == "mod_dynamic_server_bootstrap"
                 or (mod.module_id.startswith("dyn_")
                     and mod.name in dynamic.get("host_client_actions", {}))
+                or render_host_mining(mod, proposal) is not None
+                or render_host_trading(mod, proposal) is not None
             )
             if host_owned or not mod.code:
                 code = self.generate_with_self_correction(mod, proposal)
