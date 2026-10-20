@@ -13,9 +13,9 @@ import re
 from .spec import ModuleKind, RobloxModuleSpec, RobloxProposal
 
 _ROLES = (
-    (re.compile(r"^(?:SpaceModeActivation|EnterSpaceMode)", re.I), "mode"),
-    (re.compile(r"^(?:SectionBySectionSpaceship|ModularSpaceshipConstruction)", re.I), "build"),
-    (re.compile(r"^(?:SpaceshipUpgradeUnlockAnd|SpaceshipUpgradeUnlock)", re.I), "upgrade"),
+    (re.compile(r"^(?:SpaceModeActivation|EnterSpaceMode|SpaceLaunchGateAndLaunchS)", re.I), "mode"),
+    (re.compile(r"^(?:SectionBySectionSpaceship|ModularSpaceshipConstruction|ModularSpaceshipPartConst)", re.I), "build"),
+    (re.compile(r"^(?:SpaceshipUpgradeUnlockAnd|SpaceshipUpgradeUnlock|SpaceshipUpgradeExpansion)", re.I), "upgrade"),
 )
 _ROLE_DESC = {
     "mode": ("space", "mode"),
@@ -57,7 +57,13 @@ def render_host_space_progression(
     if owner.name != server_name:
         return None
     description = owner.description.lower()
-    if not all(word in description for word in _ROLE_DESC[role]):
+    if role == "mode" and owner.name.startswith("SpaceLaunchGateAndLaunchS"):
+        required = ("space", "launch")
+    elif role == "build" and owner.name.startswith("ModularSpaceshipPartConst"):
+        required = ("ship", "part")
+    else:
+        required = _ROLE_DESC[role]
+    if not all(word in description for word in required):
         return None
     # Every step needs its exact declared host-owned ingress. The module never
     # binds remotes itself; the bootstrap resolves their Roblox classes.
@@ -70,13 +76,20 @@ def render_host_space_progression(
         if len(matching) != 1:
             return None
         name, binding = matching[0]
-        if (binding.get("kind") != ("RemoteEvent" if r == "mode" else "RemoteFunction")
+        is_launch_gate = (r == "mode" and peer.name.startswith("SpaceLaunchGateAndLaunchS"))
+        expected_kind = ("RemoteEvent" if r == "mode" and not is_launch_gate
+                         else "RemoteFunction")
+        if (binding.get("kind") != expected_kind
                 or binding.get("max_args") == 0 and r != "mode"
                 or design.get("remotes", {}).get(name, binding["kind"]) != binding["kind"]):
             return None
         routes[r] = name
     if role == "mode":
-        template = _SPACE_SERVER if module.kind == ModuleKind.SERVER_MODULE else _SPACE_CLIENT
+        if owner.name.startswith("SpaceLaunchGateAndLaunchS"):
+            template = (_LAUNCH_SERVER if module.kind == ModuleKind.SERVER_MODULE
+                        else _LAUNCH_CLIENT)
+        else:
+            template = _SPACE_SERVER if module.kind == ModuleKind.SERVER_MODULE else _SPACE_CLIENT
     elif role == "build":
         template = _BUILD_SERVER if module.kind == ModuleKind.SERVER_MODULE else _BUILD_CLIENT
     else:
@@ -381,3 +394,51 @@ player:GetAttributeChangedSignal("RMMShipTier"):Connect(refresh)
 player:GetAttributeChangedSignal("RMMSpaceUnlocked"):Connect(refresh)
 refresh()
 '''
+
+# Alternative source-owned launch gate variant: a RemoteFunction requests a
+# server-measured transition while standing near a physical gate. This is not
+# the zero-arg RemoteEvent used by passive SpaceModeActivation.
+_LAUNCH_SERVER = _SPACE_SERVER.replace(
+    'function Service.start(services)',
+    '''local function launchGate()
+    local gate = workspace:FindFirstChild("RMMLaunchGate")
+    if gate ~= nil then
+        assert(gate:IsA("BasePart"), "Launch gate name belongs to non-Part")
+        return gate
+    end
+    gate = Instance.new("Part")
+    gate.Name = "RMMLaunchGate"
+    gate.Size = Vector3.new(12, 18, 3)
+    gate.Position = Vector3.new(0, 9, 38)
+    gate.Anchored = true
+    gate.Material = Enum.Material.Neon
+    gate.Color = Color3.fromRGB(67, 143, 210)
+    gate.Parent = workspace
+    return gate
+end
+function Service.start(services)'''
+).replace(
+    '''    orbitPlatform()
+    services.PlayerDataManager.OnReady''',
+    '''    orbitPlatform()
+    launchGate()
+    services.PlayerDataManager.OnReady'''
+).replace(
+    '''    if profile.inSpace == true then return false end
+    local platform = orbitPlatform()''',
+    '''    if profile.inSpace == true then return false end
+    local gate = launchGate()
+    if (root.Position - gate.Position).Magnitude > 50 then return false end
+    local platform = orbitPlatform()'''
+)
+assert (_LAUNCH_SERVER.count("function Service.handleAction(") == 1
+        and _LAUNCH_SERVER != _SPACE_SERVER), "Launch gate ABI changed"
+
+_LAUNCH_CLIENT = _SPACE_CLIENT.replace(
+    "    remote:FireServer()",
+    '''    local ok, result = pcall(function()
+        return remote:InvokeServer()
+    end)
+    if not ok or result ~= true then refresh() end'''
+)
+assert _LAUNCH_CLIENT != _SPACE_CLIENT, "Launch client ABI changed"
