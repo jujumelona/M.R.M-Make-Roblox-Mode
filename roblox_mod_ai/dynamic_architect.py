@@ -663,6 +663,9 @@ class RobloxDynamicArchitect:
             "host_policy_sha256": hashlib.sha256(
                 (Path(__file__).parent / "host_architecture.py").read_bytes()
             ).hexdigest(),
+            "scope_policy_sha256": hashlib.sha256(
+                (Path(__file__).parent / "facet_scope.py").read_bytes()
+            ).hexdigest(),
             "original_prompt": prompt, "ledger": ledger,
             "reserved_modules": sorted(reserved_modules),
             "reference_hashes": [
