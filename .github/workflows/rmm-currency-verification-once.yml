@@ -34,9 +34,9 @@ jobs:
             echo "tested_commit=$GITHUB_SHA"
             echo "exit_code=$status"
             tail -c 16000 /tmp/rmm-currency-ci.log
-          } > /tmp/rmm-currency-peers-ci-result.txt
-          payload=$(base64 -w0 /tmp/rmm-currency-peers-ci-result.txt)
-          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/rmm-currency-peers-ci-result.txt" \
+          } > /tmp/rmm-r17-final-ci-result.txt
+          payload=$(base64 -w0 /tmp/rmm-r17-final-ci-result.txt)
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/rmm-r17-final-ci-result.txt" \
             -f message='test(rmm): capture currency and full regression suite output' \
             -f content="$payload" -f branch=main
           exit "$status"
