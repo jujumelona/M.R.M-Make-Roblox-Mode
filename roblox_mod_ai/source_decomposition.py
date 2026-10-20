@@ -73,8 +73,13 @@ def valid_chunk_classification(raw: Any, expected: list[dict[str, str]]) -> dict
         chunk_id = row.get("chunk_id")
         intent = clean(row.get("intent", ""))
         query = clean(row.get("english_query", ""))
+        # A model-internal label (proposal 13: gameplay_mode_capability)
+        # is not an implementation intent. Require described gameplay rather
+        # than treating category names as proof that a request was decomposed.
+        opaque_label = bool(re.fullmatch(
+            r"[a-z][a-z0-9]*(?:_[a-z0-9]+)+", intent, re.IGNORECASE))
         if (chunk_id not in allowed or chunk_id in result or
-                not 5 <= len(intent) <= 180 or
+                not 5 <= len(intent) <= 180 or opaque_label or
                 not 8 <= len(query) <= 160 or
                 not re.search(r"[a-zA-Z]{3,}", query)):
             continue

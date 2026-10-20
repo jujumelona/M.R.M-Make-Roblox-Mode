@@ -204,3 +204,65 @@ def test_ai_planning_skips_if_model_generation_disabled(monkeypatch):
     p = example()
     planned = enrich_detailed_plan(build_detailed_plan(p), object())
     assert planned["ai_planning"]["status"] == "not_run"
+
+
+def test_truncated_detailed_plan_recovers_by_splitting_json_fields(monkeypatch):
+    """Regression: proposal 13's first 7-field JSON ended with finish_reason=length."""
+    monkeypatch.setenv("RMM_ENABLE_AI_DETAILED_PLAN", "1")
+    p = example()
+    class TruncatingPlanner:
+        def __init__(self):
+            self.calls = []
+        def complete_json(self, **kw):
+            self.calls.append(kw)
+            keys = tuple(kw["prompt"].split("JSON keys: ", 1)[1]
+                         .split("\n", 1)[0].split(", "))
+            if len(keys) > 4:
+                raise ValueError("Model JSON completion truncated (finish_reason=length)")
+            return {key: ["validate original requirement and reject invalid state"]
+                    for key in keys}
+    ai = TruncatingPlanner()
+    plan = enrich_detailed_plan(build_detailed_plan(p), ai)
+    p.game_design["detailed_implementation_plan"] = plan
+    assert plan["ai_planning"]["status"] == "enriched"
+    details = plan["ai_planning"]["requirements"]["req-01"]
+    assert set(details) == {
+        "steps", "preconditions", "server_state_changes", "client_feedback",
+        "failure_cases", "cross_module_interfaces", "offline_verification",
+    }
+    assert len(ai.calls) == 3
+    assert all(call["role"] == "planner" for call in ai.calls)
+    assert all(call["max_tokens"] == 2048 for call in ai.calls)
+    assert audit_detailed_plan(p)["passed"]
+
+
+def test_detailed_plan_single_field_failure_is_not_silently_accepted(monkeypatch):
+    monkeypatch.setenv("RMM_ENABLE_AI_DETAILED_PLAN", "1")
+    p = example()
+    class Unrepairable:
+        def complete_json(self, **kw):
+            keys = tuple(kw["prompt"].split("JSON keys: ", 1)[1]
+                         .split("\n", 1)[0].split(", "))
+            if len(keys) > 1:
+                raise ValueError("Model JSON completion truncated (finish_reason=length)")
+            return {"wrong_field": ["unusable"]}
+    plan = enrich_detailed_plan(build_detailed_plan(p), Unrepairable())
+    p.game_design["detailed_implementation_plan"] = plan
+    assert plan["ai_planning"]["status"] == "failed"
+    assert "req-01" in plan["ai_planning"]["reason"]
+    assert not audit_detailed_plan(p)["passed"]
+
+
+def test_detailed_plan_non_output_model_error_never_retries(monkeypatch):
+    monkeypatch.setenv("RMM_ENABLE_AI_DETAILED_PLAN", "1")
+    p = example()
+    class Offline:
+        calls = 0
+        def complete_json(self, **kw):
+            self.calls += 1
+            raise RuntimeError("model server unreachable")
+    ai = Offline()
+    plan = enrich_detailed_plan(build_detailed_plan(p), ai)
+    assert ai.calls == 1
+    assert plan["ai_planning"]["status"] == "failed"
+    assert "model server unreachable" in plan["ai_planning"]["reason"]

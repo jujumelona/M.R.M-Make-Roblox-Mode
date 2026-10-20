@@ -133,44 +133,85 @@ def enrich_detailed_plan(plan: dict[str, Any], router: Any) -> dict[str, Any]:
     )
     plan["ai_planning"] = {"status": "not_run", "requirements": {},
                            "reason": "No local planning model configured"}
+    # Stock modules already have inspected host-owned contracts. Merely
+    # detecting a localhost model must not re-plan an exact built-in game.
+    # Explicit opt-in (1) still permits testing supplemental model planning.
+    novel_modules = any(
+        str(module.get("id", "")).startswith("dyn_")
+        for module in plan.get("implementation_modules", [])
+        if isinstance(module, dict)
+    )
+    if option == "auto" and not novel_modules:
+        plan["ai_planning"]["reason"] = "Host-owned implementation needs no model expansion"
+        return plan
     if not enabled:
         return plan
     keys = ("steps", "preconditions", "server_state_changes",
             "client_feedback", "failure_cases", "cross_module_interfaces",
             "offline_verification")
     outputs: dict[str, dict[str, list[str]]] = {}
-    try:
-        for req in plan["required_functions"]:
-            rid = req["id"]
-            prompt = (
-                "Create a DETAILED implementation specification for ONE original "
-                "Roblox game requirement. Keep the user's intended scope exactly. "
-                "Do NOT claim execution in Roblox Studio or invent additional "
-                "endings/features. Never write code yet. Return JSON with exactly "
-                "these arrays of actionable, specific statements: "
-                + ", ".join(keys) + ". All arrays must be nonempty. "
-                "Identify server authority, initial state, event or user input, "
-                "state transitions, player-visible feedback, edge cases and "
-                "dependencies. Prefer concrete state invariants over narration. "
-                "Original requirement: " + str(req["original_request"])[:500] +
-                "\nExpected outcome: " + str(req["expected_outcome"])[:650] +
-                "\nOwners: " + str(req["owner_files"])[:500] +
-                "\nKnown interfaces: " + str(plan["cross_module_connections"])[:1500]
-            )
+
+    def complete_scoped_fields(req: dict[str, Any],
+                               requested_keys: tuple[str, ...]) -> dict[str, list[str]]:
+        """Recover an oversized completion by splitting FIELDS, not requirements.
+
+        A 9B model often exhausts its output budget on seven nonempty JSON
+        arrays even though a single source-bound requirement is in scope.
+        Keep ownership and the original request fixed throughout recovery.
+        """
+        rid = str(req["id"])
+        prompt = (
+            "Specify ONE original Roblox requirement, not the entire game. "
+            "Return JSON containing ONLY the requested keys. Each value is "
+            "an array of 1 or 2 concise, actionable strings (under 180 "
+            "characters per string); no essays or code. State concrete "
+            "inputs, server-side authority, state changes, feedback and "
+            "rejection conditions only where relevant. Do not claim Studio "
+            "execution or introduce mechanics absent from the request.\n"
+            "JSON keys: " + ", ".join(requested_keys) +
+            "\nOriginal requirement: " + str(req["original_request"])[:500] +
+            "\nExpected result: " + str(req["expected_outcome"])[:650] +
+            "\nOwner modules: " + str(req["owner_files"])[:500] +
+            "\nKnown preconditions: " + str(req.get("preconditions") or [])[:300] +
+            "\nKnown state changes: " + str(req.get("server_state_changes") or [])[:400] +
+            "\nKnown rejection cases: " + str(req.get("invalid_or_edge_inputs") or [])[:300] +
+            "\nKnown integration edges: " +
+            str(plan["cross_module_connections"])[:500]
+        )
+        try:
             data = router.complete_json(
                 prompt=prompt, role="planner", temperature=0,
-                max_tokens=1000)
+                max_tokens=2048)
             if not isinstance(data, dict) or any(
                 not isinstance(data.get(k), list) or
                 not data[k] or not all(isinstance(v, str) and v.strip()
-                                      for v in data[k]) for k in keys
+                                      for v in data[k]) for k in requested_keys
             ):
-                raise ValueError("Invalid detailed requirement response: " + rid)
-            outputs[rid] = {k: [x.strip()[:400] for x in data[k][:8]]
-                            for k in keys}
+                raise ValueError("Invalid detailed requirement response: " + rid +
+                                 " fields=" + ",".join(requested_keys))
+            return {k: [x.strip()[:400] for x in data[k][:8]]
+                    for k in requested_keys}
+        except ValueError as exc:
+            # Retry only malformed/oversized structured output. Do not hide
+            # transport errors, model failures, or invalid SINGLE-field data.
+            retryable = ("truncat" in str(exc).lower() or
+                         "json" in str(exc).lower() or
+                         "invalid detailed requirement response" in str(exc).lower())
+            if not retryable or len(requested_keys) == 1:
+                raise
+            middle = len(requested_keys) // 2
+            return {
+                **complete_scoped_fields(req, requested_keys[:middle]),
+                **complete_scoped_fields(req, requested_keys[middle:]),
+            }
+
+    try:
+        for req in plan["required_functions"]:
+            rid = req["id"]
+            outputs[rid] = complete_scoped_fields(req, keys)
         plan["ai_planning"] = {
             "status": "enriched", "requirements": outputs,
-            "reason": "Model-generated details require subsequent source review",
+            "reason": "Scoped model details require subsequent source review",
         }
     except (ValueError, TypeError, RuntimeError, KeyError, OSError) as exc:
         plan["ai_planning"] = {
@@ -178,7 +219,6 @@ def enrich_detailed_plan(plan: dict[str, Any], router: Any) -> dict[str, Any]:
             "reason": type(exc).__name__ + ": " + str(exc)[:300],
         }
     return plan
-
 
 def audit_detailed_plan(proposal: Any) -> dict[str, Any]:
     actual = proposal.game_design.get("detailed_implementation_plan")

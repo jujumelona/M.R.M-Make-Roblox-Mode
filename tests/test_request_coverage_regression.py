@@ -316,3 +316,26 @@ def test_chunk_partition_never_invents_or_drops_request_words():
         chunks = source_chunks(statement)
         assert " ".join(chunks) == statement
         assert span_coverage(statement, chunks) >= .99
+
+
+def test_source_classifier_rejects_category_label_as_gameplay_intent():
+    """Uploaded proposal 13 promoted gameplay_mode_capability into 18 modules."""
+    from roblox_mod_ai.source_decomposition import valid_chunk_classification
+
+    chunks = [{"chunk_id": "chunk-001",
+               "source_span": "식민지화등 여러가지가 가능한 모드"}]
+    wrong = {"behaviors": [{
+        "chunk_id": "chunk-001",
+        "intent": "gameplay_mode_capability",
+        "english_query": "Roblox colonization gameplay mode capability",
+    }]}
+    assert valid_chunk_classification(wrong, chunks) == {}
+
+    specific = {"behaviors": [{
+        "chunk_id": "chunk-001",
+        "intent": "Allow players to establish and expand colonies on other planets",
+        "english_query": "Roblox colony construction and expansion scripts",
+    }]}
+    assert valid_chunk_classification(specific, chunks)["chunk-001"]["intent"].startswith(
+        "Allow players to establish"
+    )
