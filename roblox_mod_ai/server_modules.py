@@ -297,7 +297,8 @@ def module_bootstrap_contract(module: RobloxModuleSpec, proposal: RobloxProposal
     )
     actual_apis = {
         m.name: {method: detail["params"]
-                 for method, detail in exported_methods(m.code)[1].items()}
+                 for method, detail in exported_methods(m.code)[1].items()
+                 if method != "start"}
         for m in proposal.modules
         if m.name in registry and m.code and m.file_path.startswith("src/server/")
         and not m.file_path.endswith(".server.luau")

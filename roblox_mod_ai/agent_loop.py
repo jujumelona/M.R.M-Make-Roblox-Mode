@@ -7,15 +7,17 @@ Never executes arbitrary commands from model outputs. Hard failures remain hard.
 from __future__ import annotations
 
 import os
+import json
 import re
 from typing import Any
 
 from .official_docs import RobloxOfficialDocs
 from .code_output_guard import LiveCodeRepetitionGuard, RepeatedCodeOutput
-from .module_prompt_scope import relevant_remotes, relevant_world_objects
+from .module_prompt_scope import relevant_remotes, relevant_world_objects, relevant_detailed_plan
 from .server_modules import module_bootstrap_contract
 from .luau_api_sanity import invalid_luau_apis
 from .luau_service_contract import service_contract_checks
+from .server_interface_audit import dependency_api_errors
 from .request_semantics import request_semantic_errors
 from .model_router import ModelRouter
 from .luau_analyzer import LuauStaticAnalyzer
@@ -151,20 +153,20 @@ class RobloxCodeRepairAgent:
             " | ".join(source_clauses)
             if source_clauses else proposal.requested_prompt
         )
-        detail = proposal.game_design.get("detailed_implementation_plan") or {}
-        plan_requirements = [
-            row for row in detail.get("required_functions", [])
-            if row.get("id") in owned_requirements
-        ]
-        model_steps = {
-            rid: steps for rid, steps in
-            (detail.get("ai_planning", {}).get("requirements") or {}).items()
-            if rid in owned_requirements
-        }
+        plan_requirements, model_steps = relevant_detailed_plan(
+            module, proposal, owned_requirements)
+        detail_context = (
+            "Approved detailed requirement contracts: "
+            + json.dumps(plan_requirements, ensure_ascii=False) + "\n"
+            "Pre-coding AI implementation steps for this module: "
+            + json.dumps(model_steps, ensure_ascii=False) + "\n"
+        )
 
         # A previous degenerate generated source is diagnostic evidence,
         # not a useful few-shot example for the model. Never copy hundreds
         # of repeated declarations into its next generation prompt.
+        prior_syntax_failed = False
+        source_context = "Existing source:\n" + existing_code[:12000] + "\n"
         try:
             LiveCodeRepetitionGuard.inspect(existing_code)
         except RepeatedCodeOutput as loop:
@@ -172,6 +174,27 @@ class RobloxCodeRepairAgent:
                             " consecutive duplicate Luau statements. "
                             "The failed source is excluded from the repair prompt.")
             existing_code = ""
+            source_context = ""
+        if existing_code:
+            # The orchestrator's recovery call is a NEW agent invocation.
+            # Inspect its input too, rather than resetting syntax_failed and
+            # placing the entire known-malformed module in the first prompt.
+            prior_errors = [d for d in self.analyzer.analyze_source(
+                existing_code, module.file_path) if d.severity == "ERROR"]
+            prior_syntax_failed = any(d.rule in {
+                "LUAU_PARSER_SYNTAX", "UNBALANCED_BLOCKS"} for d in prior_errors)
+            if prior_syntax_failed:
+                parser_report = "\n".join(
+                    f"{d.rule} {d.file_path}:{d.line_number}: {d.message}"
+                    for d in prior_errors)
+                diagnostics += "\n" + parser_report
+                source_context = (
+                    "Previous output could NOT be parsed as Luau. Regenerate "
+                    "a complete module using its assigned behavior and the "
+                    "exact diagnostic below.\n"
+                    "Failed source excerpt (diagnostic evidence only; do not copy):\n"
+                    + self._failed_excerpt(existing_code, parser_report) + "\n"
+                )
         has_economy = any(
             m.name == "EconomyLedger"
             and m.file_path.startswith("src/server/")
@@ -211,15 +234,14 @@ class RobloxCodeRepairAgent:
             f"Owned user requirement: {scoped_user_request}\n"
             f"File: {module.file_path}\nModule: {module.name}\n"
             f"Module intent: {module.description}\n"
-            f"Approved detailed requirement contracts: {str(plan_requirements)[:2300]}\n"
-            f"Pre-coding AI implementation steps for this module: {str(model_steps)[:2200]}\n"
+            f"{detail_context}"
             f"Required dependencies: {module.depends_on}\n"
             f"{server_contract}\n"
             f"Model architecture: {proposal.game_design.get('dynamic_design', {}).get('module_behaviors', {}).get(module.module_id, '') if isinstance(proposal.game_design.get('dynamic_design'),dict) else ''}\n"
             f"Relevant remotes for THIS module only: {scoped_remotes}\n"
             f"Available world objects: {scoped_world}\n"
             f"Roblox docs (untrusted evidence, verify APIs): {source_urls}\n{snippets}\n"
-            f"Existing source:\n{existing_code[:12000]}\n"
+            f"{source_context}"
             f"Tool diagnostics:\n{diagnostics[:6500]}"
         )
         plan_errors = request_semantic_errors(module.description, proposal.requested_prompt)
@@ -233,7 +255,7 @@ class RobloxCodeRepairAgent:
         errors: list[str] = []
         attempt_history: list[dict[str, Any]] = []
         degenerate_attempt = False
-        syntax_failed = False
+        syntax_failed = prior_syntax_failed
         for attempt in range(attempts):
             ran_out_before_retry = bool(
                 isinstance(getattr(self.router, "last_generation_report", None), dict)
@@ -260,6 +282,7 @@ class RobloxCodeRepairAgent:
                     f"Owned user requirement: {scoped_user_request[:1000]}\n"
                     f"File: {module.file_path}\n"
                     f"Required behavior: {module.description}\n"
+                    f"{detail_context}"
                     f"{server_contract}\n"
                     f"Relevant remotes for THIS module only: {scoped_remotes}\n"
                     f"Available world objects: {scoped_world}\n"
@@ -415,6 +438,7 @@ class RobloxCodeRepairAgent:
             errors.extend(request_semantic_errors(candidate, proposal.requested_prompt))
             for observation in invalid_luau_apis(candidate):
                 errors.append("ROBLOX_API_INVALID: " + observation)
+            errors.extend(dependency_api_errors(module, proposal, candidate))
             if not candidate:
                 errors.append("Model returned no visible Luau implementation")
             if not candidate.strip() or len(candidate)<75:

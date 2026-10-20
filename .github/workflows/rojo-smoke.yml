@@ -36,6 +36,8 @@ jobs:
             tests/test_host_world_prompt.py \
             tests/test_purchase_request_semantics.py \
             tests/test_uploaded_service_recovery.py \
+            tests/test_codegen_scope_handoff.py \
+            tests/test_generated_dependency_api.py \
             tests/test_source_repair_cycle.py \
             tests/test_detailed_plan_and_source_review.py
       - name: Install real Roblox toolchain
@@ -71,7 +73,7 @@ jobs:
       - name: Reproduce uploaded responses and execute actual generated player persistence
         env:
           RMM_REQUIRE_REAL_LUAU_PARSER: "1"
-        run: python -m pytest -q tests/test_uploaded_service_recovery.py tests/test_callable_host_data.py
+        run: python -m pytest -q tests/test_uploaded_service_recovery.py tests/test_callable_host_data.py tests/test_codegen_scope_handoff.py tests/test_generated_dependency_api.py
       - name: Compile callable host profile with real Roblox tools
         run: python tools/verify_host_profile_e2e.py
       - name: Run standalone pure Luau rules in Lune

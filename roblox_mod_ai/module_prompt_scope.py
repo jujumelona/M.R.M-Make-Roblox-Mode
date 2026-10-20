@@ -70,3 +70,62 @@ def relevant_world_objects(module: Any, design: dict[str, Any]) -> list[dict[str
         names = set(owners[module.module_id])
         return [item for item in world if item.get("name") in names]
     return world
+
+
+def relevant_detailed_plan(module: Any, proposal: Any,
+                           requirement_ids: set[str]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Project shared requirements onto the actual module responsibility.
+
+    A source clause can have many implementation owners. Its combined outcome
+    and AI steps are not per-module instructions: proposal15 assigned mining,
+    trading and combat to the mode initializer this way. Preserve the approved
+    plan itself and retain complete details for one service and its clients.
+    """
+    design = proposal.game_design.get("dynamic_design") or {}
+    detail = proposal.game_design.get("detailed_implementation_plan") or {}
+    contracts = []
+    complete_details = set()
+    for row in detail.get("required_functions", []):
+        if not isinstance(row, dict) or row.get("id") not in requirement_ids:
+            continue
+        owners = set(row.get("owner_modules") or []) or {
+            candidate.name for candidate in proposal.modules
+            if row["id"] in (design.get("module_requirements") or {}).get(
+                candidate.module_id, [])
+        }
+        files = set(row.get("owner_files") or [])
+        members = [candidate for candidate in proposal.modules if candidate.name in owners]
+        servers = [candidate for candidate in members if candidate.file_path.startswith("src/server/")]
+        facets = {tuple(sorted((design.get("module_facets") or {}).get(
+            candidate.module_id, []))) for candidate in members}
+        # A server and its UI implement one mechanic together. Keep their
+        # approved prerequisites and rejection cases. Multiple server owners
+        # (including proposal15's eleven servers in ONE facet) remain separate
+        # gameplay responsibilities, even if the source clause is the same.
+        one_service = (
+            len(owners) > 1 and module.name in owners and len(members) == len(owners)
+            and len(servers) == 1 and len(facets) == 1
+            and (not files or files == {candidate.file_path for candidate in members})
+            and all(candidate in servers or candidate.file_path.endswith(".client.luau")
+                    for candidate in members)
+        )
+        if (owners == {module.name} and (not files or files == {module.file_path})) or one_service:
+            contracts.append(dict(row, owner_modules=[module.name], owner_files=[module.file_path]))
+            complete_details.add(row["id"])
+        else:
+            contracts.append({
+                "id": row["id"],
+                "original_request": row.get("original_request", ""),
+                "owner_modules": [module.name],
+                "owner_files": [module.file_path],
+                "responsibility": module.description,
+                "behavior": (design.get("module_behaviors") or {}).get(
+                    module.module_id, module.description),
+                "scope": "shared requirement; implement only this module responsibility",
+            })
+    steps = {
+        rid: value for rid, value in
+        (detail.get("ai_planning", {}).get("requirements") or {}).items()
+        if rid in complete_details
+    }
+    return contracts, steps

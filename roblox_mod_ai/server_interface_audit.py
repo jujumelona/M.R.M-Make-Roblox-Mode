@@ -25,6 +25,60 @@ _RETURN = re.compile(r"\breturn\s+(" + _NAME + r")\s*$")
 _LOCAL = re.compile(r"\blocal\s+(" + _NAME + r")\s*=\s*\{")
 
 
+def dependency_api_errors(module: Any, proposal: RobloxProposal, code: str) -> list[str]:
+    """Check known generated service APIs, including simple local aliases.
+
+    This uses saved peer exports, not a guessed Roblox API catalogue. Bootstrap
+    owns initialization, and gameplay must not replace another service's API.
+    """
+    peers = {m.name: m for m in proposal.modules if m.name != module.name
+             and m.file_path.startswith("src/server/")
+             and m.file_path.endswith(".luau")
+             and not m.file_path.endswith(".server.luau")}
+    if not peers:
+        return []
+    raw = _without_comments(code)
+    masked = _mask_strings(raw)
+    errors = []
+    for match in re.finditer(r"\bgame\s*:\s*GetService\s*\(\s*(['\"])(" + _NAME + r")\1\s*\)", raw):
+        target = match.group(2)
+        if target in peers and masked[match.start():match.start() + 4] == "game":
+            errors.append("DEPENDENCY_API: " + target +
+                          " is a generated ModuleScript, not an engine service; "
+                          "use the injected services." + target + " API")
+    receivers = {root + "." + name: name
+                 for root in ("services", "_services") for name in peers}
+    for alias, target in re.findall(
+            r"\blocal\s+(" + _NAME + r")\s*=\s*_?services\s*\.\s*(" + _NAME + r")\b(?!\s*[.:\[(])", masked):
+        if target in peers:
+            # Ambiguous/shadowed aliases need a real typechecker. Do not
+            # infer that every same-name local is this dependency.
+            writes = re.findall(r"(?<![\w.:])" + re.escape(alias) + r"\s*=(?!=)", masked)
+            shadowed = any(re.search(r"(?:^|,)\s*" + re.escape(alias) + r"\s*(?=:|,|$)", params)
+                           for params in re.findall(r"\bfunction[^()]*\(([^)]*)\)", masked))
+            if len(writes) == 1 and not shadowed:
+                receivers[alias] = target
+    for receiver, target in receivers.items():
+        expression = r"(?<![\w.:])" + r"\s*\.\s*".join(map(re.escape, receiver.split(".")))
+        available = set(exported_methods(peers[target].code)[1]) if peers[target].code else None
+        for match in re.finditer(expression + r"\s*[.:]\s*(" + _NAME + r")\b", masked):
+            prefix, suffix = masked[:match.start()].rstrip(), masked[match.end():]
+            if prefix.endswith((".", ":")):
+                continue
+            method = match.group(1)
+            if re.search(r"\bfunction\s*$", prefix) or re.match(r"\s*=\s*function\b", suffix):
+                errors.append("DEPENDENCY_API: gameplay must not replace methods on " + target)
+                continue
+            if not re.match(r"\s*\(", suffix):
+                continue
+            if method == "start":
+                errors.append("DEPENDENCY_API: only the host bootstrap may call " + target + ".start(services)")
+            elif available is not None and method not in available:
+                errors.append("DEPENDENCY_API: " + target + "." + method +
+                              " is not exported; actual methods: " + ", ".join(sorted(available - {"start"})))
+    return sorted(set(errors))
+
+
 def inspect_dynamic_server_interfaces(proposal: RobloxProposal) -> dict[str, Any]:
     dynamic = proposal.game_design.get("dynamic_design") or {}
     if not dynamic:
@@ -70,6 +124,9 @@ def inspect_dynamic_server_interfaces(proposal: RobloxProposal) -> dict[str, Any
     for caller in proposal.modules:
         if not caller.module_id.startswith("dyn_"):
             continue
+        for index, error in enumerate(dependency_api_errors(caller, proposal, caller.code)):
+            checks.append({"id": "service.dependencyApi." + caller.name + "." + str(index),
+                           "passed": False, "detail": error})
         raw_source = _without_comments(caller.code)
         masked = _mask_strings(raw_source)
         for target, method in set([*_CALL.findall(masked),
