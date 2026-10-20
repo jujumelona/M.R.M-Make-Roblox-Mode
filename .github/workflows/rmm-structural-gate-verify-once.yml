@@ -32,7 +32,7 @@ jobs:
             echo "exit_code=$rc"
             tail -c 26000 /tmp/rmm-structural.log
           } >/tmp/rmm-structural-result.txt
-          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/rmm-structural-ci-v2.txt" \
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/rmm-structural-ci-v3.txt" \
             -f message='test(rmm): record complete codegen structural CI' \
             -f content="$(base64 -w0 /tmp/rmm-structural-result.txt)" -f branch=main
           exit "$rc"
