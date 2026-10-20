@@ -125,3 +125,57 @@ def test_single_system_is_not_silently_rewritten():
     got, ignored = scope_semantic_systems(raw, facet=FACETS[0], all_facets=FACETS)
     assert got is raw
     assert ignored == []
+
+
+def test_full_architect_keeps_valid_first_facet_and_processes_later_facet(monkeypatch):
+    from roblox_mod_ai.dynamic_architect import RobloxDynamicArchitect
+
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    monkeypatch.delenv("RMM_LEGACY_ARCHITECTURE_PROTOCOL", raising=False)
+    ledger = {
+        "original_prompt": "우주모드 인데 자원파밍 돈모으기",
+        "requirements": [
+            {"id": "req-001", "statement": "우주모드 인데", "source": "user_prompt"},
+            {"id": "req-002", "statement": "자원파밍 돈모으기", "source": "user_prompt"},
+        ],
+        "facets": [
+            dict(FACETS[0], requirements=["req-001"]),
+            dict(FACETS[1], requirements=["req-002"]),
+        ],
+    }
+
+    class Model:
+        def __init__(self):
+            self.calls = 0
+
+        def complete_json(self, prompt, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                return echo_model()
+            return {"systems": [{
+                "name": "Resource Mining",
+                "server_behavior": (
+                    "The server validates mining distance to a real resource node "
+                    "and grants earned resource and currency on success."),
+                "client_behavior": (
+                    "The player targets an ore node, presses mine, and sees the "
+                    "server confirmed earned resource and currency."),
+                "interaction": "event", "input_mode": "custom",
+                "world_entities": ["OreNode"],
+                "observable_result": (
+                    "The player mines an ore node and receives a confirmed "
+                    "earned resource reward and currency gain."),
+            }]}
+
+    model = Model()
+    evidence = {"ledger": ledger, "evidence": []}
+    result = RobloxDynamicArchitect(model).design(
+        ledger["original_prompt"], evidence, [])
+    assert model.calls == 2
+    assert len(result["modules"]) == 3  # passive mode + mining server + client
+    assert len(result["remotes"]) == 1
+    assert len(result["world_objects"]) == 1
+    assert len(evidence["architecture_attempts"]) == 2
+    assert all(row["passed"] for row in evidence["architecture_attempts"])
+    assert len(evidence["architecture_attempts"][0]["out_of_scope_systems_ignored"]) == 11
+    assert set(result["acceptance"]) == {"req-001", "req-002"}
