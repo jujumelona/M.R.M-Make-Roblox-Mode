@@ -6,6 +6,7 @@ snippet with a fake successful implementation.
 """
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
@@ -40,7 +41,16 @@ def _clean_body(raw: str) -> str:
     return body
 
 
-def _shell(body: str) -> str:
+def _shell(body: str, allowed_choices: list[str] | None = None) -> str:
+    choice_guard = ""
+    if allowed_choices:
+        entries = ", ".join("[" + json.dumps(x) + "] = true" for x in allowed_choices)
+        choice_guard = (
+            '    if select("#", ...) ~= 1 then return false end\n'
+            '    local __rmmActionId = ...\n'
+            '    local __rmmAllowed = {' + entries + '}\n'
+            '    if type(__rmmActionId) ~= "string" or not __rmmAllowed[__rmmActionId] then return false end\n'
+        )
     return (
         "--!strict\n"
         "-- Host-authored lifecycle, input validation and exported ABI.\n"
@@ -53,6 +63,7 @@ def _shell(body: str) -> str:
         "function Service.handleAction(player, services, ...)\n"
         "    if typeof(player) ~= \"Instance\" or not player:IsA(\"Player\") then return false end\n"
         "    if player.Parent ~= Players then return false end\n"
+        + choice_guard
         + "\n".join("    " + line for line in body.splitlines()) + "\n"
         "end\n"
         "return Service\n"
@@ -86,6 +97,15 @@ def try_scaffolded_server(
     kind = "world" if world else "remote"
     route = next(iter(world or actions))
     route_info = (world or actions)[route]
+    choices = ((design.get("host_action_choices") or {}).get(route)
+               if kind == "remote" else None)
+    if choices is not None and (
+            not isinstance(choices, list) or not choices
+            or any(not isinstance(x, dict)
+                   or not isinstance(x.get("id"), str)
+                   or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,31}", x["id"])
+                   for x in choices)):
+        return None
     if kind == "world":
         input_contract = (
             "The host calls handleAction(player, services, targetPart). "
@@ -120,6 +140,11 @@ def try_scaffolded_server(
         + "Game-specific behavior: " + module.description[:950] + "\n"
         + "Route: " + route + " (" + kind + ")\n"
         + input_contract + "\n"
+        + ("Only these approved client action IDs are valid: "
+           + ", ".join(x["id"] for x in choices) + ". "
+           + "Use local actionId = ... and branch by exact ID; "
+           + "the host rejects any other client action.\n"
+           if choices else "")
         + "Return false for rejected requests; perform observable game state "
         "changes for valid requests. Use actual Roblox APIs only."
     )
@@ -151,7 +176,7 @@ def try_scaffolded_server(
             if not _EFFECT.search(body):
                 raise ValueError("Body lacks observable server-owned state change")
             LiveCodeRepetitionGuard.inspect(body)
-            candidate = _shell(body)
+            candidate = _shell(body, [x["id"] for x in choices] if choices else None)
             diagnostics = [
                 f"{d.rule} {d.file_path}:{d.line_number}: {d.message}"
                 for d in analyzer.analyze_source(candidate, module.file_path)
