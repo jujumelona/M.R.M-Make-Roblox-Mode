@@ -67,6 +67,7 @@ def test_logged_currency_module_is_host_owned_and_cannot_grant_client_requested_
     assert "if select(\"#\", ...) ~= 0 then return false end" in code
     assert "services.PlayerDataManager.OnReady" in code
     assert "remote:FireServer()" in user_code
+    assert 'playerGui:FindFirstChild("RMMEarnedCurrencyHud")' in user_code
     assert "local Service = {}" in code
     assert code.rstrip().endswith("return Service")
 
