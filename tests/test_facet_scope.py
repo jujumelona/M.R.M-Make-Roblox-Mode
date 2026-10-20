@@ -179,3 +179,25 @@ def test_full_architect_keeps_valid_first_facet_and_processes_later_facet(monkey
     assert all(row["passed"] for row in evidence["architecture_attempts"])
     assert len(evidence["architecture_attempts"][0]["out_of_scope_systems_ignored"]) == 11
     assert set(result["acceptance"]) == {"req-001", "req-002"}
+
+
+def test_multilingual_untranslated_facet_keeps_two_genuine_phases():
+    facet = {"id": "source-012-07-0", "source_span": "꽃을 심고 물을 줘서 자라게 한다"}
+    raw = {"systems": [
+        {"name": "GardenPhase0", "server_behavior": "Grow first plant"},
+        {"name": "GardenPhase1", "server_behavior": "Water the plant"},
+    ]}
+    selected, ignored = scope_semantic_systems(
+        raw, facet=facet, all_facets=[facet])
+    assert selected is raw
+    assert ignored == []
+
+
+def test_multilingual_untranslated_facet_does_not_assume_unrelated_mechanics():
+    facet = {"id": "source-012-07-0", "source_span": "꽃을 심고 물을 줘서 자라게 한다"}
+    raw = {"systems": [
+        {"name": "GardenPhase0", "server_behavior": "Grow first plant"},
+        {"name": "AlienCombatPhase0", "server_behavior": "Fight an alien"},
+    ]}
+    with pytest.raises(ValueError, match="SCOPED_SYSTEM_UNATTRIBUTED"):
+        scope_semantic_systems(raw, facet=facet, all_facets=[facet])
