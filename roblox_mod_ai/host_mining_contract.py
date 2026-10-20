@@ -16,6 +16,7 @@ from typing import Any
 from .spec import ModuleKind, RobloxProposal
 
 _MINE = re.compile(r"mining|mine|ore|채굴|자원파밍", re.I)
+_SERVICE_MINE = re.compile(r"\b(?:mining|mine|ore)\b", re.I)
 _RESOURCE = re.compile(r"resource|ore|mineral|자원|광물", re.I)
 _REWARD = re.compile(r"currency|coins?|credits?|earn|돈|화폐", re.I)
 _NODE = re.compile(r"resource.*node|ore.*node|ore.*deposit", re.I)
@@ -27,7 +28,7 @@ def _is_named_mining_service(name: str, description: str, prompt: str) -> bool:
     # "ore" but is NOT a mining mechanic. ResourceMining remains eligible.
     service_tokens = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", name)
     return bool(
-        _MINE.search(service_tokens)
+        _SERVICE_MINE.search(service_tokens)
         and _MINE.search(prompt)
         and _RESOURCE.search(description)
         and _REWARD.search(description)
