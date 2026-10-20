@@ -364,12 +364,13 @@ class RobloxPreDesignResearch:
             if len(chunks) > 80:
                 raise ValueError("Too many source chunks to audit in a single plan")
             classified: dict[str, dict[str, str]] = {}
+            unclassified_source_chunks: list[str] = []
             # One-to-one classification in bounded groups; only missing source
             # chunks are retried, not all previously verified capabilities.
             for offset in range(0, len(chunks), 6):
                 group = chunks[offset:offset+6]
                 missing = group
-                for retry in range(3):
+                for retry in range(1):
                     if not missing:
                         break
                     try:
@@ -396,7 +397,7 @@ class RobloxPreDesignResearch:
                 # Small models may still omit one entry when decoding six chunks
                 # in a batch. Reask only those missing, one source span per call.
                 for chunk in missing:
-                    for retry in range(2):
+                    for retry in range(1):
                         try:
                             output = self.router.complete_json(
                                 "Return JSON {behaviors:[{chunk_id,intent,english_query}]}. "
@@ -418,8 +419,19 @@ class RobloxPreDesignResearch:
                                   str(retry+1) + ": " + type(exc).__name__, flush=True)
                 missing = [c for c in group if c["chunk_id"] not in classified]
                 if missing:
-                    raise ValueError("Model failed to classify exact source chunks: " +
-                                     ", ".join(c["source_span"] for c in missing))
+                    # The HOST already established exact, lossless source ownership.
+                    # Missing classifier prose is not permission to discard user
+                    # requirements or block the architecture model. Keep the raw
+                    # original text as the intent, explicitly *unverified*, rather
+                    # than hallucinating a gameplay system or pretending it passed
+                    # the optional classifier.
+                    for chunk in missing:
+                        span = clean(chunk["source_span"])
+                        classified[chunk["chunk_id"]] = {
+                            "intent": "Implement only the requested gameplay in: " + span,
+                            "english_query": "Roblox gameplay scripting for " + span,
+                        }
+                        unclassified_source_chunks.append(chunk["chunk_id"])
             new_requirements = []
             intents = []
             for clause in ledger["requirements"]:
@@ -443,17 +455,33 @@ class RobloxPreDesignResearch:
                             "source_span": span,
                             "intent": learned["intent"],
                             "english_query": learned["english_query"],
+                            "chunk_id": part["chunk_id"],
+                            "classification_origin": (
+                                "host_source_only"
+                                if part["chunk_id"] in unclassified_source_chunks
+                                else "model_classified"),
                         })
             result = _ledger_with_requirements(prompt, new_requirements,
                                                 atomic_intents=intents)
-            result["decomposition_strategy"] = "source_chunk_model_classification"
+            if unclassified_source_chunks:
+                result["decomposition_method"] = "source_anchored_host"
+                result["classification_unverified"] = list(unclassified_source_chunks)
+                self.decomposition_error = (
+                    "Model did not classify " + str(len(unclassified_source_chunks)) +
+                    " source chunks; host retained exact user wording for "
+                    "later game-specific architecture validation")
+            result["decomposition_strategy"] = (
+                "source_chunk_host_recovery" if unclassified_source_chunks
+                else "source_chunk_model_classification")
             result["decomposition_chunk_count"] = len(chunks)
             structural = dict(result, unimplemented_facets=[], unmatched_requirements=[])
             if not ledger_complete(prompt, structural):
                 raise ValueError("Recovered chunks did not cover entire original prompt")
-            print("[RMM research] Recovered all " + str(len(chunks)) +
-                  " source-anchored gameplay chunks", flush=True)
-            self.decomposition_error = None
+            print("[RMM research] Source-owned " + str(len(chunks)) +
+                  " gameplay chunks; model-unclassified: " +
+                  str(len(unclassified_source_chunks)), flush=True)
+            if not unclassified_source_chunks:
+                self.decomposition_error = None
             return result
         except Exception as exc:
             self.decomposition_error = (

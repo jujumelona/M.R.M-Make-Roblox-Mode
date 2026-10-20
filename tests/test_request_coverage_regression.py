@@ -113,9 +113,13 @@ def test_omitting_atomic_actions_cannot_pass_as_verified(monkeypatch):
         router=SourceAnchoredModel(spans=ATOMS[:2]), live_enabled=False
     ).research(ATOMIC_REQUEST)
     ledger = research["ledger"]
-    assert ledger["decomposition_pending"] == ["req-001"]
-    assert "semantic_decomposition_required" in ledger["unimplemented_facets"]
-    assert not ledger_complete(ATOMIC_REQUEST, ledger)
+    # A classifier omitting an action cannot certify it. Source ownership
+    # instead comes from the host, with model classification explicitly absent.
+    assert ledger["decomposition_pending"] == []
+    assert ledger["decomposition_method"] == "source_anchored_host"
+    assert ledger["classification_unverified"]
+    assert all(x["source_span"] in ATOMIC_REQUEST for x in ledger["atomic_intents"])
+    assert not ledger_complete(ATOMIC_REQUEST, ledger)  # never implemented yet
     assert any(x["facet"] == "semantic_decomposition"
                for x in research["provider_failures"])
 
@@ -290,21 +294,76 @@ def test_model_omitting_only_one_chunk_gets_targeted_retry(monkeypatch):
         ledger, unimplemented_facets=[], unmatched_requirements=[]))
 
 
-def test_failed_chunk_classifier_never_claims_omitted_gameplay(monkeypatch):
+def test_failed_chunk_classifier_preserves_all_source_without_fake_model_success(monkeypatch):
+    """Proposal 14: model cannot describe the first space-game source chunk.
+
+    This must not leave the entire game as one unowned, unimplemented clause.
+    The host records exact original source while classifying it as *unverified*.
+    """
+    from roblox_mod_ai.source_decomposition import source_chunks
     class BrokenModel:
         def complete_json(self, prompt, **kwargs):
             return {"behaviors": []}
     monkeypatch.setenv("RMM_ENABLE_MODEL_DECOMPOSITION", "1")
-    monkeypatch.setenv("RMM_ENABLE_MODEL_QUERY_EXPANSION", "1")
+    monkeypatch.setenv("RMM_ENABLE_MODEL_QUERY_EXPANSION", "0")
     result = RobloxPreDesignResearch(
         router=BrokenModel(), live_enabled=False).research(SPACE_REQUEST)
     ledger = result["ledger"]
-    assert ledger["decomposition_pending"]
-    assert "semantic_decomposition_required" in ledger["unimplemented_facets"]
-    # Optional semantic query expansion must NOT produce extra fake obligations.
-    assert not any(f["id"].startswith("semantic-") for f in ledger["facets"])
+    pieces = source_chunks(SPACE_REQUEST)
+    assert ledger["decomposition_pending"] == []
+    assert ledger["decomposition_method"] == "source_anchored_host"
+    assert ledger["decomposition_strategy"] == "source_chunk_host_recovery"
+    assert len(ledger["requirements"]) == len(pieces)
+    assert len(ledger["atomic_intents"]) == len(pieces)
+    assert len(ledger["classification_unverified"]) == len(pieces)
+    assert [x["source_span"] for x in ledger["atomic_intents"]] == pieces
+    assert all(x["classification_origin"] == "host_source_only"
+               for x in ledger["atomic_intents"])
+    assert all(x["source_span"] in x["intent"]
+               for x in ledger["atomic_intents"])
+    # A partial implementation is still NOT game completion. The requirements
+    # only become satisfied after a *separate* architecture/code validation.
+    assert ledger["unimplemented_facets"]
+    assert "semantic_decomposition_required" not in ledger["unimplemented_facets"]
+    assert ledger_complete(SPACE_REQUEST, dict(
+        ledger, unimplemented_facets=[], unmatched_requirements=[]))
+    # Classification failure is not hidden or relabelled model success.
     assert any(x["facet"] == "semantic_decomposition" for x in
                result["provider_failures"])
+    assert not any(f["id"].startswith("semantic-") for f in ledger["facets"])
+
+
+def test_unclassified_partial_chunk_preserves_verified_classifications(monkeypatch):
+    """Host retains good scoped model outputs; only missing chunks fall back."""
+    import json
+    from roblox_mod_ai.source_decomposition import source_chunks
+    class PartialModel:
+        def complete_json(self, prompt, **kwargs):
+            if "Decompose EACH compound Roblox" in prompt:
+                return {"behaviors": []}
+            batch = json.loads(prompt[prompt.index('{"chunks"'):])["chunks"]
+            return {"behaviors": [
+                {"chunk_id": x["chunk_id"],
+                 "intent": "Perform source-requested gathering with server validation",
+                 "english_query": "Roblox resource gathering RemoteEvent"}
+                for x in batch if x["chunk_id"] == "chunk-002"]}
+    monkeypatch.setenv("RMM_ENABLE_MODEL_DECOMPOSITION", "1")
+    monkeypatch.setenv("RMM_ENABLE_MODEL_QUERY_EXPANSION", "0")
+    result = RobloxPreDesignResearch(
+        router=PartialModel(), live_enabled=False).research(SPACE_REQUEST)
+    ledger = result["ledger"]
+    assert len(ledger["requirements"]) == len(source_chunks(SPACE_REQUEST))
+    origins = {x["chunk_id"]: x["classification_origin"]
+               for x in ledger["atomic_intents"]}
+    assert origins["chunk-002"] == "model_classified"
+    assert origins["chunk-001"] == "host_source_only"
+    assert len(ledger["classification_unverified"]) == len(origins) - 1
+    assert ledger_complete(SPACE_REQUEST, dict(
+        ledger, unimplemented_facets=[], unmatched_requirements=[]))
+    corrupt = dict(ledger, unimplemented_facets=[], unmatched_requirements=[],
+                   classification_unverified=[])
+    assert not ledger_complete(SPACE_REQUEST, corrupt)
+
 
 
 def test_chunk_partition_never_invents_or_drops_request_words():

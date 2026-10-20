@@ -101,7 +101,7 @@ def implementation_facets(ledger: dict[str, Any]) -> list[dict[str, Any]]:
     # even when the plan was persisted by an older RMM version.
     facets = [f for f in facets
               if isinstance(f, dict) and not f.get("model_query_only")]
-    if ledger.get("decomposition_method") != "source_anchored_model":
+    if ledger.get("decomposition_method") not in ("source_anchored_model", "source_anchored_host"):
         return facets
     requirements = {
         entry["id"]: clean(entry.get("statement", ""))
@@ -167,12 +167,12 @@ def ledger_complete(prompt: str, ledger: dict[str, Any]) -> bool:
             return False
         if is_composite(fragment):
             if (len(pieces) < 2 or span_coverage(fragment, pieces) < .78 or
-                    ledger.get("decomposition_method") != "source_anchored_model"):
+                    ledger.get("decomposition_method") not in ("source_anchored_model", "source_anchored_host")):
                 return False
         elif fragment not in pieces and span_coverage(fragment, pieces) < .95:
             return False
     intents = ledger.get("atomic_intents", [])
-    if ledger.get("decomposition_method") == "source_anchored_model":
+    if ledger.get("decomposition_method") in ("source_anchored_model", "source_anchored_host"):
         if not intents or not isinstance(intents, list):
             return False
         mapped = {x.get("requirement_id") for x in intents if isinstance(x, dict)}
@@ -182,6 +182,24 @@ def ledger_complete(prompt: str, ledger: dict[str, Any]) -> bool:
         facet_ids = {x.get("id") for x in ledger.get("facets", []) if isinstance(x, dict)}
         if any(x.get("facet_id") not in facet_ids for x in intents):
             return False
+        # A host fallback carries the *literal source*, not a verified model
+        # interpretation. Persisted plans must not be able to relabel an
+        # unclassified requirement as independently model-certified.
+        if ledger.get("decomposition_method") == "source_anchored_host":
+            fallback_ids = set(ledger.get("classification_unverified") or [])
+            if not fallback_ids:
+                return False
+            fallback_intents = [x for x in intents
+                                if x.get("classification_origin") == "host_source_only"]
+            if {x.get("chunk_id") for x in fallback_intents} != fallback_ids:
+                return False
+            if any(
+                not clean(x.get("source_span", "")) or
+                clean(x.get("source_span", "")) not in str(x.get("intent", "")) or
+                not str(x.get("english_query", "")).startswith("Roblox gameplay scripting for ")
+                for x in fallback_intents
+            ):
+                return False
     if ledger.get("decomposition_pending"):
         return False
     return not ledger.get("unmatched_requirements") and not ledger.get("unimplemented_facets")
