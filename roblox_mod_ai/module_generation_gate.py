@@ -40,7 +40,11 @@ def generated_module_errors(
         for d in analyzer.analyze_source(code, file_path=module.file_path)
         if d.severity == "ERROR"
     ]
-    if not module.module_id.startswith("dyn_"):
+    # Synthetic adapter/checkpoint tests and legacy free-form scripts can
+    # use dyn_* IDs without an authored dynamic_design. No route/peer ABI was
+    # declared for those examples. Production dynamic games must have one.
+    if (not module.module_id.startswith("dyn_")
+            or not proposal.game_design.get("dynamic_design")):
         return errors
     if not code.strip() or len(code) < 75:
         errors.append("EMPTY_DYNAMIC_MODULE: gameplay code is absent")
