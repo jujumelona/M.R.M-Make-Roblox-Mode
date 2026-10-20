@@ -23,8 +23,11 @@ _NODE = re.compile(r"resource.*node|ore.*node|ore.*deposit", re.I)
 
 def _is_named_mining_service(name: str, description: str, prompt: str) -> bool:
     # A specific game request and module role must both support this action.
+    # Split CamelCase service identifiers: CoreEconomy contains the letters
+    # "ore" but is NOT a mining mechanic. ResourceMining remains eligible.
+    service_tokens = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", name)
     return bool(
-        _MINE.search(name)
+        _MINE.search(service_tokens)
         and _MINE.search(prompt)
         and _RESOURCE.search(description)
         and _REWARD.search(description)
@@ -45,7 +48,7 @@ def ensure_mining_world_contract(proposal: RobloxProposal) -> list[dict[str, Any
     actions = design.get("host_actions")
     if not isinstance(objects, list) or not isinstance(actions, dict):
         return []
-    owned = design.setdefault("module_world_objects", {})
+    owned = design.get("module_world_objects", {})
     if not isinstance(owned, dict):
         raise ValueError("module_world_objects must be a module-id dictionary")
     reserved_names = {
@@ -114,5 +117,6 @@ def ensure_mining_world_contract(proposal: RobloxProposal) -> list[dict[str, Any
             "basis": "user_requested_resource_mining",
         })
     if mutations:
+        design["module_world_objects"] = owned
         design.setdefault("host_materialized_world", []).extend(mutations)
     return mutations
