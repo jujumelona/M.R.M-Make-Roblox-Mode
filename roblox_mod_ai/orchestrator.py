@@ -30,7 +30,8 @@ from .model_router import ModelRouter
 from .playtest_runner import PlaytestReport, RobloxPlaytestRunner, TestCaseResult
 from .project_generator import RobloxProjectGenerator
 from .roblox_toolchain import RobloxToolchainManager
-from .spec import RobloxProposal
+from .spec import RobloxProposal, ModuleKind
+from .host_architecture import requires_player_ingress
 from .work_graph import RobloxWorkGraph, TaskStage, WorkReceipt, StageReceipt
 
 
@@ -147,6 +148,38 @@ class RobloxProductionOrchestrator:
 
         def resolve():
             proposal.modules = self.work_graph.topological_sort_modules(proposal.modules)
+            design = proposal.game_design.get("dynamic_design") or {}
+            host_actions = design.get("host_actions") or {}
+            world_actions = design.get("host_world_actions") or {}
+            # Imported authored plans can predate the current plan validator.
+            # Refuse to code player mechanics with no Remote/ProximityPrompt
+            # or declared service caller; a valid script would be unreachable.
+            orphaned = [
+                m.name for m in proposal.modules
+                if m.module_id.startswith("dyn_")
+                and m.kind == ModuleKind.SERVER_MODULE
+                and requires_player_ingress(m.name, m.description)
+                and not any(isinstance(v, dict) and v.get("service") == m.name
+                            for v in host_actions.values())
+                and not any(isinstance(v, dict) and v.get("service") == m.name
+                            for v in world_actions.values())
+                and not any(
+                    m.module_id in other.depends_on
+                    for other in proposal.modules if other.module_id != m.module_id
+                )
+            ]
+            if orphaned:
+                return {
+                    "success": False,
+                    "error": "UNROUTED_PLAYER_GAMEPLAY: authored plan has " +
+                             str(len(orphaned)) +
+                             " player-driven server services without any host "
+                             "input route or declared caller. Replan the "
+                             "gameplay architecture instead of regenerating "
+                             "unreachable Luau: " + ", ".join(orphaned[:12]),
+                    "unrouted_modules": orphaned,
+                    "requires_replanning": True,
+                }
             return {"module_order": [m.name for m in proposal.modules]}
 
         checkpoint_file = output_dir / "generation_checkpoint.json"
