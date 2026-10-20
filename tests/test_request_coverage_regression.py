@@ -113,9 +113,13 @@ def test_omitting_atomic_actions_cannot_pass_as_verified(monkeypatch):
         router=SourceAnchoredModel(spans=ATOMS[:2]), live_enabled=False
     ).research(ATOMIC_REQUEST)
     ledger = research["ledger"]
-    assert ledger["decomposition_pending"] == ["req-001"]
-    assert "semantic_decomposition_required" in ledger["unimplemented_facets"]
-    assert not ledger_complete(ATOMIC_REQUEST, ledger)
+    # A classifier omitting an action cannot certify it. Source ownership
+    # instead comes from the host, with model classification explicitly absent.
+    assert ledger["decomposition_pending"] == []
+    assert ledger["decomposition_method"] == "source_anchored_host"
+    assert ledger["classification_unverified"]
+    assert all(x["source_span"] in ATOMIC_REQUEST for x in ledger["atomic_intents"])
+    assert not ledger_complete(ATOMIC_REQUEST, ledger)  # never implemented yet
     assert any(x["facet"] == "semantic_decomposition"
                for x in research["provider_failures"])
 
