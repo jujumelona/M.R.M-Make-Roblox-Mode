@@ -1,0 +1,110 @@
+tested_commit=fe005ecaa6008f3c98892afeef26014734a78c2c
+exit_code=1
+F...........F..s........................................................ [ 12%]
+........................................................................ [ 25%]
+........................................................................ [ 37%]
+........................................................................ [ 50%]
+........................................................................ [ 63%]
+........................................................................ [ 75%]
+........................................................................ [ 88%]
+..................................................................       [100%]
+=================================== FAILURES ===================================
+___________ test_partial_source_and_trace_survive_generation_failure ___________
+
+tmp_path = PosixPath('/tmp/pytest-of-runner/pytest-0/test_partial_source_and_trace_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f4deb1e7b50>
+
+    def test_partial_source_and_trace_survive_generation_failure(tmp_path, monkeypatch):
+        orchestrator = RobloxProductionOrchestrator(tmp_path)
+        proposal = RobloxProposal(
+            requested_prompt="Generate a custom game with trade and mining",
+            game_title="SpaceTrial", description="test", game_design={},
+            modules=[
+                make_module("dyn_trade", "TradeService", "src/server/TradeService.server.luau",
+                            "--!strict\nprint('Trade service exists')\n"),
+                make_module("dyn_mining", "MiningService", "src/server/MiningService.server.luau"),
+            ],
+        )
+    
+        def fail_second(module, plan):
+            assert module.name == "MiningService"
+            raise ValueError("Model tool reported a syntax error on MiningService")
+        monkeypatch.setattr(orchestrator.code_generator, "generate_with_self_correction",
+                            fail_second)
+        result = orchestrator.execute(proposal, run_name="failed")
+        assert not result.success
+        root = Path(result.project_dir)
+>       assert (root / "src/server/TradeService.server.luau").is_file()
+E       AssertionError: assert False
+E        +  where False = is_file()
+E        +    where is_file = (PosixPath('/tmp/pytest-of-runner/pytest-0/test_partial_source_and_trace_0/failed/SpaceTrial') / 'src/server/TradeService.server.luau').is_file
+
+tests/test_agent_trajectory.py:44: AssertionError
+----------------------------- Captured stdout call -----------------------------
+[RMM agent] resolve_dependencies / validate stage / attempt 1: OK
+[RMM agent] generation / generate src/server/TradeService.server.luau / attempt 1: FAILED
+[RMM agent] diagnostic: {'error': 'ModuleGenerationContractError: MODULE_CONTRACT_INVALID TradeService: EMPTY_DYNAMIC_MODULE: gameplay code is absent', 'traceback': 'Traceback (most recent call last):\n  File "/home/runner/work/M.R.M-Make-Roblox-Mode/M.R.M-Make-Roblox-Mode/roblox_mod_ai/orchestrator.py", line 347, in generate\n    require_generated_module_contract(\n  File "/home/runner/work/M.R.M-Make-Roblox-Mode/M.R.M-Make-Roblox-Mode/roblox_mod_ai/module_generation_gate.py", line 107, in require_generated_module_contract\n    raise ModuleGenerationContractError(module.name, errors)\nroblox_mod_ai.module_generation_gate.ModuleGenerationContractError: MODULE_CONTRACT_INVALID TradeService: EMPTY_DYNAMIC_MODULE: gameplay code is absent\n', 'analyzer_diagnostics': ['EMPTY_DYNAMIC_MODULE: gameplay code is absent'], 'failed_candidate_saved': True}
+[RMM agent] generation / recover src/server/TradeService.server.luau / attempt 1: FAILED
+[RMM agent] diagnostic: {'initial_error': 'ModuleGenerationContractError: MODULE_CONTRACT_INVALID TradeService: EMPTY_DYNAMIC_MODULE: gameplay code is absent', 'repair_error': 'Small-model Luau generator disabled; configure ROBLOX_LLAMA_SERVER_URL or RMM_ENABLE_MODEL_GENERATION=1', 'traceback': 'Traceback (most recent call last):\n  File "/home/runner/work/M.R.M-Make-Roblox-Mode/M.R.M-Make-Roblox-Mode/roblox_mod_ai/orchestrator.py", line 347, in generate\n    require_generated_module_contract(\n  File "/home/runner/work/M.R.M-Make-Roblox-Mode/M.R.M-Make-Roblox-Mode/roblox_mod_ai/module_generation_gate.py", line 107, in require_generated_module_contract\n    raise ModuleGenerationContractError(module.name, errors)\nroblox_mod_ai.module_generation_gate.ModuleGenerationContractError: MODULE_CONTRACT_INVALID TradeService: EMPTY_DYNAMIC_MODULE: gameplay code is absent\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File "/home/runner/work/M.R.M-Make-Roblox-Mode/M.R.M-Make-Roblox-Mode/roblox_mod_ai/orchestrator.py", line 399, in generate\n    replacement = RobloxCodeRepairAgent(router=self.router).repair(\n                  ^^^^^^^^^^^^^^^^^^^^^^^^
+[RMM agent] generate_code / validate stage / attempt 1: FAILED
+[RMM agent] diagnostic: {'success': False, 'generated_count': 0, 'failed_module': 'TradeService', 'error': 'Initial generation: ModuleGenerationContractError: MODULE_CONTRACT_INVALID TradeService: EMPTY_DYNAMIC_MODULE: gameplay code is absent; Recovery failed: RuntimeError: Small-model Luau generator disabled; configure ROBLOX_LLAMA_SERVER_URL or RMM_ENABLE_MODEL_GENERATION=1', 'initial_error': 'ModuleGenerationContractError: MODULE_CONTRACT_INVALID TradeService: EMPTY_DYNAMIC_MODULE: gameplay code is absent', 'repair_error': 'Small-model Luau generator disabled; configure ROBLOX_LLAMA_SERVER_URL or RMM_ENABLE_MODEL_GENERATION=1'}
+[RMM VERIFY] {"passed": 0, "failed": 3, "not_run": 11, "not_applicable": 2}
+[RMM agent] failure logs: /tmp/pytest-of-runner/pytest-0/test_partial_source_and_trace_0/failed/SpaceTrial_failure_logs.zip
+_______ test_codegen_resume_rejects_changed_contract_and_corrupted_file ________
+
+tmp_path = PosixPath('/tmp/pytest-of-runner/pytest-0/test_codegen_resume_rejects_ch0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7f4deb1c6b50>
+
+    def test_codegen_resume_rejects_changed_contract_and_corrupted_file(tmp_path, monkeypatch):
+        from copy import deepcopy
+        orchestrator = RobloxProductionOrchestrator(tmp_path)
+        proposal = RobloxProposal(
+            requested_prompt="Harvest one space ore node",
+            game_title="CheckpointGuard", description="test", game_design={},
+            modules=[make_module("dyn_ore", "OreHarvest",
+                                 "src/server/OreHarvest.server.luau")],
+        )
+        clean = deepcopy(proposal.to_dict())
+        calls = []
+        def generate(module, proposal):
+            calls.append(module.description)
+            return "--!strict\nlocal result = 12\nprint(result)\n"
+        monkeypatch.setattr(orchestrator.code_generator,
+                            "generate_with_self_correction", generate)
+        first = orchestrator.execute(proposal, "integrity", source_only=True)
+        root = Path(first.project_dir)
+        second = orchestrator.execute(RobloxProposal.from_dict(clean), "integrity",
+                                      source_only=True)
+>       assert len(calls) == 1, "Unchanged verified source must be resumed"
+E       AssertionError: Unchanged verified source must be resumed
+E       assert 2 == 1
+E        +  where 2 = len(['', ''])
+
+tests/test_agent_trajectory.py:459: AssertionError
+----------------------------- Captured stdout call -----------------------------
+[RMM agent] resolve_dependencies / validate stage / attempt 1: OK
+[RMM agent] generation / generate src/server/OreHarvest.server.luau / attempt 1: FAILED
+[RMM agent] diagnostic: {'error': 'ModuleGenerationContractError: MODULE_CONTRACT_INVALID OreHarvest: EMPTY_DYNAMIC_MODULE: gameplay code is absent', 'traceback': 'Traceback (most recent call last):\n  File "/home/runner/work/M.R.M-Make-Roblox-Mode/M.R.M-Make-Roblox-Mode/roblox_mod_ai/orchestrator.py", line 347, in generate\n    require_generated_module_contract(\n  File "/home/runner/work/M.R.M-Make-Roblox-Mode/M.R.M-Make-Roblox-Mode/roblox_mod_ai/module_generation_gate.py", line 107, in require_generated_module_contract\n    raise ModuleGenerationContractError(module.name, errors)\nroblox_mod_ai.module_generation_gate.ModuleGenerationContractError: MODULE_CONTRACT_INVALID OreHarvest: EMPTY_DYNAMIC_MODULE: gameplay code is absent\n', 'analyzer_diagnostics': ['EMPTY_DYNAMIC_MODULE: gameplay code is absent'], 'failed_candidate_saved': True}
+[RMM agent] generation / recover src/server/OreHarvest.server.luau / attempt 1: FAILED
+[RMM agent] diagnostic: {'initial_error': 'ModuleGenerationContractError: MODULE_CONTRACT_INVALID OreHarvest: EMPTY_DYNAMIC_MODULE: gameplay code is absent', 'repair_error': 'Small-model Luau generator disabled; configure ROBLOX_LLAMA_SERVER_URL or RMM_ENABLE_MODEL_GENERATION=1', 'traceback': 'Traceback (most recent call last):\n  File "/home/runner/work/M.R.M-Make-Roblox-Mode/M.R.M-Make-Roblox-Mode/roblox_mod_ai/orchestrator.py", line 347, in generate\n    require_generated_module_contract(\n  File "/home/runner/work/M.R.M-Make-Roblox-Mode/M.R.M-Make-Roblox-Mode/roblox_mod_ai/module_generation_gate.py", line 107, in require_generated_module_contract\n    raise ModuleGenerationContractError(module.name, errors)\nroblox_mod_ai.module_generation_gate.ModuleGenerationContractError: MODULE_CONTRACT_INVALID OreHarvest: EMPTY_DYNAMIC_MODULE: gameplay code is absent\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File "/home/runner/work/M.R.M-Make-Roblox-Mode/M.R.M-Make-Roblox-Mode/roblox_mod_ai/orchestrator.py", line 399, in generate\n    replacement = RobloxCodeRepairAgent(router=self.router).repair(\n                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[RMM agent] generate_code / validate stage / attempt 1: FAILED
+[RMM agent] diagnostic: {'success': False, 'generated_count': 0, 'failed_module': 'OreHarvest', 'error': 'Initial generation: ModuleGenerationContractError: MODULE_CONTRACT_INVALID OreHarvest: EMPTY_DYNAMIC_MODULE: gameplay code is absent; Recovery failed: RuntimeError: Small-model Luau generator disabled; configure ROBLOX_LLAMA_SERVER_URL or RMM_ENABLE_MODEL_GENERATION=1', 'initial_error': 'ModuleGenerationContractError: MODULE_CONTRACT_INVALID OreHarvest: EMPTY_DYNAMIC_MODULE: gameplay code is absent', 'repair_error': 'Small-model Luau generator disabled; configure ROBLOX_LLAMA_SERVER_URL or RMM_ENABLE_MODEL_GENERATION=1'}
+[RMM VERIFY] {"passed": 0, "failed": 3, "not_run": 4, "not_applicable": 9}
+[RMM agent] failure logs: /tmp/pytest-of-runner/pytest-0/test_codegen_resume_rejects_ch0/integrity/CheckpointGuard_failure_logs.zip
+[RMM agent] resolve_dependencies / validate stage / attempt 1: OK
+[RMM agent] generation / generate src/server/OreHarvest.server.luau / attempt 1: FAILED
+[RMM agent] diagnostic: {'error': 'ModuleGenerationContractError: MODULE_CONTRACT_INVALID OreHarvest: EMPTY_DYNAMIC_MODULE: gameplay code is absent', 'traceback': 'Traceback (most recent call last):\n  File "/home/runner/work/M.R.M-Make-Roblox-Mode/M.R.M-Make-Roblox-Mode/roblox_mod_ai/orchestrator.py", line 347, in generate\n    require_generated_module_contract(\n  File "/home/runner/work/M.R.M-Make-Roblox-Mode/M.R.M-Make-Roblox-Mode/roblox_mod_ai/module_generation_gate.py", line 107, in require_generated_module_contract\n    raise ModuleGenerationContractError(module.name, errors)\nroblox_mod_ai.module_generation_gate.ModuleGenerationContractError: MODULE_CONTRACT_INVALID OreHarvest: EMPTY_DYNAMIC_MODULE: gameplay code is absent\n', 'analyzer_diagnostics': ['EMPTY_DYNAMIC_MODULE: gameplay code is absent'], 'failed_candidate_saved': True}
+[RMM agent] generation / recover src/server/OreHarvest.server.luau / attempt 1: FAILED
+[RMM agent] diagnostic: {'initial_error': 'ModuleGenerationContractError: MODULE_CONTRACT_INVALID OreHarvest: EMPTY_DYNAMIC_MODULE: gameplay code is absent', 'repair_error': 'Small-model Luau generator disabled; configure ROBLOX_LLAMA_SERVER_URL or RMM_ENABLE_MODEL_GENERATION=1', 'traceback': 'Traceback (most recent call last):\n  File "/home/runner/work/M.R.M-Make-Roblox-Mode/M.R.M-Make-Roblox-Mode/roblox_mod_ai/orchestrator.py", line 347, in generate\n    require_generated_module_contract(\n  File "/home/runner/work/M.R.M-Make-Roblox-Mode/M.R.M-Make-Roblox-Mode/roblox_mod_ai/module_generation_gate.py", line 107, in require_generated_module_contract\n    raise ModuleGenerationContractError(module.name, errors)\nroblox_mod_ai.module_generation_gate.ModuleGenerationContractError: MODULE_CONTRACT_INVALID OreHarvest: EMPTY_DYNAMIC_MODULE: gameplay code is absent\n\nDuring handling of the above exception, another exception occurred:\n\nTraceback (most recent call last):\n  File "/home/runner/work/M.R.M-Make-Roblox-Mode/M.R.M-Make-Roblox-Mode/roblox_mod_ai/orchestrator.py", line 399, in generate\n    replacement = RobloxCodeRepairAgent(router=self.router).repair(\n                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[RMM agent] generate_code / validate stage / attempt 1: FAILED
+[RMM agent] diagnostic: {'success': False, 'generated_count': 0, 'failed_module': 'OreHarvest', 'error': 'Initial generation: ModuleGenerationContractError: MODULE_CONTRACT_INVALID OreHarvest: EMPTY_DYNAMIC_MODULE: gameplay code is absent; Recovery failed: RuntimeError: Small-model Luau generator disabled; configure ROBLOX_LLAMA_SERVER_URL or RMM_ENABLE_MODEL_GENERATION=1', 'initial_error': 'ModuleGenerationContractError: MODULE_CONTRACT_INVALID OreHarvest: EMPTY_DYNAMIC_MODULE: gameplay code is absent', 'repair_error': 'Small-model Luau generator disabled; configure ROBLOX_LLAMA_SERVER_URL or RMM_ENABLE_MODEL_GENERATION=1'}
+[RMM VERIFY] {"passed": 0, "failed": 3, "not_run": 4, "not_applicable": 9}
+[RMM agent] failure logs: /tmp/pytest-of-runner/pytest-0/test_codegen_resume_rejects_ch0/integrity/CheckpointGuard_failure_logs.zip
+=========================== short test summary info ============================
+FAILED tests/test_agent_trajectory.py::test_partial_source_and_trace_survive_generation_failure - AssertionError: assert False
+ +  where False = is_file()
+ +    where is_file = (PosixPath('/tmp/pytest-of-runner/pytest-0/test_partial_source_and_trace_0/failed/SpaceTrial') / 'src/server/TradeService.server.luau').is_file
+FAILED tests/test_agent_trajectory.py::test_codegen_resume_rejects_changed_contract_and_corrupted_file - AssertionError: Unchanged verified source must be resumed
+assert 2 == 1
+ +  where 2 = len(['', ''])
+2 failed, 567 passed, 1 skipped in 11.63s
