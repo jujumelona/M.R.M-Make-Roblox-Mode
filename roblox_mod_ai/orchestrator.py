@@ -75,6 +75,10 @@ from .economy_core import normalize_economy_ledger
 from .server_modules import normalize_dynamic_server_modules
 from .host_mining_contract import ensure_mining_world_contract
 from .host_gameplay import render_host_gameplay
+from .module_generation_gate import (
+    ModuleGenerationContractError, require_generated_module_contract,
+    generated_module_errors,
+)
 
 class RobloxProductionOrchestrator:
     """Coordinates end-to-end production of a Roblox experience via topological work graph."""
@@ -208,6 +212,7 @@ class RobloxProductionOrchestrator:
             "luau_service_contract.py", "server_interface_audit.py", "request_semantics.py", "host_player_data.py",
             "roblox_toolchain.py", "verification_selector.py",
             "detailed_plan.py", "source_review.py", "source_repair_cycle.py",
+            "module_generation_gate.py",
         )
         component_fingerprints = {
             component: hashlib.sha256(
@@ -284,9 +289,8 @@ class RobloxProductionOrchestrator:
 
             def save_checkpoint(module):
                 content = module.code
-                if (not content or any(
-                        d.severity == "ERROR" for d in self.analyzer.analyze_source(
-                            content, file_path=module.file_path))):
+                if not content or generated_module_errors(
+                        module, proposal, content, self.analyzer):
                     return
                 entries[module.file_path] = {
                     "input_sha256": checkpoint_signature(module),
@@ -325,10 +329,8 @@ class RobloxProductionOrchestrator:
                         previous = path.read_text(encoding="utf-8")
                         if (hashlib.sha256(previous.encode("utf-8")).hexdigest() ==
                                 stored.get("source_sha256")
-                                and not any(
-                                    d.severity == "ERROR"
-                                    for d in self.analyzer.analyze_source(
-                                        previous, file_path=module.file_path))):
+                                and not generated_module_errors(
+                                    module, proposal, previous, self.analyzer)):
                             module.code = previous
                             trajectory.record("generation", "resume " + module.file_path,
                                               {"source_bytes": len(previous),
@@ -337,6 +339,12 @@ class RobloxProductionOrchestrator:
                     if not module.code:
                         module.code = self.code_generator.generate_with_self_correction(
                             module, proposal)
+                    # Validate every generated or resumed source NOW, before
+                    # advancing to the next 9B coding task or saving checkpoint.
+                    # This catches real peer API and realm faults much earlier
+                    # than the final whole-project acceptance gate.
+                    require_generated_module_contract(
+                        module, proposal, module.code, self.analyzer)
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_text(module.code, encoding="utf-8")
                     save_checkpoint(module)
@@ -350,8 +358,9 @@ class RobloxProductionOrchestrator:
                     message = type(exc).__name__ + ": " + str(exc)
                     trace = traceback.format_exc()
                     failed_code = exc.candidate if isinstance(exc, LuauGenerationError) else module.code
-                    actual_errors = (exc.diagnostics if isinstance(exc, LuauGenerationError)
-                                     else [message])
+                    actual_errors = (exc.diagnostics if isinstance(
+                        exc, (LuauGenerationError, ModuleGenerationContractError))
+                        else [message])
                     if failed_code:
                         debug_path = output_dir / "failed_candidates" / module.file_path
                         debug_path.parent.mkdir(parents=True, exist_ok=True)
@@ -379,9 +388,12 @@ class RobloxProductionOrchestrator:
                     # The original path immediately returned False. Feed the
                     # actual exception and partial source to the coding agent
                     # before abandoning this specific gameplay module.
-                    if not module.module_id.startswith("dyn_"):
+                    if is_host_generated or not module.module_id.startswith("dyn_"):
+                        # A failed first-party template is a host bug. Never
+                        # ask the 9B model to rewrite trusted transport/state.
                         return {"success": False, "generated_count": completed,
-                                "failed_module": module.name, "error": message}
+                                "failed_module": module.name, "error": message,
+                                "host_owned": is_host_generated}
                     try:
                         replacement = RobloxCodeRepairAgent(router=self.router).repair(
                             module, proposal,
@@ -391,6 +403,10 @@ class RobloxProductionOrchestrator:
                                          "\n" + trace[-5000:]),
                             attempts=3,
                         )
+                        # A repair that merely parses but still references
+                        # invented services must not count as a recovered module.
+                        require_generated_module_contract(
+                            module, proposal, replacement, self.analyzer)
                         module.code = replacement
                         path = output_dir / module.file_path
                         path.parent.mkdir(parents=True, exist_ok=True)
