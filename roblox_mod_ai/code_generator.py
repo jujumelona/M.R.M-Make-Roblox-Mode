@@ -11,7 +11,9 @@ from .library_adapters import PROFILESTORE_SERVER, FUSION_HUD
 from .agent_loop import RobloxCodeRepairAgent
 from .host_service_codegen import try_scaffolded_server
 from .host_client_codegen import try_scaffolded_client
-from .scaffold_policy import single_host_action, single_client_action, scaffold_exhausted
+from .host_lifecycle_codegen import try_scaffolded_lifecycle
+from .scaffold_policy import (single_host_action, single_client_action,
+                              single_passive_service, scaffold_exhausted)
 from .host_gameplay import render_host_gameplay
 from .economy_core import is_supported_economy_ledger, render_economy_ledger
 from .server_modules import render_dynamic_server_bootstrap
@@ -143,9 +145,17 @@ class LuauCodeGenerator:
                 raise scaffold_exhausted(
                     module, getattr(self.router, "last_scaffold_attempts", []),
                     "server_action")
-            # Unrouted services without a documented host action still
-            # require game-specific implementation. They must not be
-            # misrepresented as a working zero-argument host action.
+            if single_passive_service(proposal, module):
+                self.router.last_lifecycle_scaffold_attempts = []
+                lifecycle = try_scaffolded_lifecycle(
+                    module, proposal, self.router, self.analyzer)
+                if lifecycle is not None:
+                    return lifecycle
+                raise scaffold_exhausted(
+                    module, getattr(self.router, "last_lifecycle_scaffold_attempts", []),
+                    "passive_start")
+            # Unrouted/unsupported modules must still implement the game.
+            # Never fabricate a completed service just to bypass generation.
             return RobloxCodeRepairAgent(router=self.router).repair(
                 module, proposal,
             )
