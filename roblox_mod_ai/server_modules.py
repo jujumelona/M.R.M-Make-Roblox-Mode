@@ -11,6 +11,7 @@ import json
 
 from .spec import ModuleKind, RobloxModuleSpec, RobloxProposal, RobloxService
 from .luau_service_contract import exported_methods
+from .host_mining import render_host_mining
 
 _BOOTSTRAP_ID = "mod_dynamic_server_bootstrap"
 _BOOTSTRAP_NAME = "RMMServerBootstrap"
@@ -315,6 +316,27 @@ def module_bootstrap_contract(module: RobloxModuleSpec, proposal: RobloxProposal
             "Bootstrap starts this data service before gameplay modules.")
     elif any(m.name == "PlayerDataManager" for m in proposal.modules):
         contract += " The legacy PlayerDataManager Script has no callable registry API."
+    # Dynamic mechanics must share one server-authoritative ledger. Mining is
+    # host-implemented, so other generated services must reference its actual
+    # inventory namespace and the persistent Coins value, never fabricate a
+    # separate balance or trust client-reported currency/resources.
+    if module.name != "PlayerDataManager" and any(
+        render_host_mining(peer, proposal) is not None
+        for peer in proposal.modules
+        if peer.kind == ModuleKind.SERVER_MODULE
+        and peer.module_id.startswith("dyn_")
+    ):
+        contract += (
+            ' SHARED ECONOMY ABI: the existing profile-backed '
+            'player.leaderstats.Coins IntValue is the authoritative earned '
+            'currency ledger, and '
+            'services.PlayerDataManager.GetState(player, "RMMInventory").resources '
+            'is the persistent integer resource balance written by the '
+            'host mining mechanic. Never trust a client-supplied balance, '
+            'price or inventory count. Read, validate and mutate these '
+            'existing server-owned values; do NOT invent a new resource '
+            'namespace or parallel credit account.'
+        )
     # Never bring a currency subsystem into unrelated races, puzzles or
     # weather-only experiences as a misleading few-shot prompt.
     if "EconomyLedger" in registry and module.name != "EconomyLedger":
