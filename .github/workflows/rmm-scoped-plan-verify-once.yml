@@ -36,7 +36,7 @@ jobs:
             tail -c 18000 /tmp/rmm-plan-ci.log
           } > /tmp/rmm-plan-ci-result.txt
           payload=$(base64 -w0 /tmp/rmm-plan-ci-result.txt)
-          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/rmm-scoped-plan-ci-result.txt" \
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/rmm-scoped-plan-ci-result-2.txt" \
             -f message='test(rmm): exact scoped architect regression output' \
             -f content="$payload" -f branch=main
           exit "$status"
