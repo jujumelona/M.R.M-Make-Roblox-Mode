@@ -193,7 +193,7 @@ class RobloxProductionOrchestrator:
         generation_components = (
             "orchestrator.py", "agent_loop.py", "code_generator.py",
             "host_service_codegen.py", "host_mining.py", "host_trading.py",
-            "host_currency.py", "host_gameplay.py",
+            "host_currency.py", "host_gameplay.py", "host_peer_trade.py",
             "module_prompt_scope.py", "server_modules.py", "economy_core.py", "host_client.py",
             "luau_service_contract.py", "server_interface_audit.py", "request_semantics.py", "host_player_data.py",
             "roblox_toolchain.py", "verification_selector.py",
