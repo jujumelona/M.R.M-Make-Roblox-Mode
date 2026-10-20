@@ -33,6 +33,38 @@ local savePlayerData
 local sessionData:""")
     source = _replace(source, "    lockUntil: number?,\n}",
                       "    lockUntil: number?,\n    gameState: {[string]: any}?,\n}")
+    # Services register OnReady in dependency-sorted startup order, but the
+    # old task.spawn(callback, player) launched each callback independently.
+    # Preserve that order per player without blocking other players' loads.
+    source = _replace(source,
+        "local studioEphemeral: {[number]: boolean} = {}",
+        """local studioEphemeral: {[number]: boolean} = {}
+local readyQueues = setmetatable({}, {__mode = "k"})
+local readyWorkers = setmetatable({}, {__mode = "k"})
+local function queueReady(player, callback)
+    local queue = readyQueues[player]
+    if not queue then
+        queue = {}
+        readyQueues[player] = queue
+    end
+    table.insert(queue, callback)
+    if readyWorkers[player] then return end
+    readyWorkers[player] = true
+    task.spawn(function()
+        while #queue > 0 do
+            local current = table.remove(queue, 1)
+            if player.Parent == Players and sessionData[player.UserId]
+                and profilePlayers[player.UserId] == player then
+                local ok, err = pcall(current, player)
+                if not ok then
+                    warn("RMM OnReady handler failed for " .. player.Name .. ": " .. tostring(err))
+                end
+            end
+        end
+        readyWorkers[player] = nil
+        readyQueues[player] = nil
+    end)
+end""")
     source = _replace(source, "    local key = getPlayerKey(userId)\n    local sessionToken", """    if sessionData[userId] or loading[userId] then
         if profilePlayers[userId] ~= player and loading[userId] ~= player then
             queuedPlayers[userId] = player
@@ -60,7 +92,7 @@ local sessionData:""")
 """)
     source = _replace(source, "    stageVal.Parent = leaderstats\n", """    stageVal.Parent = leaderstats
     for _, callback in readyCallbacks do
-        task.spawn(callback, player)
+        queueReady(player, callback)
     end
 """)
     # The standalone Script now snapshots Coins/Level/Stage/OwnedItems before
@@ -135,7 +167,7 @@ function PlayerDataManager.OnReady(callback)
     assert(type(callback) == "function", "OnReady requires a callback")
     table.insert(readyCallbacks, callback)
     for _, player in Players:GetPlayers() do
-        if sessionData[player.UserId] and profilePlayers[player.UserId] == player then task.spawn(callback, player) end
+        if sessionData[player.UserId] and profilePlayers[player.UserId] == player then queueReady(player, callback) end
     end
     return function()
         local index = table.find(readyCallbacks, callback)
