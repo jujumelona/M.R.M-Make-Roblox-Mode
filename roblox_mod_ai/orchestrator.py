@@ -165,7 +165,9 @@ class RobloxProductionOrchestrator:
                             for v in world_actions.values())
                 and not any(
                     m.module_id in other.depends_on
-                    for other in proposal.modules if other.module_id != m.module_id
+                    for other in proposal.modules
+                    if other.module_id not in (
+                        m.module_id, "mod_dynamic_server_bootstrap")
                 )
             ]
             if orphaned:
