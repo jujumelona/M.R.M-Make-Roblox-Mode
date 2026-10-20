@@ -34,7 +34,7 @@ jobs:
             echo "exit_code=$rc"
             tail -c 25000 /tmp/proposal22.log
           } > /tmp/proposal22-result.txt
-          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/rmm-proposal22-result.txt" \
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/rmm-proposal22-result-v2.txt" \
             -f message='test(rmm): capture proposal22 full regression output' \
             -f content="$(base64 -w0 /tmp/proposal22-result.txt)" -f branch=main
           exit "$rc"
