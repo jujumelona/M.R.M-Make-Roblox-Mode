@@ -107,14 +107,16 @@ class LuauCodeGenerator:
             return render_dynamic_server_bootstrap(proposal)
         if is_supported_economy_ledger(module) and module.file_path.endswith("/EconomyLedger.luau"):
             return render_economy_ledger(module)
+        # A source-owned mechanic with a specific complete UI takes priority
+        # over the generic zero-argument host button; both remain host code.
+        host_source = render_host_gameplay(module, proposal)
+        if host_source is not None:
+            return host_source
         if (module.module_id.startswith("dyn_")
                 and module.name in (
                     (proposal.game_design.get("dynamic_design") or {})
                     .get("host_client_actions", {}))):
             return render_host_client(module, proposal)
-        host_source = render_host_gameplay(module, proposal)
-        if host_source is not None:
-            return host_source
         if module.module_id.startswith("dyn_"):
             # The host, not a 9B model, owns the Luau ModuleScript shell.
             # For an actually wired action, ask for only the domain handler
