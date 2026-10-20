@@ -11,6 +11,7 @@ from .library_adapters import PROFILESTORE_SERVER, FUSION_HUD
 from .agent_loop import RobloxCodeRepairAgent
 from .host_service_codegen import try_scaffolded_server
 from .host_mining import render_host_mining
+from .host_trading import render_host_trading
 from .economy_core import is_supported_economy_ledger, render_economy_ledger
 from .server_modules import render_dynamic_server_bootstrap
 from .host_client import render_host_client
@@ -70,8 +71,9 @@ class LuauCodeGenerator:
                 f"{d.file_path}:{d.line_number} [{d.rule}] {d.message}"
                 for d in errors
             )
-            if render_host_mining(module, proposal) is not None:
-                raise ValueError("Host mining source failed static checks; fix the host template: " + report)
+            if (render_host_mining(module, proposal) is not None
+                    or render_host_trading(module, proposal) is not None):
+                raise ValueError("Host gameplay template failed static checks; fix the host template: " + report)
             if module.module_id.startswith("dyn_"):
                 # Reflect the *actual* analyzer diagnostic back to the model
                 # with its previous code; do not append guessed 'end' tokens.
@@ -111,9 +113,10 @@ class LuauCodeGenerator:
                     (proposal.game_design.get("dynamic_design") or {})
                     .get("host_client_actions", {}))):
             return render_host_client(module, proposal)
-        host_mining = render_host_mining(module, proposal)
-        if host_mining is not None:
-            return host_mining
+        for host_renderer in (render_host_mining, render_host_trading):
+            host_source = host_renderer(module, proposal)
+            if host_source is not None:
+                return host_source
         if module.module_id.startswith("dyn_"):
             # The host, not a 9B model, owns the Luau ModuleScript shell.
             # For an actually wired action, ask for only the domain handler
