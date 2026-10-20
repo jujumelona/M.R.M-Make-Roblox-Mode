@@ -31,7 +31,7 @@ def _is_named_mining_service(name: str, description: str, prompt: str) -> bool:
     return bool(
         _SERVICE_MINE.search(service_tokens)
         and _MINE.search(prompt)
-        and _RESOURCE.search(description)
+        and (_RESOURCE.search(description) or _MINE.search(description))
         and _REWARD.search(description)
         and _RESOURCE.search(prompt)
     )
