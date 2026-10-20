@@ -170,7 +170,8 @@ button.Activated:Connect(function()
     local best = 18
     for _, name in NODE_NAMES do
         local node = workspace:FindFirstChild(name, true)
-        if node and node:IsA("BasePart") then
+        if node and node:IsA("BasePart")
+            and node:GetAttribute("ResourceDepleted") ~= true then
             local distance = (node.Position - root.Position).Magnitude
             if distance <= best then target = node; best = distance end
         end
@@ -212,10 +213,13 @@ _SERVER_NEAREST = _SERVER.replace(
     for _, name in NODE_NAMES do
         local candidate = workspace:FindFirstChild(name, true)
         if candidate and validNode(candidate) then
-            local distance = (root.Position - candidate.Position).Magnitude
-            if distance <= best then
-                part = candidate
-                best = distance
+            local resource = getNode(candidate)
+            if resource and resource.remaining > 0 then
+                local distance = (root.Position - candidate.Position).Magnitude
+                if distance <= best then
+                    part = candidate
+                    best = distance
+                end
             end
         end
     end
