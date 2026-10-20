@@ -104,7 +104,7 @@ def _recover_observable_result(server: Any, client: Any, interaction: Any) -> st
 # Remote or ProximityPrompt connected by the host.
 _PLAYER_ACTION_INTENT = re.compile(
     r"\b(?:min(?:e|ing)|harvest(?:s|ing)?|trading?|trade|purchase|buy|sell|"
-    r"upgrad(?:e|ing)|launch|travel|teleport|combat|fight|attack|"
+    r"upgrad(?:es?|ed|ing)|launch|travel|teleport|combat|fight|attack|"
     r"coloniz(?:e|ation)|craft|build|gather|collect|equip|reward|"
     r"exchange|ship\s+part)\b|(?:선택|채굴|거래|구매|업그레이드|우주선|전투|식민|발사)",
     re.I,
