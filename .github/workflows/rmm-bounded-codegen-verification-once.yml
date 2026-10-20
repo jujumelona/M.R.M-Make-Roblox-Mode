@@ -32,7 +32,7 @@ jobs:
             echo "exit_code=$rc"
             tail -c 29000 /tmp/bounded-tests.log
           } > /tmp/bounded-tests-result.txt
-          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/rmm-bounded-codegen-ci-v2.txt" \
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/rmm-bounded-codegen-ci-v3.txt" \
             -f message='test(rmm): actual bounded model regression results' \
             -f content="$(base64 -w0 /tmp/bounded-tests-result.txt)" -f branch=main
           exit "$rc"
