@@ -8,7 +8,7 @@ from typing import Any
 
 from .luau_analyzer import LuauStaticAnalyzer
 from .library_adapters import PROFILESTORE_SERVER, FUSION_HUD
-from .agent_loop import RobloxCodeRepairAgent
+from .agent_loop import RobloxCodeRepairAgent, LuauGenerationError
 from .host_service_codegen import try_scaffolded_server
 from .host_client_codegen import try_scaffolded_client
 from .host_lifecycle_codegen import try_scaffolded_lifecycle
@@ -81,8 +81,13 @@ class LuauCodeGenerator:
             if is_host_scaffolded_source(code):
                 # The model authored only a bounded body. Full-module repair
                 # would discard the host shell and repeat the 9B failure.
-                raise ValueError("Host-scaffolded source failed Luau parse; "
-                                 "repair its bounded body or host shell: " + report)
+                raise LuauGenerationError(
+                    module.name, code,
+                    ["SCOPED_ASSEMBLED_INVALID: host shell or short body violates Luau parser",
+                     report],
+                    history=[{"module": module.name, "mode": "host_scaffold_validation",
+                              "candidate": code, "diagnostics": [report]}],
+                )
             if module.module_id.startswith("dyn_"):
                 # Reflect the *actual* analyzer diagnostic back to the model
                 # with its previous code; do not append guessed 'end' tokens.
