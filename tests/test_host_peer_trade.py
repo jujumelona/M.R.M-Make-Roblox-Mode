@@ -56,6 +56,8 @@ def test_peer_trade_wired_without_model_and_no_client_balance_trust():
     assert "buyerInv.resources = buyerResources + 1" in sc
     assert "buyerCoins.Value -= PRICE" in sc
     assert "sellerCoins.Value += PRICE" in sc
+    assert 'if type(value) ~= "number" or value ~= value or value % 1 ~= 0 then' in sc
+    assert "state.resources > 2147483647" in sc
     assert "remote:InvokeServer(\"offer\", recipient.UserId)" in cc
     assert "remote:InvokeServer(\"accept\", id)" in cc
     assert "local Service = {}" in sc
