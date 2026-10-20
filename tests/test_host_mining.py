@@ -59,7 +59,7 @@ def test_host_implements_the_first_failed_server_without_model():
     assert "now - recent[player] < COOLDOWN" in code
     assert "node.remaining -= 1" in code
     assert "coins.Value += 1" in code
-    assert "GetState(player, \"RMMMining\")" in code
+    assert "GetState(player, \"RMMInventory\")" in code
     assert 'SetAttribute("ResourceDepleted"' in code
     assert "LocalPlayer" not in code
     assert "player:Kick" not in code
@@ -76,6 +76,17 @@ def test_mining_client_has_reachable_input_with_server_authority():
     assert 'WaitForChild("ResourceMiningEconomy0388601Action")' in code
     assert "Coins.Value +=" not in code
     assert 'local NODE_NAMES = {"ResourceNode03886011"}' in code
+
+
+def test_planned_resource_nodes_are_scoped_to_this_mining_mechanic():
+    server, client, proposal = make_plan()
+    proposal.game_design["dynamic_design"]["world_objects"].append(
+        {"name": "ResourceNode7C25E241", "class": "Part"})
+    for module in (server, client):
+        generated = render_host_mining(module, proposal)
+        assert generated is not None
+        assert '"ResourceNode03886011"' in generated
+        assert '"ResourceNode7C25E241"' not in generated
 
 
 def test_no_host_substitution_without_real_node_and_route():
