@@ -98,3 +98,36 @@ def test_architect_rejects_invalid_untrusted_option_identifiers(bad_options):
             source_requirements=[{"id": "req1", "statement": "Buy parts"}],
             reserved_modules=set(), reserved_remotes=set(), reserved_objects=set(),
         )
+
+
+def test_server_scaffold_receives_whitelist_and_checks_actual_client_choice():
+    from roblox_mod_ai.host_service_codegen import try_scaffolded_server
+
+    proposal = plan_single_action()
+    design = proposal.game_design["dynamic_design"]
+    design["host_action_choices"] = {
+        "BuyShipComponent": [{"id": "hull", "label": "Build hull"}],
+    }
+    class OneShortResponse:
+        def __init__(self):
+            self.prompts = []
+        def complete(self, prompt, **kwargs):
+            self.prompts.append((prompt, kwargs))
+            return """local choice = ...
+if choice ~= "hull" then return false end
+local leaderstats = player:FindFirstChild("leaderstats")
+local coins = leaderstats and leaderstats:FindFirstChild("Coins")
+if not coins or coins.Value < 5 then return false end
+coins.Value -= 5
+player:SetAttribute("HullPurchased", true)
+return {success = true}
+"""
+    router = OneShortResponse()
+    server = proposal.modules[0]
+    code = try_scaffolded_server(server, proposal, router, LuauStaticAnalyzer())
+    assert code is not None
+    assert '["hull"] = true' in code
+    assert "not __rmmAllowed[__rmmActionId]" in code
+    assert "Only these approved client action IDs are valid: hull" in router.prompts[0][0]
+    assert router.prompts[0][1]["max_tokens"] <= 1500
+    assert not generated_module_errors(server, proposal, code, LuauStaticAnalyzer())
