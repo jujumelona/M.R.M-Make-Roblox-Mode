@@ -14,6 +14,7 @@ import re
 from typing import Any
 
 from .spec import ModuleKind, RobloxProposal
+from .host_mining_nodes import mining_world_nodes
 
 _MINE = re.compile(r"mining|mine|ore|채굴|자원파밍", re.I)
 _SERVICE_MINE = re.compile(r"\b(?:mining|mine|ore|gather|gathering|harvest|harvesting)\b", re.I)
@@ -74,14 +75,12 @@ def ensure_mining_world_contract(proposal: RobloxProposal) -> list[dict[str, Any
             continue
         # A zero-argument mining request can be secure when the HOST selects
         # the closest planned Part by server-measured player distance.
-        stem = re.findall(r"\d{5,}", module.name)
-        planned = [obj.get("name") for obj in objects
-                   if isinstance(obj, dict) and obj.get("class") == "Part"
-                   and isinstance(obj.get("name"), str)
-                   and _NODE.search(obj["name"])
-                   and (not stem or any(x in obj["name"] for x in stem))]
+        planned = mining_world_nodes(proposal, module)
         if planned:
+            # A named source-owned Part already exists; a duplicate generated
+            # ResourceNode would obscure the accepted map instead of fixing it.
             continue
+        stem = re.findall(r"\d{5,}", module.name)
         suffix = (stem[0] if stem else
                   hashlib.sha256(module.name.encode("utf-8")).hexdigest()[:10].upper())
         node = "ResourceNode" + suffix + "1"
