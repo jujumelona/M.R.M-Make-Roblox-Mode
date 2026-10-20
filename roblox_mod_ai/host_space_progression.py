@@ -217,6 +217,21 @@ local Players = game:GetService("Players")
 local Service = {}
 local ORDER = {"Hull", "Cockpit", "Engine"}
 local COSTS = {Hull = 2, Cockpit = 3, Engine = 4}
+-- Assign one physical lot per CONNECTED player. UserId % 8 reused the same
+-- lot for unrelated players and caused ships to occupy overlapping Parts.
+local lotByPlayer = {}
+local occupiedLots = {}
+local function getLot(player)
+    local lot = lotByPlayer[player]
+    if lot ~= nil then return lot end
+    lot = 0
+    while occupiedLots[lot] do
+        lot += 1
+    end
+    occupiedLots[lot] = true
+    lotByPlayer[player] = lot
+    return lot
+end
 local function station(player)
     local name = "RMMShip" .. tostring(player.UserId)
     local existing = workspace:FindFirstChild(name)
@@ -240,7 +255,8 @@ local function showSection(player, section)
     modelPart.Size = (section == "Hull" and Vector3.new(12, 2, 22)
         or section == "Cockpit" and Vector3.new(6, 4, 6)
         or Vector3.new(6, 4, 5))
-    local offset = Vector3.new(24 + (player.UserId % 8) * 20, 7, 55)
+    local lot = getLot(player)
+    local offset = Vector3.new(24 + (lot % 8) * 24, 7, 55 + math.floor(lot / 8) * 38)
     modelPart.Position = offset + Vector3.new(0, index * 3, (index - 2) * 6)
     modelPart.Parent = ship
 end
@@ -259,6 +275,11 @@ function Service.start(services)
     Players.PlayerRemoving:Connect(function(player)
         local model = workspace:FindFirstChild("RMMShip" .. tostring(player.UserId))
         if model and model:IsA("Model") then model:Destroy() end
+        local lot = lotByPlayer[player]
+        if lot ~= nil then
+            occupiedLots[lot] = nil
+            lotByPlayer[player] = nil
+        end
     end)
 end
 function Service.handleAction(player, services, ...)
