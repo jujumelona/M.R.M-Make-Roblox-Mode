@@ -24,7 +24,7 @@ _FORBIDDEN = re.compile(
     r"\b(?:TODO|FIXME|placeholder|not implemented)\b", re.I,
 )
 _EFFECT = re.compile(
-    r"\b(?:GetState|TrySpend|Grant|SetAttribute|PivotTo|Teleport|"
+    r"\b(?:TrySpend|Grant|SetAttribute|PivotTo|Teleport|"
     r"TakeDamage|Create|Destroy|AddItem|RemoveItem|SetPrimaryPartCFrame|"
     r"FireClient|FireAllClients|ApplyImpulse|LoadCharacter)\s*\(|"
     r"\b[A-Za-z_]\w*(?:\.[A-Za-z_]\w*|\[[^\]]+\])\s*(?:\+=|-=|=(?!=))|"
