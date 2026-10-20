@@ -146,17 +146,32 @@ def try_scaffolded_client(
         "Remote contract: " + remote
     )
     attempts = []
-    for attempt in range(2):
+    for attempt in range(3):
+        if attempt == 2 and not hasattr(router, "complete_json"):
+            break
         body = ""
         try:
-            raw = router.complete(
+            retry_prompt = (
                 prompt if not attempt else
                 prompt + "\nPrevious control body was rejected: " +
                 "; ".join(attempts[-1]["diagnostics"])[:400] +
-                "\nGenerate clean UI statements only.",
-                role="coder", temperature=0.0, max_tokens=850,
-                system_prompt="Luau statements for UI controls only; no platform wiring.",
+                "\nGenerate clean UI statements only."
             )
+            if attempt == 2:
+                recovered = router.complete_json(
+                    retry_prompt + "\nReturn JSON {body:string}, with ONLY button statements.",
+                    role="coder", temperature=0.0, max_tokens=750,
+                    json_schema={"type": "object",
+                                 "properties": {"body": {"type": "string"}},
+                                 "required": ["body"]},
+                )
+                raw = recovered.get("body", "") if isinstance(recovered, dict) else ""
+            else:
+                raw = router.complete(
+                    retry_prompt,
+                    role="coder", temperature=0.0, max_tokens=850,
+                    system_prompt="Luau statements for UI controls only; no platform wiring.",
+                )
             body = (raw or "").strip()
             fenced = re.search(r"\x60\x60\x60(?:lua|luau)?\s*([\s\S]*?)\x60\x60\x60", body, re.I)
             if fenced:
@@ -181,7 +196,8 @@ def try_scaffolded_client(
         except Exception as exc:
             attempts.append({
                 "module": module.name, "attempt": attempt + 1,
-                "mode": "host_scaffolded_client_ui",
+                "mode": ("host_scaffolded_client_json_ui"
+                         if attempt == 2 else "host_scaffolded_client_ui"),
                 "candidate": body[:4500],
                 "diagnostics": [type(exc).__name__ + ": " + str(exc)[:1500]],
             })
