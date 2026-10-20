@@ -19,10 +19,14 @@ def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> st
         return None
     if module.kind not in (ModuleKind.SERVER_MODULE, ModuleKind.CLIENT_SCRIPT):
         return None
-    description = module.description.lower()
-    if (not re.search("mining", module.name, re.I)
-            or "mining" not in description
-            or "resource node" not in description
+    server = (module.name if module.kind == ModuleKind.SERVER_MODULE
+              else module.name.removesuffix("Client") + "Server")
+    owner = next((peer for peer in getattr(proposal, "modules", [])
+                  if peer.kind == ModuleKind.SERVER_MODULE and peer.name == server), None)
+    description = (owner.description if owner else module.description).lower()
+    if (not re.search(r"mining|mine|ore", server, re.I)
+            or not re.search(r"mining|mine|ore", description)
+            or not re.search(r"resource|ore|mineral", description)
             or not any(token in description for token in ("currency", "coin", "credit"))):
         return None
     design = proposal.game_design.get("dynamic_design") or {}
@@ -31,8 +35,6 @@ def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> st
              and isinstance(row.get("name"), str) and _NODES.search(row["name"])]
     if not nodes:
         return None
-    server = (module.name if module.kind == ModuleKind.SERVER_MODULE
-              else module.name.removesuffix("Client") + "Server")
     # Generated world entities inherit the source mechanic's numeric stem.
     # Do not let a mining service extract resources from another mechanic's
     # planet or bypass a different progression gate.
