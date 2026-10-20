@@ -993,6 +993,16 @@ class RobloxDynamicArchitect:
                     host_actions[remote]["max_args"] = 0
                     host_client_actions[client_name] = binding
             result["host_client_actions"] = host_client_actions
+            approved_choices: dict[str, list[dict[str, str]]] = {}
+            for part in accepted_parts:
+                for remote_name, choices in part.get("_host_action_choices", {}).items():
+                    if (remote_name in approved_choices
+                            or remote_name not in host_actions
+                            or host_actions[remote_name]["kind"] != "RemoteFunction"):
+                        raise DynamicDesignError(
+                            "Action IDs must belong to one declared host RemoteFunction")
+                    approved_choices[remote_name] = choices
+            result["host_action_choices"] = approved_choices
             # A Roblox ProximityPrompt already renders a cross-platform
             # object interaction. Host owns its Instance and server callback;
             # no fabricated client module or client-to-server Remote.
