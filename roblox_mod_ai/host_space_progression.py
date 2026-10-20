@@ -56,15 +56,19 @@ def render_host_space_progression(
     owner = owners[role]
     if owner.name != server_name:
         return None
-    description = owner.description.lower()
-    if role == "mode" and owner.name.startswith("SpaceLaunchGateAndLaunchS"):
-        required = ("space", "launch")
-    elif role == "build" and owner.name.startswith("ModularSpaceshipPartConst"):
-        required = ("ship", "part")
-    else:
-        required = _ROLE_DESC[role]
-    if not all(word in description for word in required):
-        return None
+    # A connected state machine is trustworthy only when ALL three authored
+    # services have the expected positive behavior, not merely matching names.
+    # Check the entire triplet before claiming even its first module.
+    for component, member in owners.items():
+        description = member.description.casefold()
+        if component == "mode" and member.name.startswith("SpaceLaunchGateAndLaunchS"):
+            required = ("space", "launch")
+        elif component == "build" and member.name.startswith("ModularSpaceshipPartConst"):
+            required = ("ship", "part", "construct", "resource")
+        else:
+            required = _ROLE_DESC[component]
+        if not all(word in description for word in required):
+            return None
     # Every step needs its exact declared host-owned ingress. The module never
     # binds remotes itself; the bootstrap resolves their Roblox classes.
     design = proposal.game_design.get("dynamic_design") or {}
