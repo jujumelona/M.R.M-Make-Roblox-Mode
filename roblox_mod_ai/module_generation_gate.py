@@ -54,6 +54,18 @@ def generated_module_errors(
     masked = _mask_strings(stripped)
     errors.extend("ROBLOX_API_INVALID: " + item for item in invalid_luau_apis(code))
     errors.extend(dependency_api_errors(module, proposal, code))
+    # A plan module_id is a Python-side identifier, NOT a Lua variable holding
+    # a ModuleScript. Prior accepted clients emitted require(mod_network_bridge)
+    # without declaring that name; the code parses but fails at runtime.
+    declared_ids = {peer.module_id for peer in proposal.modules}
+    for match in re.finditer(r"\brequire\s*\(\s*([A-Za-z_]\w*)\s*\)", masked):
+        identifier = match.group(1)
+        if identifier in declared_ids and not re.search(
+                r"\blocal\s+" + re.escape(identifier) + r"\b", masked[:match.start()]):
+            errors.append(
+                "UNBOUND_MODULE_REQUIRE: " + identifier +
+                " is a plan ID, not an in-scope Roblox ModuleScript Instance"
+            )
 
     if re.search(r"\b(?:TODO|FIXME|not implemented|placeholder)\b", masked, re.I):
         errors.append("PLACEHOLDER: model did not implement requested gameplay")
