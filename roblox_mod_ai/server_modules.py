@@ -121,7 +121,8 @@ def render_dynamic_server_bootstrap(proposal: RobloxProposal) -> str:
         "local active = {\n" + active_rows + "\n}\n"
         "local services: {[string]: any} = {}\n"
         "for _, name in names do\n"
-        "    local scriptModule = ServerScriptService:WaitForChild(name)\n"
+        "    local scriptModule = ServerScriptService:WaitForChild(name, 20)\n"
+        '    if not scriptModule then error("Missing required server ModuleScript: " .. name) end\n'
         "    if not scriptModule:IsA(\"ModuleScript\") then\n"
         "        error(\"Expected server ModuleScript: \" .. name)\n"
         "    end\n"
@@ -166,26 +167,41 @@ def render_dynamic_server_bootstrap(proposal: RobloxProposal) -> str:
     if actions:
         source += (
             'local ReplicatedStorage = game:GetService("ReplicatedStorage")\n'
-            'local remotes = ReplicatedStorage:WaitForChild("Remotes")\n'
-        "-- Bound common transport payloads before game-specific processing.\n"
-        "-- Game permissions, amounts, ownership and target class remain in the domain handler.\n"
+            'local remotes = ReplicatedStorage:WaitForChild("Remotes", 20)\n'
+        'if not remotes then error("Missing declared Remotes folder") end\n'
+        "-- Reject deeply nested or cyclic client payloads at the host ingress.\n"
+        "-- Domain handlers remain responsible for their own target and economy rules.\n"
+        "local function safeWireValue(value, depth, state, seen)\n"
+        "    if depth > 6 then return false end\n"
+        "    local kind = typeof(value)\n"
+        '    if kind == "number" then\n'
+        "        return value == value and value ~= math.huge and value ~= -math.huge\n"
+        '    elseif kind == "string" then\n'
+        "        state.bytes += #value\n"
+        "        return #value <= 16384 and state.bytes <= 32768\n"
+        '    elseif kind ~= "table" then\n'
+        "        return true\n"
+        "    end\n"
+        "    if seen[value] then return false end\n"
+        "    seen[value] = true\n"
+        "    for key, child in pairs(value) do\n"
+        "        state.entries += 1\n"
+        "        if state.entries > 256\n"
+        "            or not safeWireValue(key, depth + 1, state, seen)\n"
+        "            or not safeWireValue(child, depth + 1, state, seen) then\n"
+        "            return false\n"
+        "        end\n"
+        "    end\n"
+        "    seen[value] = nil\n"
+        "    return true\n"
+        "end\n"
         "local function safeWireArgs(...)\n"
         '    local count = select("#", ...)\n'
         "    if count > 16 then return false end\n"
+        "    local state = {entries = 0, bytes = 0}\n"
+        "    local seen = {}\n"
         "    for index = 1, count do\n"
-        "        local value = select(index, ...)\n"
-        "        local kind = typeof(value)\n"
-        '        if kind == "number" then\n'
-        "            if value ~= value or value == math.huge or value == -math.huge then return false end\n"
-        '        elseif kind == "string" then\n'
-        "            if #value > 16384 then return false end\n"
-        '        elseif kind == "table" then\n'
-        "            local entries = 0\n"
-        "            for _key in pairs(value) do\n"
-        "                entries += 1\n"
-        "                if entries > 128 then return false end\n"
-        "            end\n"
-        "        end\n"
+        "        if not safeWireValue(select(index, ...), 1, state, seen) then return false end\n"
         "    end\n"
         "    return true\n"
         "end\n"
@@ -204,14 +220,24 @@ def render_dynamic_server_bootstrap(proposal: RobloxProposal) -> str:
                 kind not in {"RemoteEvent", "RemoteFunction"}):
             raise ValueError("Host Remote has invalid service/Remote class mapping")
         max_args = binding.get("max_args")
-        if max_args not in (None, 0):
-            raise ValueError("Host gateway has unsupported argument constraint")
+        if (max_args is not None and
+                (type(max_args) is not int or max_args < 0 or max_args > 16)):
+            raise ValueError("Host gateway argument constraint must be an integer from 0 to 16")
         no_args = (max_args == 0)
+        arity_guard_event = (
+            f'        if select("#", ...) > {max_args} then return end\\n'
+            if max_args is not None else ""
+        )
+        arity_guard_function = (
+            f'        if select("#", ...) > {max_args} then return nil end\\n'
+            if max_args is not None else ""
+        )
         remote = json.dumps(remote_name)
         service = json.dumps(service_name)
         source += (
             "do\n"
-            f"    local remote = remotes:WaitForChild({remote})\n"
+            f"    local remote = remotes:WaitForChild({remote}, 20)\n"
+            f"    if not remote then error(\"Missing declared Remote: {remote_name}\") end\n"
             f"    if not remote:IsA({json.dumps(kind)}) then error(\"Wrong Remote class for {remote_name}\") end\n"
             f"    local service = services[{service}]\n"
             "    if type(service) ~= \"table\" or type(service.handleAction) ~= \"function\" then\n"
@@ -223,8 +249,7 @@ def render_dynamic_server_bootstrap(proposal: RobloxProposal) -> str:
                 "    remote.OnServerEvent:Connect(function(player, ...)\n"
                 f"        if not allowAction(player, {remote}) then return end\n"
                 "        if not safeWireArgs(...) then return end\n"
-                + ("        if select(\"#\", ...) ~= 0 then return end\n"
-                   if no_args else "")
+                + arity_guard_event
                 + "        service.handleAction(player, services, ...)\n"
                 "    end)\n"
             )
@@ -233,8 +258,7 @@ def render_dynamic_server_bootstrap(proposal: RobloxProposal) -> str:
                 "    remote.OnServerInvoke = function(player, ...)\n"
                 f"        if not allowAction(player, {remote}) then return nil end\n"
                 "        if not safeWireArgs(...) then return nil end\n"
-                + ("        if select(\"#\", ...) ~= 0 then return nil end\n"
-                   if no_args else "")
+                + arity_guard_function
                 + "        return service.handleAction(player, services, ...)\n"
                 "    end\n"
             )
@@ -259,7 +283,8 @@ def render_dynamic_server_bootstrap(proposal: RobloxProposal) -> str:
         service_id = json.dumps(service_name, ensure_ascii=False)
         source += (
             "do\n"
-            f"    local part = workspace:WaitForChild({part_id})\n"
+            f"    local part = workspace:WaitForChild({part_id}, 20)\n"
+            '    if not part then error("Missing declared host action world Part") end\n'
             '    if not part:IsA("BasePart") then error("Expected prompt world Part") end\n'
             '    local prompt = part:FindFirstChild("RMMInteract")\n'
             '    if not prompt or not prompt:IsA("ProximityPrompt") then\n'
