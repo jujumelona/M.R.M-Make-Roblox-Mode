@@ -17,24 +17,24 @@ from .spec import ModuleKind, RobloxModuleSpec, RobloxProposal
 
 
 _FORBIDDEN = re.compile(
-    r"\\b(?:function\\s+Service\\.|OnServerEvent|OnServerInvoke|"
+    r"\b(?:function\s+Service\.|OnServerEvent|OnServerInvoke|"
     r"FireServer|DataStoreService|loadstring|setfenv|getfenv|"
-    r"InsertService|HttpService|LocalPlayer)\\b|"
-    r"\\brequire\\s*\\(\\s*\\d{5,}\\s*\\)|"
-    r"\\b(?:TODO|FIXME|placeholder|not implemented)\\b", re.I,
+    r"InsertService|HttpService|LocalPlayer)\b|"
+    r"\brequire\s*\(\s*\d{5,}\s*\)|"
+    r"\b(?:TODO|FIXME|placeholder|not implemented)\b", re.I,
 )
 _EFFECT = re.compile(
-    r"\\b(?:GetState|TrySpend|Grant|SetAttribute|PivotTo|Teleport|"
+    r"\b(?:GetState|TrySpend|Grant|SetAttribute|PivotTo|Teleport|"
     r"TakeDamage|Create|Destroy|AddItem|RemoveItem|SetPrimaryPartCFrame|"
-    r"FireClient|FireAllClients|ApplyImpulse|LoadCharacter)\\s*\\(|"
-    r"\\b[A-Za-z_]\\w*(?:\\.[A-Za-z_]\\w*|\\[[^\\]]+\\])\\s*(?:\\+=|-=|=(?!=))|"
-    r"\\bInstance\\.new\\s*\\(", re.I,
+    r"FireClient|FireAllClients|ApplyImpulse|LoadCharacter)\s*\(|"
+    r"\b[A-Za-z_]\w*(?:\.[A-Za-z_]\w*|\[[^\]]+\])\s*(?:\+=|-=|=(?!=))|"
+    r"\bInstance\.new\s*\(", re.I,
 )
 
 
 def _clean_body(raw: str) -> str:
     body = (raw or "").strip()
-    fenced = re.search(r"```(?:luau|lua)?\\s*([\\s\\S]*?)\\s*```", body, re.I)
+    fenced = re.search(r"```(?:luau|lua)?\s*([\s\S]*?)\s*```", body, re.I)
     if fenced:
         body = fenced.group(1).strip()
     return body
@@ -42,20 +42,20 @@ def _clean_body(raw: str) -> str:
 
 def _shell(body: str) -> str:
     return (
-        "--!strict\\n"
-        "-- Host-authored lifecycle, input validation and exported ABI.\\n"
-        "local Players = game:GetService(\\"Players\\")\\n"
-        "local Service = {}\\n"
-        "function Service.start(services)\\n"
-        "    assert(type(services) == \\"table\\", \\"Missing service registry\\")\\n"
-        "    Service._services = services\\n"
-        "end\\n"
-        "function Service.handleAction(player, services, ...)\\n"
-        "    if typeof(player) ~= \\"Instance\\" or not player:IsA(\\"Player\\") then return false end\\n"
-        "    if player.Parent ~= Players then return false end\\n"
-        + "\\n".join("    " + line for line in body.splitlines()) + "\\n"
-        "end\\n"
-        "return Service\\n"
+        "--!strict\n"
+        "-- Host-authored lifecycle, input validation and exported ABI.\n"
+        "local Players = game:GetService(\"Players\")\n"
+        "local Service = {}\n"
+        "function Service.start(services)\n"
+        "    assert(type(services) == \"table\", \"Missing service registry\")\n"
+        "    Service._services = services\n"
+        "end\n"
+        "function Service.handleAction(player, services, ...)\n"
+        "    if typeof(player) ~= \"Instance\" or not player:IsA(\"Player\") then return false end\n"
+        "    if player.Parent ~= Players then return false end\n"
+        + "\n".join("    " + line for line in body.splitlines()) + "\n"
+        "end\n"
+        "return Service\n"
     )
 
 
@@ -115,11 +115,11 @@ def try_scaffolded_server(
         "other services. If player profile state is required, the known host API "
         "is services.PlayerDataManager.GetState(player, namespace) and it "
         "returns a mutable server-owned table or nil until ready. "
-        "Keep the body short, syntactically complete, and scoped to ONE action.\\n"
-        + "Module: " + module.name + "\\n"
-        + "Game-specific behavior: " + module.description[:950] + "\\n"
-        + "Route: " + route + " (" + kind + ")\\n"
-        + input_contract + "\\n"
+        "Keep the body short, syntactically complete, and scoped to ONE action.\n"
+        + "Module: " + module.name + "\n"
+        + "Game-specific behavior: " + module.description[:950] + "\n"
+        + "Route: " + route + " (" + kind + ")\n"
+        + input_contract + "\n"
         + "Return false for rejected requests; perform observable game state "
         "changes for valid requests. Use actual Roblox APIs only."
     )
@@ -128,7 +128,7 @@ def try_scaffolded_server(
         try:
             raw = router.complete(
                 prompt + (
-                    "\\nPrevious attempt was invalid; output only concise "
+                    "\nPrevious attempt was invalid; output only concise "
                     "body statements with balanced Lua blocks."
                     if attempt else ""
                 ),
