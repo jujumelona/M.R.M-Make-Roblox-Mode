@@ -343,6 +343,9 @@ def module_bootstrap_contract(module: RobloxModuleSpec, proposal: RobloxProposal
             "ProximityPrompt event or Remote. Export "
             "Service.handleAction(player, services, targetPart) and verify "
             "your own game-specific target permissions/state. "
+            "World callbacks pass the actual target Part as the THIRD "
+            "argument: Service.handleAction(player, services, targetPart). "
+            "Do not expect a string actionName from the host. "
             "World actions: " + json.dumps(world_routes)
         )
     if action_routes:
@@ -353,6 +356,11 @@ def module_bootstrap_contract(module: RobloxModuleSpec, proposal: RobloxProposal
             "manually. Export function Service.handleAction(player, services, ...) "
             "containing only the game-specific validation/state changes, "
             "AND function Service.start(services) for other initialization. "
+            "IMPORTANT ABI: the bootstrap calls "
+            "Service.handleAction(player, services, ...) forwarding ONLY the "
+            "arguments supplied by the client Remote, with no injected "
+            "actionName or payload table. A host_button action has ZERO "
+            "client arguments, so do not invent an actionName parameter. "
             "Action routes and classes: " + json.dumps(action_routes)
         )
     return contract
