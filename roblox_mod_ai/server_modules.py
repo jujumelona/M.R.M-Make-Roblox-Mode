@@ -37,9 +37,13 @@ def normalize_dynamic_server_modules(proposal: RobloxProposal) -> bool:
             module.kind = ModuleKind.SERVER_MODULE
             if host_data:
                 module.code = ""
-            # Startup ordering and services injection are owned by bootstrap,
-            # not by a phantom dependency on the ReplicatedStorage bridge.
-            module.depends_on = []
+            # A shared network bridge is not a server startup prerequisite,
+            # but REAL server-to-server dependencies must survive conversion.
+            # Deleting all depends_on broke the service initialization order.
+            module.depends_on = [
+                dep for dep in module.depends_on
+                if dep != "mod_network_bridge"
+            ]
             changed = True
         if (module.file_path.startswith("src/server/")
                 and module.file_path.endswith(".luau")
@@ -68,15 +72,40 @@ def normalize_dynamic_server_modules(proposal: RobloxProposal) -> bool:
 
 
 def render_dynamic_server_bootstrap(proposal: RobloxProposal) -> str:
-    modules = sorted(
-        (module for module in proposal.modules
-         if (module.module_id.startswith("dyn_") or module.module_id == "mod_player_data")
-         and module.roblox_service == RobloxService.SERVER_SCRIPT_SERVICE
-         and module.file_path.startswith("src/server/")
-         and module.file_path.endswith(".luau")
-         and not module.file_path.endswith(".server.luau")),
-        key=lambda m: (m.module_id != "mod_player_data", m.name),
-    )
+    candidates = [
+        module for module in proposal.modules
+        if (module.module_id.startswith("dyn_") or module.module_id == "mod_player_data")
+        and module.roblox_service == RobloxService.SERVER_SCRIPT_SERVICE
+        and module.file_path.startswith("src/server/")
+        and module.file_path.endswith(".luau")
+        and not module.file_path.endswith(".server.luau")
+    ]
+    # Requiring all modules is safe before calling start; calling start in
+    # alphabetical order IS NOT. A dependent service can observe an unready
+    # sibling even when the plan's module graph is valid.
+    by_id = {module.module_id: module for module in candidates}
+    ordered = []
+    visiting = set()
+    visited = set()
+
+    def visit(module):
+        if module.module_id in visited:
+            return
+        if module.module_id in visiting:
+            raise ValueError("Cyclic server start dependency: " + module.module_id)
+        visiting.add(module.module_id)
+        for dependency in module.depends_on:
+            if dependency in by_id:
+                visit(by_id[dependency])
+        visiting.remove(module.module_id)
+        visited.add(module.module_id)
+        ordered.append(module)
+
+    for module in sorted(candidates, key=lambda m: (m.module_id != "mod_player_data", m.name)):
+        visit(module)
+    # The persistence service must always be started before callbacks
+    # registered by game-specific mechanics become relevant.
+    modules = ordered
     if not modules:
         raise ValueError("No server modules to bootstrap")
     if any(m.name == _BOOTSTRAP_NAME for m in modules):
