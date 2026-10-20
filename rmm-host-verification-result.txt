@@ -1,0 +1,4 @@
+tested_commit=afb542222a2994a757be8ef87dcb7d10df541620
+exit_code=0
+............                                                             [100%]
+12 passed in 0.13s
