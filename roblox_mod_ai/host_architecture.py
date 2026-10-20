@@ -39,6 +39,10 @@ SEMANTIC_FACET_SCHEMA = {
                     "observable_result": {"type": "string"},
                     "world_entities": {"type": "array", "items": {
                         "type": "string"}},
+                    "action_choices": {"type": "array", "items": {
+                        "type": "object", "properties": {
+                            "id": {"type": "string"}, "label": {"type": "string"},
+                        }, "required": ["id", "label"]}},
                 },
                 "required": [
                     "name", "server_behavior", "client_behavior",
@@ -159,6 +163,7 @@ def expand_semantic_facet(
     remotes: list[dict[str, str]] = []
     objects: list[dict[str, Any]] = []
     host_world_actions: dict[str, dict[str, str]] = {}
+    host_action_choices: dict[str, list[dict[str, str]]] = {}
     results: list[str] = []
     used_modules = set(reserved_modules)
     used_remotes = set(reserved_remotes)
@@ -177,6 +182,18 @@ def expand_semantic_facet(
         if "observable_result" not in system:
             observable = _recover_observable_result(server, client, interaction)
         world = system.get("world_entities", [])
+        choices = system.get("action_choices", [])
+        if (not isinstance(choices, list) or len(choices) > 12
+                or any(not isinstance(item, dict)
+                       or not isinstance(item.get("id"), str)
+                       or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,31}", item["id"])
+                       or not isinstance(item.get("label"), str)
+                       or not (1 <= len(item["label"].strip()) <= 70)
+                       for item in choices)
+                or len({item["id"] for item in choices}) != len(choices)):
+            raise HostArchitectureError("Action choices must be unique stable IDs with labels")
+        if choices and not (interaction == "request_response" and input_mode == "custom"):
+            raise HostArchitectureError("Selectable actions require a custom request_response ingress")
         if not isinstance(name, str) or not name.strip():
             raise HostArchitectureError("Gameplay system needs a descriptive name")
         if not isinstance(server, str) or len(server.strip()) < 24:
@@ -282,6 +299,11 @@ def expand_semantic_facet(
                          else "RemoteFunction"),
             })
         results.append(observable.strip())
+        if choices and assigned_remotes:
+            host_action_choices[remote_name] = [
+                {"id": item["id"], "label": item["label"].strip()}
+                for item in choices
+            ]
         for entity_index, entity in enumerate(world):
             # Model chooses WHICH world objects gameplay needs, but NEVER
             # Roblox classes, Transform coordinates, sizes, or trusted IDs.
@@ -316,6 +338,7 @@ def expand_semantic_facet(
     ]
     return {
         "_host_world_actions": host_world_actions,
+        "_host_action_choices": host_action_choices,
         "_host_client_actions": {
             modules_row["name"]: {
                 "remote": modules_row["uses_remotes"][0],
