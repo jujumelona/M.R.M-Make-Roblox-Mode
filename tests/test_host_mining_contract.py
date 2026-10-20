@@ -73,6 +73,13 @@ def proposal20():
         "module_world_objects": {server.module_id: [], client.module_id: []},
         "remotes": {"ResourceMiningEconomy0388601Action": "RemoteFunction"},
     }
+    launch = RobloxModuleSpec(
+        module_id="dyn_2eab90e8300f",
+        name="LaunchGate9368211Server", kind=ModuleKind.SERVER_MODULE,
+        file_path="src/server/LaunchGate9368211Server.luau",
+        roblox_service=RobloxService.SERVER_SCRIPT_SERVICE,
+        description="Server-owned launch gate and space travel validation.",
+    )
     return RobloxProposal(
         requested_prompt=(
             "우주모드 인데 자원파밍 돈모으기 거래 등으로 우주선을 "
@@ -81,13 +88,13 @@ def proposal20():
         game_title="SpaceMining",
         description="Mining first, then ship building, then space exploration",
         game_design={"dynamic_design": design},
-        modules=[server, client],
+        modules=[server, client, launch],
     )
 
 
 def test_real_plan_missing_node_is_materialized_and_both_roles_are_host_owned():
     p = proposal20()
-    miner, client = p.modules
+    miner, client = p.modules[:2]
     assert render_host_mining(miner, p) is None
     updates = ensure_mining_world_contract(p)
     assert len(updates) == 1
@@ -146,7 +153,7 @@ def test_proposal20_host_luau_source_and_bootstrap_pass_static_validation():
     ensure_mining_world_contract(p)
     gen = LuauCodeGenerator(FailIfCalled())
     analyzer = LuauStaticAnalyzer()
-    for m in p.modules:
+    for m in p.modules[:2]:
         code = gen.generate_with_self_correction(m, p)
         diagnostics = analyzer.analyze_source(code, file_path=m.file_path)
         assert not [d for d in diagnostics if d.severity == "ERROR"]
