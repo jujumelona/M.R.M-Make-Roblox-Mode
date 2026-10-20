@@ -10,6 +10,7 @@ from .luau_analyzer import LuauStaticAnalyzer
 from .library_adapters import PROFILESTORE_SERVER, FUSION_HUD
 from .agent_loop import RobloxCodeRepairAgent
 from .host_service_codegen import try_scaffolded_server
+from .host_client_codegen import try_scaffolded_client
 from .host_gameplay import render_host_gameplay
 from .economy_core import is_supported_economy_ledger, render_economy_ledger
 from .server_modules import render_dynamic_server_bootstrap
@@ -118,6 +119,11 @@ class LuauCodeGenerator:
                     .get("host_client_actions", {}))):
             return render_host_client(module, proposal)
         if module.module_id.startswith("dyn_"):
+            if module.kind == ModuleKind.CLIENT_SCRIPT:
+                ui = try_scaffolded_client(
+                    module, proposal, self.router, self.analyzer)
+                if ui is not None:
+                    return ui
             # The host, not a 9B model, owns the Luau ModuleScript shell.
             # For an actually wired action, ask for only the domain handler
             # statements and validate the assembled module. Preserve the
