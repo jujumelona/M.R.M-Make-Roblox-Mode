@@ -105,8 +105,8 @@ def test_passive_start_failure_is_bounded_and_has_real_rejected_source():
     router = RecordingRouter(["function Service.start() end"] * 4)
     with pytest.raises(LuauGenerationError, match="SCOPED_PASSIVE_START_EXHAUSTED") as e:
         LuauCodeGenerator(router).generate_module_code(p.modules[0], p)
-    assert len(router.requests) == 3
-    assert len(e.value.history) == 3
+    assert len(router.requests) == 2
+    assert len(e.value.history) == 2
     assert all(c["max_tokens"] <= 1200 for _, c in router.requests)
 
 
@@ -136,3 +136,69 @@ def test_missing_host_route_does_not_mean_passive_pet_or_custom_gameplay():
         "Pet hatching with a player interaction must not become a passive "
         "start-only service"
     )
+
+
+def test_roblox_server_recovers_short_action_via_structured_json_only():
+    p = plan_single_action()
+    class StructuredRouter:
+        def __init__(self):
+            self.calls = []
+        def complete(self, prompt, **kwargs):
+            self.calls.append(("plain", kwargs["max_tokens"]))
+            return "function Service.start() : invalid"
+        def complete_json(self, prompt, **kwargs):
+            self.calls.append(("json_body", kwargs["max_tokens"]))
+            assert kwargs["json_schema"]["required"] == ["body"]
+            return {"body": """local stats = player:FindFirstChild("leaderstats")
+local coins = stats and stats:FindFirstChild("Coins")
+if not coins or coins.Value < 6 then return false end
+coins.Value -= 6
+player:SetAttribute("HullPurchased", true)
+return {success = true}
+"""}
+    router = StructuredRouter()
+    code = LuauCodeGenerator(router).generate_module_code(p.modules[0], p)
+    assert router.calls == [("plain", 1500), ("plain", 1500), ("json_body", 1200)]
+    assert 'coins.Value -= 6' in code
+    assert code.rstrip().endswith("return Service")
+
+
+def test_client_recovers_short_ui_via_json_not_6k_module_code():
+    from test_host_scaffolded_client import _BODY
+    p = plan_single_action()
+    class StructuredRouter:
+        def __init__(self):
+            self.calls = []
+        def complete(self, prompt, **kwargs):
+            self.calls.append(("plain", kwargs["max_tokens"]))
+            return "function Service.handleAction :: invalid"
+        def complete_json(self, prompt, **kwargs):
+            self.calls.append(("json_body", kwargs["max_tokens"]))
+            return {"body": _BODY}
+    router = StructuredRouter()
+    code = LuauCodeGenerator(router).generate_module_code(p.modules[1], p)
+    assert router.calls == [("plain", 850), ("plain", 850), ("json_body", 750)]
+    assert "request(\"hull\")" in code
+    assert "remote:InvokeServer(actionId)" in code
+
+
+def test_passive_world_recovers_short_startup_via_json_only():
+    p = passive_plan()
+    class StructuredRouter:
+        def __init__(self): self.calls = []
+        def complete(self, prompt, **kwargs):
+            self.calls.append(("plain", kwargs["max_tokens"]))
+            return "return Service"
+        def complete_json(self, prompt, **kwargs):
+            self.calls.append(("json_body", kwargs["max_tokens"]))
+            return {"body": """local platform = Instance.new("Part")
+platform.Name = "MeteorPlatform"
+platform.Anchored = true
+platform.Size = Vector3.new(44, 3, 44)
+platform.Parent = workspace
+"""}
+    router = StructuredRouter()
+    code = LuauCodeGenerator(router).generate_module_code(p.modules[0], p)
+    assert router.calls == [("plain", 1200), ("plain", 1200), ("json_body", 1000)]
+    assert 'platform.Parent = workspace' in code
+    assert 'function Service.start(services)' in code
