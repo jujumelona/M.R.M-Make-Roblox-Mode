@@ -135,7 +135,19 @@ function Service.start(services)
         "Space transition requires host-owned persistent profile")
     orbitPlatform()
     services.PlayerDataManager.OnReady(function(player)
+        local progress = services.PlayerDataManager.GetState(player, "RMMTravelProgress")
+        if not progress then return end
+        -- A persisted "inSpace" flag is NOT physical position. Players spawn
+        -- on the ground when rejoining or after death. Prevent a permanent
+        -- lockout where the UI claims orbit but the character is on the planet.
+        progress.inSpace = false
         status(player, services)
+        player.CharacterAdded:Connect(function()
+            local current = services.PlayerDataManager.GetState(player, "RMMTravelProgress")
+            if not current then return end
+            current.inSpace = false
+            status(player, services)
+        end)
     end)
 end
 function Service.handleAction(player, services, ...)
