@@ -24,8 +24,9 @@ def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> st
     owner = next((peer for peer in getattr(proposal, "modules", [])
                   if peer.kind == ModuleKind.SERVER_MODULE and peer.name == server), None)
     description = (owner.description if owner else module.description).lower()
-    if (not re.search(r"mining|mine|ore", server, re.I)
-            or not re.search(r"mining|mine|ore", description)
+    service_tokens = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", server)
+    if (not re.search(r"\b(?:mining|mine|ore|gather|gathering|harvest|harvesting)\b", service_tokens, re.I)
+            or not re.search(r"mining|mine|ore|gather|harvest|resource", description)
             or not re.search(r"resource|ore|mineral", description)
             or not any(token in description for token in ("currency", "coin", "credit"))):
         return None
@@ -64,17 +65,18 @@ def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> st
         # real target Part to handleAction(player, services, targetPart).
         # Do not create a client or Remote for this mode.
         return _SERVER.replace("__NODES__", "{" + json.dumps(world_name) + "}")
-    if (routes[0][1].get("kind") != "RemoteFunction"
-            or routes[0][1].get("max_args") == 0):
+    if routes[0][1].get("kind") != "RemoteFunction":
         return None
     remote = routes[0][0]
     lua_nodes = "{" + ", ".join(json.dumps(node) for node in nodes) + "}"
+    no_args = routes[0][1].get("max_args") == 0
     if module.kind == ModuleKind.SERVER_MODULE:
-        return _SERVER.replace("__NODES__", lua_nodes)
+        return (_SERVER_NEAREST if no_args else _SERVER).replace("__NODES__", lua_nodes)
     if not module.file_path.startswith("src/client/"):
         return None
-    return (_CLIENT.replace("__NODES__", lua_nodes)
-                   .replace("__REMOTE__", json.dumps(remote)))
+    return ((_CLIENT_NEAREST if no_args else _CLIENT)
+            .replace("__NODES__", lua_nodes)
+            .replace("__REMOTE__", json.dumps(remote)))
 
 
 _SERVER = r'''--!strict
