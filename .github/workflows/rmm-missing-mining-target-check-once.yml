@@ -1,0 +1,41 @@
+name: RMM missing mining target full regression (one time)
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/rmm-missing-mining-target-check-once.yml']
+permissions:
+  contents: write
+jobs:
+  regressions:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install existing test dependencies
+        run: python -m pip install -e '.[dev]' pytest nbformat httpx pytest-cov
+      - name: Compile and test full repository
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          python -m compileall -q roblox_mod_ai tests > /tmp/rmm-mining20.log 2>&1
+          compile_rc=$?
+          if [ "$compile_rc" -eq 0 ]; then
+            python -m pytest -q tests >> /tmp/rmm-mining20.log 2>&1
+            rc=$?
+          else
+            rc=$compile_rc
+          fi
+          {
+            echo "tested_commit=$GITHUB_SHA"
+            echo "exit_code=$rc"
+            tail -c 25000 /tmp/rmm-mining20.log
+          } > /tmp/rmm-mining20-result.txt
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/rmm-mining20-ci-result.txt" \
+            -f message='test(rmm): actual mining20 CI evidence' \
+            -f content="$(base64 -w0 /tmp/rmm-mining20-result.txt)" -f branch=main
+          exit "$rc"
