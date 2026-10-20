@@ -35,7 +35,7 @@ jobs:
             echo "exit_code=$rc"
             tail -c 25000 /tmp/rmm-mining20.log
           } > /tmp/rmm-mining20-result.txt
-          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/rmm-mining20-ci-result.txt" \
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/rmm-mining20-ci-result-v2.txt" \
             -f message='test(rmm): actual mining20 CI evidence' \
             -f content="$(base64 -w0 /tmp/rmm-mining20-result.txt)" -f branch=main
           exit "$rc"
