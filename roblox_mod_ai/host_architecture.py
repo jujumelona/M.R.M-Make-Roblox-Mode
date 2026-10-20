@@ -99,6 +99,24 @@ def _recover_observable_result(server: Any, client: Any, interaction: Any) -> st
     return client.strip()
 
 
+# Gameplay that requires a player's decision cannot be reachable only from
+# Service.start(). A role='server' module with interaction='none' has no
+# Remote or ProximityPrompt connected by the host.
+_PLAYER_ACTION_INTENT = re.compile(
+    r"\\b(?:min(?:e|ing)|harvest(?:s|ing)?|trading?|trade|purchase|buy|sell|"
+    r"upgrad(?:e|ing)|launch|travel|teleport|combat|fight|attack|"
+    r"coloniz(?:e|ation)|craft|build|gather|collect|equip|reward|"
+    r"exchange|ship\\s+part)\\b|(?:선택|채굴|거래|구매|업그레이드|우주선|전투|식민|발사)",
+    re.I,
+)
+_EXPLICIT_AUTONOMOUS_TRIGGER = re.compile(
+    r"\\b(?:automatically|periodically|scheduled|server[- ]driven|"
+    r"without player input|on playeradded|playeradded|on spawn|"
+    r"on a timer|every \\d+ seconds|background simulation)\\b",
+    re.I,
+)
+
+
 def expand_semantic_facet(
     raw: dict[str, Any], *, facet_id: str, requirement_ids: list[str],
     source_requirements: list[dict[str, Any]],
@@ -193,6 +211,18 @@ def expand_semantic_facet(
             not isinstance(item, str) or not item.strip() for item in world
         ):
             raise HostArchitectureError("world_entities must be short names, not geometry")
+
+        # Do not silently write an unreachable server-only module for a
+        # player-driven mechanic. The host can wire a Remote or world prompt,
+        # but interaction='none' explicitly tells it to wire neither.
+        if (interaction == "none"
+                and _PLAYER_ACTION_INTENT.search(name + " " + server)
+                and not _EXPLICIT_AUTONOMOUS_TRIGGER.search(server)):
+            raise HostArchitectureError(
+                "Player-driven gameplay has interaction=none and no host input "
+                "route. Specify event/request_response with an appropriate "
+                "client action, or event + world_prompt for a world Part. "
+                "Only genuinely autonomous server systems may use none.")
 
         # A small planner can propose the identical action under several
         # different names. Do not create two server writers/Remotes for one
