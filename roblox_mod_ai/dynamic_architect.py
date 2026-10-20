@@ -19,6 +19,7 @@ from .model_router import ModelRouter
 from .request_contract import implementation_facets
 from .request_semantics import request_semantic_errors
 from .host_architecture import SEMANTIC_FACET_SCHEMA, expand_semantic_facet
+from .facet_scope import scope_semantic_systems
 
 _VALID_NAME = re.compile(r"^[A-Z][A-Za-z0-9]{2,58}$")
 _VALID_REMOTE = re.compile(r"^[A-Z][A-Za-z0-9]{2,55}$")
@@ -754,6 +755,10 @@ class RobloxDynamicArchitect:
                 "currency and progression only; source_requirements defines this "
                 "feature's exclusive implementation ownership. Ordinary purchases "
                 "use earned game currency; never invent Robux monetization. "
+                "IMPORTANT: one source facet only, not the whole game. "
+                "Do NOT echo other features from original_request. Usually "
+                "write ONE system, unless this exact source clause requires "
+                "several independently playable actions. "
                 "Each system MUST directly implement the user's single "
                 "source_requirements clause. No unrelated systems. "
                 "Do not claim a world has been built or gameplay tested. "
@@ -772,6 +777,7 @@ class RobloxDynamicArchitect:
             successful = False
             cache_hit = False
             for attempt in range(3):
+                rejected_scope_names: list[str] = []
                 try:
                     # A previously validated feature is reused only after the
                     # SAME current source ownership and collision checks.
@@ -832,6 +838,11 @@ class RobloxDynamicArchitect:
                     # explicit modules; validate that legacy contract exactly
                     # as before rather than silently breaking existing files.
                     if "systems" in draft:
+                        # A small model may echo unrelated features from the
+                        # full request. Attribute ONLY demonstrably source-owned
+                        # systems; every dropped feature keeps its own facet.
+                        draft, rejected_scope_names = scope_semantic_systems(
+                            draft, facet=facet, all_facets=facets)
                         semantic_errors = request_semantic_errors(draft, prompt)
                         if semantic_errors:
                             raise DynamicDesignError("; ".join(semantic_errors))
@@ -885,6 +896,7 @@ class RobloxDynamicArchitect:
                         "passed": True, "validator": "scoped feature validated",
                         "cache_hit": cache_hit,
                         "id_binding": id_binding,
+                        "out_of_scope_systems_ignored": rejected_scope_names,
                     })
                     successful = True
                     break
