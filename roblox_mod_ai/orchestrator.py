@@ -79,6 +79,7 @@ from .module_generation_gate import (
     ModuleGenerationContractError, require_generated_module_contract,
     generated_module_errors,
 )
+from .scaffold_policy import is_host_scaffolded_source
 
 class RobloxProductionOrchestrator:
     """Coordinates end-to-end production of a Roblox experience via topological work graph."""
@@ -255,6 +256,7 @@ class RobloxProductionOrchestrator:
                 "module_remotes": design.get("module_remotes", {}),
                 "module_world_objects": design.get("module_world_objects", {}),
                 "host_actions": design.get("host_actions", {}),
+                "host_action_choices": design.get("host_action_choices", {}),
                 "host_client_actions": design.get("host_client_actions", {}),
                 "host_world_actions": design.get("host_world_actions", {}),
                 "module_requirements": design.get("module_requirements", {}),
@@ -391,9 +393,11 @@ class RobloxProductionOrchestrator:
                     # actual exception and partial source to the coding agent
                     # before abandoning this specific gameplay module.
                     bounded_failure = (
-                        isinstance(exc, LuauGenerationError)
-                        and any(str(item).startswith("SCOPED_")
-                                for item in exc.diagnostics)
+                        (isinstance(exc, LuauGenerationError)
+                         and any(str(item).startswith("SCOPED_")
+                                 for item in exc.diagnostics))
+                        or (isinstance(exc, ModuleGenerationContractError)
+                            and is_host_scaffolded_source(failed_code or ""))
                     )
                     if is_host_generated or bounded_failure or not module.module_id.startswith("dyn_"):
                         # When a bounded model task fails, keep its ACTUAL
