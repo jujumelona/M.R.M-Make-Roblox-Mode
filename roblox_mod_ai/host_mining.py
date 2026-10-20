@@ -28,10 +28,12 @@ def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> st
     service_tokens = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", server)
     if (not re.search(r"\b(?:mining|mine|ore|gather|gathering|harvest|harvesting)\b", service_tokens, re.I)
             or not re.search(r"mining|mine|ore|gather|harvest|resource", description)
-            or not re.search(r"resource|ore|mineral", description)
             or not any(token in description for token in ("currency", "coin", "credit"))):
         return None
     design = proposal.game_design.get("dynamic_design") or {}
+    # A mineable source-owned Part is the actual evidence of the resource.
+    # Do not reject "mining a static world object" solely because its prose
+    # does not spell out the words "resource" or "ore".
     nodes = mining_world_nodes(proposal, owner or module)
     if not nodes:
         return None
