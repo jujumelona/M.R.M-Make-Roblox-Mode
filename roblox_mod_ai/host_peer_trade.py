@@ -17,15 +17,19 @@ def render_host_peer_trade(module: RobloxModuleSpec, proposal: RobloxProposal) -
             or module.kind not in (ModuleKind.SERVER_MODULE, ModuleKind.CLIENT_SCRIPT)
             or not re.search(r"resource.*trad", module.name, re.I)):
         return None
-    description = module.description.casefold()
+    service = (module.name if module.kind == ModuleKind.SERVER_MODULE
+               else module.name.removesuffix("Client") + "Server")
+    owner = next((m for m in proposal.modules
+                  if m.name == service and m.kind == ModuleKind.SERVER_MODULE), None)
+    if owner is None:
+        return None
+    description = owner.description.casefold()
     if ("counterparty" not in description or "trade" not in description
             or "inventory" not in description):
         return None
     if not any(render_host_mining(peer, proposal) is not None
                for peer in proposal.modules if peer.kind == ModuleKind.SERVER_MODULE):
         return None
-    service = (module.name if module.kind == ModuleKind.SERVER_MODULE
-               else module.name.removesuffix("Client") + "Server")
     design = proposal.game_design.get("dynamic_design") or {}
     matches = [(name, binding) for name, binding in
                (design.get("host_actions") or {}).items()
