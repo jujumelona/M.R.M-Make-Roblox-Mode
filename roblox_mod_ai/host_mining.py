@@ -196,3 +196,45 @@ button.Activated:Connect(function()
     end
 end)
 '''
+
+# The gateway enforces zero wire arguments for this route. Select a real node
+# from the server's own workspace using the live player's position; never trust
+# a claimed client target, distance, or reward.
+_SERVER_NEAREST = _SERVER.replace(
+    '''    if select("#", ...) ~= 1 then return false end
+    local part = ...
+    local node = getNode(part)
+    if not node or node.remaining <= 0 then return false end
+    local character = player.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not humanoid or humanoid.Health <= 0 or not root then return false end
+    if (root.Position - part.Position).Magnitude > MAX_RANGE then return false end''',
+    '''    if select("#", ...) ~= 0 then return false end
+    local character = player.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not humanoid or humanoid.Health <= 0 or not root then return false end
+    local part = nil
+    local best = MAX_RANGE
+    for _, name in NODE_NAMES do
+        local candidate = workspace:FindFirstChild(name, true)
+        if candidate and validNode(candidate) then
+            local distance = (root.Position - candidate.Position).Magnitude
+            if distance <= best then
+                part = candidate
+                best = distance
+            end
+        end
+    end
+    if not part then return false end
+    local node = getNode(part)
+    if not node or node.remaining <= 0 then return false end'''
+)
+assert _SERVER_NEAREST != _SERVER, "Host mining ABI changed without updating no-arg path"
+
+# Visual node selection is UI-only; host still chooses/verifies the target.
+_CLIENT_NEAREST = _CLIENT.replace(
+    'remote:InvokeServer(target)', 'remote:InvokeServer()'
+)
+assert _CLIENT_NEAREST != _CLIENT, "Host mining client ABI changed"
