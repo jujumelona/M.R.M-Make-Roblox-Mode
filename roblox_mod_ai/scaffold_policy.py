@@ -97,3 +97,13 @@ def single_passive_service(proposal: Any, module: Any) -> bool:
     )
     return bool(passive_intent) and not requires_player_ingress(
         module.name, module.description)
+
+
+def is_host_scaffolded_source(source: str) -> bool:
+    """Source provenance for platform shell; never regenerate its entire file."""
+    markers = (
+        "-- Host-authored lifecycle, input validation and exported ABI.",
+        "-- The host owns Roblox services, Remote transport, and feedback.",
+        "-- Host-owned passive service lifecycle and registry.",
+    )
+    return bool(source) and any(marker in source[:360] for marker in markers)
