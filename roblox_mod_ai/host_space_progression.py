@@ -347,9 +347,12 @@ _UPGRADE_SERVER = r'''--!strict
 local Players = game:GetService("Players")
 local Service = {}
 local MAX_TIER = 3
-local function publish(player, progress)
+local function publish(player, progress, build)
     player:SetAttribute("RMMShipTier", progress.tier or 0)
-    player:SetAttribute("RMMSpaceUnlocked", progress.unlocked == true)
+    -- A saved upgrade alone must NOT expose a launch entitlement if the
+    -- actual constructed ship has gone missing or is incomplete.
+    player:SetAttribute("RMMSpaceUnlocked",
+        progress.unlocked == true and build ~= nil and build.shipReady == true)
 end
 function Service.start(services)
     assert(type(services.PlayerDataManager) == "table"
@@ -358,7 +361,8 @@ function Service.start(services)
         "Ship upgrades require an authoritative host profile")
     services.PlayerDataManager.OnReady(function(player)
         local progress = services.PlayerDataManager.GetState(player, "RMMTravelProgress")
-        if progress then publish(player, progress) end
+        local build = services.PlayerDataManager.GetState(player, "RMMShipBuild")
+        if progress and build then publish(player, progress, build) end
     end)
 end
 function Service.handleAction(player, services, ...)
@@ -386,7 +390,7 @@ function Service.handleAction(player, services, ...)
     coins.Value -= coinCost
     progress.tier = tier + 1
     progress.unlocked = progress.tier >= MAX_TIER
-    publish(player, progress)
+    publish(player, progress, build)
     return {success = true, tier = progress.tier, unlocked = progress.unlocked,
         coins = coins.Value, ore = inventory.resources}
 end
