@@ -455,6 +455,7 @@ class RobloxPreDesignResearch:
                             "source_span": span,
                             "intent": learned["intent"],
                             "english_query": learned["english_query"],
+                            "chunk_id": part["chunk_id"],
                             "classification_origin": (
                                 "host_source_only"
                                 if part["chunk_id"] in unclassified_source_chunks
