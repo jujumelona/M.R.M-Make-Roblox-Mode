@@ -113,7 +113,9 @@ def ensure_mining_world_contract(proposal: RobloxProposal) -> list[dict[str, Any
                     linked.append(node)
         mutations.append({
             "service": module.name, "resource_node": node,
-            "input": "RemoteFunction_with_server_verified_Part",
+            "input": ("RemoteFunction_server_selected_nearest_Part"
+                      if routes[0].get("max_args") == 0
+                      else "RemoteFunction_with_server_verified_Part"),
             "basis": "user_requested_resource_mining",
         })
     if mutations:
