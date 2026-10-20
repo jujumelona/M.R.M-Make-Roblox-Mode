@@ -212,7 +212,7 @@ class RobloxProductionOrchestrator:
             "luau_service_contract.py", "server_interface_audit.py", "request_semantics.py", "host_player_data.py",
             "roblox_toolchain.py", "verification_selector.py",
             "detailed_plan.py", "source_review.py", "source_repair_cycle.py",
-            "module_generation_gate.py", "host_client_codegen.py",
+            "module_generation_gate.py", "host_client_codegen.py", "scaffold_policy.py",
         )
         component_fingerprints = {
             component: hashlib.sha256(
@@ -389,12 +389,21 @@ class RobloxProductionOrchestrator:
                     # The original path immediately returned False. Feed the
                     # actual exception and partial source to the coding agent
                     # before abandoning this specific gameplay module.
-                    if is_host_generated or not module.module_id.startswith("dyn_"):
-                        # A failed first-party template is a host bug. Never
-                        # ask the 9B model to rewrite trusted transport/state.
+                    bounded_failure = (
+                        isinstance(exc, LuauGenerationError)
+                        and any(str(item).startswith("SCOPED_")
+                                for item in exc.diagnostics)
+                    )
+                    if is_host_generated or bounded_failure or not module.module_id.startswith("dyn_"):
+                        # When a bounded model task fails, keep its ACTUAL
+                        # candidate/history and terminate this unit. The old
+                        # generic 6000-token full-file repair repeated the
+                        # same failure without preserving host ABI constraints.
                         return {"success": False, "generated_count": completed,
                                 "failed_module": module.name, "error": message,
-                                "host_owned": is_host_generated}
+                                "host_owned": is_host_generated,
+                                "scoped_unit_exhausted": bounded_failure,
+                                "requires_contract_revision": bounded_failure}
                     try:
                         replacement = RobloxCodeRepairAgent(router=self.router).repair(
                             module, proposal,
