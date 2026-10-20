@@ -149,7 +149,11 @@ def try_scaffolded_server(
         "changes for valid requests. Use actual Roblox APIs only."
     )
     attempts = []
-    for attempt in range(2):
+    for attempt in range(3):
+        # A third SHORT JSON-body response can recover malformed plaintext
+        # without encoding an entire 6000-token ModuleScript as a JSON string.
+        if attempt == 2 and not hasattr(router, "complete_json"):
+            break
         body = ""
         try:
             previous = attempts[-1] if attempts else None
@@ -163,11 +167,24 @@ def try_scaffolded_server(
                 "Remote event wiring, explanations, or final end."
                 if previous else ""
             )
-            raw = router.complete(
-                prompt + feedback,
-                role="coder", temperature=0.0, max_tokens=1500,
-                system_prompt="Roblox Luau coder. Output statements inside existing function only.",
-            )
+            if attempt == 2:
+                recovered = router.complete_json(
+                    prompt + "\nOnly JSON {body:string} containing short action statements. "
+                    "Do not output a whole module, function header or platform shell. "
+                    + feedback[-800:],
+                    role="coder", temperature=0.0, max_tokens=1200,
+                    json_schema={
+                        "type": "object", "properties": {"body": {"type": "string"}},
+                        "required": ["body"],
+                    },
+                )
+                raw = recovered.get("body", "") if isinstance(recovered, dict) else ""
+            else:
+                raw = router.complete(
+                    prompt + feedback,
+                    role="coder", temperature=0.0, max_tokens=1500,
+                    system_prompt="Roblox Luau coder. Output statements inside existing function only.",
+                )
             body = _clean_body(raw)
             if not body or len(body) < 60:
                 raise ValueError("Empty or trivially short gameplay body")
@@ -198,7 +215,8 @@ def try_scaffolded_server(
         except Exception as exc:
             attempts.append({
                 "attempt": attempt + 1,
-                "mode": "host_scaffolded_action_body",
+                "mode": ("host_scaffolded_action_json_body"
+                         if attempt == 2 else "host_scaffolded_action_body"),
                 "module": module.name,
                 "diagnostics": [type(exc).__name__ + ": " + str(exc)[:1800]],
                 "model_runtime": getattr(router, "last_generation_report", {}),
