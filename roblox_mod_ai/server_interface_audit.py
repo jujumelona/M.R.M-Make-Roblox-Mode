@@ -60,12 +60,13 @@ def dependency_api_errors(module: Any, proposal: RobloxProposal, code: str) -> l
                 receivers[alias] = target
     for receiver, target in receivers.items():
         expression = r"(?<![\w.:])" + r"\s*\.\s*".join(map(re.escape, receiver.split(".")))
-        available = set(exported_methods(peers[target].code)[1]) if peers[target].code else None
-        for match in re.finditer(expression + r"\s*[.:]\s*(" + _NAME + r")\b", masked):
+        exported = exported_methods(peers[target].code)[1] if peers[target].code else None
+        available = set(exported) if exported is not None else None
+        for match in re.finditer(expression + r"\s*([.:])\s*(" + _NAME + r")\b", masked):
             prefix, suffix = masked[:match.start()].rstrip(), masked[match.end():]
             if prefix.endswith((".", ":")):
                 continue
-            method = match.group(1)
+            separator, method = match.group(1), match.group(2)
             if re.search(r"\bfunction\s*$", prefix) or re.match(r"\s*=\s*function\b", suffix):
                 errors.append("DEPENDENCY_API: gameplay must not replace methods on " + target)
                 continue
@@ -76,6 +77,13 @@ def dependency_api_errors(module: Any, proposal: RobloxProposal, code: str) -> l
             elif available is not None and method not in available:
                 errors.append("DEPENDENCY_API: " + target + "." + method +
                               " is not exported; actual methods: " + ", ".join(sorted(available - {"start"})))
+            elif (separator == ":" and exported is not None
+                  and method in exported
+                  and exported[method]["separator"] == "."
+                  and not re.match(r"self\b", exported[method]["params"])):
+                errors.append("DEPENDENCY_API: " + target + "." + method +
+                              " is exported as a dot function without self; "
+                              "calling it with ':' silently shifts every argument")
     return sorted(set(errors))
 
 
