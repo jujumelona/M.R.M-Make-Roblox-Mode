@@ -106,7 +106,7 @@ function Service.handleAction(player, services, ...)
     local root = character and character:FindFirstChild("HumanoidRootPart")
     if not humanoid or humanoid.Health <= 0 or not root then return false end
     if (root.Position - part.Position).Magnitude > MAX_RANGE then return false end
-    local progress = services.PlayerDataManager.GetState(player, "RMMMining")
+    local progress = services.PlayerDataManager.GetState(player, "RMMInventory")
     if not progress then return false end
     local leaderstats = player:FindFirstChild("leaderstats")
     local coins = leaderstats and leaderstats:FindFirstChild("Coins")
