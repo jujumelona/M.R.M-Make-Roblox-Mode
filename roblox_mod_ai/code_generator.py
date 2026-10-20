@@ -13,7 +13,8 @@ from .host_service_codegen import try_scaffolded_server
 from .host_client_codegen import try_scaffolded_client
 from .host_lifecycle_codegen import try_scaffolded_lifecycle
 from .scaffold_policy import (single_host_action, single_client_action,
-                              single_passive_service, scaffold_exhausted)
+                              single_passive_service, scaffold_exhausted,
+                              is_host_scaffolded_source)
 from .host_gameplay import render_host_gameplay
 from .economy_core import is_supported_economy_ledger, render_economy_ledger
 from .server_modules import render_dynamic_server_bootstrap
@@ -77,6 +78,11 @@ class LuauCodeGenerator:
             )
             if render_host_gameplay(module, proposal) is not None:
                 raise ValueError("Host gameplay template failed static checks; fix the host template: " + report)
+            if is_host_scaffolded_source(code):
+                # The model authored only a bounded body. Full-module repair
+                # would discard the host shell and repeat the 9B failure.
+                raise ValueError("Host-scaffolded source failed Luau parse; "
+                                 "repair its bounded body or host shell: " + report)
             if module.module_id.startswith("dyn_"):
                 # Reflect the *actual* analyzer diagnostic back to the model
                 # with its previous code; do not append guessed 'end' tokens.
