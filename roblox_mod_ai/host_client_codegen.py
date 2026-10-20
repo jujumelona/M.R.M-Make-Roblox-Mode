@@ -97,6 +97,39 @@ def try_scaffolded_client(
     if (server is None or not isinstance(server_name, str)
             or module.name != server_name.removesuffix("Server") + "Client"):
         return None
+    # New semantic plans supply explicit server-owned action IDs. Those can
+    # produce the entire client UI deterministically, with ZERO model code.
+    # Never let a 9B client invent an ID the server was not told about.
+    declared = (design.get("host_action_choices") or {}).get(remote)
+    if declared is not None:
+        if (not isinstance(declared, list) or not declared
+                or any(not isinstance(choice, dict)
+                       or not isinstance(choice.get("id"), str)
+                       or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,31}", choice["id"])
+                       or not isinstance(choice.get("label"), str)
+                       or not choice["label"].strip()
+                       for choice in declared)
+                or len({x["id"] for x in declared}) != len(declared)):
+            return None
+        lines = []
+        for choice in declared:
+            lines += [
+                "do",
+                '    local button = Instance.new("TextButton")',
+                "    button.Name = " + json.dumps(choice["id"]),
+                "    button.Text = " + json.dumps(choice["label"], ensure_ascii=False),
+                "    button.Size = UDim2.new(1, 0, 0, 40)",
+                "    button.Parent = panel",
+                "    button.Activated:Connect(function()",
+                "        request(" + json.dumps(choice["id"]) + ")",
+                "    end)",
+                "end",
+            ]
+        source = _client_shell("\n".join(lines), remote, module.name)
+        if any(d.severity == "ERROR" for d in analyzer.analyze_source(
+                source, module.file_path)):
+            return None
+        return source
     prompt = (
         "Write ONLY 1-3 Roblox Luau TextButton controls inside an EXISTING "
         "panel. Available identifiers are panel, status, request(actionId). "
