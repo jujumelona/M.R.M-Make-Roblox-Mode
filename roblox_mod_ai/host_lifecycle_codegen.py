@@ -59,6 +59,8 @@ def try_scaffolded_lifecycle(
     )
     attempts: list[dict[str, Any]] = []
     for attempt in range(3):
+        if attempt == 2 and not hasattr(router, "complete_json"):
+            break
         body = ""
         try:
             if attempt:
@@ -68,10 +70,22 @@ def try_scaffolded_lifecycle(
                 )
             else:
                 query = prompt
-            response = router.complete(
-                query, role="coder", temperature=0.0, max_tokens=1200,
-                system_prompt="Luau startup statements only. Platform shell is prebuilt.",
-            )
+            if attempt == 2:
+                recovered = router.complete_json(
+                    query + "\nReturn JSON {body:string} with ONLY short "
+                    "Luau initialization statements.",
+                    role="coder", temperature=0.0, max_tokens=1000,
+                    json_schema={
+                        "type": "object", "properties": {"body": {"type": "string"}},
+                        "required": ["body"],
+                    },
+                )
+                response = recovered.get("body", "") if isinstance(recovered, dict) else ""
+            else:
+                response = router.complete(
+                    query, role="coder", temperature=0.0, max_tokens=1200,
+                    system_prompt="Luau startup statements only. Platform shell is prebuilt.",
+                )
             body = _clean_body(response)
             if (not 60 <= len(body) <= 4500 or body.startswith("--!strict")
                     or _FORBIDDEN.search(body) or not _EFFECT.search(body)):
@@ -99,7 +113,8 @@ def try_scaffolded_lifecycle(
         except Exception as exc:
             attempts.append({
                 "attempt": attempt + 1, "module": module.name,
-                "mode": "host_scaffolded_passive_start",
+                "mode": ("host_scaffolded_passive_json_start"
+                         if attempt == 2 else "host_scaffolded_passive_start"),
                 "diagnostics": [type(exc).__name__ + ": " + str(exc)[:1200]],
                 "candidate": body[:4500],
             })
