@@ -201,7 +201,7 @@ class RobloxProductionOrchestrator:
         # checkpoints without deleting the user's prior run evidence.
         generation_components = (
             "orchestrator.py", "agent_loop.py", "code_generator.py",
-            "host_service_codegen.py", "host_mining.py", "host_mining_contract.py", "host_trading.py",
+            "host_service_codegen.py", "host_mining.py", "host_mining_nodes.py", "host_mining_contract.py", "host_trading.py",
             "host_currency.py", "host_gameplay.py", "host_peer_trade.py",
             "host_space_progression.py", "host_world_setup.py", "host_upgrade_purchase.py",
             "module_prompt_scope.py", "server_modules.py", "economy_core.py", "host_client.py",
