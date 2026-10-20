@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .code_output_guard import LiveCodeRepetitionGuard, RepeatedCodeOutput
+from .code_output_guard import LiveCodeRepetitionGuard
 from .luau_api_sanity import invalid_luau_apis
 from .luau_service_contract import service_contract_checks
 from .request_semantics import request_semantic_errors
