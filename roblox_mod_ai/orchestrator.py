@@ -80,6 +80,7 @@ from .module_generation_gate import (
     generated_module_errors,
 )
 from .scaffold_policy import is_host_scaffolded_source
+from .generation_scope import generation_scope
 
 class RobloxProductionOrchestrator:
     """Coordinates end-to-end production of a Roblox experience via topological work graph."""
@@ -196,7 +197,16 @@ class RobloxProductionOrchestrator:
                     "unrouted_modules": orphaned,
                     "requires_replanning": True,
                 }
-            return {"module_order": [m.name for m in proposal.modules]}
+            scope = generation_scope(proposal)
+            tool_results["generation_scope"] = scope
+            trajectory.record("preflight", "generation scope", {
+                "counts": scope["counts"],
+                "whole_file_model_risk_modules": scope["whole_file_model_risk_modules"],
+            }, passed=True)
+            return {"module_order": [m.name for m in proposal.modules],
+                    "generation_scope": scope["counts"],
+                    "whole_file_model_risk_modules":
+                        scope["whole_file_model_risk_modules"]}
 
         checkpoint_file = output_dir / "generation_checkpoint.json"
         # Input-only checkpoints previously survived changes to coder prompts,
@@ -213,7 +223,7 @@ class RobloxProductionOrchestrator:
             "luau_service_contract.py", "server_interface_audit.py", "request_semantics.py", "host_player_data.py",
             "roblox_toolchain.py", "verification_selector.py",
             "detailed_plan.py", "source_review.py", "source_repair_cycle.py",
-            "module_generation_gate.py", "host_client_codegen.py", "host_lifecycle_codegen.py",
+            "module_generation_gate.py", "generation_scope.py", "host_client_codegen.py", "host_lifecycle_codegen.py",
             "scaffold_policy.py",
         )
         component_fingerprints = {
