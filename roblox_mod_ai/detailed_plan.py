@@ -133,6 +133,17 @@ def enrich_detailed_plan(plan: dict[str, Any], router: Any) -> dict[str, Any]:
     )
     plan["ai_planning"] = {"status": "not_run", "requirements": {},
                            "reason": "No local planning model configured"}
+    # Stock modules already have inspected host-owned contracts. Merely
+    # detecting a localhost model must not re-plan an exact built-in game.
+    # Explicit opt-in (1) still permits testing supplemental model planning.
+    novel_modules = any(
+        str(module.get("id", "")).startswith("dyn_")
+        for module in plan.get("implementation_modules", [])
+        if isinstance(module, dict)
+    )
+    if option == "auto" and not novel_modules:
+        plan["ai_planning"]["reason"] = "Host-owned implementation needs no model expansion"
+        return plan
     if not enabled:
         return plan
     keys = ("steps", "preconditions", "server_state_changes",
