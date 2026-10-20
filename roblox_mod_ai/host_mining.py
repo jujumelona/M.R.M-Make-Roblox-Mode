@@ -39,11 +39,12 @@ def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> st
             or routes[0][1].get("max_args") == 0):
         return None
     remote = routes[0][0]
+    lua_nodes = "{" + ", ".join(json.dumps(node) for node in nodes) + "}"
     if module.kind == ModuleKind.SERVER_MODULE:
-        return _SERVER.replace("__NODES__", json.dumps(nodes))
+        return _SERVER.replace("__NODES__", lua_nodes)
     if not module.file_path.startswith("src/client/"):
         return None
-    return (_CLIENT.replace("__NODES__", json.dumps(nodes))
+    return (_CLIENT.replace("__NODES__", lua_nodes)
                    .replace("__REMOTE__", json.dumps(remote)))
 
 
