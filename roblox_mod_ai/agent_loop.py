@@ -449,5 +449,13 @@ class RobloxCodeRepairAgent:
             })
             print("[RMM coder] " + module.name + " attempt " + str(attempt + 1) +
                   " invalid: " + "; ".join(errors[:5])[:700], flush=True)
+        # Preserve the failed host-scaffolded body experiments alongside
+        # full-file attempts in failure ZIPs for reproducible debugging.
+        scaffold_history = getattr(self.router, "last_scaffold_attempts", [])
+        if (isinstance(scaffold_history, list) and scaffold_history
+                and all(isinstance(item, dict) and
+                        item.get("module") == module.name
+                        for item in scaffold_history)):
+            attempt_history = list(scaffold_history) + attempt_history
         raise LuauGenerationError(module.name, candidate, errors,
                                   history=attempt_history)
