@@ -145,7 +145,13 @@ def test_no_world_invention_without_mining_request_or_authenticated_remote():
     assert not ensure_mining_world_contract(p)
     p = proposal20()
     p.game_design["dynamic_design"]["host_actions"]["ResourceMiningEconomy0388601Action"]["max_args"] = 0
-    assert not ensure_mining_world_contract(p)
+    generated = ensure_mining_world_contract(p)
+    assert len(generated) == 1
+    assert generated[0]["input"] == "RemoteFunction_server_selected_nearest_Part"
+    from roblox_mod_ai.host_mining import render_host_mining
+    source = render_host_mining(p.modules[0], p)
+    assert 'if select("#", ...) ~= 0 then return false end' in source
+    assert "candidate = workspace:FindFirstChild(name, true)" in source
 
 
 def test_proposal20_host_luau_source_and_bootstrap_pass_static_validation():
