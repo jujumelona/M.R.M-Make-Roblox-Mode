@@ -10,10 +10,11 @@ from .host_mining import render_host_mining
 from .host_trading import render_host_trading
 from .host_currency import render_host_currency
 from .host_peer_trade import render_host_peer_trade
+from .host_space_progression import render_host_space_progression
 from .spec import RobloxModuleSpec, RobloxProposal
 
 RENDERERS = (render_host_mining, render_host_trading, render_host_currency,
-             render_host_peer_trade)
+             render_host_peer_trade, render_host_space_progression)
 
 
 def render_host_gameplay(module: RobloxModuleSpec, proposal: RobloxProposal) -> str | None:
