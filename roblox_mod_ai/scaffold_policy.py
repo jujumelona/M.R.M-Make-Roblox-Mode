@@ -67,3 +67,22 @@ def scaffold_exhausted(module: Any, attempts: Any, unit: str) -> LuauGenerationE
         diagnostics,
         history=history,
     )
+
+def single_passive_service(proposal: Any, module: Any) -> bool:
+    """Authorize a no-ingress server startup unit from an actual authored plan."""
+    from .host_architecture import requires_player_ingress
+    if not (module.module_id.startswith("dyn_")
+            and module.kind == ModuleKind.SERVER_MODULE
+            and module.file_path.startswith("src/server/")
+            and module.file_path.endswith(".luau")
+            and not module.file_path.endswith(".server.luau")):
+        return False
+    design = proposal.game_design.get("dynamic_design") or {}
+    if not design:
+        return False
+    for key in ("host_actions", "host_world_actions"):
+        if any(isinstance(row, dict) and row.get("service") == module.name
+               for row in (design.get(key) or {}).values()):
+            return False
+    return bool(module.description.strip()) and not requires_player_ingress(
+        module.name, module.description)
