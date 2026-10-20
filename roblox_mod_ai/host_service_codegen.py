@@ -17,7 +17,7 @@ from .spec import ModuleKind, RobloxModuleSpec, RobloxProposal
 
 
 _FORBIDDEN = re.compile(
-    r"\b(?:function\s+Service\.|OnServerEvent|OnServerInvoke|"
+    r"\b(?:function\s+Service\.|Service\.handleAction|OnServerEvent|OnServerInvoke|"
     r"FireServer|DataStoreService|loadstring|setfenv|getfenv|"
     r"InsertService|HttpService|LocalPlayer)\b|"
     r"\brequire\s*\(\s*\d{5,}\s*\)|"
@@ -125,15 +125,23 @@ def try_scaffolded_server(
     )
     attempts = []
     for attempt in range(2):
+        body = ""
         try:
+            previous = attempts[-1] if attempts else None
+            feedback = (
+                "\nLAST REJECTED BODY (NOT VALID CODE; DO NOT COPY):\n"
+                + previous["candidate"][:1300]
+                + "\nEXACT VALIDATOR ERRORS:\n"
+                + "; ".join(previous["diagnostics"])[:1100]
+                + "\nRewrite ONLY the game-action body from scratch. "
+                "Do not include function declarations, Service methods, "
+                "Remote event wiring, explanations, or final end."
+                if previous else ""
+            )
             raw = router.complete(
-                prompt + (
-                    "\nPrevious attempt was invalid; output only concise "
-                    "body statements with balanced Lua blocks."
-                    if attempt else ""
-                ),
-                role="coder", temperature=0.1, max_tokens=2000,
-                system_prompt="Roblox Luau coding assistant. Output function body only.",
+                prompt + feedback,
+                role="coder", temperature=0.0, max_tokens=1500,
+                system_prompt="Roblox Luau coder. Output statements inside existing function only.",
             )
             body = _clean_body(raw)
             if not body or len(body) < 60:
@@ -169,7 +177,7 @@ def try_scaffolded_server(
                 "module": module.name,
                 "diagnostics": [type(exc).__name__ + ": " + str(exc)[:1800]],
                 "model_runtime": getattr(router, "last_generation_report", {}),
-                "candidate": (locals().get("body") or "")[:10000],
+                "candidate": body[:10000],
             })
     router.last_scaffold_attempts = attempts
     return None
