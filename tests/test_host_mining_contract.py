@@ -153,3 +153,18 @@ def test_proposal20_host_luau_source_and_bootstrap_pass_static_validation():
     bootstrap = render_dynamic_server_bootstrap(p)
     assert not [d for d in analyzer.analyze_source(bootstrap, "src/server/RMMServerBootstrap.server.luau")
                 if d.severity == "ERROR"]
+
+
+def test_rojo_project_contains_mineable_world_part_not_just_planner_metadata(tmp_path):
+    from roblox_mod_ai.project_generator import RobloxProjectGenerator
+
+    p = proposal20()
+    ensure_mining_world_contract(p)
+    rojo = RobloxProjectGenerator(tmp_path).generate_rojo_project_json(p)
+    world = rojo["tree"]["Workspace"]
+    node = world["ResourceNode03886011"]
+    assert node["$className"] == "Part"
+    assert node["$properties"]["Anchored"] is True
+    assert node["$properties"]["Position"] != world["LaunchGate93682111"]["$properties"]["Position"]
+    assert "ResourceMiningEconomy0388601Action" in rojo["tree"]["ReplicatedStorage"]["Remotes"]
+    assert rojo["tree"]["ReplicatedStorage"]["Remotes"]["ResourceMiningEconomy0388601Action"]["$className"] == "RemoteFunction"
