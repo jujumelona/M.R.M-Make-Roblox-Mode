@@ -16,7 +16,7 @@ from typing import Any
 from .spec import ModuleKind, RobloxProposal
 
 _MINE = re.compile(r"mining|mine|ore|채굴|자원파밍", re.I)
-_SERVICE_MINE = re.compile(r"\b(?:mining|mine|ore)\b", re.I)
+_SERVICE_MINE = re.compile(r"\b(?:mining|mine|ore|gather|gathering|harvest|harvesting)\b", re.I)
 _RESOURCE = re.compile(r"resource|ore|mineral|자원|광물", re.I)
 _REWARD = re.compile(r"currency|coins?|credits?|earn|돈|화폐", re.I)
 _NODE = re.compile(r"resource.*node|ore.*node|ore.*deposit", re.I)
@@ -72,9 +72,8 @@ def ensure_mining_world_contract(proposal: RobloxProposal) -> list[dict[str, Any
                   if isinstance(row, dict) and row.get("service") == module.name]
         if len(routes) != 1 or worlds or routes[0].get("kind") != "RemoteFunction":
             continue
-        if routes[0].get("max_args") == 0:
-            # This no-argument route cannot provide a physically selected Part.
-            continue
+        # A zero-argument mining request can be secure when the HOST selects
+        # the closest planned Part by server-measured player distance.
         stem = re.findall(r"\d{5,}", module.name)
         planned = [obj.get("name") for obj in objects
                    if isinstance(obj, dict) and obj.get("class") == "Part"
