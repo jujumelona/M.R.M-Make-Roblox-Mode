@@ -1,7 +1,8 @@
 """Host-owned mining: validated world target, proximity, cooldown, persistent Coins.
 
-Only applies when an accepted authored plan defines a matching resource Part and
-a matching RemoteFunction. Does not substitute for unrelated game mechanics.
+Only applies when an accepted authored plan defines a real resource Part and
+exactly one host-owned RemoteFunction or world ProximityPrompt action.
+Does not substitute for unrelated game mechanics.
 """
 from __future__ import annotations
 
@@ -44,7 +45,24 @@ def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> st
     routes = [(name, binding) for name, binding in
               (design.get("host_actions") or {}).items()
               if isinstance(binding, dict) and binding.get("service") == server]
-    if (len(routes) != 1 or routes[0][1].get("kind") != "RemoteFunction"
+    world_routes = [(name, binding) for name, binding in
+                    (design.get("host_world_actions") or {}).items()
+                    if isinstance(binding, dict) and binding.get("service") == server]
+    # A service has ONE verified ingress contract. Never guess which callback
+    # format the host will provide or duplicate player-facing transports.
+    if len(routes) + len(world_routes) != 1:
+        return None
+    if world_routes:
+        world_name = world_routes[0][0]
+        if (module.kind != ModuleKind.SERVER_MODULE
+                or not module.file_path.startswith("src/server/")
+                or world_name not in nodes):
+            return None
+        # Bootstrap already installs ProximityPrompt.Triggered and passes the
+        # real target Part to handleAction(player, services, targetPart).
+        # Do not create a client or Remote for this mode.
+        return _SERVER.replace("__NODES__", "{" + json.dumps(world_name) + "}")
+    if (routes[0][1].get("kind") != "RemoteFunction"
             or routes[0][1].get("max_args") == 0):
         return None
     remote = routes[0][0]
