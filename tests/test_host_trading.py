@@ -5,7 +5,37 @@ from roblox_mod_ai.code_generator import LuauCodeGenerator
 from roblox_mod_ai.host_trading import render_host_trading
 from roblox_mod_ai.luau_analyzer import LuauStaticAnalyzer
 from roblox_mod_ai.spec import ModuleKind, RobloxModuleSpec, RobloxService
-from tests.test_host_mining import make_plan
+
+def make_plan():
+    miner = RobloxModuleSpec(
+        module_id="dyn_332e450bdd43",
+        name="ResourceMiningEconomy0388601Server",
+        kind=ModuleKind.SERVER_MODULE,
+        file_path="src/server/ResourceMiningEconomy0388601Server.luau",
+        roblox_service=RobloxService.SERVER_SCRIPT_SERVICE,
+        description=("Server validates mining actions within resource node range "
+                     "and updates the player's currency balance."),
+        depends_on=[],
+    )
+    mining_client = RobloxModuleSpec(
+        module_id="dyn_b1828fd6910d",
+        name="ResourceMiningEconomy0388601Client",
+        kind=ModuleKind.CLIENT_SCRIPT,
+        file_path="src/client/ResourceMiningEconomy0388601Client.client.luau",
+        roblox_service=RobloxService.STARTER_PLAYER_SCRIPTS,
+        description="Displays mining rewards and player currency for each resource node.",
+        depends_on=[],
+    )
+    plan = SimpleNamespace(
+        requested_prompt="Mine ore and sell it for spaceship credits",
+        game_design={"dynamic_design": {
+            "host_actions": {"ResourceMiningEconomy0388601Action": {
+                "service": miner.name, "kind": "RemoteFunction"}},
+            "world_objects": [{"name": "ResourceNode03886011", "class": "Part"}],
+        }},
+    )
+    return miner, mining_client, plan
+
 
 
 class NoModel:
