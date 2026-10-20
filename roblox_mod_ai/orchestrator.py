@@ -212,7 +212,7 @@ class RobloxProductionOrchestrator:
             "luau_service_contract.py", "server_interface_audit.py", "request_semantics.py", "host_player_data.py",
             "roblox_toolchain.py", "verification_selector.py",
             "detailed_plan.py", "source_review.py", "source_repair_cycle.py",
-            "module_generation_gate.py",
+            "module_generation_gate.py", "host_client_codegen.py",
         )
         component_fingerprints = {
             component: hashlib.sha256(
