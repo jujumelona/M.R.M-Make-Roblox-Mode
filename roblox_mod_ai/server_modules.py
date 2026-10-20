@@ -223,13 +223,12 @@ def render_dynamic_server_bootstrap(proposal: RobloxProposal) -> str:
         if (max_args is not None and
                 (type(max_args) is not int or max_args < 0 or max_args > 16)):
             raise ValueError("Host gateway argument constraint must be an integer from 0 to 16")
-        no_args = (max_args == 0)
         arity_guard_event = (
-            f'        if select("#", ...) > {max_args} then return end\\n'
+            f'        if select("#", ...) > {max_args} then return end\n'
             if max_args is not None else ""
         )
         arity_guard_function = (
-            f'        if select("#", ...) > {max_args} then return nil end\\n'
+            f'        if select("#", ...) > {max_args} then return nil end\n'
             if max_args is not None else ""
         )
         remote = json.dumps(remote_name)
