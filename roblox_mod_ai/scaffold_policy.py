@@ -84,5 +84,16 @@ def single_passive_service(proposal: Any, module: Any) -> bool:
         if any(isinstance(row, dict) and row.get("service") == module.name
                for row in (design.get(key) or {}).values()):
             return False
-    return bool(module.description.strip()) and not requires_player_ingress(
+    # Absence of a host route is NOT evidence of passivity. Custom pet
+    # hatching and other model-owned client/server pairs may bind their own
+    # interaction code; converting them to start-only silently breaks them.
+    import re
+    description = module.description.casefold()
+    passive_intent = re.search(
+        r"\\b(?:automatically|autonomous(?:ly)?|passive(?:ly)?|"
+        r"on startup|on server start|world setup|environment setup|"
+        r"scene setup|background simulation|server initialization)\\b",
+        description,
+    )
+    return bool(passive_intent) and not requires_player_ingress(
         module.name, module.description)
