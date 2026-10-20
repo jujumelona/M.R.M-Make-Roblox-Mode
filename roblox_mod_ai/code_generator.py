@@ -11,6 +11,7 @@ from .library_adapters import PROFILESTORE_SERVER, FUSION_HUD
 from .agent_loop import RobloxCodeRepairAgent
 from .host_service_codegen import try_scaffolded_server
 from .host_client_codegen import try_scaffolded_client
+from .scaffold_policy import single_host_action, single_client_action, scaffold_exhausted
 from .host_gameplay import render_host_gameplay
 from .economy_core import is_supported_economy_ledger, render_economy_ledger
 from .server_modules import render_dynamic_server_bootstrap
@@ -119,20 +120,32 @@ class LuauCodeGenerator:
                     .get("host_client_actions", {}))):
             return render_host_client(module, proposal)
         if module.module_id.startswith("dyn_"):
-            if module.kind == ModuleKind.CLIENT_SCRIPT:
+            if single_client_action(proposal, module):
+                self.router.last_client_scaffold_attempts = []
                 ui = try_scaffolded_client(
                     module, proposal, self.router, self.analyzer)
                 if ui is not None:
                     return ui
+                raise scaffold_exhausted(
+                    module, getattr(self.router, "last_client_scaffold_attempts", []),
+                    "client_ui")
             # The host, not a 9B model, owns the Luau ModuleScript shell.
             # For an actually wired action, ask for only the domain handler
             # statements and validate the assembled module. Preserve the
             # complete-file coder as a fallback, never a success-shaped stub.
-            scaffold = try_scaffolded_server(
-                module, proposal, self.router, self.analyzer,
-            )
-            if scaffold is not None:
-                return scaffold
+            if single_host_action(proposal, module):
+                self.router.last_scaffold_attempts = []
+                scaffold = try_scaffolded_server(
+                    module, proposal, self.router, self.analyzer,
+                )
+                if scaffold is not None:
+                    return scaffold
+                raise scaffold_exhausted(
+                    module, getattr(self.router, "last_scaffold_attempts", []),
+                    "server_action")
+            # Unrouted services without a documented host action still
+            # require game-specific implementation. They must not be
+            # misrepresented as a working zero-argument host action.
             return RobloxCodeRepairAgent(router=self.router).repair(
                 module, proposal,
             )
