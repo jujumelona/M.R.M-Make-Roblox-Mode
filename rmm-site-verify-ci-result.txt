@@ -1,0 +1,68 @@
+tested_commit=23f61bedc89fa95fb2b5a4926ecddc8b8ae5b279
+exit_code=1
+...............s........................................................ [ 12%]
+........................................................................ [ 25%]
+........................................................................ [ 38%]
+........................................................................ [ 50%]
+........................................................................ [ 63%]
+........................................................................ [ 76%]
+......................................................................F. [ 89%]
+F.............................................................           [100%]
+=================================== FAILURES ===================================
+____ test_failed_mining_client_and_server_both_use_host_not_malformed_coder ____
+
+    def test_failed_mining_client_and_server_both_use_host_not_malformed_coder():
+        p = uploaded_mining_plan()
+        generator = LuauCodeGenerator(NoCoder())
+        for module in p.modules:
+            module.code = "-- stale malformed Luau from previous model attempt"
+        result = generator.generate_all_modules(p)
+        assert len(result) == 2
+        server, client = [m.code for m in result]
+>       assert server == render_host_mining(p.modules[0], p)
+E       AssertionError: assert '-- stale malformed Luau from previous model attempt' == None
+E        +  where None = render_host_mining(RobloxModuleSpec(module_id='dyn_bfe3b28c21e3', name='SpaceModeResourceMiningAn0388601Server', kind=<ModuleKind.SERVER_...ng actions are rejected.', depends_on=[], evidence_refs=[], code='-- stale malformed Luau from previous model attempt'), RobloxProposal(requested_prompt='우주모드 인데 자원파밍 돈모으기 거래 등으로 우주선을 부위마다 만들수있고', game_title='SpaceMine', description='Groun...', rojo_version='7.4.4', strict_typing=True, server_authoritative=True), created_at='2026-10-20T14:52:48.827499+00:00'))
+
+tests/test_source_owned_mining_site.py:104: AssertionError
+______ test_no_client_server_luau_syntax_errors_in_uploaded_mining_shape _______
+
+    def test_no_client_server_luau_syntax_errors_in_uploaded_mining_shape():
+        p = uploaded_mining_plan()
+        analyzer = LuauStaticAnalyzer()
+        gen = LuauCodeGenerator(NoCoder())
+        for module in p.modules:
+>           script = gen.generate_with_self_correction(module, p)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_source_owned_mining_site.py:141: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+roblox_mod_ai/code_generator.py:63: in generate_with_self_correction
+    code = self.generate_module_code(module, proposal)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+roblox_mod_ai/code_generator.py:130: in generate_module_code
+    return RobloxCodeRepairAgent(router=self.router).repair(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <roblox_mod_ai.agent_loop.RobloxCodeRepairAgent object at 0x7fa3e69bcf10>
+module = RobloxModuleSpec(module_id='dyn_bfe3b28c21e3', name='SpaceModeResourceMiningAn0388601Server', kind=<ModuleKind.SERVER_...ed mining action, and duplicate or overlapping mining actions are rejected.', depends_on=[], evidence_refs=[], code='')
+proposal = RobloxProposal(requested_prompt='우주모드 인데 자원파밍 돈모으기 거래 등으로 우주선을 부위마다 만들수있고', game_title='SpaceMine', description='Groun...', rojo_version='7.4.4', strict_typing=True, server_authoritative=True), created_at='2026-10-20T14:52:48.852989+00:00')
+existing_code = '', diagnostics = '', attempts = 3
+
+    def repair(self, module: RobloxModuleSpec, proposal: RobloxProposal,
+               existing_code: str = "", diagnostics: str = "",
+               attempts: int = 3) -> str:
+        setting = os.environ.get("RMM_ENABLE_MODEL_GENERATION", "auto").lower()
+        enabled = setting == "1" or (setting == "auto" and
+                                   bool(os.environ.get("ROBLOX_LLAMA_SERVER_URL")
+                                        or os.environ.get("RMM_MODEL_BASE_URL")))
+        if not enabled:
+>           raise RuntimeError("Small-model Luau generator disabled; "
+                               "configure ROBLOX_LLAMA_SERVER_URL or RMM_ENABLE_MODEL_GENERATION=1")
+E           RuntimeError: Small-model Luau generator disabled; configure ROBLOX_LLAMA_SERVER_URL or RMM_ENABLE_MODEL_GENERATION=1
+
+roblox_mod_ai/agent_loop.py:88: RuntimeError
+=========================== short test summary info ============================
+FAILED tests/test_source_owned_mining_site.py::test_failed_mining_client_and_server_both_use_host_not_malformed_coder - AssertionError: assert '-- stale malformed Luau from previous model attempt' == None
+ +  where None = render_host_mining(RobloxModuleSpec(module_id='dyn_bfe3b28c21e3', name='SpaceModeResourceMiningAn0388601Server', kind=<ModuleKind.SERVER_...ng actions are rejected.', depends_on=[], evidence_refs=[], code='-- stale malformed Luau from previous model attempt'), RobloxProposal(requested_prompt='우주모드 인데 자원파밍 돈모으기 거래 등으로 우주선을 부위마다 만들수있고', game_title='SpaceMine', description='Groun...', rojo_version='7.4.4', strict_typing=True, server_authoritative=True), created_at='2026-10-20T14:52:48.827499+00:00'))
+FAILED tests/test_source_owned_mining_site.py::test_no_client_server_luau_syntax_errors_in_uploaded_mining_shape - RuntimeError: Small-model Luau generator disabled; configure ROBLOX_LLAMA_SERVER_URL or RMM_ENABLE_MODEL_GENERATION=1
+2 failed, 563 passed, 1 skipped in 11.63s
