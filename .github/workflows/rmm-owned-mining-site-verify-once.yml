@@ -1,0 +1,38 @@
+name: RMM source-owned mining site full verification (temporary)
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/rmm-owned-mining-site-verify-once.yml']
+permissions:
+  contents: write
+jobs:
+  regressions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: python -m pip install -e '.[dev]' pytest nbformat httpx pytest-cov
+      - name: Execute compile and all tests
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          python -m compileall -q roblox_mod_ai tests >/tmp/rmm-site.log 2>&1
+          rc=$?
+          if [ "$rc" -eq 0 ]; then
+            python -m pytest -q tests >>/tmp/rmm-site.log 2>&1
+            rc=$?
+          fi
+          {
+            echo "tested_commit=$GITHUB_SHA"
+            echo "exit_code=$rc"
+            tail -c 26000 /tmp/rmm-site.log
+          } >/tmp/rmm-site-result.txt
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/rmm-site-verify-ci-result.txt" \
+            -f message='test(rmm): record full CI for owned mineable world source' \
+            -f content="$(base64 -w0 /tmp/rmm-site-result.txt)" -f branch=main
+          exit "$rc"
