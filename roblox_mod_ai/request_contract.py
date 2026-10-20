@@ -191,7 +191,7 @@ def ledger_complete(prompt: str, ledger: dict[str, Any]) -> bool:
                 return False
             fallback_intents = [x for x in intents
                                 if x.get("classification_origin") == "host_source_only"]
-            if len(fallback_intents) != len(fallback_ids):
+            if {x.get("chunk_id") for x in fallback_intents} != fallback_ids:
                 return False
             if any(
                 not clean(x.get("source_span", "")) or
