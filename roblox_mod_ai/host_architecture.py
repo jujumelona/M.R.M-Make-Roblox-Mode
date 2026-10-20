@@ -117,6 +117,19 @@ _EXPLICIT_AUTONOMOUS_TRIGGER = re.compile(
 )
 
 
+
+def requires_player_ingress(name: str, server_behavior: str) -> bool:
+    """Whether this mechanic requires an actual host-wired player trigger.
+
+    Passive server simulations are exempt only when the architecture
+    explicitly describes an autonomous trigger. This is an early reachability
+    check, not proof that a routed game action behaves correctly.
+    """
+    return bool(_PLAYER_ACTION_INTENT.search(name + " " + server_behavior)
+                and not _EXPLICIT_AUTONOMOUS_TRIGGER.search(server_behavior))
+
+
+
 def expand_semantic_facet(
     raw: dict[str, Any], *, facet_id: str, requirement_ids: list[str],
     source_requirements: list[dict[str, Any]],
@@ -215,9 +228,7 @@ def expand_semantic_facet(
         # Do not silently write an unreachable server-only module for a
         # player-driven mechanic. The host can wire a Remote or world prompt,
         # but interaction='none' explicitly tells it to wire neither.
-        if (interaction == "none"
-                and _PLAYER_ACTION_INTENT.search(name + " " + server)
-                and not _EXPLICIT_AUTONOMOUS_TRIGGER.search(server)):
+        if interaction == "none" and requires_player_ingress(name, server):
             raise HostArchitectureError(
                 "Player-driven gameplay has interaction=none and no host input "
                 "route. Specify event/request_response with an appropriate "
