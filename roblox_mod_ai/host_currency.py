@@ -101,10 +101,13 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local player = Players.LocalPlayer
 local remote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild(__REMOTE__)
+local playerGui = player:WaitForChild("PlayerGui")
+-- Multiple requested currency observers share one HUD, not overlapping clones.
+if playerGui:FindFirstChild("RMMEarnedCurrencyHud") then return end
 local gui = Instance.new("ScreenGui")
 gui.Name = "RMMEarnedCurrencyHud"
 gui.ResetOnSpawn = false
-gui.Parent = player:WaitForChild("PlayerGui")
+gui.Parent = playerGui
 local label = Instance.new("TextLabel")
 label.Name = "CurrencyBalance"
 label.Size = UDim2.fromOffset(200, 42)
