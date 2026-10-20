@@ -80,7 +80,14 @@ def test_host_not_model_decides_every_roblox_specific_field():
     ("request_response", "RemoteFunction"),
 ])
 def test_host_owns_remote_type_and_player_role(mode, expected):
-    result = _convert(_semantic(interaction=mode))
+    data = _semantic(interaction=mode)
+    if mode == "none":
+        data["systems"][0].update(
+            name="AmbientWorldRegeneration",
+            server_behavior="Server periodically regenerates world ore deposits automatically without player input.",
+            observable_result="World resource deposits reappear after the automatic regeneration cycle.",
+        )
+    result = _convert(data)
     if expected:
         assert len(result["modules"]) == 2
         assert result["remotes"][0]["type"] == expected
@@ -254,3 +261,23 @@ def test_host_keeps_two_distinct_actions_when_effects_differ():
     result = _convert(raw)
     assert len(result["modules"]) == 4
     assert len(result["remotes"]) == 2
+
+
+@pytest.mark.parametrize("name,behavior", [
+    ("SpaceModeUnlockAndTravel", "Server validates player travel prerequisites then teleports the player to space."),
+    ("ResourceMining", "Server validates node mining permission then adds resources to player inventory."),
+    ("ShipPartUpgrade", "Server validates ship upgrades then deducts player currency and improves ship stats."),
+])
+def test_player_driven_mechanics_must_have_a_host_wired_action(name, behavior):
+    data = _semantic(name=name, interaction="none", world=[])
+    data["systems"][0]["server_behavior"] = behavior
+    with pytest.raises(HostArchitectureError, match="interaction=none"):
+        _convert(data)
+
+
+def test_genuinely_autonomous_server_behavior_still_permitted():
+    data = _semantic(name="AmbientWorldRegeneration", interaction="none", world=[])
+    data["systems"][0]["server_behavior"] = (
+        "Server periodically regenerates ore deposits automatically without player input."
+    )
+    assert len(_convert(data)["modules"]) == 1
