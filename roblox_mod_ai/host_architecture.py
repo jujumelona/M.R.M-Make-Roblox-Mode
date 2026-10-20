@@ -103,16 +103,16 @@ def _recover_observable_result(server: Any, client: Any, interaction: Any) -> st
 # Service.start(). A role='server' module with interaction='none' has no
 # Remote or ProximityPrompt connected by the host.
 _PLAYER_ACTION_INTENT = re.compile(
-    r"\\b(?:min(?:e|ing)|harvest(?:s|ing)?|trading?|trade|purchase|buy|sell|"
+    r"\b(?:min(?:e|ing)|harvest(?:s|ing)?|trading?|trade|purchase|buy|sell|"
     r"upgrad(?:e|ing)|launch|travel|teleport|combat|fight|attack|"
     r"coloniz(?:e|ation)|craft|build|gather|collect|equip|reward|"
-    r"exchange|ship\\s+part)\\b|(?:선택|채굴|거래|구매|업그레이드|우주선|전투|식민|발사)",
+    r"exchange|ship\s+part)\b|(?:선택|채굴|거래|구매|업그레이드|우주선|전투|식민|발사)",
     re.I,
 )
 _EXPLICIT_AUTONOMOUS_TRIGGER = re.compile(
-    r"\\b(?:automatically|periodically|scheduled|server[- ]driven|"
+    r"\b(?:automatically|periodically|scheduled|server[- ]driven|"
     r"without player input|on playeradded|playeradded|on spawn|"
-    r"on a timer|every \\d+ seconds|background simulation)\\b",
+    r"on a timer|every \d+ seconds|background simulation)\b",
     re.I,
 )
 
