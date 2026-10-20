@@ -87,3 +87,27 @@ def test_host_rejects_duplicate_lifecycle_from_model_body():
     )
     assert try_scaffolded_server(*inputs(), model, NoDiagnosticAnalyzer()) is None
     assert "host-owned" in model.last_scaffold_attempts[0]["diagnostics"][0]
+
+
+def test_scoped_repair_uses_exact_rejected_body_and_diagnostic():
+    class CorrectingRouter(FakeRouter):
+        def complete(self, prompt, **kwargs):
+            self.calls.append((prompt, kwargs))
+            if len(self.calls) == 1:
+                return ("Service.handleAction(player, services) " * 4)
+            assert "LAST REJECTED BODY" in prompt
+            assert "Body contains host-owned" in prompt
+            assert "Service.handleAction(player, services)" in prompt
+            assert "EXACT VALIDATOR ERRORS" in prompt
+            return (
+                'local profile = services.PlayerDataManager.GetState(player, "ShipPartUpgradeServer")\n'
+                'if not profile then return false end\n'
+                'profile.shipUpgrade = (profile.shipUpgrade or 0) + 1\n'
+                'return true'
+            )
+    model = CorrectingRouter("unused")
+    generated = try_scaffolded_server(*inputs(), model, NoDiagnosticAnalyzer())
+    assert generated is not None
+    assert len(model.calls) == 2
+    assert model.last_scaffold_attempts[0]["mode"] == "host_scaffolded_action_body"
+    assert "profile.shipUpgrade" in generated
