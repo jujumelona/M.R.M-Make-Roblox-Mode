@@ -175,3 +175,25 @@ def test_rojo_project_contains_mineable_world_part_not_just_planner_metadata(tmp
     assert node["$properties"]["Position"] != world["LaunchGate93682111"]["$properties"]["Position"]
     assert "ResourceMiningEconomy0388601Action" in rojo["tree"]["ReplicatedStorage"]["Remotes"]
     assert rojo["tree"]["ReplicatedStorage"]["Remotes"]["ResourceMiningEconomy0388601Action"]["$className"] == "RemoteFunction"
+
+
+def test_core_economy_is_not_misclassified_as_ore_mining():
+    p = proposal20()
+    server = p.modules[0]
+    server.name = "CoreEconomy0388601Server"
+    server.description = (
+        "The server owns currency and resources. Players receive earned "
+        "currency and resource balances after valid requests."
+    )
+    p.game_design["dynamic_design"]["host_actions"]["ResourceMiningEconomy0388601Action"]["service"] = server.name
+    before = copy.deepcopy(p.game_design["dynamic_design"])
+    assert ensure_mining_world_contract(p) == []
+    assert p.game_design["dynamic_design"] == before
+
+
+def test_unrelated_no_mining_game_design_remains_byte_for_byte_unchanged():
+    p = proposal20()
+    p.requested_prompt = "Build a spaceship without collecting resources"
+    original = copy.deepcopy(p.game_design["dynamic_design"])
+    assert ensure_mining_world_contract(p) == []
+    assert p.game_design["dynamic_design"] == original
