@@ -303,6 +303,7 @@ class RobloxProductionOrchestrator:
                 staging.replace(checkpoint_file)
 
             for module in proposal.modules:
+                is_host_generated = False
                 try:
                     # Host-owned source is regenerated from the authoritative
                     # contract, even when an imported proposal already has
