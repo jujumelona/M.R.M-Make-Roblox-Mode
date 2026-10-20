@@ -90,9 +90,9 @@ def single_passive_service(proposal: Any, module: Any) -> bool:
     import re
     description = module.description.casefold()
     passive_intent = re.search(
-        r"\\b(?:automatically|autonomous(?:ly)?|passive(?:ly)?|"
+        r"\b(?:automatically|autonomous(?:ly)?|passive(?:ly)?|"
         r"on startup|on server start|world setup|environment setup|"
-        r"scene setup|background simulation|server initialization)\\b",
+        r"scene setup|background simulation|server initialization)\b",
         description,
     )
     return bool(passive_intent) and not requires_player_ingress(
