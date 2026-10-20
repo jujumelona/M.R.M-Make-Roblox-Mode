@@ -122,3 +122,17 @@ def test_passive_start_never_claims_an_interactive_player_route():
     m.description = "Players purchase weapon upgrades with earned coins"
     assert not single_passive_service(p, m)
     assert try_scaffolded_lifecycle(m, p, RecordingRouter([]), LuauStaticAnalyzer()) is None
+
+
+def test_missing_host_route_does_not_mean_passive_pet_or_custom_gameplay():
+    p = passive_plan()
+    module = p.modules[0]
+    module.name = "CustomPetHatching"
+    module.description = (
+        "A player can hatch a pet egg after paying an earned game currency. "
+        "The system creates the pet and sends the client a hatching response."
+    )
+    assert not single_passive_service(p, module), (
+        "Pet hatching with a player interaction must not become a passive "
+        "start-only service"
+    )
