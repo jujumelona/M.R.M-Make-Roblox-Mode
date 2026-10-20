@@ -32,6 +32,15 @@ def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> st
         return None
     server = (module.name if module.kind == ModuleKind.SERVER_MODULE
               else module.name.removesuffix("Client") + "Server")
+    # Generated world entities inherit the source mechanic's numeric stem.
+    # Do not let a mining service extract resources from another mechanic's
+    # planet or bypass a different progression gate.
+    stems = re.findall(r"\d{5,}", server)
+    related = [node for node in nodes if any(stem in node for stem in stems)]
+    if related:
+        nodes = related
+    elif len(nodes) != 1:
+        return None
     routes = [(name, binding) for name, binding in
               (design.get("host_actions") or {}).items()
               if isinstance(binding, dict) and binding.get("service") == server]
@@ -62,7 +71,9 @@ local function validNode(part)
     if typeof(part) ~= "Instance" or not part:IsA("BasePart") then return false end
     if not part:IsDescendantOf(workspace) then return false end
     for _, name in NODE_NAMES do
-        if part.Name == name then return true end
+        if part.Name == name and workspace:FindFirstChild(name, true) == part then
+            return true
+        end
     end
     return false
 end
