@@ -73,6 +73,8 @@ class RobloxPipelineResult:
 
 from .economy_core import normalize_economy_ledger
 from .server_modules import normalize_dynamic_server_modules
+from .host_mining_contract import ensure_mining_world_contract
+from .host_gameplay import render_host_gameplay
 
 class RobloxProductionOrchestrator:
     """Coordinates end-to-end production of a Roblox experience via topological work graph."""
@@ -105,10 +107,17 @@ class RobloxProductionOrchestrator:
         proposal = candidate.proposal if isinstance(candidate, RobloxAuthoredPlan) else candidate
         normalize_economy_ledger(proposal)
         normalize_dynamic_server_modules(proposal)
+        # Mining with no declared physical target is not a safe player action.
+        # Host supplies the missing requested resource world prerequisite
+        # BEFORE any Luau is generated, so the model is not asked to invent
+        # targets, yields or a parallel economy API.
+        world_materializations = ensure_mining_world_contract(proposal)
         addon_mode = proposal.game_design.get("project_mode") == "existing_experience_addon"
         output_dir = self.workspace_root / run_name / proposal.game_title
         output_dir.mkdir(parents=True, exist_ok=True)
         trajectory = AgentTrajectory(output_dir)
+        for item in world_materializations:
+            trajectory.record("preflight", "materialize_mining_world_contract", item, passed=True)
         receipt = WorkReceipt(task_id=f"rmm_{proposal.game_title}_{int(time.time())}", overall_success=False)
         errors: list[str] = []
         tool_results: dict[str, dict] = {}
@@ -192,7 +201,7 @@ class RobloxProductionOrchestrator:
         # checkpoints without deleting the user's prior run evidence.
         generation_components = (
             "orchestrator.py", "agent_loop.py", "code_generator.py",
-            "host_service_codegen.py", "host_mining.py", "host_trading.py",
+            "host_service_codegen.py", "host_mining.py", "host_mining_contract.py", "host_trading.py",
             "host_currency.py", "host_gameplay.py", "host_peer_trade.py",
             "module_prompt_scope.py", "server_modules.py", "economy_core.py", "host_client.py",
             "luau_service_contract.py", "server_interface_audit.py", "request_semantics.py", "host_player_data.py",
@@ -301,6 +310,7 @@ class RobloxProductionOrchestrator:
                         or (module.module_id.startswith("dyn_")
                             and module.name in
                             dynamic_contract.get("host_client_actions", {}))
+                        or render_host_gameplay(module, proposal) is not None
                     )
                     if is_host_generated:
                         module.code = self.code_generator.generate_module_code(
