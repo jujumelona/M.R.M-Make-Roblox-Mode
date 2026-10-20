@@ -1,0 +1,277 @@
+tested_commit=fc4dbe17c66b23264f3b1f53b50e2e3eb92f6f6a
+exit_code=1
+ger": ledger,
+            "reserved_modules": sorted(reserved_modules),
+            "reference_hashes": [
+                (e.get("facet"), e.get("content_sha256"))
+                for e in docs
+            ],
+        }, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+        stored_parts: dict[str, Any] = {}
+        if self.checkpoint_file is not None and os.environ.get(
+                "RMM_DISABLE_ARCHITECTURE_CACHE", "0") != "1":
+            try:
+                saved = json.loads(self.checkpoint_file.read_text(encoding="utf-8"))
+                if (saved.get("schema") == "rmm/scoped-design-checkpoint-v1"
+                        and saved.get("input_sha256") == signature
+                        and isinstance(saved.get("facets"), dict)):
+                    stored_parts = saved["facets"]
+            except (OSError, ValueError, TypeError, AttributeError):
+                pass
+    
+        def persist_part(feature_id: str, design: dict[str, Any]) -> None:
+            if self.checkpoint_file is None or os.environ.get(
+                    "RMM_DISABLE_ARCHITECTURE_CACHE", "0") == "1":
+                return
+            stored_parts[feature_id] = design
+            self.checkpoint_file.parent.mkdir(parents=True, exist_ok=True)
+            staging = self.checkpoint_file.with_suffix(".json.tmp")
+            staging.write_text(json.dumps({
+                "schema": "rmm/scoped-design-checkpoint-v1",
+                "input_sha256": signature, "facets": stored_parts,
+            }, ensure_ascii=False, indent=2), encoding="utf-8")
+            staging.replace(self.checkpoint_file)
+    
+        for index, facet in enumerate(facets):
+            facet_id = str(facet["id"])
+            owned_ids = list(dict.fromkeys(
+                rid for rid in facet.get("requirements", []) if rid in required))
+            if not owned_ids:
+                raise DynamicDesignError("Feature " + facet_id +
+                                         " has no valid source requirement")
+            subset = [required[rid] for rid in owned_ids]
+            # The original request may describe other unrelated features
+            # (e.g. alien combat). Do not enforce them on a mining-only slice.
+            slice_request = " ".join(str(r.get("statement", "")) for r in subset)
+            slice_ledger = {"requirements": subset, "facets": [facet],
+                            "original_prompt": slice_request, "request_context": prompt}
+            excerpts = [{"url": e["url"], "text": str(e.get("excerpt", ""))[:650]}
+                        for e in docs if e.get("facet") == facet_id][:2]
+            payload = {"feature_id": facet_id, "feature": facet,
+                       "source_requirements": subset,
+                       "game_context": {"scope": "only_this_source_clause",
+                                        "original_request": prompt},
+                       "existing_module_names": sorted(reserved_modules),
+                       "existing_remote_names": sorted(reserved_remotes),
+                       "existing_world_object_names": sorted(reserved_objects),
+                       "official_references": excerpts}
+            # Ask the 9B model ONLY for game-specific behavior. The host
+            # owns Roblox role allocation, instance hierarchy, IDs, remote
+            # names/kinds, world coordinates and acceptance source binding.
+            task = (
+                "Describe ONLY the requested Roblox GAMEPLAY mechanic as JSON. "
+                "Return {systems:[{name,server_behavior,client_behavior,"
+                "interaction,input_mode,observable_result,world_entities}]}. "
+                "Each system has concrete server-owned rules, including "
+                "validation of any player actions. interaction is: "
+                "none (server-only), event (player action without direct "
+                "return), or request_response (player request needing result). "
+                "For approaching exactly one static world object to interact, "
+                "use input_mode=world_prompt, interaction=event and exactly "
+                "one world_entities name. The host installs ProximityPrompt "
+                "and safely dispatches it on the SERVER: no client module "
+                "or Remote needs to be authored. This cannot return a "
+                "RemoteFunction response or select among inventory items. "
+                "Set input_mode=host_button ONLY for a no-argument action "
+                "that needs no target, item selection, aiming, or other "
+                "custom UI. The host then builds all screen buttons and "
+                "Remote calls without another AI code generation. "
+                "With host_button, world_entities MUST be empty. "
+                "Otherwise set input_mode=custom to generate the necessary "
+                "game-specific client interactions. "
+                "If interaction is none, input_mode=custom and "
+                "client_behavior must be empty. "
+                "If interaction needs player input, describe its actual "
+                "UI/input and visible response in client_behavior. "
+                "world_entities is an array of gameplay-specific object names; "
+                "empty if no static world object is needed. Do NOT provide "
+                "Luau code, Remote names/types, JSON source IDs, module roles, "
+                "file paths, Roblox coordinates, geometries, template scripts "
+                "or generic engine boilerplate. The host generates those. "
+                "The complete original_request is context for ambiguous nouns, "
+                "currency and progression only; source_requirements defines this "
+                "feature's exclusive implementation ownership. Ordinary purchases "
+                "use earned game currency; never invent Robux monetization. "
+                "IMPORTANT: one source facet only, not the whole game. "
+                "Do NOT echo other features from original_request. Usually "
+                "write ONE system, unless this exact source clause requires "
+                "several independently playable actions. "
+                "Each system MUST directly implement the user's single "
+                "source_requirements clause. No unrelated systems. "
+                "Do not claim a world has been built or gameplay tested. "
+                "JSON ONLY.\n"
+                + json.dumps({
+                    "feature_id": facet_id,
+                    "feature": facet,
+                    "source_requirements": subset,
+                    "game_context": {"scope": "only_this_source_clause",
+                                        "original_request": prompt},
+                    "official_references": excerpts,
+                }, ensure_ascii=False)
+            )
+            previous_error = ""
+            draft: dict[str, Any] | None = None
+            successful = False
+            cache_hit = False
+            for attempt in range(3):
+                rejected_scope_names: list[str] = []
+                try:
+                    # A previously validated feature is reused only after the
+                    # SAME current source ownership and collision checks.
+                    if attempt == 0 and isinstance(stored_parts.get(facet_id), dict):
+                        draft = stored_parts[facet_id]
+                        cache_hit = True
+                    # Repair a missing client/server role by APPENDING modules
+                    # instead of asking the small model to reprint its large JSON.
+                    missing_role = (
+                        isinstance(draft, dict) and draft.get("remotes")
+                        and not any(m.get("role") == "client"
+                                    for m in draft.get("modules", [])
+                                    if isinstance(m, dict))
+                    )
+                    if cache_hit:
+                        pass  # validation below, no model inference needed
+                    elif missing_role:
+                        patch = self.router.complete_json(
+                            "Return ONLY JSON {\"modules\":[...]} with NEW "
+                            "client Luau controller modules that supply actual "
+                            "UI/input and invoke the already declared remotes. "
+                            "Do not regenerate server modules, remotes, objects "
+                            "or acceptance cases. Each module must have name, "
+                            "role=client, requirement_ids, facet_ids, behavior "
+                            "(at least 24 characters), and uses_remotes "
+                            "listing each invoked Remote name. Use ONLY the "
+                            "supplied source IDs. Use new names.\n"
+                            + json.dumps({
+                                "feature": facet, "requirements": subset,
+                                "existing_modules": draft["modules"],
+                                "remotes": draft["remotes"],
+                                "reserved_names": sorted(reserved_modules),
+                            }, ensure_ascii=False),
+                            role="planner", temperature=0.0, max_tokens=2600,
+                            json_schema=_CLIENT_PATCH_SCHEMA,
+                        )
+                        extra = patch.get("modules") if isinstance(patch, dict) else None
+                        if not isinstance(extra, list) or not extra or any(
+                            not isinstance(row, dict) or row.get("role") != "client"
+                            for row in extra
+                        ):
+                            raise DynamicDesignError("Client-only repair returned no client modules")
+                        draft = dict(draft, modules=[*draft["modules"], *extra])
+                    else:
+                        query = task + (
+                            "\nPREVIOUS VALIDATOR FAILURE: " + previous_error +
+                            "\nRegenerate ONLY this feature, preserving its requested behavior."
+                            if attempt else ""
+                        )
+                        draft = self.router.complete_json(
+                            query, role="planner", temperature=0.1,
+                            max_tokens=2600, json_schema=SEMANTIC_FACET_SCHEMA,
+                        )
+                    if not isinstance(draft, dict):
+                        raise DynamicDesignError("Facet architecture must be JSON object")
+                    # New default: the model chooses only gameplay semantics.
+                    # Old saved plans and deterministic CI transports use
+                    # explicit modules; validate that legacy contract exactly
+                    # as before rather than silently breaking existing files.
+                    if "systems" in draft:
+                        # A small model may echo unrelated features from the
+                        # full request. Attribute ONLY demonstrably source-owned
+                        # systems; every dropped feature keeps its own facet.
+                        draft, rejected_scope_names = scope_semantic_systems(
+                            draft, facet=facet, all_facets=facets)
+                        semantic_errors = request_semantic_errors(draft, prompt)
+                        if semantic_errors:
+                            raise DynamicDesignError("; ".join(semantic_errors))
+                        draft = expand_semantic_facet(
+                            draft, facet_id=facet_id,
+                            requirement_ids=owned_ids,
+                            source_requirements=subset,
+                            reserved_modules=reserved_modules,
+                            reserved_remotes=reserved_remotes,
+                            reserved_objects=reserved_objects,
+                        )
+                        draft["_host_semantic"] = True
+                    # Source IDs are host-owned, not model-generated. One
+                    # scoped task equals one canonical source facet.
+                    draft, id_binding = _bind_scoped_feature_ids(
+                        draft, facet_id=facet_id, owned_ids=owned_ids,
+                        all_facet_ids={str(f["id"]) for f in facets},
+                    )
+                    draft = self._resolve_remote_declarations(draft)
+                    rows, _ = _normalize_remote_rows(draft.get("remotes", []))
+                    overlap = reserved_remotes.intersection(r["name"] for r in rows)
+                    if overlap:
+                        raise DynamicDesignError(
+                            "Remote collision with completed feature: " +
+                            ", ".join(sorted(overlap)))
+                    objects = draft.get("world_objects", [])
+                    if not isinstance(objects, list):
+                        raise DynamicDesignError("World objects must be a list")
+                    overlap_objects = reserved_objects.intersection(
+                        obj.get("name") for obj in objects if isinstance(obj, dict))
+                    if overlap_objects:
+                        raise DynamicDesignError(
+                            "World object collision: " +
+                            ", ".join(sorted(overlap_objects)))
+                    part = _clean_model_json(draft, slice_ledger, reserved_modules)
+                    reserved_modules.update(m.name for m in part["modules"])
+                    reserved_remotes.update(part["remotes"])
+                    reserved_objects.update(obj["name"] for obj in part["world_objects"])
+                    accepted_parts.append(draft)
+                    persist_part(facet_id, draft)
+                    checkpoints.append({
+                        "cache_hit": cache_hit,
+                        "facet_id": facet_id,
+                        "module_names": [m.name for m in part["modules"]],
+                        "remote_names": list(part["remotes"]),
+                        "validated": True,
+                        "id_binding": id_binding,
+                    })
+                    observations.append({
+                        "facet_id": facet_id, "attempt": attempt + 1,
+                        "passed": True, "validator": "scoped feature validated",
+                        "cache_hit": cache_hit,
+                        "id_binding": id_binding,
+                        "out_of_scope_systems_ignored": rejected_scope_names,
+                    })
+                    successful = True
+                    break
+                except Exception as exc:
+                    if cache_hit:
+                        # Never retry the same corrupt checkpoint as if the
+                        # model had generated it again.
+                        stored_parts.pop(facet_id, None)
+                        cache_hit = False
+                    previous_error = type(exc).__name__ + ": " + str(exc)[:500]
+                    observations.append({
+                        "facet_id": facet_id, "attempt": attempt + 1,
+                        "passed": False, "validator_error": previous_error,
+                        "model_runtime": getattr(self.router, "last_generation_report", {}),
+                        "model_response": draft if isinstance(draft, dict)
+                            and len(json.dumps(draft, ensure_ascii=False)) <= 16000
+                            else "unavailable_or_too_large",
+                    })
+                    # No stale draft after a failure other than missing-client:
+                    # only that failure has a safe, append-only correction.
+                    if "no client Luau controller" not in previous_error:
+                        draft = None
+                    print("[RMM architect] feature " + facet_id +
+                          " attempt " + str(attempt + 1) +
+                          " failed: " + previous_error, flush=True)
+            if not successful:
+>               raise DynamicDesignError(
+                    "Feature " + facet_id + " could not be validated after "
+                    "3 scoped attempts: " + previous_error)
+E               roblox_mod_ai.dynamic_architect.DynamicDesignError: Feature source-012-07-0 could not be validated after 3 scoped attempts: JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+
+roblox_mod_ai/dynamic_architect.py:929: DynamicDesignError
+----------------------------- Captured stdout call -----------------------------
+[RMM architect] feature source-012-07-0 attempt 1 failed: ValueError: SCOPED_SYSTEM_UNATTRIBUTED: source facet has no searchable English intent; cannot separate multi-system model output
+[RMM architect] feature source-012-07-0 attempt 2 failed: JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+[RMM architect] feature source-012-07-0 attempt 3 failed: JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+=========================== short test summary info ============================
+FAILED tests/test_generalized_host_prompt_matrix.py::test_unseen_genres_and_variable_size_use_same_host_architect[10-2-2] - roblox_mod_ai.dynamic_architect.DynamicDesignError: Feature source-010-09-0 could not be validated after 3 scoped attempts: JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+FAILED tests/test_generalized_host_prompt_matrix.py::test_unseen_genres_and_variable_size_use_same_host_architect[11-3-2] - roblox_mod_ai.dynamic_architect.DynamicDesignError: Feature source-011-07-0 could not be validated after 3 scoped attempts: JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+FAILED tests/test_generalized_host_prompt_matrix.py::test_unseen_genres_and_variable_size_use_same_host_architect[12-8-2] - roblox_mod_ai.dynamic_architect.DynamicDesignError: Feature source-012-07-0 could not be validated after 3 scoped attempts: JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+3 failed, 521 passed, 1 skipped in 13.37s
