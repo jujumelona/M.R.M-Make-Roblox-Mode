@@ -10,6 +10,7 @@ import json
 import re
 
 from .spec import ModuleKind, RobloxModuleSpec, RobloxProposal
+from .host_mining_nodes import mining_world_nodes
 
 _NODES = re.compile(r"resource.*node|ore.*node|ore.*deposit", re.I)
 
@@ -31,19 +32,8 @@ def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> st
             or not any(token in description for token in ("currency", "coin", "credit"))):
         return None
     design = proposal.game_design.get("dynamic_design") or {}
-    nodes = [row["name"] for row in design.get("world_objects", [])
-             if isinstance(row, dict) and row.get("class") == "Part"
-             and isinstance(row.get("name"), str) and _NODES.search(row["name"])]
+    nodes = mining_world_nodes(proposal, owner or module)
     if not nodes:
-        return None
-    # Generated world entities inherit the source mechanic's numeric stem.
-    # Do not let a mining service extract resources from another mechanic's
-    # planet or bypass a different progression gate.
-    stems = re.findall(r"\d{5,}", server)
-    related = [node for node in nodes if any(stem in node for stem in stems)]
-    if related:
-        nodes = related
-    elif len(nodes) != 1:
         return None
     routes = [(name, binding) for name, binding in
               (design.get("host_actions") or {}).items()
