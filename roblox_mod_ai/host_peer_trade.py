@@ -64,7 +64,8 @@ end
 local function resources(services, player)
     local state = services.PlayerDataManager.GetState(player, "RMMInventory")
     if not state or type(state.resources) ~= "number" then return nil end
-    if state.resources ~= state.resources or state.resources < 0 or state.resources % 1 ~= 0 then return nil end
+    if state.resources ~= state.resources or state.resources < 0 or state.resources > 2147483647
+       or state.resources % 1 ~= 0 then return nil end
     return state
 end
 local function coinsOf(player)
@@ -154,6 +155,7 @@ function Service.handleAction(player, services, ...)
         if not sellerInv or not buyerInv or type(buyerResources) ~= "number"
            or buyerResources ~= buyerResources or buyerResources < 0
            or buyerResources % 1 ~= 0 or not sellerCoins or not buyerCoins
+           or sellerCoins.Value < 0
            or sellerInv.resources < 1 or buyerCoins.Value < PRICE
            or sellerCoins.Value > 2147483647 - PRICE
            or buyerResources >= 2147483647 then
@@ -171,6 +173,9 @@ function Service.handleAction(player, services, ...)
                 buyerResources = buyerInv.resources}
     end
     if action == "cancel" and argc == 2 then
+        if type(value) ~= "number" or value ~= value or value % 1 ~= 0 then
+            return {success = false, reason = "invalid_offer"}
+        end
         local offer = offers[value]
         if offer and offer.seller == player.UserId then
             offers[value] = nil
