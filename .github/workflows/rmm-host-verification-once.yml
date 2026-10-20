@@ -27,7 +27,7 @@ jobs:
           python -m compileall -q roblox_mod_ai tests > /tmp/rmm-tests.log 2>&1
           compile_rc=$?
           if [[ "$compile_rc" == "0" ]]; then
-            python -m pytest -q tests/test_host_mining.py tests/test_host_trading.py tests/test_host_service_codegen.py >> /tmp/rmm-tests.log 2>&1
+            python -m pytest -q tests >> /tmp/rmm-tests.log 2>&1
             test_rc=$?
           else
             test_rc=$compile_rc
@@ -38,7 +38,7 @@ jobs:
             head -c 18000 /tmp/rmm-tests.log
           } > /tmp/rmm-host-result.txt
           encoded=$(base64 -w0 /tmp/rmm-host-result.txt)
-          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/rmm-host-verification-result.txt" \
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/rmm-full-verification-result.txt" \
             -f message="test(rmm): record actual host gameplay test result" \
             -f content="$encoded" -f branch=main
           exit "$test_rc"
