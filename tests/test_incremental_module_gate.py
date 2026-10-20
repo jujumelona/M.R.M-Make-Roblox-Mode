@@ -135,3 +135,47 @@ return Service
 """
     errors = generated_module_errors(module, p, code, LuauStaticAnalyzer())
     assert any("SERVICE_ABI" in error for error in errors)
+
+
+def test_actual_failure_log_colon_call_misplaces_player_data_args():
+    p, module, _ = make_cross_module()
+    code = """--!strict
+local Service = {}
+function Service.start(services)
+    assert(type(services) == "table")
+end
+function Service.handleAction(player, services, ...)
+    local inventory = services.PlayerDataManager:GetState(player, "OwnedShipParts")
+    if not inventory then return false end
+    player:SetAttribute("OwnedShipPartsLoaded", true)
+    return true
+end
+return Service
+"""
+    errors = generated_module_errors(module, p, code, LuauStaticAnalyzer())
+    assert any("DEPENDENCY_API" in error and "silently shifts" in error
+               for error in errors)
+
+
+def test_actual_failure_log_bare_plan_id_require_caught_as_undefined_variable():
+    p, _server, client = make_cross_module()
+    p.modules.append(RobloxModuleSpec(
+        module_id="mod_network_bridge", name="NetworkRemotes",
+        kind=ModuleKind.SERVER_MODULE,
+        file_path="src/shared/NetworkRemotes.luau",
+        roblox_service=RobloxService.REPLICATED_STORAGE,
+        description="Host-owned network bridge",
+    ))
+    code = """--!strict
+local bridge = require(mod_network_bridge)
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local gui = Instance.new("ScreenGui")
+gui.Parent = player:WaitForChild("PlayerGui")
+local label = Instance.new("TextLabel")
+label.Text = tostring(bridge)
+label.Parent = gui
+"""
+    errors = generated_module_errors(client, p, code, LuauStaticAnalyzer())
+    assert any("UNBOUND_MODULE_REQUIRE" in error and "mod_network_bridge" in error
+               for error in errors)
