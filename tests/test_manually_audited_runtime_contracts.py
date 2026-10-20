@@ -7,6 +7,8 @@ from roblox_mod_ai.server_modules import (
     normalize_dynamic_server_modules, render_dynamic_server_bootstrap,
 )
 from roblox_mod_ai.host_mining import render_host_mining
+from roblox_mod_ai.host_player_data import render_callable_player_data
+from roblox_mod_ai.code_generator import LuauCodeGenerator
 from roblox_mod_ai.host_space_progression import render_host_space_progression
 from roblox_mod_ai.spec import (
     ModuleKind, RobloxModuleSpec, RobloxProposal, RobloxService,
@@ -113,3 +115,29 @@ def test_empty_resource_part_cannot_block_valid_nearby_vein():
     assert code is not None
     assert 'local resource = getNode(candidate)' in code
     assert 'resource and resource.remaining > 0' in code
+
+
+def test_onready_callbacks_use_player_local_serial_queue_not_racing_spawns():
+    # This directly renders the production player-profile adapter and checks
+    # the resulting server lifecycle, not only the Python transformer.
+    p = RobloxProposal(
+        requested_prompt="Store player progress",
+        game_title="PlayerProfileQueue", description="Server persistence",
+        game_design={"dynamic_design": {"world_objects": [], "host_actions": {}}},
+        modules=[RobloxModuleSpec(
+            module_id="mod_player_data", name="PlayerDataManager",
+            kind=ModuleKind.SERVER_MODULE,
+            file_path="src/server/PlayerDataManager.luau",
+            roblox_service=RobloxService.SERVER_SCRIPT_SERVICE,
+            description="Save and load player data.",
+        )],
+    )
+    server = LuauCodeGenerator().generate_module_code(p.modules[0], p)
+    assert "local function queueReady(player, callback)" in server
+    assert "local readyQueues = setmetatable" in server
+    assert "local readyWorkers = setmetatable" in server
+    assert "local current = table.remove(queue, 1)" in server
+    assert "local ok, err = pcall(current, player)" in server
+    assert "task.spawn(callback, player)" not in server
+    assert "queueReady(player, callback)" in server
+    assert 'profilePlayers[player.UserId] == player' in server
