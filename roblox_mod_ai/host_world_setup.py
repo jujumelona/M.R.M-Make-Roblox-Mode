@@ -54,7 +54,11 @@ local function ensurePlanetEnvironment()
         ground.Name = "PlanetGround"
         ground.Anchored = true
         ground.Size = Vector3.new(160, 2, 160)
-        ground.Position = Vector3.new(0, -2, 0)
+        -- The Rojo Baseplate spans Y=-20..0. Placing a 2-stud terrain
+        -- slab at Y=-2 hid the entire planet floor under the Baseplate.
+        -- Keep the new floor visible (top Y=0.5), but below the spawn
+        -- pad (top Y=1.5) so it cannot bury SpawnLocation.
+        ground.Position = Vector3.new(0, -0.5, 0)
         ground.Material = Enum.Material.Slate
         ground.Color = Color3.fromRGB(74, 82, 114)
         ground.Parent = region
