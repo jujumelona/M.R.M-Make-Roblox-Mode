@@ -38,7 +38,7 @@ jobs:
             head -c 18000 /tmp/rmm-tests.log
           } > /tmp/rmm-host-result.txt
           encoded=$(base64 -w0 /tmp/rmm-host-result.txt)
-          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/rmm-full2-verification-result.txt" \
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/rmm-full3-verification-result.txt" \
             -f message="test(rmm): record actual host gameplay test result" \
             -f content="$encoded" -f branch=main
           exit "$test_rc"
