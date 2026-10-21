@@ -18,12 +18,13 @@ _JOINER = re.compile(
 )
 
 
-def source_chunks(statement: str, *, max_chars: int = 27,
+def source_chunks(statement: str, *, max_chars: int = 19,
                   max_chunks: int = 48) -> list[str]:
     """Partition a clause by original word boundaries; never drop or invent words.
 
-    Chunks are intentionally small enough that the model can describe each
-    without silently merging mining, trading, crafting and travel. A short
+    Chunks are deliberately short so adjacent, separately implemented actions
+    are not silently fused into a single model-generated module. Chunking
+    remains lossless and uses only original word boundaries, not genre keywords. A short
     compositional clause receives at least two independently owned chunks.
     """
     source = clean(statement)
