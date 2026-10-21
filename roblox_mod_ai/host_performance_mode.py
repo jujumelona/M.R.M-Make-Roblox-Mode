@@ -147,7 +147,7 @@ local function status(player, manager)
     if not state then return {success = false, reason = "profile_loading"} end
     local score, reason = verifiedShipPerformance(player, manager)
     local unlocked = score ~= nil and score >= REQUIRED_PERFORMANCE
-    local active = unlocked and state.currentMode == MODE
+    local active = unlocked and state.activeMode == MODE
     player:SetAttribute("RMMModeRequiredPerformance", REQUIRED_PERFORMANCE)
     player:SetAttribute("RMMModeShipPerformance", score or 0)
     player:SetAttribute("RMMModeUnlocked", unlocked)
@@ -203,10 +203,10 @@ function Service.handleAction(player, services, ...)
     if type(state) ~= "table" then
         return {success = false, reason = "profile_loading"}
     end
-    if state.currentMode == MODE then
+    if state.activeMode == MODE then
         return {success = false, reason = "already_in_mode"}
     end
-    state.currentMode = MODE
+    state.activeMode = MODE
     local result = status(player, manager)
     result.transitioned = result.currentMode == MODE
     return result
