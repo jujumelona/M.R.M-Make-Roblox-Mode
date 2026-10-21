@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -139,6 +140,58 @@ class LuauStaticAnalyzer:
                 message="StyLua is required for actual Luau code verification "
                         "but not installed or not on PATH.",
             ))
+
+        # StyLua checks grammar, NOT whether a referenced Lua variable exists.
+        # Analyze every generated source with real Selene when available so
+        # undefined Services/costPerSection-style globals cannot be checkpointed.
+        # Keep style warnings non-fatal; the undefined_variable rule is a
+        # correctness error, not a formatting preference.
+        if (self.has_selene and not any(d.rule == "LUAU_PARSER_SYNTAX"
+                                        for d in diagnostics)):
+            try:
+                with tempfile.TemporaryDirectory(prefix="rmm-selene-") as temp:
+                    config = Path(temp) / "selene.toml"
+                    config.write_text(
+                        'std = "roblox"\n[rules]\n'
+                        'undefined_variable = "deny"\n'
+                        'unscoped_variables = "deny"\n',
+                        encoding="utf-8",
+                    )
+                    lint = subprocess.run(
+                        ["selene", "--config", str(config),
+                         "--display-style", "quiet", "-"],
+                        input=code, text=True, capture_output=True,
+                        cwd=temp, timeout=12, check=False,
+                    )
+                details = "\n".join([lint.stdout, lint.stderr])
+                for entry in details.splitlines():
+                    # The official Roblox globals are recognized by the
+                    # Selene Roblox standard library; only semantic scope
+                    # errors should block model-produced code.
+                    matched = re.search(
+                        r"\b(?:error|warning)\["
+                        r"(undefined_variable|unscoped_variables)\]", entry,
+                        re.I,
+                    )
+                    if matched:
+                        loc = re.search(r":(\d+):\d+:", entry)
+                        diagnostics.append(LuauDiagnostic(
+                            file_path=file_path,
+                            line_number=int(loc.group(1)) if loc else 1,
+                            rule="SELENE_" + matched.group(1).upper(),
+                            severity="ERROR",
+                            message=entry.strip()[:1500],
+                            suggestion="Declare the actual variable in scope; "
+                                       "do not invent APIs or implicit globals.",
+                        ))
+            except (subprocess.TimeoutExpired, OSError) as exc:
+                # Selene is an additional semantic lint. The required StyLua
+                # parser remains a separate mandatory production gate.
+                diagnostics.append(LuauDiagnostic(
+                    file_path=file_path, line_number=1,
+                    rule="SELENE_EXECUTION", severity="WARNING",
+                    message=str(exc)[:250],
+                ))
 
         # Fallback keyword checking is retained for lightweight library tests
         # without StyLua. It is NOT used as a contradictory grammar verifier
