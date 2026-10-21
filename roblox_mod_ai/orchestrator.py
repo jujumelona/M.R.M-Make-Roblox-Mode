@@ -237,11 +237,14 @@ class RobloxProductionOrchestrator:
             trajectory.record("preflight", "generation scope", {
                 "counts": scope["counts"],
                 "whole_file_model_risk_modules": scope["whole_file_model_risk_modules"],
+                "model_action_risk_modules": scope["model_action_risk_modules"],
             }, passed=True)
             return {"module_order": [m.name for m in proposal.modules],
                     "generation_scope": scope["counts"],
                     "whole_file_model_risk_modules":
-                        scope["whole_file_model_risk_modules"]}
+                        scope["whole_file_model_risk_modules"],
+                    "model_action_risk_modules":
+                        scope["model_action_risk_modules"]}
 
         checkpoint_file = output_dir / "generation_checkpoint.json"
         # Input-only checkpoints previously survived changes to coder prompts,
