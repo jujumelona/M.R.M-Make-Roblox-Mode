@@ -93,7 +93,8 @@ jobs:
           command -v selene
           python -m pytest -q \
             tests/test_selene_scope_recovery.py \
-            tests/test_host_catalog_purchase.py
+            tests/test_host_catalog_purchase.py \
+            tests/test_host_ship_sections.py
       - name: Reproduce uploaded responses and execute actual generated player persistence
         env:
           RMM_REQUIRE_REAL_LUAU_PARSER: "1"
