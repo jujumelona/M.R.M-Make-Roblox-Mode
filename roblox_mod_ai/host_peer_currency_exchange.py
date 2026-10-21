@@ -77,6 +77,10 @@ local function amount(n, positive)
     return type(n) == "number" and n == n and n % 1 == 0
         and n >= (positive and 1 or 0) and n <= MAX_AMOUNT
 end
+local function validUserId(id)
+    return type(id) == "number" and id == id and id % 1 == 0
+        and id > 0 and id <= 9007199254740991
+end
 local function balance(p, services)
     local manager = services.PlayerDataManager
     if type(manager) ~= "table" or type(manager.GetState) ~= "function" then return nil, nil end
@@ -120,7 +124,7 @@ function Service.handleAction(player, services, ...)
         return {success = true, pending = pending}
     end
     if action == "offer" and argc == 4 then
-        if not amount(a, true) or not amount(b, true) or not amount(c, false)
+        if not validUserId(a) or not amount(b, true) or not amount(c, false)
             or b == c then return reject("invalid_offer") end
         local other = Players:GetPlayerByUserId(a)
         if not validPlayer(other) or other == player then return reject("invalid_counterparty") end
