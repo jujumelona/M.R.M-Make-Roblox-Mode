@@ -15,7 +15,8 @@ def eligible_peer_currency_exchange(module, proposal):
             or module.kind not in (ModuleKind.SERVER_MODULE, ModuleKind.CLIENT_SCRIPT)):
         return None
     server = module.name if module.kind == ModuleKind.SERVER_MODULE else module.name.removesuffix("Client") + "Server"
-    owner = next((m for m in proposal.modules if m.kind == ModuleKind.SERVER_MODULE and m.name == server), None)
+    modules = getattr(proposal, "modules", ())
+    owner = next((m for m in modules if m.kind == ModuleKind.SERVER_MODULE and m.name == server), None)
     if owner is None:
         return None
     description = owner.description.casefold()
@@ -29,7 +30,7 @@ def eligible_peer_currency_exchange(module, proposal):
         return None
     if not any(peer.name != server and peer.kind == ModuleKind.SERVER_MODULE
                and render_host_mining(peer, proposal) is not None
-               for peer in proposal.modules):
+               for peer in modules):
         return None
     design = proposal.game_design.get("dynamic_design") or {}
     matches = [(name, action) for name, action in (design.get("host_actions") or {}).items()
