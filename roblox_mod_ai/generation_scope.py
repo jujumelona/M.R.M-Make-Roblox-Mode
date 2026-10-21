@@ -16,6 +16,7 @@ from .host_ship_sections import eligible_ship_sections
 from .host_ship_attachment import eligible_ship_attachment
 from .host_capped_ship_parts import eligible_capped_ship_parts
 from .host_ship_owned_upgrades import eligible_ship_owned_upgrades
+from .host_performance_mode import eligible_performance_mode
 from .host_ship_part_catalog import eligible_ship_part_catalog
 from .scaffold_policy import (
     single_host_action, single_client_action, single_passive_service,
@@ -61,6 +62,40 @@ def generation_scope(proposal: Any) -> dict[str, Any]:
             "path": module.file_path,
             "strategy": strategy,
         })
+    # A codegen route can be structurally valid while a required cross-service
+    # runtime value still has no verified producer. Report that dependency
+    # instead of treating a passing source-only check as a functional game.
+    unverified_dependencies = []
+    for module in proposal.modules:
+        if module.kind != "server_module" and getattr(module.kind, "value", None) != "server_module":
+            continue
+        selected = eligible_performance_mode(module, proposal)
+        if selected is None:
+            continue
+        _name, _remote, minimum, _mode = selected
+        # These adapters actually calculate their performance from installed
+        # authoritative ship parts. An arbitrary model-authored ship service
+        # cannot be assumed to implement the same ABI.
+        producer = any(
+            m.name != module.name
+            and m.kind == module.kind
+            and (eligible_ship_part_catalog(m, proposal) is not None
+                 or eligible_ship_attachment(m, proposal) is not None)
+            for m in proposal.modules
+        )
+        if not producer:
+            unverified_dependencies.append({
+                "consumer": module.name,
+                "required": "server-owned RMMShipPerformance or owned RMMShipSections.sections[].performance",
+                "threshold": minimum,
+                "status": "unverified_producer_contract",
+                "reason": (
+                    "The proposed ship builder does not have a verified host "
+                    "performance publisher. The mode will reject requests until "
+                    "a real server-owned installed-part performance exists."
+                ),
+            })
+
     legacy = [row["name"] for row in strategies
               if row["strategy"] == "whole_file_model_legacy"]
     count = {}
@@ -72,6 +107,7 @@ def generation_scope(proposal: Any) -> dict[str, Any]:
         "modules": strategies,
         "counts": count,
         "whole_file_model_risk_modules": legacy,
+        "unverified_cross_module_dependencies": unverified_dependencies,
         "notes": (
             "Bounded-body and declarative routes still require real game-rule "
             "validation. A legacy whole-file model route is not automatically "
