@@ -83,6 +83,11 @@ def test_actual_failed_mode_contract_no_long_model_luau_required():
     assert eligible_performance_mode(client, p)
     scope = generation_scope(p)
     routing = {m["name"]: m["strategy"] for m in scope["modules"]}
+    missing = scope["unverified_cross_module_dependencies"]
+    assert len(missing) == 1
+    assert missing[0]["consumer"] == server.name
+    assert missing[0]["threshold"] == 100
+    assert missing[0]["status"] == "unverified_producer_contract"
     assert routing[server.name] == "host_verified_template"
     assert routing[client.name] == "host_verified_template"
     coder = LuauCodeGenerator(NoModel())
