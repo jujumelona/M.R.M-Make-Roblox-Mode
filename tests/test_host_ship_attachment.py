@@ -208,3 +208,52 @@ def test_followup_server_contract_uses_existing_ship_profile_not_fake_sibling_ap
     assert len(model.prompts) == 1
     assert '"RMMShipSections").sections' in model.prompts[0]
     assert "getAssembly" in model.prompts[0]
+
+
+
+def test_replay_failed_log_world_contract_with_two_owned_mining_objects():
+    # These are real metadata shapes from the uploaded run. They do not
+    # participate in adapter selection by name; ownership and API do.
+    p, server, client = plan(server_name="SectionalSpaceshipConstru2A35951Server")
+    miner = p.modules[0]
+    miner.name = "ResourceMiningAndCurrency23C0F11Server"
+    miner.file_path = "src/server/" + miner.name + ".luau"
+    miner.description = (
+        "The server owns the mining currency and resource counts. The player "
+        "mines a valid resource node and earns coins and mined resources."
+    )
+    dynamic = p.game_design["dynamic_design"]
+    dynamic["world_objects"] = [
+        {"name": "ResourceDeposit23C0F111", "class": "Part"},
+        {"name": "ResourceNodeA0013684F21", "class": "Part"},
+    ]
+    dynamic["module_world_objects"][miner.module_id] = [
+        "ResourceDeposit23C0F111", "ResourceNodeA0013684F21",
+    ]
+    dynamic["host_actions"].pop("MineOreAction")
+    dynamic["host_actions"]["ResourceMiningAndCurrency23C0F11Action"] = {
+        "service": miner.name, "kind": "RemoteFunction",
+    }
+    dynamic["host_actions"].pop("BuildShipSectionAction")
+    dynamic["host_actions"]["SectionalSpaceshipConstru2A35951Action"] = {
+        "service": server.name, "kind": "RemoteFunction",
+    }
+    dynamic["remotes"] = {
+        "ResourceMiningAndCurrency23C0F11Action": "RemoteFunction",
+        "SectionalSpaceshipConstru2A35951Action": "RemoteFunction",
+    }
+    dynamic["module_remotes"] = {
+        server.module_id: ["SectionalSpaceshipConstru2A35951Action"],
+        client.module_id: ["SectionalSpaceshipConstru2A35951Action"],
+    }
+    assert eligible_ship_attachment(server, p) is not None
+    assert eligible_ship_attachment(client, p) is not None
+    scope = generation_scope(p)
+    assert scope["counts"]["host_declarative_ship_attachment"] == 2
+    model = SectionDataOnly()
+    gen = LuauCodeGenerator(model)
+    a = gen.generate_with_self_correction(server, p)
+    b = gen.generate_with_self_correction(client, p)
+    assert len(model.calls) == 1
+    assert 'WaitForChild("SectionalSpaceshipConstru2A35951Action", 20)' in b
+    assert 'services.PlayerDataManager.GetState(player, "RMMInventory")' in a
