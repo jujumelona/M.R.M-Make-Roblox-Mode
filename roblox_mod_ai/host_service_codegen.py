@@ -157,7 +157,7 @@ def try_scaffolded_server(
         'player:GetAttribute("RMMShipAssemblyPerformance"). '
         'Never call imaginary getAssembly, applyAttachment, GetShip, SaveShip, '
         'or GetSection methods on sibling services. Validate against the real '
-        'profile data and verified ownership.\\n'
+        'profile data and verified ownership.\n'
         if host_assembly_available else ""
     )
     prompt = (
