@@ -95,6 +95,7 @@ jobs:
             tests/test_selene_scope_recovery.py \
             tests/test_host_catalog_purchase.py \
             tests/test_host_ship_sections.py \
+            tests/test_host_ship_attachment.py \
             tests/test_host_ship_part_catalog.py \
             tests/test_host_progress_dashboard.py \
             tests/test_scoped_peer_api_retry.py
