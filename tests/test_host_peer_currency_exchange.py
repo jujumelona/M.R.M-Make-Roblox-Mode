@@ -65,12 +65,21 @@ def test_bilateral_currency_uses_host_code_not_small_model_luau():
     assert eligible_peer_currency_exchange(server, proposal) == (
         server.name, "CurrencyExchangeAction")
     assert eligible_peer_currency_exchange(client, proposal) is not None
+    scope = generation_scope(proposal)
+    by_name = {entry["name"]: entry["strategy"] for entry in scope["modules"]}
+    assert by_name[server.name] == "host_verified_template"
+    assert by_name[client.name] == "host_verified_template"
+    assert any(entry["status"] == "unverified_cross_player_persistence"
+               and entry["consumer"] == server.name
+               for entry in scope["unverified_cross_module_dependencies"])
     coder = LuauCodeGenerator(FailIfModelUsed())
     s = coder.generate_module_code(server, proposal)
     c = coder.generate_module_code(client, proposal)
     assert s == render_host_gameplay(server, proposal)
     assert c == render_host_gameplay(client, proposal)
     assert 'manager.GetState(p, "RMMTrades")' in s
+    assert 'validUserId(a)' in s
+    assert 'id <= 9007199254740991' in s
     assert 'offers[a] = nil' in s
     assert 'senderCoins.Value = senderAfter' in s
     assert 'receiverCoins.Value = receiverAfter' in s
