@@ -370,7 +370,7 @@ class RobloxPreDesignResearch:
             for offset in range(0, len(chunks), 6):
                 group = chunks[offset:offset+6]
                 missing = group
-                for retry in range(1):
+                for retry in range(2):
                     if not missing:
                         break
                     try:
@@ -397,7 +397,7 @@ class RobloxPreDesignResearch:
                 # Small models may still omit one entry when decoding six chunks
                 # in a batch. Reask only those missing, one source span per call.
                 for chunk in missing:
-                    for retry in range(1):
+                    for retry in range(3):
                         try:
                             output = self.router.complete_json(
                                 "Return JSON {behaviors:[{chunk_id,intent,english_query}]}. "
