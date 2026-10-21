@@ -22,8 +22,7 @@ from .host_world_setup import render_host_world_setup
 from .host_upgrade_purchase import render_host_upgrade_purchase
 from .spec import RobloxModuleSpec, RobloxProposal
 
-RENDERERS = (render_host_mining_exchange, render_host_mining,
-             render_host_trading, render_host_currency,
+RENDERERS = (render_host_mining, render_host_trading, render_host_currency,
              render_host_earned_currency,
              render_host_peer_trade, render_host_peer_barter,
              render_host_space_progression,
@@ -33,6 +32,12 @@ RENDERERS = (render_host_mining_exchange, render_host_mining,
 
 
 def render_host_gameplay(module: RobloxModuleSpec, proposal: RobloxProposal) -> str | None:
+    # A single source-owned action can legitimately contain several mechanics.
+    # Composite adapters must own the entire protocol; selecting the first
+    # renderer would silently discard either mining or bilateral trade.
+    composite = render_host_mining_exchange(module, proposal)
+    if composite is not None:
+        return composite
     results = [(render.__name__, code) for render in RENDERERS
                if (code := render(module, proposal)) is not None]
     if len(results) > 1:
