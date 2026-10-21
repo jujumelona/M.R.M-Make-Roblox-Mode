@@ -45,7 +45,7 @@ def make_plan():
         )
     ship=mod("GeneralShipPartsServer",ModuleKind.SERVER_MODULE,
         "The server validates construction by modular part types. Players buy "
-        "parts using earned currency, attach each part to their spaceship assembly "
+        "parts using earned currency, deducts currency after validating ownership, and attaches each part to their spaceship assembly "
         "and reject any attempt to exceed the part cap or use invalid part IDs.")
     ship_ui=mod("GeneralShipPartsClient",ModuleKind.CLIENT_SCRIPT,
         "Client lets players select and buy modular parts.")
