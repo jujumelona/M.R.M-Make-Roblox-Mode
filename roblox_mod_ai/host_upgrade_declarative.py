@@ -100,6 +100,8 @@ def _validate(value: Any) -> list[dict[str, Any]]:
         known.add(uid.casefold())
         result.append({"id": uid, "label": label.strip(), "category": kind,
                        "cost": cost, "bonus": bonus})
+    if {row["category"] for row in result} != {"weapon", "crew", "ship"}:
+        raise ValueError("DECLARATIVE_UPGRADE_CATEGORIES_INCOMPLETE")
     return result
 
 
