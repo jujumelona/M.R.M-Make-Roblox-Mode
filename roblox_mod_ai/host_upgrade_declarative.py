@@ -47,6 +47,12 @@ def eligible_declarative_upgrade(module: Any, proposal: Any) -> tuple[str, str] 
             or not re.search(r"\b(?:deduct|spend|cost)\w*\b", desc)
             or not re.search(r"\b(?:owned|record|persistent|session)\w*\b", desc)):
         return None
+    # An already proven standalone host purchase template must retain its
+    # source ownership. The declarative route supplements, never replaces,
+    # that contract with unrelated catalog assumptions.
+    from .host_upgrade_purchase import render_host_upgrade_purchase
+    if render_host_upgrade_purchase(module, proposal) is not None:
+        return None
     # The existing ship-specific part-upgrade renderer takes precedence if
     # it owns exactly the required part source and purchase transport.
     from .host_ship_owned_upgrades import eligible_ship_owned_upgrades
