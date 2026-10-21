@@ -42,7 +42,7 @@ def eligible_ship_reconfiguration(module: Any, proposal: Any) -> tuple[str, str]
     d = owner.description.casefold()
     if (not re.search(r"\b(?:ship|spaceship|vessel)\s+assembly\b", d)
             or not re.search(r"\bpart(?:s)?\s+addition\b|\badd(?:ing)?\s+(?:a\s+)?part\b", d)
-            or not re.search(r"\bpart(?:s)?\s+removal\b|\bremove(?:s|d)?\b", d)
+            or not re.search(r"\bpart(?:s)?\s+removal\b|\bremoval\b|\bremove(?:s|d)?\b", d)
             or not re.search(r"\b(?:swap|replace)\b", d)
             or not re.search(r"\b(?:part\s+catalog|part\s+registry)\b", d)
             or not re.search(r"\bminimum\s+structural\s+requirements\b", d)
@@ -259,11 +259,18 @@ local function shipFor(player)
         sectionFolder.Parent = ship
     end
     ships[player] = ship
-    return sectionFolder
+    local lot = slotsByPlayer[player]
+    if lot == nil then
+        lot = 0
+        while usedSlots[lot] do lot += 1 end
+        usedSlots[lot] = true
+        slotsByPlayer[player] = lot
+    end
+    return sectionFolder, lot
 end
 local function renderParts(player, sections)
-    local folder = shipFor(player)
-    if not folder then return false end
+    local folder, lot = shipFor(player)
+    if not folder or lot == nil then return false end
     for _, child in folder:GetChildren() do
         if child:IsA("BasePart") then child:Destroy() end
     end
@@ -274,8 +281,9 @@ local function renderParts(player, sections)
             visual.Name = saved.partId
             visual.Anchored = true
             visual.Size = Vector3.new(5, 2, 7)
-            visual.Position = Vector3.new(20 + def.ordinal * 5,
-                5 + ((player.UserId % 100) * 6), 25)
+            visual.Position = Vector3.new(
+                20 + (lot % 8) * 52 + def.ordinal * 4,
+                5, 25 + math.floor(lot / 8) * 40)
             visual:SetAttribute("ShipPartSlot", slot)
             visual.Parent = folder
         end
