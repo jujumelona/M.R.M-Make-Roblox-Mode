@@ -6,11 +6,35 @@ Anchored replacements fail loudly if that first-party template changes.
 """
 from __future__ import annotations
 
+import re
+
 
 def _replace(source: str, old: str, new: str) -> str:
     if source.count(old) != 1:
         raise ValueError("Builtin player-data template adapter anchor changed: " + old[:70])
     return source.replace(old, new, 1)
+
+
+
+# The source template is an f-string: braces are escaped at authoring time and
+# formatting may insert harmless whitespace inside Luau table type annotations.
+# Match the *typed declaration*, not one serialization of its whitespace.
+_STUDIO_EPHEMERAL_DECL = re.compile(
+    r"(?m)^local[ \\t]+studioEphemeral[ \\t]*:[ \\t]*\\{[ \\t]*"
+    r"\\[number\\][ \\t]*:[ \\t]*boolean[ \\t]*\\}[ \\t]*="
+    r"[ \\t]*\\{[ \\t]*\\}[ \\t]*$"
+)
+
+
+def _replace_studio_ephemeral(source: str, replacement: str) -> str:
+    matches = list(_STUDIO_EPHEMERAL_DECL.finditer(source))
+    if len(matches) != 1:
+        raise ValueError(
+            "Builtin player-data template adapter expected exactly one "
+            "typed studioEphemeral declaration; found " + str(len(matches))
+        )
+    match = matches[0]
+    return source[:match.start()] + replacement + source[match.end():]
 
 
 def render_callable_player_data(source: str) -> str:
@@ -36,8 +60,7 @@ local sessionData:""")
     # Services register OnReady in dependency-sorted startup order, but the
     # old task.spawn(callback, player) launched each callback independently.
     # Preserve that order per player without blocking other players' loads.
-    source = _replace(source,
-        "local studioEphemeral: {[number]: boolean} = {}",
+    source = _replace_studio_ephemeral(source,
         """local studioEphemeral: {[number]: boolean} = {}
 local readyQueues = setmetatable({}, {__mode = "k"})
 local readyWorkers = setmetatable({}, {__mode = "k"})
