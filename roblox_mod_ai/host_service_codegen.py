@@ -46,14 +46,15 @@ def _clean_body(raw: str) -> str:
 
 
 def _shell(body: str, allowed_choices: list[str] | None = None) -> str:
-    choice_guard = ""
+    choice_guard = '    local args = {...}\n'
     if allowed_choices:
         entries = ", ".join("[" + json.dumps(x) + "] = true" for x in allowed_choices)
         choice_guard = (
             '    if select("#", ...) ~= 1 then return false end\n'
-            '    local __rmmActionId = ...\n'
+            '    local actionId = ...\n'
             '    local __rmmAllowed = {' + entries + '}\n'
-            '    if type(__rmmActionId) ~= "string" or not __rmmAllowed[__rmmActionId] then return false end\n'
+            '    if type(actionId) ~= "string" or not __rmmAllowed[actionId] then return false end\n'
+            '    local args = {}\n'
         )
     return (
         "--!strict\n"
@@ -120,7 +121,7 @@ def try_scaffolded_server(
         input_contract = (
             "The host calls handleAction(player, services, ...) with EXACTLY the "
             "client-supplied Remote arguments. It does NOT prepend actionName. "
-            "Use local arg = ... only if this game action has a client argument. "
+            "The host provides local args = {...}; use args[1] for the first client argument. Do not refer to an undeclared actionName. "
             + ("This host action takes ZERO arguments; do not expect any payload."
                if route_info.get("max_args") == 0 else
                "Validate every client argument against server-owned data.")
@@ -194,7 +195,10 @@ def try_scaffolded_server(
         "PlayerDataManager has no SetState method; mutate only the loaded "
         "GetState table after server-side validation. Client-provided amounts "
         "are not earned rewards or authorized prices. "
-        "Keep the body short, syntactically complete, and scoped to ONE action.\n"
+        "Keep the body short, syntactically complete, and scoped to ONE action. "
+        "Never destroy unrelated Workspace objects or PlayerGui. "
+        "Luau tables cannot use + for array addition; use table.insert. "
+        "Validate prerequisites before deducting currency or mutating state.\n"
         + shared_economy_abi
         + shared_assembly_abi
         + "Module: " + module.name + "\n"
@@ -203,7 +207,7 @@ def try_scaffolded_server(
         + input_contract + "\n"
         + ("Only these approved client action IDs are valid: "
            + ", ".join(x["id"] for x in choices) + ". "
-           + "Use local actionId = ... and branch by exact ID; "
+           + "The host defines local actionId and local args = {}; branch by actionId without redeclaring it; "
            + "the host rejects any other client action.\n"
            if choices else "")
         + "Return false for rejected requests; perform observable game state "
@@ -251,6 +255,9 @@ def try_scaffolded_server(
                 raise ValueError("Empty or trivially short gameplay body")
             if body.startswith("--!strict") or _FORBIDDEN.search(body):
                 raise ValueError("Body contains host-owned, unsafe or placeholder code")
+            # Known destructive or unsupported operations are never acceptable gameplay.
+            if re.search(r'workspace\\s*\\.\\s*Workspace|PlayerDataManager\\s*[:.]\\s*SetState|Instance\\s*\\.\\s*new\\s*\\(\\s*["\\\']ScreenGlow|\\w+\\s*\\.\\s*\\w+\\s*=\\s*\\w+(?:\\.\\w+)*\\s*\\+\\s*\\{', body):
+                raise ValueError("Unsafe or unsupported Luau mutation")
             if not _EFFECT.search(body):
                 raise ValueError("Body lacks observable server-owned state change")
             LiveCodeRepetitionGuard.inspect(body)
