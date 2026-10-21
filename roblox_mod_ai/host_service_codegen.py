@@ -13,6 +13,7 @@ from typing import Any
 from .code_output_guard import LiveCodeRepetitionGuard
 from .host_mining import render_host_mining
 from .host_ship_attachment import eligible_ship_attachment
+from .host_capped_ship_parts import eligible_capped_ship_parts
 from .luau_api_sanity import invalid_luau_apis
 from .luau_service_contract import service_contract_checks
 from .server_interface_audit import dependency_api_errors
@@ -146,6 +147,7 @@ def try_scaffolded_server(
     # launch action bodies; never let them call imaginary service methods.
     host_assembly_available = any(
         eligible_ship_attachment(peer, proposal) is not None
+        or eligible_capped_ship_parts(peer, proposal) is not None
         for peer in getattr(proposal, "modules", [])
         if peer.kind == ModuleKind.SERVER_MODULE and peer.name != module.name
     )
@@ -154,7 +156,10 @@ def try_scaffolded_server(
         'services.PlayerDataManager.GetState(player, "RMMShipSections").sections. '
         'Installed parts are keyed by section ID and contain owned=true, '
         'level=1, and a performance contribution. The host publishes '
-        'player:GetAttribute("RMMShipAssemblyPerformance"). '
+        'player:GetAttribute("RMMShipAssemblyPerformance") when the contract '
+        'provides part performance. For capped coin-purchased construction '
+        'the host instead publishes RMMShipPartCount and RMMShipPartTotalCost; '
+        'do not mistake a part count for combat power. '
         'Never call imaginary getAssembly, applyAttachment, GetShip, SaveShip, '
         'or GetSection methods on sibling services. Validate against the real '
         'profile data and verified ownership.\n'
