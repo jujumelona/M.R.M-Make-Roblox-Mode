@@ -64,8 +64,9 @@ def eligible_ship_sections(module: Any, proposal: Any) -> tuple[str, str] | None
     design = proposal.game_design.get("dynamic_design") or {}
     routes = [(k, v) for k, v in (design.get("host_actions") or {}).items()
               if isinstance(v, dict) and v.get("service") == server]
+    max_args = routes[0][1].get("max_args") if len(routes) == 1 else None
     if (len(routes) != 1 or routes[0][1].get("kind") != "RemoteFunction"
-            or routes[0][1].get("max_args") == 0
+            or (max_args is not None and (type(max_args) is not int or max_args < 2))
             or (design.get("remotes") or {}).get(routes[0][0]) != "RemoteFunction"):
         return None
     if module.kind == ModuleKind.SERVER_MODULE:
