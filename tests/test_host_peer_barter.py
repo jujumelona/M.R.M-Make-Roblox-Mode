@@ -56,7 +56,9 @@ def test_two_party_barter_uses_server_verified_host_source_without_model():
     assert 'setOwned(takerIn, takerIn.amount + offer.giveQty)' in s
     assert 'return {success = true' in s
     assert 'remote:InvokeServer(table.unpack(args, 1, args.n))' in c
-    assert '"list"' in c and '"accept"' in c
+    assert '"list"' in c and '"accept"' in c and '"cancel"' in c
+    assert 'reviewOffset = (reviewOffset % #response.pending) + 1' in c
+    assert 'if reviewed == nil then' in c
     assert s.rstrip().endswith("return Service")
 
 
