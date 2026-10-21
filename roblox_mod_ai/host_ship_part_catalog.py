@@ -45,9 +45,20 @@ def eligible_ship_part_catalog(module: Any, proposal: Any) -> tuple[str, str] | 
     if owner is None:
         return None
     description = owner.description.casefold()
-    if (not re.search(r"\b(?:spaceship|ship)\s+part\b", description)
-            or not re.search(r"\bcatalog\b", description)
-            or not re.search(r"\b(?:slot|installed|install)\b", description)
+    catalog_slots = (
+        re.search(r"\b(?:spaceship|ship)\s+parts?\b", description)
+        and re.search(r"\bcatalog\b", description)
+        and re.search(r"\b(?:slot|installed|install)\b", description)
+    )
+    # Equivalently a planner can describe selecting a part from available
+    # assembly slots and a persistent part registry without the word catalog.
+    registry_slots = (
+        re.search(r"\b(?:spaceship|ship)\s+assembly\b", description)
+        and re.search(r"\b(?:available|open)\s+slots?\b", description)
+        and re.search(r"\bpart[- ]selection\b", description)
+        and re.search(r"\bpart\s+registry\b", description)
+    )
+    if (not (catalog_slots or registry_slots)
             or not re.search(r"\b(?:currency|coins?|credits?)\b", description)
             or not re.search(r"\b(?:performance|contribution)\b", description)
             or not re.search(r"\b(?:validat|reject|accept)\w*\b", description)):
