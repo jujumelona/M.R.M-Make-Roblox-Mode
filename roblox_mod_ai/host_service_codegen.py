@@ -12,6 +12,7 @@ from typing import Any
 
 from .code_output_guard import LiveCodeRepetitionGuard
 from .host_mining import render_host_mining
+from .host_ship_attachment import eligible_ship_attachment
 from .luau_api_sanity import invalid_luau_apis
 from .luau_service_contract import service_contract_checks
 from .server_interface_audit import dependency_api_errors
@@ -141,6 +142,24 @@ def try_scaffolded_server(
         'methods or manufacture parallel credit balances.\\n'
         if host_mining_available else ""
     )
+    # Expose the verified assembly ABI to later ship, crew, upgrade and
+    # launch action bodies; never let them call imaginary service methods.
+    host_assembly_available = any(
+        eligible_ship_attachment(peer, proposal) is not None
+        for peer in getattr(proposal, "modules", [])
+        if peer.kind == ModuleKind.SERVER_MODULE and peer.name != module.name
+    )
+    shared_assembly_abi = (
+        'Verified host ship assembly: the persistent table is '
+        'services.PlayerDataManager.GetState(player, "RMMShipSections").sections. '
+        'Installed parts are keyed by section ID and contain owned=true, '
+        'level=1, and a performance contribution. The host publishes '
+        'player:GetAttribute("RMMShipAssemblyPerformance"). '
+        'Never call imaginary getAssembly, applyAttachment, GetShip, SaveShip, '
+        'or GetSection methods on sibling services. Validate against the real '
+        'profile data and verified ownership.\\n'
+        if host_assembly_available else ""
+    )
     prompt = (
         "Write ONLY the BODY statements of one Roblox Luau server "
         "Service.handleAction(player, services, ...). "
@@ -161,6 +180,7 @@ def try_scaffolded_server(
         "are not earned rewards or authorized prices. "
         "Keep the body short, syntactically complete, and scoped to ONE action.\n"
         + shared_economy_abi
+        + shared_assembly_abi
         + "Module: " + module.name + "\n"
         + "Game-specific behavior: " + module.description[:950] + "\n"
         + "Route: " + route + " (" + kind + ")\n"
