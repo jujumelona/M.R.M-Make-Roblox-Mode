@@ -14,6 +14,8 @@ import hashlib
 import re
 from typing import Any
 
+from .semantic_preservation import source_intent_conflicts
+
 
 class HostArchitectureError(ValueError):
     pass
@@ -353,6 +355,26 @@ def expand_semantic_facet(
                 ],
                 "size": [4.0, 4.0, 4.0],
             })
+
+    # The model only authors gameplay semantics, but must preserve each
+    # source-anchored objective before the host commits source IDs/remotes.
+    # Rejecting here makes the facet planner retry this small JSON unit, rather
+    # than allowing a wrong PvP/settlement plan to burn minutes of Luau codegen.
+    combined_server = " ".join(
+        m["behavior"] for m in modules if m["role"] == "server"
+    )
+    combined_outcome = " ".join(results)
+    for source in source_requirements:
+        if not isinstance(source, dict):
+            continue
+        issues = source_intent_conflicts(
+            source.get("statement", ""),
+            combined_server + " " + combined_outcome,
+        )
+        if issues:
+            raise HostArchitectureError(
+                "SEMANTIC_SOURCE_CONTRACT: " + "; ".join(issues)
+            )
 
     acceptance = [
         {"requirement_id": rid,
