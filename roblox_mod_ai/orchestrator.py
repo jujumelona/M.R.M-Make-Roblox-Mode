@@ -314,6 +314,13 @@ class RobloxProductionOrchestrator:
 
         def generate():
             completed = 0
+            from .generation_provenance import (
+                host_source_must_regenerate, trusted_checkpoint_source,
+            )
+            strategy_by_id = {
+                row["module_id"]: row["strategy"]
+                for row in generation_scope(proposal)["modules"]
+            }
             # Persist checkpoints per completed module; never assume an
             # unrelated old file belongs to this game or trust a corrupt file.
             try:
@@ -349,16 +356,10 @@ class RobloxProductionOrchestrator:
                     # stale or model-written code. No saved module may override
                     # the host Remote ingress or no-argument client UI.
                     dynamic_contract = proposal.game_design.get("dynamic_design") or {}
-                    from .generation_provenance import host_source_must_regenerate
                     # Scope dispatch and source overwrite share a SINGLE
                     # classification. Previously 10+ declarative host adapters
                     # were classified as host source yet retained stale Luau
                     # from imported proposals/checkpoints.
-                    current_scope = generation_scope(proposal)
-                    strategy_by_id = {
-                        row["module_id"]: row["strategy"]
-                        for row in current_scope["modules"]
-                    }
                     is_host_generated = host_source_must_regenerate(
                         module, strategy_by_id.get(module.module_id, "")
                     )
@@ -368,7 +369,6 @@ class RobloxProductionOrchestrator:
                     path = output_dir / module.file_path
                     fingerprint = checkpoint_signature(module)
                     stored = entries.get(module.file_path, {})
-                    from .generation_provenance import trusted_checkpoint_source
                     previous = trusted_checkpoint_source(
                         path, stored, fingerprint,
                         module.code if module.module_id.startswith("dyn_")
