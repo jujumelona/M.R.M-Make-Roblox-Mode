@@ -182,7 +182,7 @@ def test_followup_server_contract_uses_existing_ship_profile_not_fake_sibling_ap
     exported = module_bootstrap_contract(next_module, p)
     assert '"RMMShipSections").sections' in exported
     assert "RMMShipAssemblyPerformance" in exported
-    assert "GetSection" in exported and "Do not call invented" in exported
+    assert "GetSection" in exported and "Do not invent" in exported
 
     class Capture:
         def __init__(self):
