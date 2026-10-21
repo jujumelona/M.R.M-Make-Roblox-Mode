@@ -20,6 +20,7 @@ from .host_catalog_purchase import eligible_catalog_purchase, try_catalog_purcha
 from .host_ship_sections import eligible_ship_sections, try_ship_sections
 from .host_ship_attachment import eligible_ship_attachment, try_ship_attachment
 from .host_capped_ship_parts import eligible_capped_ship_parts, try_capped_ship_parts
+from .host_ship_owned_upgrades import eligible_ship_owned_upgrades, try_ship_owned_upgrades
 from .host_ship_part_catalog import eligible_ship_part_catalog, try_ship_part_catalog
 from .economy_core import is_supported_economy_ledger, render_economy_ledger
 from .server_modules import render_dynamic_server_bootstrap
@@ -60,6 +61,7 @@ class LuauCodeGenerator:
                 or eligible_ship_sections(mod, proposal) is not None
                 or eligible_ship_attachment(mod, proposal) is not None
                 or eligible_capped_ship_parts(mod, proposal) is not None
+                or eligible_ship_owned_upgrades(mod, proposal) is not None
                 or eligible_ship_part_catalog(mod, proposal) is not None
             )
             if host_owned or not mod.code:
@@ -91,6 +93,7 @@ class LuauCodeGenerator:
                     or eligible_ship_sections(module, proposal) is not None
                     or eligible_ship_attachment(module, proposal) is not None
                     or eligible_capped_ship_parts(module, proposal) is not None
+                    or eligible_ship_owned_upgrades(module, proposal) is not None
                     or eligible_ship_part_catalog(module, proposal) is not None):
                 raise ValueError("Host-owned Luau template failed static checks; fix host source: " + report)
             if is_host_scaffolded_source(code):
@@ -144,6 +147,9 @@ class LuauCodeGenerator:
         authored_part_catalog = try_ship_part_catalog(module, proposal, self.router)
         if authored_part_catalog is not None:
             return authored_part_catalog
+        owned_ship_upgrades = try_ship_owned_upgrades(module, proposal, self.router)
+        if owned_ship_upgrades is not None:
+            return owned_ship_upgrades
         capped_ship = try_capped_ship_parts(module, proposal, self.router)
         if capped_ship is not None:
             return capped_ship
