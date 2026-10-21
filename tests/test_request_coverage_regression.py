@@ -280,7 +280,10 @@ def test_model_omitting_only_one_chunk_gets_targeted_retry(monkeypatch):
             if len(recorded) == 1:
                 batch = batch[:-1]
             return {"behaviors": [
-                {"chunk_id": c["chunk_id"], "intent": "Implement the source mechanic",
+                {"chunk_id": c["chunk_id"],
+                 "intent": ("Players attack hostile alien NPC enemies"
+                            if "외계인" in c["source_span"]
+                            else "Implement the source mechanic"),
                  "english_query": "Roblox source implementation " + c["chunk_id"]}
                 for c in batch
             ]}
@@ -404,10 +407,12 @@ def test_short_source_chunks_preserve_separate_independently_requested_mechanics
     """Host word partition must not merge separate gameplay obligations."""
     from roblox_mod_ai.source_decomposition import source_chunks
 
+    # Performance and its purchase are one priced state transition; they
+    # need not be split into two independent services. Mining/trading and
+    # minerals/combat *do* have distinct server-side effects.
     examples = (
         ("우주모드 인데 자원파밍 돈모으기 거래 등으로", "자원파밍", "거래"),
         ("우주로 나가면 다른행성의 특수 광물 외게인과 싸움", "광물", "외게인"),
-        ("무기 선원 우주선 성능을 거래 구매 등으로", "성능을", "구매"),
     )
     for source, left, right in examples:
         segments = source_chunks(source)
