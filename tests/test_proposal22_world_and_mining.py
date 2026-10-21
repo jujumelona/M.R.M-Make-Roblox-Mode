@@ -166,7 +166,7 @@ def test_rojo_and_bootstrap_still_have_the_exact_zero_argument_remote(tmp_path):
     assert project["tree"]["Workspace"]["SpecialMineralNode75F66611"]["$className"] == "Part"
     assert project["tree"]["ReplicatedStorage"]["Remotes"]["ResourceGatheringAndEarne23C0F11Action"]["$className"] == "RemoteFunction"
     bootstrap = render_dynamic_server_bootstrap(p)
-    assert 'WaitForChild("ResourceGatheringAndEarne23C0F11Action")' in bootstrap
+    assert 'WaitForChild("ResourceGatheringAndEarne23C0F11Action", 20)' in bootstrap
     assert 'if select("#", ...) ~= 0 then return nil end' in bootstrap
 
 
