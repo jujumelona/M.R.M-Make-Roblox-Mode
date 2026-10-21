@@ -23,6 +23,7 @@ from .host_ship_slot_configuration import (
     eligible_ship_slot_configuration, try_ship_slot_configuration,
 )
 from .host_ship_slot_levels import eligible_ship_slot_levels, try_ship_slot_levels
+from .host_ship_launch_gate import eligible_ship_launch_gate, try_ship_launch_gate
 from .host_ship_hierarchy import eligible_ship_hierarchy, try_ship_hierarchy
 from .host_ship_reconfiguration import eligible_ship_reconfiguration, try_ship_reconfiguration
 from .host_ship_attachment import eligible_ship_attachment, try_ship_attachment
@@ -69,6 +70,7 @@ class LuauCodeGenerator:
                 or eligible_ship_sections(mod, proposal) is not None
                 or eligible_ship_slot_configuration(mod, proposal) is not None
                 or eligible_ship_slot_levels(mod, proposal) is not None
+                or eligible_ship_launch_gate(mod, proposal) is not None
                 or eligible_ship_hierarchy(mod, proposal) is not None
                 or eligible_ship_reconfiguration(mod, proposal) is not None
                 or eligible_ship_attachment(mod, proposal) is not None
@@ -106,6 +108,7 @@ class LuauCodeGenerator:
                     or eligible_ship_sections(module, proposal) is not None
                     or eligible_ship_slot_configuration(module, proposal) is not None
                     or eligible_ship_slot_levels(module, proposal) is not None
+                    or eligible_ship_launch_gate(module, proposal) is not None
                     or eligible_ship_hierarchy(module, proposal) is not None
                     or eligible_ship_reconfiguration(module, proposal) is not None
                     or eligible_ship_attachment(module, proposal) is not None
@@ -179,6 +182,9 @@ class LuauCodeGenerator:
         hierarchical_ship = try_ship_hierarchy(module, proposal, self.router)
         if hierarchical_ship is not None:
             return hierarchical_ship
+        launch_gate = try_ship_launch_gate(module, proposal, self.router)
+        if launch_gate is not None:
+            return launch_gate
         earned_ship_levels = try_ship_slot_levels(module, proposal, self.router)
         if earned_ship_levels is not None:
             return earned_ship_levels
