@@ -51,9 +51,17 @@ def source_chunks(statement: str, *, max_chars: int = 19,
     # span consumes it instead, keeping all source characters covered.
     combined: list[str] = []
     for piece in pieces:
-        if combined and (len(piece) < 3 or _JOINER.fullmatch(piece)):
-            # A dangling connector is syntax, not an independent action.
-            # Keep source spans exact and restore the connective to its clause.
+        if combined and _JOINER.fullmatch(piece):
+            # Redistribute the last two meaningful words into a standalone
+            # action span before attaching the dangling connector. Otherwise
+            # a conjunction can force independent actions into one chunk.
+            words = combined[-1].split(" ")
+            if len(words) >= 4:
+                combined[-1] = " ".join(words[:-2])
+                combined.append(" ".join(words[-2:] + [piece]))
+            else:
+                combined[-1] += " " + piece
+        elif combined and len(piece) < 3:
             combined[-1] += " " + piece
         else:
             combined.append(piece)
