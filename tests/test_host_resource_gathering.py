@@ -131,3 +131,56 @@ def test_actual_failing_module_name_is_irrelevant_to_generic_adapter():
     harvest.file_path = "src/server/ResourceGatheringBD361B1Server.luau"
     p.game_design["dynamic_design"]["host_world_actions"]["ResourceDepositBD361B11"]["service"] = harvest.name
     assert render_host_mining(harvest, p) is not None
+
+
+
+def test_entire_early_pipeline_replays_host_gathering_currency_and_mode_lock():
+    from roblox_mod_ai.host_currency import render_host_currency
+    from roblox_mod_ai.host_mode_lock import render_host_mode_lock
+    p, harvesting, currency = plan()
+    currency.name = "CurrencyAccumulationGenericServer"
+    currency.file_path = "src/server/CurrencyAccumulationGenericServer.luau"
+    currency.description = (
+        "The server maintains the earned-game-currency balance after resource-gathering "
+        "actions award a fixed, server-defined amount of earned currency."
+    )
+    client = RobloxModuleSpec(
+        module_id="dyn_currency_client", name="CurrencyAccumulationGenericClient",
+        kind=ModuleKind.CLIENT_SCRIPT,
+        file_path="src/client/CurrencyAccumulationGenericClient.client.luau",
+        roblox_service=RobloxService.STARTER_PLAYER_SCRIPTS,
+        description="The client displays the earned-currency balance in the HUD "
+                    "and confirms the amount earned after a successful gathering action.",
+    )
+    mode = RobloxModuleSpec(
+        module_id="dyn_mode", name="GameModeInvariantServer",
+        kind=ModuleKind.SERVER_MODULE,
+        file_path="src/server/GameModeInvariantServer.luau",
+        roblox_service=RobloxService.SERVER_SCRIPT_SERVICE,
+        description="The server enforces Space Mode as the active game mode "
+                    "and validates gameplay state and world context.",
+    )
+    p.modules.extend([client, mode])
+    design = p.game_design["dynamic_design"]
+    design["host_actions"]["CurrencyReadAction"] = {
+        "service": currency.name, "kind": "RemoteEvent",
+    }
+    design["remotes"]["CurrencyReadAction"] = "RemoteEvent"
+    design["module_remotes"] = {
+        client.module_id: ["CurrencyReadAction"],
+        currency.module_id: ["CurrencyReadAction"],
+    }
+    scope = generation_scope(p)
+    expected = {m.name for m in (harvesting, currency, client, mode)}
+    assert all(row["strategy"] == "host_verified_template"
+               for row in scope["modules"] if row["name"] in expected)
+    gen = LuauCodeGenerator(NoLuau())
+    for module in (harvesting, currency, client, mode):
+        result = gen.generate_with_self_correction(module, p)
+        assert result
+        errors = [d for d in LuauStaticAnalyzer().analyze_source(result, module.file_path)
+                  if d.severity == "ERROR"]
+        assert not errors, [(module.name, d.rule, d.message) for d in errors]
+    assert render_host_currency(currency, p)
+    assert render_host_currency(client, p)
+    assert render_host_mode_lock(mode, p)
