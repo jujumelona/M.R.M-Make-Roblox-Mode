@@ -169,3 +169,22 @@ def test_cache_resumes_with_same_validated_parts_and_rejects_tampering():
     p.game_design["_host_ship_reconfiguration"][builder.name]["parts"][0]["performance"] = 0
     with pytest.raises(ValueError):
         try_ship_reconfiguration(builder, p, None)
+
+
+
+def test_optional_high_power_parts_cannot_fake_required_ship_layout():
+    # A 2-part ship requiring Hull and Engine cannot use a third decoration's
+    # high score to pass the authored launch/mode threshold.
+    with pytest.raises(ValueError, match="Required structural parts cannot reach"):
+        _validate({
+            "maxParts": 2,
+            "requiredSlots": ["Hull", "Engine"],
+            "parts": [
+                {"id":"Hull", "label":"Hull", "slot":"Hull",
+                 "resourceCost":1, "performance":10},
+                {"id":"Engine", "label":"Engine", "slot":"Engine",
+                 "resourceCost":1, "performance":10},
+                {"id":"Decoration", "label":"Decoration", "slot":"Decoration",
+                 "resourceCost":1, "performance":200},
+            ],
+        }, 100)
