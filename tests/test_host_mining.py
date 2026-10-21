@@ -169,7 +169,7 @@ def test_uploaded_proposal_world_prompt_mining_uses_host_luau_not_model():
     assert all(c["passed"] for c in checks), checks
 
     bootstrap = render_dynamic_server_bootstrap(proposal)
-    assert 'workspace:WaitForChild("ResourceNode03886011")' in bootstrap
+    assert 'workspace:WaitForChild("ResourceNode03886011", 20)' in bootstrap
     assert "prompt.Triggered:Connect(function(player)" in bootstrap
     assert "service.handleAction(player, services, part)" in bootstrap
     assert "remote.OnServerInvoke" not in bootstrap
