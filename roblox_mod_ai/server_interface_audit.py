@@ -31,7 +31,7 @@ def dependency_api_errors(module: Any, proposal: RobloxProposal, code: str) -> l
     This uses saved peer exports, not a guessed Roblox API catalogue. Bootstrap
     owns initialization, and gameplay must not replace another service's API.
     """
-    peers = {m.name: m for m in proposal.modules if m.name != module.name
+    peers = {m.name: m for m in getattr(proposal, "modules", []) if m.name != module.name
              and m.file_path.startswith("src/server/")
              and m.file_path.endswith(".luau")
              and not m.file_path.endswith(".server.luau")}
