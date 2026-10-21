@@ -15,8 +15,19 @@ def is_bilateral_asset_exchange(description: str) -> bool:
     prose = description.casefold()
     return bool(
         re.search(r"\b(?:trad(?:e|es|ing)|exchang(?:e|es|ing)|barter)\b", prose)
-        and re.search(r"\b(?:two players|both players|both sides|both parties|"
+        and (
+            re.search(r"\b(?:two players|both players|both sides|both parties|"
                       r"two[- ]party|player[- ]to[- ]player|peer[- ]to[- ]peer)\b", prose)
+            # Different authored plans express two-sided, consensual trading
+            # through sender/receiver matching offers rather than saying
+            # "both players" literally. Do not claim one-way sales.
+            or (
+                re.search(r"\bsender\b", prose)
+                and re.search(r"\breceiver\b", prose)
+                and re.search(r"\b(?:matching offer|selected offer|confirm)\b", prose)
+                and re.search(r"\b(?:exchang|both inventories|trade lifecycle)\w*\b", prose)
+            )
+        )
         and re.search(r"\b(?:resource|item|inventory|balance)", prose)
         and re.search(r"\b(?:validat|verif|check|reject)", prose)
     )
@@ -129,7 +140,26 @@ function Service.handleAction(player, services, ...)
             end
         end
         table.sort(items, function(left, right) return left.id < right.id end)
-        return {success = true, pending = items}
+        local ownedItems = {}
+        local bag = services.PlayerDataManager.GetState(player, "RMMInventory")
+        if type(bag) == "table" then
+            if validNumber(bag.resources) and bag.resources > 0 then
+                table.insert(ownedItems, {id = "resources", quantity = bag.resources})
+            end
+            local coin = owned(services, player, "coins")
+            if coin and coin.amount > 0 then
+                table.insert(ownedItems, {id = "coins", quantity = coin.amount})
+            end
+            if type(bag.items) == "table" then
+                for id, quantity in pairs(bag.items) do
+                    if validAsset(id) and validNumber(quantity) and quantity > 0 then
+                        table.insert(ownedItems, {id = id, quantity = quantity})
+                    end
+                end
+            end
+        end
+        table.sort(ownedItems, function(a, b) return a.id < b.id end)
+        return {success = true, pending = items, ownedItems = ownedItems}
     end
     if action == "offer" and argc == 6 then
         if not validNumber(a) or a < 1 or not validAsset(b) or not validNumber(c)
@@ -144,7 +174,13 @@ function Service.handleAction(player, services, ...)
         if given.amount < c or wanted.amount < e then return reject("insufficient_balance") end
         local count = 0
         for _, offer in pairs(pending) do
-            if offer.from == player.UserId then count += 1 end
+            if offer.from == player.UserId then
+                count += 1
+                -- No sender may reserve the same owned asset for multiple
+                -- receivers. Actual balances are rechecked at acceptance.
+                if offer.giveAsset == b then return reject("trade_in_progress") end
+                if offer.to == other.UserId then return reject("duplicate_offer") end
+            end
         end
         if count >= 3 then return reject("too_many_offers") end
         sequence += 1
@@ -232,6 +268,12 @@ local send = addButton("Send", "Offer", 10)
 local review = addButton("Review", "Review", 128)
 local accept = addButton("Accept", "Accept reviewed", 246)
 local cancel = addButton("Cancel", "Cancel my offer", 364)
+local itemsText = Instance.new("TextLabel")
+itemsText.Name = "OwnedAssets"
+itemsText.Size = UDim2.fromOffset(470, 28)
+itemsText.Position = UDim2.new(0, 10, 1, -192)
+itemsText.Text = "Review server-owned assets to select an item"
+itemsText.Parent = gui
 local resultText = Instance.new("TextLabel")
 resultText.Name = "TradeResult"
 resultText.Size = UDim2.fromOffset(480, 40)
@@ -275,6 +317,14 @@ review.Activated:Connect(function()
         return
     end
     reviewOffset = (reviewOffset % #response.pending) + 1
+    if type(response.ownedItems) == "table" then
+        local shown = {}
+        for i, entry in ipairs(response.ownedItems) do
+            if i > 5 then break end
+            table.insert(shown, tostring(entry.id) .. ": " .. tostring(entry.quantity))
+        end
+        itemsText.Text = #shown > 0 and table.concat(shown, " | ") or "No owned assets"
+    end
     local offer = response.pending[reviewOffset]
     reviewed = offer.id
     resultText.Text = "Receive " .. tostring(offer.giveQty) .. " " .. tostring(offer.giveAsset)
