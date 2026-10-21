@@ -1,6 +1,6 @@
 """Deterministic purchase contract across client GUI and authoritative server.
 
-The role only matches a source-claimed weapon/crew/ship purchase service with
+This role matches a behavior-claimed weapon/crew/ship purchase service with
 one declared RemoteFunction. Price, identity, state, remotes and UI are host
 owned. The stored bonuses are public attributes for other game services;
 this is not a complete weapon, crew NPC or vehicle simulation.
@@ -11,16 +11,11 @@ import json
 import re
 from .spec import ModuleKind, RobloxModuleSpec, RobloxProposal
 
-_ROLE = re.compile(r"^TradingBasedWeaponCrewAnd[A-Za-z0-9]*Server$", re.I)
-
-
 def render_host_upgrade_purchase(module: RobloxModuleSpec, proposal: RobloxProposal) -> str | None:
     if (not module.module_id.startswith("dyn_")
             or module.kind not in (ModuleKind.SERVER_MODULE, ModuleKind.CLIENT_SCRIPT)):
         return None
     server = module.name if module.kind == ModuleKind.SERVER_MODULE else module.name.removesuffix("Client") + "Server"
-    if not _ROLE.fullmatch(server):
-        return None
     owner = next((m for m in proposal.modules
                   if m.kind == ModuleKind.SERVER_MODULE and m.name == server), None)
     if owner is None:
