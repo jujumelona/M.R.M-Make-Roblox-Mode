@@ -18,6 +18,7 @@ from .scaffold_policy import (single_host_action, single_client_action,
 from .host_gameplay import render_host_gameplay
 from .host_catalog_purchase import eligible_catalog_purchase, try_catalog_purchase
 from .host_ship_sections import eligible_ship_sections, try_ship_sections
+from .host_ship_attachment import eligible_ship_attachment, try_ship_attachment
 from .host_ship_part_catalog import eligible_ship_part_catalog, try_ship_part_catalog
 from .economy_core import is_supported_economy_ledger, render_economy_ledger
 from .server_modules import render_dynamic_server_bootstrap
@@ -56,6 +57,7 @@ class LuauCodeGenerator:
                 or render_host_gameplay(mod, proposal) is not None
                 or eligible_catalog_purchase(mod, proposal) is not None
                 or eligible_ship_sections(mod, proposal) is not None
+                or eligible_ship_attachment(mod, proposal) is not None
                 or eligible_ship_part_catalog(mod, proposal) is not None
             )
             if host_owned or not mod.code:
@@ -85,6 +87,7 @@ class LuauCodeGenerator:
             if (render_host_gameplay(module, proposal) is not None
                     or eligible_catalog_purchase(module, proposal) is not None
                     or eligible_ship_sections(module, proposal) is not None
+                    or eligible_ship_attachment(module, proposal) is not None
                     or eligible_ship_part_catalog(module, proposal) is not None):
                 raise ValueError("Host-owned Luau template failed static checks; fix host source: " + report)
             if is_host_scaffolded_source(code):
@@ -138,6 +141,9 @@ class LuauCodeGenerator:
         authored_part_catalog = try_ship_part_catalog(module, proposal, self.router)
         if authored_part_catalog is not None:
             return authored_part_catalog
+        attach_once_ship = try_ship_attachment(module, proposal, self.router)
+        if attach_once_ship is not None:
+            return attach_once_ship
         declarative_ship = try_ship_sections(module, proposal, self.router)
         if declarative_ship is not None:
             return declarative_ship
