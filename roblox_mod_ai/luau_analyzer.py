@@ -164,6 +164,15 @@ class LuauStaticAnalyzer:
                         cwd=temp, timeout=12, check=False,
                     )
                 details = "\n".join([lint.stdout, lint.stderr])
+                if lint.returncode != 0 and not re.search(
+                        r"(?:error|warning)\\[(?:undefined_variable|unscoped_variables)\\]",
+                        details, re.I):
+                    diagnostics.append(LuauDiagnostic(
+                        file_path=file_path, line_number=1,
+                        rule="SELENE_UNEXPECTED_OUTPUT", severity="ERROR",
+                        message=("Selene could not complete scope verification: "
+                                 + details.strip()[:900]),
+                    ))
                 for entry in details.splitlines():
                     # The official Roblox globals are recognized by the
                     # Selene Roblox standard library; only semantic scope
