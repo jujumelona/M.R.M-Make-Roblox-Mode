@@ -241,5 +241,7 @@ def test_source_npc_combat_and_colony_require_real_owner_behavior():
                           "persists the player's settlement and marks it occupied.")
     dynamic["acceptance_facets"]["enemy"] = "Confirmed hits damage alien enemies"
     dynamic["acceptance_facets"]["colony"] = "Colonized planet has persistent settlement"
+    dynamic["acceptance"]["req-001"] = "Confirmed hit damages hostile alien NPC enemies"
+    dynamic["acceptance"]["req-002"] = "Persistent settlement exists on colonized planet"
     fixed = build_implementation_blueprint(plan)
     assert fixed["ready_for_codegen"] is True
