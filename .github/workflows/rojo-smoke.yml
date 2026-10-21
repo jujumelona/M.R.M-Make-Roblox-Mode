@@ -69,6 +69,20 @@ jobs:
                    "end\nprint(deposit)\n")
           assert not [x for x in analyzer.analyze_source(valid)
                       if x.severity == "ERROR"], "Real parser rejected valid Luau"
+          # Parse the actual host-rendered two-party transaction and client
+          # with StyLua, not just Python regex-based contract assertions.
+          import sys
+          sys.path.insert(0, "tests")
+          from test_host_peer_barter import make_plan
+          from roblox_mod_ai.host_peer_barter import render_host_peer_barter
+          peer_server, peer_client, peer_plan = make_plan()
+          for peer in (peer_server, peer_client):
+              code = render_host_peer_barter(peer, peer_plan)
+              assert code, "Host barter adapter was not selected"
+              errors = [x for x in analyzer.analyze_source(code, peer.file_path)
+                        if x.severity == "ERROR"]
+              assert not errors, [(x.rule, x.line_number, x.message) for x in errors]
+          print("Actual StyLua server/client peer barter parsing: PASS")
           PY
       - name: Reproduce uploaded responses and execute actual generated player persistence
         env:
