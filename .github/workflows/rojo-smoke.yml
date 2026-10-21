@@ -96,6 +96,7 @@ jobs:
             tests/test_host_catalog_purchase.py \
             tests/test_host_ship_sections.py \
             tests/test_host_ship_attachment.py \
+            tests/test_uploaded_matching_trade.py \
             tests/test_host_resource_gathering.py \
             tests/test_host_mode_lock.py \
             tests/test_host_ship_part_catalog.py \
