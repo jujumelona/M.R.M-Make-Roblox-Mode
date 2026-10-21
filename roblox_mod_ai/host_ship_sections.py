@@ -41,11 +41,21 @@ def eligible_ship_sections(module: Any, proposal: Any) -> tuple[str, str] | None
     if owner is None:
         return None
     prose = owner.description.casefold()
+    # Build/attach/add describe the same initial section creation operation.
+    # Do not require an *upgrade* verb when the authored contract already
+    # includes add, remove and replace: the host supports these as separate
+    # validated commands, with optional upgrades on the same saved sections.
+    # Eligibility is based on gameplay obligations, never a game title or ID.
+    initial_build = re.search(r"\b(?:create|creat\w*|add|adding|build|construct\w*)\b", prose)
+    remove = re.search(r"\b(?:remove|remov\w*|detach)\b", prose)
+    replace = re.search(r"\b(?:replace|replac\w*|swap)\b", prose)
     if (not re.search(r"\b(?:ship|spaceship)\s+assembly\b", prose)
             or not re.search(r"\b(?:section|slot)s?\b", prose)
-            or not all(word in prose for word in ("create", "replace", "remove", "upgrade"))
-            or not re.search(r"\b(?:resource|inventory|currency)\b", prose)
-            or not re.search(r"\b(?:player|owner|owned)\b", prose)):
+            or not (initial_build and remove and replace)
+            or not re.search(r"\b(?:resource|resources|inventory|currency)\b", prose)
+            or not re.search(r"\b(?:player|owner|owned|ownership)\b", prose)
+            or not re.search(r"\b(?:validat|check|reject)\w*\b", prose)
+            or not re.search(r"\b(?:persist|sav\w*|record|committ\w*)\b", prose)):
         return None
     design = proposal.game_design.get("dynamic_design") or {}
     routes = [(k, v) for k, v in (design.get("host_actions") or {}).items()
