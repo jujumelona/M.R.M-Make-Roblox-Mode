@@ -89,6 +89,34 @@ def generation_scope(proposal: Any) -> dict[str, Any]:
     # runtime value still has no verified producer. Report that dependency
     # instead of treating a passing source-only check as a functional game.
     unverified_dependencies = []
+    # A source-owned navigation UI is not proof that an unrelated launch
+    # module writes the EXACT saved mode/flight ABI it consumes. A scripted
+    # mode UI can compile yet remain locked forever if launch does not set
+    # RMMTravelProgress.inSpace and RMMGameMode.activeMode.
+    for module in proposal.modules:
+        if module.kind != ModuleKind.SERVER_MODULE:
+            continue
+        if eligible_mode_navigation(module, proposal) is None:
+            continue
+        verified_launch = any(
+            peer.kind == ModuleKind.SERVER_MODULE
+            and peer.name != module.name
+            and eligible_ship_launch_gate(peer, proposal) is not None
+            for peer in proposal.modules
+        )
+        if not verified_launch:
+            unverified_dependencies.append({
+                "consumer": module.name,
+                "required": "launch producer for RMMTravelProgress.inSpace and RMMGameMode.activeMode",
+                "status": "unverified_launch_state_producer",
+                "reason": (
+                    "Mode navigation can only select a planet after an actual "
+                    "server launch marks the player in space. A model-authored "
+                    "launch module has not been verified to populate those "
+                    "shared state namespaces. Planet/mineral/colony integration "
+                    "also requires a matching host-defined planet registry."
+                ),
+            })
     for module in proposal.modules:
         if module.kind != ModuleKind.SERVER_MODULE:
             continue
