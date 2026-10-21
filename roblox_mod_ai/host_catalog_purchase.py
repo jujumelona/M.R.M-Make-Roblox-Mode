@@ -49,12 +49,33 @@ def eligible_catalog_purchase(module: Any, proposal: Any) -> tuple[str, str] | N
     if owner is None:
         return None
     description = owner.description.casefold()
-    if (not re.search(r"\b(?:purchas(?:e|es|ing)|buy|buying)\b", description)
-            or "catalog" not in description
-            or not re.search(r"\b(?:currency|coins?|credits?)\b", description)
-            or not re.search(r"\b(?:spaceship|ship)\s+(?:parts?|upgrades?)\b", description)
-            or not re.search(r"\b(?:own|owned|ownership)\b", description)
-            or not re.search(r"\b(?:validat|verif|check|reject)\w*\b", description)):
+    original_contract = (
+        re.search(r"\b(?:purchas(?:e|es|ing)|buy|buying)\b", description)
+        and "catalog" in description
+        and re.search(r"\b(?:currency|coins?|credits?)\b", description)
+        and re.search(r"\b(?:spaceship|ship)\s+(?:parts?|upgrades?)\b", description)
+        and re.search(r"\b(?:own|owned|ownership)\b", description)
+        and re.search(r"\b(?:validat|verif|check|reject)\w*\b", description)
+    )
+    # A priced ship upgrade may describe an owned server-side catalog but
+    # not explicitly repeat "ship ownership". Require an independently
+    # verified host builder instead; its installed slot is checked at runtime.
+    from .host_ship_part_catalog import eligible_ship_part_catalog
+    builders = [peer for peer in proposal.modules
+                if peer is not owner and peer.kind == ModuleKind.SERVER_MODULE
+                and eligible_ship_part_catalog(peer, proposal) is not None]
+    paired_upgrade = (
+        len(builders) == 1
+        and re.search(r"\bship\s+upgrades?\b", description)
+        and re.search(r"\bcatalog\b", description)
+        and re.search(r"\b(?:purchas\w*|deduct\w*)\b", description)
+        and re.search(r"\b(?:currency|coins?|credits?)\b", description)
+        and re.search(r"\b(?:fixed\s+cost|cost|price)\b", description)
+        and re.search(r"\b(?:corresponding\s+part|ship\s+part|owned\s+part)\b", description)
+        and re.search(r"\b(?:performance|bonus)\b", description)
+        and re.search(r"\b(?:validat|check|reject)\w*\b", description)
+    )
+    if not (original_contract or paired_upgrade):
         return None
     design = proposal.game_design.get("dynamic_design") or {}
     bound = [(k, v) for k, v in (design.get("host_actions") or {}).items()
@@ -114,6 +135,18 @@ def _read_catalog(proposal: Any, server: str, router: Any) -> list[dict[str, Any
     actual_slots = sorted({part["slot"] for rows in part_catalogs.values()
                            if isinstance(rows, list) for part in rows
                            if isinstance(part, dict) and isinstance(part.get("slot"), str)})
+    # A purchase service can be topologically ordered before its ship
+    # constructor. Pre-author exactly the constructor's short *data* catalog,
+    # then reuse that cache when the constructor is generated later.
+    # This never executes model-authored Luau or creates imaginary owned parts.
+    if not actual_slots:
+        from .host_ship_part_catalog import eligible_ship_part_catalog, _catalog
+        builders = [m for m in proposal.modules
+                    if m.kind == ModuleKind.SERVER_MODULE and m.name != server
+                    and eligible_ship_part_catalog(m, proposal) is not None]
+        if len(builders) == 1 and router is not None:
+            parts = _catalog(proposal, builders[0].name, router)
+            actual_slots = sorted({part["slot"] for part in parts})
     if server in catalogs:
         cached = _validated_entries({"entries": catalogs[server]})
         if actual_slots and any(item["slot"] not in actual_slots for item in cached):
@@ -129,6 +162,18 @@ def _read_catalog(proposal: Any, server: str, router: Any) -> list[dict[str, Any
     actual_slots = sorted({part["slot"] for rows in part_catalogs.values()
                            if isinstance(rows, list) for part in rows
                            if isinstance(part, dict) and isinstance(part.get("slot"), str)})
+    # A purchase service can be topologically ordered before its ship
+    # constructor. Pre-author exactly the constructor's short *data* catalog,
+    # then reuse that cache when the constructor is generated later.
+    # This never executes model-authored Luau or creates imaginary owned parts.
+    if not actual_slots:
+        from .host_ship_part_catalog import eligible_ship_part_catalog, _catalog
+        builders = [m for m in proposal.modules
+                    if m.kind == ModuleKind.SERVER_MODULE and m.name != server
+                    and eligible_ship_part_catalog(m, proposal) is not None]
+        if len(builders) == 1 and router is not None:
+            parts = _catalog(proposal, builders[0].name, router)
+            actual_slots = sorted({part["slot"] for part in parts})
     instructions = (
         "Return ONLY a short JSON list of 1-6 purchasable GAME-SPECIFIC "
         "catalog entries; this is DATA, NOT Luau code. Each entry needs "
