@@ -31,9 +31,9 @@ def is_bilateral_asset_exchange(description: str) -> bool:
             # player roles as seller and buyer, with separate offered/wanted
             # assets. This is a bilateral inventory exchange, not an NPC shop.
             or (
-                re.search(r"\\bseller(?:'s)?\\b", prose)
-                and re.search(r"\\bbuyer(?:'s)?\\b", prose)
-                and re.search(r"\\b(?:offered|wanted|transfer|both inventories)\\b", prose)
+                re.search(r"\bseller(?:'s)?\b", prose)
+                and re.search(r"\bbuyer(?:'s)?\b", prose)
+                and re.search(r"\b(?:offered|wanted|transfer|both inventories)\b", prose)
             )
             # A two-sided asset exchange may be phrased as requester and
             # counterparty, without literally saying "both players".
