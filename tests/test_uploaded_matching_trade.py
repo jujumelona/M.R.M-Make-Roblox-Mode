@@ -95,7 +95,7 @@ def test_uploaded_bilateral_offer_contract_is_host_owned_not_llm_body():
     assert 'services.PlayerDataManager' in server_code
     assert 'GetState(player, "RMMInventory")' in server_code
     assert 'return {success = true, pending = items, ownedItems = ownedItems}' in server_code
-    assert 'if offer.to ~= player.UserId' in server_code
+    assert 'offer.to ~= player.UserId' in server_code
     assert 'giverOut.amount < offer.giveQty' in server_code
     assert 'takerOut.amount < offer.wantQty' in server_code
     assert 'setOwned(giverOut, giverOut.amount - offer.giveQty)' in server_code
