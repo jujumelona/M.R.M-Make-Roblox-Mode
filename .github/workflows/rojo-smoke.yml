@@ -100,6 +100,7 @@ jobs:
             tests/test_host_capped_ship_parts.py \
             tests/test_host_ship_owned_upgrades.py \
             tests/test_host_resource_gathering.py \
+            tests/test_host_earned_currency.py \
             tests/test_host_mode_lock.py \
             tests/test_host_ship_part_catalog.py \
             tests/test_host_progress_dashboard.py \
