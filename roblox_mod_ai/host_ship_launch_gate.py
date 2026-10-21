@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import re
 from typing import Any
-from .host_ship_slot_configuration import eligible_ship_slot_configuration
+from .host_ship_slot_configuration import eligible_ship_slot_configuration, _validate as _valid_ship_slots
 from .host_ship_slot_levels import eligible_ship_slot_levels, _validate as _validate_levels
 from .spec import ModuleKind
 
@@ -69,8 +69,19 @@ def _validate(value:Any, levels:dict[str,int])->dict[str,Any]:
 def _read(proposal:Any, owner:str, upgrade_owner:str, router:Any)->dict[str,Any]:
     catalog=(proposal.game_design.get("_host_ship_level_upgrades") or {}).get(upgrade_owner)
     if catalog is None:raise ValueError("SHIP_LAUNCH_MISSING_VALIDATED_UPGRADES")
-    ship_slots={x["slot"]:x["maxLevel"] for x in _validate_levels(
-        {"upgrades":catalog},{x["slot"] for x in catalog})}
+    # Never validate the upgrade IDs against themselves: validate against the
+    # independent, earlier host-authored ship-slot catalog instead.
+    builders = [m for m in proposal.modules
+                if m.kind == ModuleKind.SERVER_MODULE
+                and eligible_ship_slot_configuration(m, proposal) is not None]
+    if len(builders) != 1:
+        raise ValueError("SHIP_LAUNCH_MISSING_VERIFIED_BUILDER")
+    raw_slots = (proposal.game_design.get("_host_ship_slot_config") or {}).get(builders[0].name)
+    if raw_slots is None:
+        raise ValueError("SHIP_LAUNCH_MISSING_BUILDER_CATALOG")
+    actual_ids = {entry["id"] for entry in _valid_ship_slots({"slots": raw_slots})}
+    ship_slots = {x["slot"]: x["maxLevel"] for x in _validate_levels(
+        {"upgrades": catalog}, actual_ids)}
     cache=proposal.game_design.setdefault("_host_ship_launch_rules",{})
     if owner in cache:return _validate(cache[owner],ship_slots)
     if router is None or not hasattr(router,"complete_json"):raise ValueError("SHIP_LAUNCH_RULES_NOT_AUTHORED")
