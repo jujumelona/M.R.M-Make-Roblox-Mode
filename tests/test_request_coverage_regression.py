@@ -412,6 +412,7 @@ def test_short_source_chunks_preserve_separate_independently_requested_mechanics
         segments = source_chunks(source)
         assert " ".join(segments) == source
         assert span_coverage(source, segments) >= .99
+        assert all(segment not in {"등으로", "및", "and", "then", "있고"} for segment in segments)
         assert any(left in segment for segment in segments)
         assert any(right in segment for segment in segments)
         assert all(not (left in segment and right in segment)
