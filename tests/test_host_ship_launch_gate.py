@@ -120,3 +120,15 @@ def test_launch_resume_rule_cannot_use_unverified_level():
     p.game_design["_host_ship_launch_rules"][server.name]["requiredUpgrades"][0]["minLevel"]=100
     with pytest.raises(ValueError):
         try_ship_launch_gate(server,p,None)
+
+
+
+def test_launch_refuses_upgrades_not_in_independent_real_ship_catalog():
+    p,builder,upgrade,server,client=plan_with_gate()
+    router=ThreeDatasets()
+    gen=LuauCodeGenerator(router)
+    assert gen.generate_with_self_correction(builder,p)
+    assert gen.generate_with_self_correction(upgrade,p)
+    p.game_design["_host_ship_level_upgrades"][upgrade.name][0]["slot"]="InventedLaunchPart"
+    with pytest.raises(ValueError,match="SHIP_LEVEL_UPGRADE_INVALID"):
+        try_ship_launch_gate(server,p,None)
