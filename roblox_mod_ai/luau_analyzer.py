@@ -157,13 +157,23 @@ class LuauStaticAnalyzer:
                         'unscoped_variables = "deny"\n',
                         encoding="utf-8",
                     )
+                    # Rokit shims require a manifest in the working tree.
+                    # Locate it from both the runner cwd and installed source;
+                    # do not assume an editable package lives at project root.
+                    roots = [Path.cwd().resolve(), Path(__file__).resolve().parent.parent]
+                    selene_root = next((parent for candidate in roots
+                                        for parent in (candidate, *candidate.parents)
+                                        if (parent / "rokit.toml").is_file()), None)
+                    if selene_root is None and ".rokit" in (shutil.which("selene") or ""):
+                        raise OSError("Rokit Selene shim has no resolvable rokit.toml; "
+                                      "scope lint cannot run from this installation")
                     lint = subprocess.run(
                         ["selene", "--config", str(config),
                          "--display-style", "quiet", "-"],
                         input=code, text=True, capture_output=True,
                         # Rokit shims require the project's rokit.toml;
                         # an empty temp cwd makes the shim fail before linting.
-                        cwd=str(Path(__file__).resolve().parent.parent),
+                        cwd=str(selene_root or Path.cwd()),
                         timeout=12, check=False,
                     )
                 details = "\n".join([lint.stdout, lint.stderr])
