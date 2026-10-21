@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .spec import ModuleKind
+
 from .host_gameplay import render_host_gameplay
 from .host_catalog_purchase import eligible_catalog_purchase
 from .host_ship_sections import eligible_ship_sections
@@ -67,7 +69,7 @@ def generation_scope(proposal: Any) -> dict[str, Any]:
     # instead of treating a passing source-only check as a functional game.
     unverified_dependencies = []
     for module in proposal.modules:
-        if module.kind != "server_module" and getattr(module.kind, "value", None) != "server_module":
+        if module.kind != ModuleKind.SERVER_MODULE:
             continue
         selected = eligible_performance_mode(module, proposal)
         if selected is None:
