@@ -14,6 +14,7 @@ from .spec import ModuleKind
 
 from .host_gameplay import render_host_gameplay
 from .host_catalog_purchase import eligible_catalog_purchase
+from .host_upgrade_declarative import eligible_declarative_upgrade
 from .host_ship_sections import eligible_ship_sections
 from .host_ship_hierarchy import eligible_ship_hierarchy
 from .host_ship_reconfiguration import eligible_ship_reconfiguration
@@ -37,6 +38,8 @@ def generation_scope(proposal: Any) -> dict[str, Any]:
             strategy = "host_verified_template"
         elif eligible_catalog_purchase(module, proposal) is not None:
             strategy = "host_declarative_catalog"
+        elif eligible_declarative_upgrade(module, proposal) is not None:
+            strategy = "host_declarative_general_upgrades"
         elif eligible_ship_sections(module, proposal) is not None:
             strategy = "host_declarative_ship_sections"
         elif eligible_ship_hierarchy(module, proposal) is not None:
