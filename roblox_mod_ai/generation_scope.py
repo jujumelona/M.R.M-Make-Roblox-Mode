@@ -13,6 +13,7 @@ from typing import Any
 from .spec import ModuleKind
 
 from .host_gameplay import render_host_gameplay
+from .host_mode_navigation import eligible_mode_navigation
 from .host_catalog_purchase import eligible_catalog_purchase
 from .host_upgrade_declarative import eligible_declarative_upgrade
 from .host_ship_sections import eligible_ship_sections
@@ -39,6 +40,8 @@ def generation_scope(proposal: Any) -> dict[str, Any]:
             strategy = "builtin_source"
         elif render_host_gameplay(module, proposal) is not None:
             strategy = "host_verified_template"
+        elif eligible_mode_navigation(module, proposal) is not None:
+            strategy = "host_declarative_mode_navigation"
         elif eligible_catalog_purchase(module, proposal) is not None:
             strategy = "host_declarative_catalog"
         elif eligible_declarative_upgrade(module, proposal) is not None:
