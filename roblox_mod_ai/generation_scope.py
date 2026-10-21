@@ -209,6 +209,17 @@ def generation_scope(proposal: Any) -> dict[str, Any]:
 
     legacy = [row["name"] for row in strategies
               if row["strategy"] == "whole_file_model_legacy"]
+    # A host-owned shell is not a deterministic gameplay implementation.
+    # Historical logs had zero whole-file risks yet 4-8 free-form model
+    # server bodies; reporting only legacy routes hid the dominant failure
+    # probability from operators before wasting expensive model calls.
+    model_action_risks = [
+        row["name"] for row in strategies
+        if row["strategy"] in (
+            "bounded_server_action", "bounded_passive_start",
+            "whole_file_model_legacy",
+        )
+    ]
     count = {}
     for row in strategies:
         count[row["strategy"]] = count.get(row["strategy"], 0) + 1
@@ -218,6 +229,8 @@ def generation_scope(proposal: Any) -> dict[str, Any]:
         "modules": strategies,
         "counts": count,
         "whole_file_model_risk_modules": legacy,
+        "model_action_risk_modules": model_action_risks,
+        "model_action_risk_count": len(model_action_risks),
         "unverified_cross_module_dependencies": unverified_dependencies,
         "notes": (
             "Bounded-body and declarative routes still require real game-rule "
