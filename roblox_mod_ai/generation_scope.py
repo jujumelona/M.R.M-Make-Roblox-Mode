@@ -15,6 +15,7 @@ from .spec import ModuleKind
 from .host_gameplay import render_host_gameplay
 from .host_catalog_purchase import eligible_catalog_purchase
 from .host_ship_sections import eligible_ship_sections
+from .host_ship_reconfiguration import eligible_ship_reconfiguration
 from .host_ship_attachment import eligible_ship_attachment
 from .host_capped_ship_parts import eligible_capped_ship_parts
 from .host_ship_owned_upgrades import eligible_ship_owned_upgrades
@@ -37,6 +38,8 @@ def generation_scope(proposal: Any) -> dict[str, Any]:
             strategy = "host_declarative_catalog"
         elif eligible_ship_sections(module, proposal) is not None:
             strategy = "host_declarative_ship_sections"
+        elif eligible_ship_reconfiguration(module, proposal) is not None:
+            strategy = "host_declarative_ship_reconfiguration"
         elif eligible_ship_attachment(module, proposal) is not None:
             strategy = "host_declarative_ship_attachment"
         elif eligible_capped_ship_parts(module, proposal) is not None:
@@ -82,7 +85,8 @@ def generation_scope(proposal: Any) -> dict[str, Any]:
             m.name != module.name
             and m.kind == module.kind
             and (eligible_ship_part_catalog(m, proposal) is not None
-                 or eligible_ship_attachment(m, proposal) is not None)
+                 or eligible_ship_attachment(m, proposal) is not None
+                 or eligible_ship_reconfiguration(m, proposal) is not None)
             for m in proposal.modules
         )
         if not producer:
