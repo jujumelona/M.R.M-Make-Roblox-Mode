@@ -118,7 +118,7 @@ def test_real_plan_missing_node_is_materialized_and_both_roles_are_host_owned():
     assert "claimedYield" not in server_source
     assert "miningRateFactorOverride" not in server_source
     bootstrap = render_dynamic_server_bootstrap(p)
-    assert 'WaitForChild("ResourceMiningEconomy0388601Action")' in bootstrap
+    assert 'WaitForChild("ResourceMiningEconomy0388601Action", 20)' in bootstrap
     assert "remote.OnServerInvoke = function(player, ...)" in bootstrap
 
 
