@@ -32,6 +32,7 @@ from .host_ship_attachment import eligible_ship_attachment, try_ship_attachment
 from .host_capped_ship_parts import eligible_capped_ship_parts, try_capped_ship_parts
 from .host_ship_owned_upgrades import eligible_ship_owned_upgrades, try_ship_owned_upgrades
 from .host_ship_part_catalog import eligible_ship_part_catalog, try_ship_part_catalog
+from .host_ship_purchase_facade import eligible_ship_purchase_facade, try_ship_purchase_facade
 from .economy_core import is_supported_economy_ledger, render_economy_ledger
 from .server_modules import render_dynamic_server_bootstrap
 from .host_client import render_host_client
@@ -81,6 +82,7 @@ class LuauCodeGenerator:
                 or eligible_capped_ship_parts(mod, proposal) is not None
                 or eligible_ship_owned_upgrades(mod, proposal) is not None
                 or eligible_ship_part_catalog(mod, proposal) is not None
+                or eligible_ship_purchase_facade(mod, proposal) is not None
             )
             if host_owned or not mod.code:
                 code = self.generate_with_self_correction(mod, proposal)
@@ -120,7 +122,8 @@ class LuauCodeGenerator:
                     or eligible_ship_attachment(module, proposal) is not None
                     or eligible_capped_ship_parts(module, proposal) is not None
                     or eligible_ship_owned_upgrades(module, proposal) is not None
-                    or eligible_ship_part_catalog(module, proposal) is not None):
+                    or eligible_ship_part_catalog(module, proposal) is not None
+                    or eligible_ship_purchase_facade(module, proposal) is not None):
                 raise ValueError("Host-owned Luau template failed static checks; fix host source: " + report)
             if is_host_scaffolded_source(code):
                 # The model authored only a bounded body. Full-module repair
@@ -176,6 +179,9 @@ class LuauCodeGenerator:
         mode_navigation = try_mode_navigation(module, proposal, self.router)
         if mode_navigation is not None:
             return mode_navigation
+        shared_ship_market = try_ship_purchase_facade(module, proposal, self.router)
+        if shared_ship_market is not None:
+            return shared_ship_market
         authored_part_catalog = try_ship_part_catalog(module, proposal, self.router)
         if authored_part_catalog is not None:
             return authored_part_catalog
