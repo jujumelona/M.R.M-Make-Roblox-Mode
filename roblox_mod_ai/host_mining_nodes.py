@@ -14,7 +14,7 @@ from typing import Any
 from .spec import RobloxModuleSpec, RobloxProposal
 
 _MINEABLE = re.compile(
-    r"(?:resource.*node|ore.*node|ore.*deposit|mining.*site|mine.*site|quarry|harvest.*node)",
+    r"(?:resource.*(?:node|deposit)|ore.*(?:node|deposit)|mining.*site|mine.*site|quarry|harvest.*node)",
     re.I,
 )
 
@@ -43,10 +43,14 @@ def mining_world_nodes(
                     and binding.get("service") != owner.name)
 
     if isinstance(linked, list) and linked:
-        # Never silently widen a source-owned list with unrelated world Parts.
+        # Explicit ownership PLUS an actual world action is stronger evidence
+        # than an English name heuristic. A labelled GatheringSite is usable;
+        # an alien or settlement belonging to someone else is not.
         return sorted({name for name in linked
                        if isinstance(name, str) and name in objects
-                       and usable(name)})
+                       and (isinstance(world_routes.get(name), dict)
+                            and world_routes[name].get("service") == owner.name
+                            or usable(name))})
     if isinstance(linked, list) and not linked:
         # No explicit world target. The preflight may create a new node.
         # Do not search other mechanics' objects.
