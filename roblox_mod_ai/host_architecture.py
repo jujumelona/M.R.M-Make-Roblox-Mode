@@ -72,9 +72,10 @@ def _pascal(value: str, fallback: str) -> str:
 # an omitted acceptance label from *model-authored* state changes and visible
 # feedback. Never invent gameplay rules or waive an explicitly bad label.
 _STATE_CHANGE = re.compile(
-    r"\b(?:adds?|added|appl(?:y|ies|ied)|awards?|grants?|gains?|"
+    r"\b(?:adds?|added|appl(?:y|ies|ied|ying)|awards?|grants?|gains?|"
     r"updates?|updated|changes?|changed|sets?|saves?|stores?|records?|"
     r"deducts?|deducted|decrements?|increments?|consumes?|converts?|"
+    r"persists?|persisted|transfers?|transferred|settles?|settled|"
     r"spawns?|creates?|removes?|destroys?|teleports?|unlocks?|"
     r"deals?|damages?|heals?|equips?|rewards?|depletes?)\b", re.I,
 )
@@ -84,8 +85,8 @@ _VISIBLE_FEEDBACK = re.compile(
 )
 _POST_ACTION = re.compile(
     r"\b(?:after|then|on success|successfully|confirmed|success|"
-    r"result|received|earned|reward|gain|updated|changes?|"
-    r"rejected|completion|complete|status|notification|progress)\b", re.I,
+    r"result(?:s|ing)?|confirmations?|received|earned|reward|gain|updated|changes?|"
+    r"rejected|completion|complete|status|notification|progress|feedback)\b", re.I,
 )
 
 
@@ -98,6 +99,15 @@ def _recover_observable_result(server: Any, client: Any, interaction: Any) -> st
         return None
     if not (_STATE_CHANGE.search(server) and _VISIBLE_FEEDBACK.search(client)
             and _POST_ACTION.search(client)):
+        return None
+    # Do not promote a client explicitly reporting the absence of results.
+    if re.search(
+        r"\b(?:no|without|never)\s+(?:(?:visible|gameplay|server)\s+)?"
+        r"(?:result|outcome|feedback|confirmation)\b", client, re.I
+    ) or re.search(
+        r"\bwithout\s+(?:\w+\s+){0,3}(?:showing|displaying|rendering)"
+        r"\s+(?:any\s+)?(?:result|outcome|feedback)\b", client, re.I
+    ):
         return None
     # This remains a *planned* outcome, not a claim of executed gameplay.
     return client.strip()
