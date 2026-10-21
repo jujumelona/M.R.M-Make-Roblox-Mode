@@ -164,11 +164,19 @@ def inspect_dynamic_remote_wiring(proposal: RobloxProposal) -> dict[str, Any]:
                 code = _without_comments(bootstrap.code)
                 # Each action is generated with a separately scoped do block
                 # and named binding; verify both explicit literal references.
-                lookup = 'remotes:WaitForChild("' + name + '")'
+                # The host uses a bounded WaitForChild(name, timeout), while
+                # older gateways used WaitForChild(name). Both bind the exact
+                # same Remote; do not let formatting or the timeout create a
+                # false missing-server-endpoint diagnosis.
+                lookup = (
+                    r'\bremotes\s*:\s*WaitForChild\s*\(\s*'
+                    + re.escape('"' + name + '"')
+                    + r'\s*(?:,\s*\d+(?:\.\d+)?\s*)?\)'
+                )
                 gateway_method = ("OnServerEvent" if kind == "RemoteEvent"
                                   else "OnServerInvoke")
                 host_ready = (
-                    lookup in code and gateway_method in code
+                    bool(re.search(lookup, code)) and gateway_method in code
                     and 'service.handleAction(player, services, ...)' in code
                     and bool(re.search(
                         r"\bfunction\s+[A-Za-z_]\w*\.handleAction\s*\(",
