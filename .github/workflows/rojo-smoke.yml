@@ -67,8 +67,9 @@ jobs:
                    "delta: number): number\n"
                    "    return math.max(0, balance + delta)\n"
                    "end\nprint(deposit)\n")
-          assert not [x for x in analyzer.analyze_source(valid)
-                      if x.severity == "ERROR"], "Real parser rejected valid Luau"
+          valid_errors = [x for x in analyzer.analyze_source(valid)
+                          if x.severity == "ERROR"]
+          assert not valid_errors, [(x.rule, x.message) for x in valid_errors]
           # Parse the actual host-rendered two-party transaction and client
           # with StyLua, not just Python regex-based contract assertions.
           import sys
