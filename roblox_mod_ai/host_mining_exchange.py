@@ -65,7 +65,81 @@ def eligible_mining_exchange(module: Any, proposal: Any) -> tuple[str, str, list
     return server, remote, nodes
 
 
+def _overlapping_host_services(module: Any, proposal: Any) -> tuple[str, str] | None:
+    """Recognize exactly the overlapping source-owned adapters, never a guess.
+
+    Both independent source renderers must already accept the exact authored
+    RemoteFunction. The composite reuses their complete, proven semantics
+    rather than silently degrading item/coin exchanges into ore-only trades.
+    """
+    from .host_mining import render_host_mining
+    from .host_peer_barter import render_host_peer_barter
+
+    if (render_host_mining(module, proposal) is None
+            or render_host_peer_barter(module, proposal) is None):
+        return None
+    owner_name = (module.name if module.kind == ModuleKind.SERVER_MODULE
+                  else module.name.removesuffix("Client") + "Server")
+    owner = next((m for m in getattr(proposal, "modules", ())
+                  if m.kind == ModuleKind.SERVER_MODULE and m.name == owner_name), None)
+    if owner is None or not mining_world_nodes(proposal, owner):
+        return None
+    design = proposal.game_design.get("dynamic_design") or {}
+    routes = [(key, val) for key,val in (design.get("host_actions") or {}).items()
+              if isinstance(val, dict) and val.get("service") == owner_name]
+    if len(routes) != 1:
+        return None
+    key, binding = routes[0]
+    # A single physical ingress must supply both the mining target and the
+    # bilateral offer arguments. No fixed action count is assumed.
+    if (binding.get("kind") != "RemoteFunction"
+            or (design.get("remotes") or {}).get(key) not in (None, "RemoteFunction")):
+        return None
+    return owner_name, key
+
+
+def _compose_existing_hosts(module: Any, proposal: Any) -> str | None:
+    if _overlapping_host_services(module, proposal) is None:
+        return None
+    from .host_mining import render_host_mining
+    from .host_peer_barter import render_host_peer_barter
+    mining = render_host_mining(module, proposal)
+    exchange = render_host_peer_barter(module, proposal)
+    if mining is None or exchange is None:
+        return None
+    if module.kind == ModuleKind.CLIENT_SCRIPT:
+        return "--!strict\n-- Both first-party UIs share one confirmed RemoteFunction.\n" + (
+            "do\n" + mining.replace("--!strict", "", 1) + "\nend\n"
+            "do\n" + exchange.replace("--!strict", "", 1) + "\nend\n"
+        )
+    return (
+        "--!strict\n-- One RemoteFunction, two complete server-owned services.\n"
+        "local Mine = (function()\n" + mining.replace("--!strict", "", 1)
+        + "\nend)()\n"
+        "local Barter = (function()\n" + exchange.replace("--!strict", "", 1)
+        + "\nend)()\n"
+        "local Service = {}\n"
+        "function Service.start(services)\n"
+        "    Mine.start(services)\n"
+        "    Barter.start(services)\n"
+        "end\n"
+        "function Service.handleAction(player, services, ...)\n"
+        '    local action = ...\n'
+        '    if type(action) == "string" and (action == "list"\n'
+        '        or action == "offer" or action == "accept"\n'
+        '        or action == "cancel" or action == "confirm") then\n'
+        '        return Barter.handleAction(player, services, ...)\n'
+        '    end\n'
+        '    return Mine.handleAction(player, services, ...)\n'
+        'end\n'
+        'return Service\n'
+    )
+
+
 def render_host_mining_exchange(module: Any, proposal: Any) -> str | None:
+    composed = _compose_existing_hosts(module, proposal)
+    if composed is not None:
+        return composed
     result = eligible_mining_exchange(module, proposal)
     if result is None:
         return None
