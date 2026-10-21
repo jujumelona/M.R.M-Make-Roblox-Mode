@@ -173,14 +173,15 @@ def test_market_catalog_must_reference_real_host_ship_section_slots():
     with pytest.raises(ValueError, match="HOST_DECLARATIVE_CATALOG_EXHAUSTED"):
         LuauCodeGenerator(model).generate_module_code(p.modules[0], p)
     assert len(model.calls) == 2
-    assert all("propulsion" in call[0] and "defense" in call[0]
-               for call in [(request, kw) for request, kw in
-                            getattr(model, "calls", [])]) if hasattr(model, "calls") else True
+    assert all("propulsion" in prompt and "defense" in prompt
+               for prompt, _options in model.calls)
 
 
 def test_market_accepts_actual_ship_slot_and_checks_restored_cache():
     p = _plan()
-    p.game_design["_host_ship_part_catalogs"] = {"Builder": [{"slot": "weapon"}]}
+    p.game_design["_host_ship_part_catalogs"] = {"Builder": [
+        {"slot": "weapon"}, {"slot": "shield"},
+    ]}
     router = DataOnlyModel()
     source = LuauCodeGenerator(router).generate_module_code(p.modules[0], p)
     assert 'ship.sections[item.slot]' in source
