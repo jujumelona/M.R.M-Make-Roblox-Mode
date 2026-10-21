@@ -16,6 +16,7 @@ from .scaffold_policy import (single_host_action, single_client_action,
                               single_passive_service, scaffold_exhausted,
                               is_host_scaffolded_source)
 from .host_gameplay import render_host_gameplay
+from .host_mode_navigation import eligible_mode_navigation, try_mode_navigation
 from .host_catalog_purchase import eligible_catalog_purchase, try_catalog_purchase
 from .host_upgrade_declarative import eligible_declarative_upgrade, try_declarative_upgrade
 from .host_ship_sections import eligible_ship_sections, try_ship_sections
@@ -65,6 +66,7 @@ class LuauCodeGenerator:
                 or (mod.module_id.startswith("dyn_")
                     and mod.name in dynamic.get("host_client_actions", {}))
                 or render_host_gameplay(mod, proposal) is not None
+                or eligible_mode_navigation(mod, proposal) is not None
                 or eligible_catalog_purchase(mod, proposal) is not None
                 or eligible_declarative_upgrade(mod, proposal) is not None
                 or eligible_ship_sections(mod, proposal) is not None
@@ -103,6 +105,7 @@ class LuauCodeGenerator:
                 for d in errors
             )
             if (render_host_gameplay(module, proposal) is not None
+                    or eligible_mode_navigation(module, proposal) is not None
                     or eligible_catalog_purchase(module, proposal) is not None
                     or eligible_declarative_upgrade(module, proposal) is not None
                     or eligible_ship_sections(module, proposal) is not None
@@ -164,6 +167,9 @@ class LuauCodeGenerator:
         # over the generic zero-argument host button; both remain host code.
         # When rules are a bounded item catalog, the small model supplies
         # DATA only; never ask it to generate arbitrary purchase Luau code.
+        mode_navigation = try_mode_navigation(module, proposal, self.router)
+        if mode_navigation is not None:
+            return mode_navigation
         authored_part_catalog = try_ship_part_catalog(module, proposal, self.router)
         if authored_part_catalog is not None:
             return authored_part_catalog
