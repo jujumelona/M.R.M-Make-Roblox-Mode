@@ -9,6 +9,7 @@ import json
 import re
 
 from .host_mining import render_host_mining
+from .host_peer_barter import is_bilateral_asset_exchange
 from .spec import ModuleKind, RobloxModuleSpec, RobloxProposal
 
 
@@ -24,6 +25,9 @@ def render_host_peer_trade(module: RobloxModuleSpec, proposal: RobloxProposal) -
     if owner is None:
         return None
     description = owner.description.casefold()
+    # Bilateral resource/item exchange requires the general agreed-offer ledger.
+    if is_bilateral_asset_exchange(description):
+        return None
     if ("counterparty" not in description or "trade" not in description
             or "inventory" not in description):
         return None
