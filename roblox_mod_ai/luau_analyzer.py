@@ -170,11 +170,13 @@ class LuauStaticAnalyzer:
                 # Selene exits nonzero for style-only warnings too. They
                 # cannot invalidate otherwise correct Luau. Reject only
                 # unexpected execution failure or real parse/error findings.
-                style_only = bool(re.search(
-                    r"Results:\s*0 errors\s+\d+ warnings\s+0 parse errors",
+                selene_completed = bool(re.search(
+                    r"Results:\s*\d+ errors\s+\d+ warnings\s+0 parse errors",
                     details, re.I,
                 ))
-                if (lint.returncode != 0 and not style_only
+                # Non-scope rules (e.g. if_same_then_else) are handled by
+                # the regular build linter, not this pre-check's scope gate.
+                if (lint.returncode != 0 and not selene_completed
                         and not re.search(
                             r"(?:error|warning)\[(?:undefined_variable|unscoped_variables)\]",
                             details, re.I)):
