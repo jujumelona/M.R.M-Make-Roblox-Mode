@@ -249,24 +249,15 @@ class RobloxProductionOrchestrator:
         # broken code after every fix. Tie all resumed modules to the actual
         # source of the generation pipeline; changed implementation invalidates
         # checkpoints without deleting the user's prior run evidence.
-        generation_components = (
-            "orchestrator.py", "agent_loop.py", "code_generator.py",
-            "host_service_codegen.py", "host_mining.py", "host_mining_nodes.py", "host_mining_contract.py", "host_trading.py",
-            "host_currency.py", "host_gameplay.py", "host_peer_trade.py",
-            "host_space_progression.py", "host_world_setup.py", "host_upgrade_purchase.py",
-            "module_prompt_scope.py", "server_modules.py", "economy_core.py", "host_client.py",
-            "luau_service_contract.py", "server_interface_audit.py", "request_semantics.py", "host_player_data.py",
-            "roblox_toolchain.py", "verification_selector.py",
-            "detailed_plan.py", "source_review.py", "source_repair_cycle.py",
-            "module_generation_gate.py", "generation_scope.py", "host_client_codegen.py", "host_lifecycle_codegen.py",
-            "scaffold_policy.py",
+        # Every package Python module may define a host adapter, validator,
+        # state ABI, routing policy, or a model-coding prompt. A hand-maintained
+        # file list missed newly added adapters and allowed old checkpoints to
+        # survive source changes. Fingerprint the actual installed codebase,
+        # deterministically and without relying on an optional git checkout.
+        from .generation_provenance import generation_source_digests
+        component_fingerprints = generation_source_digests(
+            Path(__file__).resolve().parent
         )
-        component_fingerprints = {
-            component: hashlib.sha256(
-                (Path(__file__).resolve().parent / component).read_bytes()
-            ).hexdigest()
-            for component in generation_components
-        }
         # Report the exact Colab clone revision and generation source digests
         # in failure ZIPs so a stale interpreter is identifiable on the next run.
         tool_results["source_provenance"] = {
@@ -358,13 +349,18 @@ class RobloxProductionOrchestrator:
                     # stale or model-written code. No saved module may override
                     # the host Remote ingress or no-argument client UI.
                     dynamic_contract = proposal.game_design.get("dynamic_design") or {}
-                    is_host_generated = (
-                        module.module_id in ("mod_game_objective", "mod_arena_round", "mod_arena_round_controller", "mod_dynamic_server_bootstrap")
-                        or (module.module_id == "mod_player_data" and module.file_path.endswith("/PlayerDataManager.luau"))
-                        or (module.module_id.startswith("dyn_")
-                            and module.name in
-                            dynamic_contract.get("host_client_actions", {}))
-                        or render_host_gameplay(module, proposal) is not None
+                    from .generation_provenance import host_source_must_regenerate
+                    # Scope dispatch and source overwrite share a SINGLE
+                    # classification. Previously 10+ declarative host adapters
+                    # were classified as host source yet retained stale Luau
+                    # from imported proposals/checkpoints.
+                    current_scope = generation_scope(proposal)
+                    strategy_by_id = {
+                        row["module_id"]: row["strategy"]
+                        for row in current_scope["modules"]
+                    }
+                    is_host_generated = host_source_must_regenerate(
+                        module, strategy_by_id.get(module.module_id, "")
                     )
                     if is_host_generated:
                         module.code = self.code_generator.generate_module_code(
