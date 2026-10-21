@@ -243,7 +243,13 @@ def test_failed_whole_request_recovers_every_original_source_chunk(monkeypatch):
             batch = json.loads(prompt[prompt.index('{"chunks"'):])["chunks"]
             return {"behaviors": [
                 {"chunk_id": c["chunk_id"],
-                 "intent": "Implement the gameplay action from " + c["source_span"],
+                 "intent": (
+                     "Server establishes and persists a planet colony settlement"
+                     if "식민" in c["source_span"] else
+                     "Server handles hostile alien NPC enemy combat"
+                     if "외계인" in c["source_span"] or "외게인" in c["source_span"] else
+                     "Implement the gameplay action from " + c["source_span"]
+                 ),
                  "english_query": "Roblox API for gameplay chunk " + c["chunk_id"]}
                 for c in batch
             ]}
