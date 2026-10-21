@@ -51,7 +51,9 @@ def source_chunks(statement: str, *, max_chars: int = 19,
     # span consumes it instead, keeping all source characters covered.
     combined: list[str] = []
     for piece in pieces:
-        if len(piece) < 3 and combined:
+        if combined and (len(piece) < 3 or _JOINER.fullmatch(piece)):
+            # A dangling connector is syntax, not an independent action.
+            # Keep source spans exact and restore the connective to its clause.
             combined[-1] += " " + piece
         else:
             combined.append(piece)
