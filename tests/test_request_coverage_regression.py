@@ -407,6 +407,7 @@ def test_short_source_chunks_preserve_separate_independently_requested_mechanics
     examples = (
         ("우주모드 인데 자원파밍 돈모으기 거래 등으로", "자원파밍", "거래"),
         ("우주로 나가면 다른행성의 특수 광물 외게인과 싸움", "광물", "외게인"),
+        ("무기 선원 우주선 성능을 거래 구매 등으로", "성능을", "구매"),
     )
     for source, left, right in examples:
         segments = source_chunks(source)
