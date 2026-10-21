@@ -14,6 +14,7 @@ from .spec import ModuleKind
 
 from .host_gameplay import render_host_gameplay
 from .host_mode_navigation import eligible_mode_navigation
+from .host_mode_unlock import eligible_mode_unlock
 from .host_catalog_purchase import eligible_catalog_purchase
 from .host_upgrade_declarative import eligible_declarative_upgrade
 from .host_ship_sections import eligible_ship_sections
@@ -43,6 +44,8 @@ def generation_scope(proposal: Any) -> dict[str, Any]:
             strategy = "host_verified_template"
         elif eligible_mode_navigation(module, proposal) is not None:
             strategy = "host_declarative_mode_navigation"
+        elif eligible_mode_unlock(module, proposal) is not None:
+            strategy = "host_declarative_mode_unlock"
         elif eligible_catalog_purchase(module, proposal) is not None:
             strategy = "host_declarative_catalog"
         elif eligible_declarative_upgrade(module, proposal) is not None:
@@ -166,6 +169,38 @@ def generation_scope(proposal: Any) -> dict[str, Any]:
                     "non-yielding server session. PlayerDataManager persists each user "
                     "separately. A crash between saves can create an inconsistent "
                     "cross-player balance, so global atomic durability is NOT verified."
+                ),
+            })
+
+    # Mode unlock cannot prove real flight, ship section and paid upgrade ABIs.
+    # Only the actual launcher may produce RMMTravelProgress.inSpace.
+    for module in proposal.modules:
+        if (module.kind == ModuleKind.SERVER_MODULE
+                and eligible_mode_unlock(module, proposal) is not None):
+            verified_flight = any(
+                other is not module and other.kind == ModuleKind.SERVER_MODULE
+                and eligible_ship_launch_gate(other, proposal) is not None
+                for other in proposal.modules)
+            if not verified_flight:
+                unverified_dependencies.append({
+                    "consumer": module.name,
+                    "required": "server launch producer of RMMTravelProgress.inSpace",
+                    "status": "unverified_mode_launch_producer",
+                    "reason": (
+                        "The host gate will reject entering Space Mode until a "
+                        "separate verified launch service records inSpace=true. "
+                        "An authored launch description does not prove the "
+                        "saved flight ABI or spatial movement."
+                    ),
+                })
+            unverified_dependencies.append({
+                "consumer": module.name,
+                "required": "RMMShipSections.sections and RMMUpgradePurchases purchase records",
+                "status": "unverified_mode_ship_upgrade_producers",
+                "reason": (
+                    "An upstream module description is not evidence that generated "
+                    "ship and upgrade services populate these exact saved namespaces. "
+                    "The host gate cannot fabricate a ship or purchased upgrades."
                 ),
             })
 
