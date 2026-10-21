@@ -103,7 +103,7 @@ def test_actual_failed_mode_contract_no_long_model_luau_required():
     assert 'player:GetAttribute("RMMShipPerformance")' in owner_code
     assert 'player:GetAttribute("RMMShipAssemblyPerformance")' in owner_code
     assert "score >= REQUIRED_PERFORMANCE" in owner_code
-    assert 'state.currentMode = MODE' in owner_code
+    assert 'state.activeMode = MODE' in owner_code
     assert '"insufficient_ship_performance"' in owner_code
     assert 'return {success = false, reason = "ship_not_built"}' not in owner_code
     assert '"ship_not_built"' in owner_code
@@ -162,7 +162,7 @@ def test_missing_real_builder_or_client_route_fails_closed():
 def test_mode_gate_does_not_grant_flight_without_launch_service():
     p, server, _, _ = fixture()
     code = render_host_performance_mode(server, p)
-    assert 'state.currentMode = MODE' in code
+    assert 'state.activeMode = MODE' in code
     assert 'return result' in code
     assert 'RMMInSpace' not in code
     assert 'RMMSpaceUnlocked' not in code
