@@ -196,7 +196,7 @@ local function makeOffer(player, services, payload)
         return {success = false, reason = "invalid_offer_payload"}
     end
     local buyerId, units, price = payload.buyerUserId, payload.resources, payload.coins
-    if not integer(buyerId, 1, INT_MAX)
+    if not integer(buyerId, 1, 9007199254740991)
         or not integer(units, 1, MAX_OFFER_RESOURCES)
         or not integer(price, 1, MAX_OFFER_COINS) then
         return {success = false, reason = "invalid_offer_values"}
