@@ -22,9 +22,9 @@ def mining_rewards_currency(owner: RobloxModuleSpec, proposal: RobloxProposal) -
         return True
     return any(
         peer.kind == ModuleKind.SERVER_MODULE and peer.name != owner.name
-        and re.search(r"\\b(?:resource[- ]gathering|mining|gathering)\\s+actions?\\b", peer.description, re.I)
-        and re.search(r"\\b(?:award|grant|credit|earn)\\w*\\b", peer.description, re.I)
-        and re.search(r"\\b(?:currency|coins?|credits?)\\b", peer.description, re.I)
+        and re.search(r"\b(?:resource[- ]gathering|mining|gathering)\s+actions?\b", peer.description, re.I)
+        and re.search(r"\b(?:award|grant|credit|earn)\w*\b", peer.description, re.I)
+        and re.search(r"\b(?:currency|coins?|credits?)\b", peer.description, re.I)
         for peer in getattr(proposal, "modules", [])
     )
 
@@ -42,7 +42,7 @@ def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> st
     service_tokens = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", server)
     if (not re.search(r"\b(?:mining|mine|ore|gather|gathering|harvest|harvesting)\b", service_tokens, re.I)
             or not re.search(r"mining|mine|ore|gather|harvest|resource", description)
-            or not re.search(r"\\b(?:validat|radius|distance|proximity|range|node|deposit|deplet|cooldown|gather)\\w*\\b", description)):
+            or not re.search(r"\b(?:validat|radius|distance|proximity|range|node|deposit|deplet|cooldown|gather)\w*\b", description)):
         return None
     design = proposal.game_design.get("dynamic_design") or {}
     # A mineable source-owned Part is the actual evidence of the resource.
