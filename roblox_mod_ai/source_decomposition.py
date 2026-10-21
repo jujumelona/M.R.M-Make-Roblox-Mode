@@ -18,7 +18,7 @@ _JOINER = re.compile(
 )
 
 
-def source_chunks(statement: str, *, max_chars: int = 19,
+def source_chunks(statement: str, *, max_chars: int = 14,
                   max_chunks: int = 48) -> list[str]:
     """Partition a clause by original word boundaries; never drop or invent words.
 
