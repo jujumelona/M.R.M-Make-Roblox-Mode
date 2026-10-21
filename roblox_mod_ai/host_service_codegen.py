@@ -14,6 +14,7 @@ from .code_output_guard import LiveCodeRepetitionGuard
 from .host_mining import render_host_mining
 from .luau_api_sanity import invalid_luau_apis
 from .luau_service_contract import service_contract_checks
+from .server_interface_audit import dependency_api_errors
 from .request_semantics import request_semantic_errors
 from .spec import ModuleKind, RobloxModuleSpec, RobloxProposal
 
@@ -154,6 +155,10 @@ def try_scaffolded_server(
         "other services. If player profile state is required, the known host API "
         "is services.PlayerDataManager.GetState(player, namespace) and it "
         "returns a mutable server-owned table or nil until ready. "
+        "GetState is a DOT function, never call :GetState. "
+        "PlayerDataManager has no SetState method; mutate only the loaded "
+        "GetState table after server-side validation. Client-provided amounts "
+        "are not earned rewards or authorized prices. "
         "Keep the body short, syntactically complete, and scoped to ONE action.\n"
         + shared_economy_abi
         + "Module: " + module.name + "\n"
@@ -224,6 +229,10 @@ def try_scaffolded_server(
                     module.name, candidate, require_start=True, needs_action=True
                 ) if not c["passed"]
             )
+            # The project-specific peer ABI must be checked at EVERY bounded
+            # attempt, not only after the orchestrator has already exhausted
+            # the scoped unit. Retry the short body with exact exported APIs.
+            diagnostics.extend(dependency_api_errors(module, proposal, candidate))
             diagnostics.extend("ROBLOX_API_INVALID: " + m
                                for m in invalid_luau_apis(candidate))
             diagnostics.extend(request_semantic_errors(
