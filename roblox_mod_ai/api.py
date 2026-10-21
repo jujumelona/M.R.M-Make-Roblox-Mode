@@ -85,8 +85,39 @@ class CompleteRobloxAISession:
         self.authored_plan: RobloxAuthoredPlan | None = None
         self.brief: str = ""
 
-    def plan(self, prompt: str, *, project_mode: str = "new_experience") -> CompleteChatReply:
-        """Create a new game design plan from a natural-language description."""
+    def plan(self, prompt: str, *, project_mode: str = "new_experience",
+             force_replan: bool = False) -> CompleteChatReply:
+        """Reuse an approved identical plan by default; never restart its graph.
+
+        The old API discarded the approved module/route graph on each retry
+        of the same prompt, producing an unrelated set of 18-24 modules
+        instead of resuming the fixed program. `force_replan=True` explicitly
+        requests a fresh architecture. Invalid legacy plans never auto-resume.
+        """
+        saved = self.output_root / "proposal.json"
+        if saved.is_file() and not force_replan:
+            try:
+                candidate = RobloxAuthoredPlan.from_dict(
+                    json.loads(saved.read_text(encoding="utf-8"))
+                )
+                proposal = candidate.proposal
+                if (candidate.requested_prompt == prompt
+                        and proposal.requested_prompt == prompt
+                        and proposal.game_design.get(
+                            "project_mode", "new_experience") == project_mode):
+                    previous = CompleteChatReply(
+                        message=candidate.text,
+                        approval_hash=candidate.calculate_hash(),
+                        authored_plan=candidate,
+                    )
+                    if previous.ready_to_build:
+                        self.reset()
+                        self.brief = prompt
+                        self.authored_plan = candidate
+                        return previous
+            except (OSError, ValueError, TypeError, KeyError, AttributeError):
+                # Corrupt, obsolete and incomplete plans must not be reused.
+                pass
         self.reset()
         self.brief = prompt
         plan = self.planner.plan(prompt, project_mode=project_mode)
