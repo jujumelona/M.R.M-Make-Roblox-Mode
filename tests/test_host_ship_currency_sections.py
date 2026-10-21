@@ -186,3 +186,56 @@ def test_cached_currency_catalog_is_revalidated_no_second_model_call():
     plan.game_design["_host_currency_ship_sections"][server.name][0]["options"][0]["cost"] = -1
     with pytest.raises(ValueError):
         try_ship_sections(server, plan, None)
+
+
+def test_modular_part_placement_removal_refund_reuses_bounded_host_ledger():
+    # Reproduce the behavioral contract from an exhausted scoped server action.
+    # Its filename, source hash and original user prompt are not selection keys.
+    plan, server, client, remote = _plan("PlayerVehiclePartsServer")
+    server.description = (
+        "The server owns the ship assembly registry and validates every part "
+        "creation, placement and removal action. A player may add a modular "
+        "ship part only with enough earned game currency and if it is not "
+        "already installed. The server deducts the part cost, records the "
+        "part in the assembly registry, and updates ship performance. "
+        "When removing a part, the server refunds its cost, removes the part "
+        "from the registry and recalculates performance. Duplicate installation "
+        "and removing unowned parts are rejected."
+    )
+    assert eligible_currency_ship_sections(server, plan) == (server.name, remote)
+    assert eligible_currency_ship_sections(client, plan) == (server.name, remote)
+    selected = {x["name"]: x["strategy"] for x in generation_scope(plan)["modules"]}
+    assert selected[server.name] == "host_declarative_ship_sections"
+    assert selected[client.name] == "host_declarative_ship_sections"
+    model = OptionsOnly()
+    coder = LuauCodeGenerator(model)
+    source = coder.generate_with_self_correction(server, plan)
+    ui = coder.generate_with_self_correction(client, plan)
+    assert len(model.calls) == 1
+    assert model.calls[0][1]["json_schema"]["required"] == ["slots"]
+    assert 'local netCharge = targetPaid - oldPaid' in source
+    assert 'coins.Value -= netCharge' in source
+    assert 'sections[slotId] = nil' in source
+    assert 'player:SetAttribute("RMMShipPerformance", result.performance)' in source
+    assert 'remote:InvokeServer(action, slotId, optionId)' in ui
+    for m, code in ((server, source), (client, ui)):
+        problems = [x for x in LuauStaticAnalyzer().analyze_source(
+            code, m.file_path) if x.severity == "ERROR"]
+        assert not problems, [(x.rule, x.line_number, x.message) for x in problems]
+
+
+def test_refund_contract_is_required_for_currency_part_removal():
+    plan, server, client, remote = _plan()
+    server.description = (
+        "The server owns a ship assembly registry for modular ship part "
+        "creation, placement and removal. It validates currency and cost, "
+        "deducts coins, records installed parts and recalculates performance."
+    )
+    assert eligible_currency_ship_sections(server, plan) is None
+    # Neither non-currency assembly nor purchase-only adapters may hijack it.
+    assert eligible_ship_sections(server, plan) is None
+    server.description = (
+        "Server validates a currency purchase for modular ship part installation "
+        "with no removal, no refunds and no saved assembly registry."
+    )
+    assert eligible_currency_ship_sections(server, plan) is None
