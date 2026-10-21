@@ -181,3 +181,45 @@ def test_composite_rejects_incompatible_or_malformed_action_signatures(max_args)
     p.game_design["dynamic_design"]["host_actions"]["EconomyAction"]["max_args"]=max_args
     ensure_mining_world_contract(p)
     assert eligible_mining_exchange(server,p) is None
+
+
+
+def test_real_failure_15_mining_and_bilateral_barter_are_composed_not_conflicted():
+    # Source reports exactly these two owners colliding during resolve_dependencies.
+    # Preserve full peer-to-peer *item/coin* support, not a one-resource shortcut.
+    from roblox_mod_ai.host_mining import render_host_mining
+    from roblox_mod_ai.host_peer_barter import render_host_peer_barter
+    p,server,client=make_plan("ResourceMiningAndTradeEco0388601Server")
+    server.description=(
+        "The server validates mining actions at nearby resource nodes, "
+        "checking the player radius and remaining deposit, then grants earned "
+        "currency and resources. The server also validates trade exchange "
+        "actions between two players: both sides confirm a matching offer of "
+        "resource and item inventory balances, and each participant's "
+        "asset quantities are checked to reject stale and duplicate trades. "
+        "Both sides receive a server-confirmed exchange result."
+    )
+    ensure_mining_world_contract(p)
+    for mod in (server,client):
+        mine=render_host_mining(mod,p)
+        barter=render_host_peer_barter(mod,p)
+        assert mine is not None and barter is not None
+        combined=render_host_gameplay(mod,p)
+        assert combined==render_host_mining_exchange(mod,p)
+        assert mine != combined and barter != combined
+        assert "local Mine = (function()" in combined if mod is server else "do\n" in combined
+        assert 'remote:InvokeServer(table.unpack(args, 1, args.n))' in combined if mod is client else 'Barter.handleAction(player, services, ...)' in combined
+        errors=[d for d in LuauStaticAnalyzer().analyze_source(combined,mod.file_path)
+                if d.severity=="ERROR"]
+        assert not errors, [(d.rule,d.message) for d in errors]
+        assert LuauCodeGenerator(NoCoder()).generate_module_code(mod,p) == combined
+
+
+def test_two_distinct_services_remain_independent_without_ownership_overlap():
+    from test_host_peer_barter import make_plan as split_plan
+    from roblox_mod_ai.host_peer_barter import render_host_peer_barter
+    p_server,p_client,p=split_plan()
+    expected=render_host_peer_barter(p_server,p)
+    assert expected is not None
+    assert render_host_gameplay(p_server,p)==expected
+    assert render_host_mining_exchange(p_server,p) is None
