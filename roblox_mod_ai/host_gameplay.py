@@ -12,6 +12,7 @@ from .host_currency import render_host_currency
 from .host_peer_trade import render_host_peer_trade
 from .host_peer_barter import render_host_peer_barter
 from .host_progress_dashboard import render_host_progress_dashboard
+from .host_mode_lock import render_host_mode_lock
 from .host_space_progression import render_host_space_progression
 from .host_world_setup import render_host_world_setup
 from .host_upgrade_purchase import render_host_upgrade_purchase
@@ -21,7 +22,7 @@ RENDERERS = (render_host_mining, render_host_trading, render_host_currency,
              render_host_peer_trade, render_host_peer_barter,
              render_host_space_progression,
              render_host_world_setup, render_host_upgrade_purchase,
-             render_host_progress_dashboard)
+             render_host_progress_dashboard, render_host_mode_lock)
 
 
 def render_host_gameplay(module: RobloxModuleSpec, proposal: RobloxProposal) -> str | None:
