@@ -146,3 +146,89 @@ def test_market_only_upgrade_without_build_contract_not_replaced():
     p,ship,ship_ui,upgrade,client=make_plan()
     upgrade.description="Sell ore to broker for credits."
     assert eligible_ship_owned_upgrades(upgrade,p) is None
+
+
+
+def test_new_hierarchical_ship_expansion_uses_actual_saved_part_not_invented_id():
+    from test_host_ship_hierarchy import proposal as hierarchy_proposal, RulesOnly
+    from roblox_mod_ai.host_upgrade_purchase import render_host_upgrade_purchase
+    from roblox_mod_ai.host_ship_owned_upgrades import eligible_ship_owned_upgrades
+    from roblox_mod_ai.spec import RobloxModuleSpec, RobloxService
+    p,builder,builder_ui=hierarchy_proposal()
+    desc=(
+        "The server owns all upgrade and expansion state. When a player requests "
+        "an upgrade or expansion, the server validates the player's owned currency, "
+        "verifies the target ship part is within the allowed upgrade list, applies "
+        "the upgrade or expansion once, updates the player's persistent ship data, "
+        "and returns a result. The server rejects duplicate requests for the same "
+        "target, requests without sufficient currency, and requests for invalid "
+        "or already-maxed targets. Currency is deducted atomically with the upgrade."
+    )
+    owner=RobloxModuleSpec(
+        module_id="dyn_generic_shipexp",name="GenericShipExpansionServer",
+        kind=ModuleKind.SERVER_MODULE,
+        file_path="src/server/GenericShipExpansionServer.luau",
+        roblox_service=RobloxService.SERVER_SCRIPT_SERVICE,description=desc,
+    )
+    client=RobloxModuleSpec(
+        module_id="dyn_generic_shipui",name="GenericShipExpansionClient",
+        kind=ModuleKind.CLIENT_SCRIPT,
+        file_path="src/client/GenericShipExpansionClient.client.luau",
+        roblox_service=RobloxService.STARTER_PLAYER_SCRIPTS,
+        description="Client sees purchased upgrades and final saved performance.",
+    )
+    p.modules.extend((owner,client))
+    d=p.game_design["dynamic_design"]
+    d["host_actions"]["UpgradeAction"]={"service":owner.name,"kind":"RemoteFunction"}
+    d["remotes"]["UpgradeAction"]="RemoteFunction"
+    d["module_remotes"][owner.module_id]=["UpgradeAction"]
+    d["module_remotes"][client.module_id]=["UpgradeAction"]
+    assert eligible_ship_owned_upgrades(owner,p)
+    assert eligible_ship_owned_upgrades(client,p)
+
+    class Planner(RulesOnly):
+        def complete_json(self,prompt,**kwargs):
+            if "Output ONLY JSON {upgrades:" in prompt:
+                self.calls.append((prompt,kwargs))
+                return {"upgrades":[{
+                    "id":"EngineBoost","label":"Engine reinforcement",
+                    "targetPart":"Engine","effect":"ship","cost":25,"bonus":18
+                }]}
+            return super().complete_json(prompt,**kwargs)
+
+    router=Planner()
+    coder=LuauCodeGenerator(router)
+    assert coder.generate_with_self_correction(builder,p)
+    host=coder.generate_with_self_correction(owner,p)
+    ui=coder.generate_with_self_correction(client,p)
+    assert len(router.calls)==2
+    assert '["EngineBoost"] = {part = "Engine", effect = "ship"' in host
+    assert 'GetState(player, "RMMShipSections")' in host
+    assert 'installed.owned ~= true' in host
+    assert 'GetState(player, "RMMUpgradePurchases")' in host
+    assert 'coins.Value -= item.cost' in host
+    assert 'ship = "RMMShipPurchasedPerformanceBonus"' in host
+    assert 'remote:InvokeServer(upgrade.id)' in ui
+    assert '"UpgradeAction"' in ui
+    from roblox_mod_ai.host_performance_mode import _SERVER as mode_source
+    assert 'manager.GetState(player, "RMMUpgradePurchases")' in mode_source
+    assert 'upgrade.effect == "ship"' in mode_source
+    assert 'saved.sections[upgrade.targetPart]' in mode_source
+    for mod,source in ((owner,host),(client,ui)):
+        failures=[d for d in LuauStaticAnalyzer().analyze_source(source,mod.file_path)
+                  if d.severity=="ERROR"]
+        assert not failures, [(d.rule,d.message) for d in failures]
+    # Generic shop remains a different service: a hierarchy without a capped
+    # purchase builder is not an excuse to convert shop into part upgrades.
+    shop=RobloxModuleSpec(
+        module_id="dyn_shop",name="GenericShopServer",kind=ModuleKind.SERVER_MODULE,
+        file_path="src/server/GenericShopServer.luau",
+        roblox_service=RobloxService.SERVER_SCRIPT_SERVICE,
+        description=("The server validates purchase upgrade spending for a weapon, "
+                     "crew or spaceship using owned currency. It prevents duplicate "
+                     "purchase and persists the upgrade to datastore."),
+    )
+    p.modules.append(shop)
+    d["host_actions"]["ShopAction"]={"service":shop.name,"kind":"RemoteFunction"}
+    d["remotes"]["ShopAction"]="RemoteFunction"
+    assert eligible_ship_owned_upgrades(shop,p) is None
