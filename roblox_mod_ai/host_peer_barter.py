@@ -17,7 +17,7 @@ def is_bilateral_asset_exchange(description: str) -> bool:
         re.search(r"\b(?:trad(?:e|es|ing)|exchang(?:e|es|ing)|barter)\b", prose)
         and (
             re.search(r"\b(?:two players|both players|both sides|both parties|"
-                      r"two[- ]party|player[- ]to[- ]player|peer[- ]to[- ]peer)\b", prose)
+                      r"two[- ]party|two[- ]players?|player[- ]to[- ]player|peer[- ]to[- ]peer)\b", prose)
             # Different authored plans express two-sided, consensual trading
             # through sender/receiver matching offers rather than saying
             # "both players" literally. Do not claim one-way sales.
