@@ -128,9 +128,9 @@ def test_real_building_creates_roblox_parts_and_upgrade_requires_payment():
 def test_bootstrap_connects_exact_declared_event_and_function_types():
     p = proposal21_progression()
     bootstrap = render_dynamic_server_bootstrap(p)
-    assert 'WaitForChild("SpaceModeActivationF5E8F01Action")' in bootstrap
-    assert 'WaitForChild("SectionBySectionSpaceship2A35951Action")' in bootstrap
-    assert 'WaitForChild("SpaceshipUpgradeUnlockAndABF5BA1Action")' in bootstrap
+    assert 'WaitForChild("SpaceModeActivationF5E8F01Action", 20)' in bootstrap
+    assert 'WaitForChild("SectionBySectionSpaceship2A35951Action", 20)' in bootstrap
+    assert 'WaitForChild("SpaceshipUpgradeUnlockAndABF5BA1Action", 20)' in bootstrap
     assert "remote.OnServerEvent:Connect" in bootstrap
     assert "remote.OnServerInvoke = function" in bootstrap
     assert bootstrap.count("service.handleAction(player, services, ...)") == 3
