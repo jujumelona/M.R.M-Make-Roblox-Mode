@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Any
 
 from .host_gameplay import render_host_gameplay
+from .host_catalog_purchase import eligible_catalog_purchase
 from .scaffold_policy import (
     single_host_action, single_client_action, single_passive_service,
 )
@@ -24,6 +25,8 @@ def generation_scope(proposal: Any) -> dict[str, Any]:
             strategy = "builtin_source"
         elif render_host_gameplay(module, proposal) is not None:
             strategy = "host_verified_template"
+        elif eligible_catalog_purchase(module, proposal) is not None:
+            strategy = "host_declarative_catalog"
         elif module.name in design.get("host_client_actions", {}):
             strategy = "host_zero_argument_ui"
         elif single_client_action(proposal, module):
