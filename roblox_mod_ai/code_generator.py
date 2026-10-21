@@ -18,6 +18,7 @@ from .scaffold_policy import (single_host_action, single_client_action,
 from .host_gameplay import render_host_gameplay
 from .host_catalog_purchase import eligible_catalog_purchase, try_catalog_purchase
 from .host_ship_sections import eligible_ship_sections, try_ship_sections
+from .host_ship_hierarchy import eligible_ship_hierarchy, try_ship_hierarchy
 from .host_ship_reconfiguration import eligible_ship_reconfiguration, try_ship_reconfiguration
 from .host_ship_attachment import eligible_ship_attachment, try_ship_attachment
 from .host_capped_ship_parts import eligible_capped_ship_parts, try_capped_ship_parts
@@ -60,6 +61,7 @@ class LuauCodeGenerator:
                 or render_host_gameplay(mod, proposal) is not None
                 or eligible_catalog_purchase(mod, proposal) is not None
                 or eligible_ship_sections(mod, proposal) is not None
+                or eligible_ship_hierarchy(mod, proposal) is not None
                 or eligible_ship_reconfiguration(mod, proposal) is not None
                 or eligible_ship_attachment(mod, proposal) is not None
                 or eligible_capped_ship_parts(mod, proposal) is not None
@@ -93,6 +95,7 @@ class LuauCodeGenerator:
             if (render_host_gameplay(module, proposal) is not None
                     or eligible_catalog_purchase(module, proposal) is not None
                     or eligible_ship_sections(module, proposal) is not None
+                    or eligible_ship_hierarchy(module, proposal) is not None
                     or eligible_ship_reconfiguration(module, proposal) is not None
                     or eligible_ship_attachment(module, proposal) is not None
                     or eligible_capped_ship_parts(module, proposal) is not None
@@ -162,6 +165,9 @@ class LuauCodeGenerator:
         reconfigurable_ship = try_ship_reconfiguration(module, proposal, self.router)
         if reconfigurable_ship is not None:
             return reconfigurable_ship
+        hierarchical_ship = try_ship_hierarchy(module, proposal, self.router)
+        if hierarchical_ship is not None:
+            return hierarchical_ship
         declarative_ship = try_ship_sections(module, proposal, self.router)
         if declarative_ship is not None:
             return declarative_ship
