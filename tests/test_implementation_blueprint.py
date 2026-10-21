@@ -158,3 +158,26 @@ def test_dynamic_blueprint_survives_host_normalization_and_topological_sort():
     assert audit_implementation_blueprint(proposal)["passed"] is True
     proposal.modules = [m for m in proposal.modules if m.name != "CustomPetHatching"]
     assert not audit_implementation_blueprint(proposal)["passed"]
+
+
+def test_model_unclassified_user_requirements_block_codegen_even_with_fake_owners():
+    """A source-only placeholder is not semantically verified gameplay."""
+    proposal = _proposal({
+        "is_coin_collect": True, "is_shop": True,
+        "is_combat": True, "is_leaderboard": True,
+    })
+    ledger = proposal.game_design["pre_design_research"]["ledger"]
+    ledger["classification_unverified"] = ["chunk-008"]
+    blueprint = build_implementation_blueprint(proposal)
+    assert not blueprint["ready_for_codegen"]
+    assert any("unclassified_gameplay_requirements" in issue
+               for issue in blueprint["blocking_issues"])
+    # A persisted old planner receipt claiming everything implemented is stale.
+    proposal.game_design["implementation_blueprint"] = dict(
+        blueprint, blocking_issues=[], ready_for_codegen=True)
+    assert not audit_implementation_blueprint(proposal)["passed"]
+    # The same source requirement can pass only after the missing classification
+    # is explicitly resolved rather than being assigned a fictional owner.
+    ledger["classification_unverified"] = []
+    verified = build_implementation_blueprint(proposal)
+    assert verified["ready_for_codegen"] is True
