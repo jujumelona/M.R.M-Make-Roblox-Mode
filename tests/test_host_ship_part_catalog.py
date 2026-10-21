@@ -86,6 +86,9 @@ def test_part_catalog_is_full_host_code_from_one_small_data_reply():
     assert 'existing and existing.owned' in server
     assert 'profile.sections[part.slot] = {owned = true' in server
     assert 'player:SetAttribute("RMMShipPerformance", performance)' in server
+    assert 'player:GetAttributeChangedSignal(key):Connect(function()' in server
+    assert 'local bonus = player:GetAttribute(key)' in server
+    assert 'if latest then recalc(player, latest) end' in server
     assert 'existing.upgrades[optionId] = true' in server
     assert 'if not bonus then return reject("unknown_upgrade") end' in server
     assert 'remote:InvokeServer(table.unpack(args, 1, args.n))' in client
