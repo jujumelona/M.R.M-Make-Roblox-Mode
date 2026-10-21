@@ -181,3 +181,65 @@ def test_model_unclassified_user_requirements_block_codegen_even_with_fake_owner
     ledger["classification_unverified"] = []
     verified = build_implementation_blueprint(proposal)
     assert verified["ready_for_codegen"] is True
+
+
+def test_source_npc_combat_and_colony_require_real_owner_behavior():
+    from roblox_mod_ai.spec import ModuleKind, RobloxModuleSpec, RobloxService, RobloxProposal
+    enemy = RobloxModuleSpec(
+        module_id="dyn_enemy", name="CombatEncounterServer",
+        kind=ModuleKind.SERVER_MODULE,
+        roblox_service=RobloxService.SERVER_SCRIPT_SERVICE,
+        file_path="src/server/CombatEncounterServer.luau",
+        description="The server validates hits against other players and "
+                    "reduces the target player's health for PvP.",
+    )
+    colony = RobloxModuleSpec(
+        module_id="dyn_colony", name="SettlementServer",
+        kind=ModuleKind.SERVER_MODULE,
+        roblox_service=RobloxService.SERVER_SCRIPT_SERVICE,
+        file_path="src/server/SettlementServer.luau",
+        description="The server updates the map display and toggles a colony menu.",
+    )
+    ledger = {
+        "requirements": [
+            {"id": "req-001", "statement": "Fight alien enemies"},
+            {"id": "req-002", "statement": "Colonize a planet"},
+        ],
+        "facets": [], "unimplemented_facets": [], "unmatched_requirements": [],
+        "decomposition_pending": [], "atomic_intents": [
+            {"facet_id": "enemy", "source_span": "Fight alien enemies",
+             "intent": "Players damage alien NPC enemies",
+             "english_query": "Roblox hostile enemy humanoid damage"},
+            {"facet_id": "colony", "source_span": "Colonize a planet",
+             "intent": "Found a persistent colony settlement",
+             "english_query": "Roblox DataStore colony settlement"},
+        ],
+    }
+    dynamic = {
+        "module_facets": {"dyn_enemy": ["enemy"], "dyn_colony": ["colony"]},
+        "module_requirements": {"dyn_enemy": ["req-001"], "dyn_colony": ["req-002"]},
+        "acceptance_facets": {
+            "enemy": "Target player health is reduced.",
+            "colony": "Open the colony screen.",
+        },
+        "acceptance": {"req-001": "Target player health is reduced.",
+                       "req-002": "Open the colony screen."},
+    }
+    plan = RobloxProposal(
+        requested_prompt="Fight alien enemies and colonize a planet",
+        game_title="Exploration", description="Two independent requested mechanics",
+        modules=[enemy, colony], game_design={
+            "features": {}, "dynamic_design": dynamic,
+            "pre_design_research": {"ledger": ledger},
+        })
+    blueprint = build_implementation_blueprint(plan)
+    assert not blueprint["ready_for_codegen"]
+    assert any("NPC_COMBAT_DROPPED" in e for e in blueprint["blocking_issues"])
+    assert any("SETTLEMENT_DROPPED" in e for e in blueprint["blocking_issues"])
+    enemy.description = "The server validates attacks on hostile alien NPC enemies"
+    colony.description = ("The server validates colonization of a planet, "
+                          "persists the player's settlement and marks it occupied.")
+    dynamic["acceptance_facets"]["enemy"] = "Confirmed hits damage alien enemies"
+    dynamic["acceptance_facets"]["colony"] = "Colonized planet has persistent settlement"
+    fixed = build_implementation_blueprint(plan)
+    assert fixed["ready_for_codegen"] is True
