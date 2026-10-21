@@ -1,5 +1,6 @@
 """Connectivity must be real source code, not comments, strings or unused remote names."""
 from roblox_mod_ai.dynamic_wiring import inspect_dynamic_remote_wiring
+from roblox_mod_ai.server_modules import normalize_dynamic_server_modules, render_dynamic_server_bootstrap
 from roblox_mod_ai.spec import RobloxProposal, RobloxModuleSpec
 
 def _check(server: str, client: str, kind: str = "RemoteEvent"):
@@ -59,3 +60,49 @@ def test_unbound_other_remote_does_not_pass():
         'local remote=game.ReplicatedStorage.Remotes.OtherRemote\nremote.OnServerEvent:Connect(function() end)',
         'local remote=game.ReplicatedStorage.Remotes.ActionSignal\nremote:FireServer()'
     )
+
+
+def test_host_remote_gateway_with_timeout_is_real_server_endpoint():
+    # A bounded host WaitForChild(name, 20) is the actual RMM output.
+    # Regression: the previous static audit only recognized (name).
+    server = RobloxModuleSpec(
+        module_id="dyn_server", name="ActionServer", kind="server_script",
+        roblox_service="ServerScriptService",
+        file_path="src/server/ActionServer.server.luau",
+        code=("--!strict\nlocal ActionServer = {}\n"
+              "function ActionServer.start(_services) end\n"
+              "function ActionServer.handleAction(player, _services)\n"
+              "    return player ~= nil\nend\nreturn ActionServer\n"),
+    )
+    client = RobloxModuleSpec(
+        module_id="dyn_client", name="ActionClient", kind="client_script",
+        roblox_service="StarterPlayer.StarterPlayerScripts",
+        file_path="src/client/ActionClient.client.luau",
+        code=('local remote = game.ReplicatedStorage.Remotes:WaitForChild("ActionSignal")\n'
+              'remote:FireServer()'),
+    )
+    proposal = RobloxProposal(
+        requested_prompt="generic player action", game_title="HostGateway", description="",
+        game_design={"dynamic_design": {
+            "remotes": {"ActionSignal": "RemoteEvent"},
+            "module_remotes": {"dyn_server": ["ActionSignal"],
+                               "dyn_client": ["ActionSignal"]},
+            "host_actions": {"ActionSignal": {
+                "service": "ActionServer", "kind": "RemoteEvent"}},
+        }},
+        modules=[server, client],
+    )
+    assert normalize_dynamic_server_modules(proposal)
+    gateway = next(m for m in proposal.modules
+                   if m.module_id == "mod_dynamic_server_bootstrap")
+    gateway.code = render_dynamic_server_bootstrap(proposal)
+    assert 'remotes:WaitForChild("ActionSignal", 20)' in gateway.code
+    assert inspect_dynamic_remote_wiring(proposal)["passed"]
+
+    # Optional timeout is equivalent and must remain accepted.
+    gateway.code = gateway.code.replace('"ActionSignal", 20)', '"ActionSignal")')
+    assert inspect_dynamic_remote_wiring(proposal)["passed"]
+
+    # Referring to another Remote is NOT a valid server endpoint.
+    gateway.code = gateway.code.replace('"ActionSignal")', '"OtherSignal")')
+    assert not inspect_dynamic_remote_wiring(proposal)["passed"]
