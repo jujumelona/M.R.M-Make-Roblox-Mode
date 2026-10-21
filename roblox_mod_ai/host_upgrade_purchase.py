@@ -16,7 +16,7 @@ def render_host_upgrade_purchase(module: RobloxModuleSpec, proposal: RobloxPropo
             or module.kind not in (ModuleKind.SERVER_MODULE, ModuleKind.CLIENT_SCRIPT)):
         return None
     server = module.name if module.kind == ModuleKind.SERVER_MODULE else module.name.removesuffix("Client") + "Server"
-    owner = next((m for m in proposal.modules
+    owner = next((m for m in getattr(proposal, "modules", ())
                   if m.kind == ModuleKind.SERVER_MODULE and m.name == server), None)
     if owner is None:
         return None
