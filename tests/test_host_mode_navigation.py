@@ -153,3 +153,14 @@ def test_cache_reuses_verified_planets_and_fails_closed_on_mutation():
     p.game_design["_host_mode_planet_catalog"][server.name][0]["id"]="Invalid;ID"
     with pytest.raises(ValueError):
         try_mode_navigation(client,p,None)
+
+
+
+def test_preflight_does_not_claim_launch_and_planet_progression_are_verified():
+    p,server,client,_=plan()
+    report=generation_scope(p)
+    unresolved=report["unverified_cross_module_dependencies"]
+    assert any(row["consumer"]==server.name
+               and row["status"]=="unverified_launch_state_producer"
+               and "RMMTravelProgress.inSpace" in row["required"]
+               for row in unresolved)
