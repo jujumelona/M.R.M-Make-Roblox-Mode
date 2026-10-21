@@ -11,6 +11,7 @@ import re
 from typing import Any
 
 from .code_output_guard import LiveCodeRepetitionGuard
+from .host_mining import render_host_mining
 from .luau_api_sanity import invalid_luau_apis
 from .luau_service_contract import service_contract_checks
 from .request_semantics import request_semantic_errors
@@ -121,6 +122,24 @@ def try_scaffolded_server(
                if route_info.get("max_args") == 0 else
                "Validate every client argument against server-owned data.")
         )
+    # A scoped short-model task must see the same concrete host economy ABI
+    # as full-module generation. Otherwise it invents ExchangeLedger and
+    # transaction methods that do not exist at runtime.
+    host_mining_available = any(
+        render_host_mining(peer, proposal) is not None
+        for peer in getattr(proposal, "modules", [])
+        if peer.kind == ModuleKind.SERVER_MODULE and peer.name != module.name
+    )
+    shared_economy_abi = (
+        'Verified host ledger: services.PlayerDataManager.GetState(player, '
+        '"RMMInventory").resources is an integer resource count; '
+        'player.leaderstats.Coins.Value is earned server currency. '
+        'For optional game-defined items read the server-owned '
+        'RMMInventory.items table, never invent an item ID or give items '
+        'without checking ownership. Do NOT call nonexistent trading '
+        'methods or manufacture parallel credit balances.\\n'
+        if host_mining_available else ""
+    )
     prompt = (
         "Write ONLY the BODY statements of one Roblox Luau server "
         "Service.handleAction(player, services, ...). "
@@ -136,6 +155,7 @@ def try_scaffolded_server(
         "is services.PlayerDataManager.GetState(player, namespace) and it "
         "returns a mutable server-owned table or nil until ready. "
         "Keep the body short, syntactically complete, and scoped to ONE action.\n"
+        + shared_economy_abi
         + "Module: " + module.name + "\n"
         + "Game-specific behavior: " + module.description[:950] + "\n"
         + "Route: " + route + " (" + kind + ")\n"
