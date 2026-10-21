@@ -209,6 +209,9 @@ class SemanticOnlySevenFeatureModel:
             "server_behavior": (
                 "Server validates alien NPC enemy combat damage health and defeat."
                 if "alien" in fid else
+                "Server validates colonization, records a persistent owned settlement "
+                "on the planet and updates the colony world state."
+                if "colony" in fid else
                 "Server implements and validates " + label +
                 " player actions and authoritative gameplay state."
             ),
