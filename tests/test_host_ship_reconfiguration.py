@@ -109,7 +109,7 @@ def test_real_assembly_contract_and_mode_threshold_work_as_same_host_state():
     assert '["HullB"] = {slot = "Hull", cost = 9, performance = 70' in server_code
     assert 'local REQUIRED = {["Hull"] = true, ["Engine"] = true}' in server_code
     assert 'manager.GetState(player, "RMMShipSections")' in mode_code
-    assert 'manager.GetState(player, "RMMShipSections")' not in server_code
+    assert 'manager.GetState(player, "RMMShipSections")' in server_code
     assert 'manager.GetState(player, "RMMInventory")' in server_code
     assert 'profile.sections = nextParts' in server_code
     assert 'inventory.resources = resources - cost' in server_code
