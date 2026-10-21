@@ -55,7 +55,7 @@ def eligible_ship_sections(module: Any, proposal: Any) -> tuple[str, str] | None
             or not re.search(r"\b(?:resource|resources|inventory|currency)\b", prose)
             or not re.search(r"\b(?:player|owner|owned|ownership)\b", prose)
             or not re.search(r"\b(?:validat|check|reject)\w*\b", prose)
-            or not re.search(r"\b(?:persist|sav\w*|record|committ\w*)\b", prose)):
+            or not re.search(r"\b(?:persist\w*|sav\w*|record\w*|committ\w*)\b", prose)):
         return None
     design = proposal.game_design.get("dynamic_design") or {}
     routes = [(k, v) for k, v in (design.get("host_actions") or {}).items()
