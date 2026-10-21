@@ -27,7 +27,9 @@ def test_partial_source_and_trace_survive_generation_failure(tmp_path, monkeypat
         requested_prompt="Generate a custom game with trade and mining",
         game_title="SpaceTrial", description="test", game_design={},
         modules=[
-            make_module("dyn_trade", "TradeService", "src/server/TradeService.server.luau",
+            # First module is explicitly authored/test-owned, NOT unsigned
+            # dynamic model code imported from an old proposal checkpoint.
+            make_module("mod_trade", "TradeService", "src/server/TradeService.server.luau",
                         "--!strict\nprint('Trade service exists')\n"),
             make_module("dyn_mining", "MiningService", "src/server/MiningService.server.luau"),
         ],
