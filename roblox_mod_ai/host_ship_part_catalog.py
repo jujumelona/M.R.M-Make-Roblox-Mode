@@ -58,9 +58,21 @@ def eligible_ship_part_catalog(module: Any, proposal: Any) -> tuple[str, str] | 
         and re.search(r"\bpart[- ]selection\b", description)
         and re.search(r"\bpart\s+registry\b", description)
     )
-    if (not (catalog_slots or registry_slots)
+    # A source-authored purchase/build contract also establishes an installed
+    # part: the host supplies the server-owned part catalog and physical ship
+    # construction. An authored planner need not literally say "catalog" or
+    # "performance" to use those implementations.
+    purchase_build = (
+        re.search(r"\bship\s+(?:assembly|parts?)\b", description)
+        and re.search(r"\b(?:construct\w*|build|built)\b", description)
+        and re.search(r"\b(?:already\s+built|duplicat\w*|occupied\s+slot)\b", description)
+        and re.search(r"\b(?:deduct|spend|charge)\w*\b", description)
+        and re.search(r"\b(?:owned|marks?\s+the\s+part\s+as\s+built|records?\s+the\s+part)\b", description)
+    )
+    if (not (catalog_slots or registry_slots or purchase_build)
             or not re.search(r"\b(?:currency|coins?|credits?)\b", description)
-            or not re.search(r"\b(?:performance|contribution)\b", description)
+            or not (re.search(r"\b(?:performance|contribution)\b", description)
+                    or purchase_build)
             or not re.search(r"\b(?:validat|reject|accept)\w*\b", description)):
         return None
     design = proposal.game_design.get("dynamic_design") or {}
@@ -140,7 +152,8 @@ def _catalog(proposal: Any, server: str, router: Any) -> list[dict[str, Any]]:
         "{id,label,slot,cost,performance,upgrades:[{id,label,cost,bonus}]}. "
         "IDs and slots must be stable ASCII identifiers. Costs are POSITIVE "
         "server-owned earned Coins, performance and bonus positive integers. "
-        "At most 2 upgrades per part. Do not invent services, Roblox methods, "
+        "At most 2 upgrades per part; use [] when the builder does not "
+        "itself offer part upgrades. Do not invent services, Roblox methods, "
         "Remote code, balances or world Parts. Description: " + module.description[:1150]
     )
     reason = ""
