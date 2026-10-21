@@ -88,7 +88,8 @@ def test_host_button_client_is_generated_without_any_small_model_code_call(
     assert remote in module_source
     assert planner.calls == 1
     boot = render_dynamic_server_bootstrap(proposal)
-    assert 'select("#", ...) ~= 0' in boot
+    # select('#', ...) is nonnegative; > 0 rejects all extra arguments.
+    assert 'select("#", ...) > 0' in boot
     assert remote in boot
     assert "service.handleAction(player, services, ...)" in boot
 
@@ -152,7 +153,7 @@ def test_bulk_generation_replaces_saved_host_client_and_bootstrap_instead_of_mod
     assert 'button.Activated:Connect' in client.code
     assert "Remote class mismatch" in client.code
     assert "untrusted stale gateway" not in bootstrap.code
-    assert 'select("#", ...) ~= 0' in bootstrap.code
+    assert 'select("#", ...) > 0' in bootstrap.code
     assert "service.handleAction(player, services, ...)" in bootstrap.code
 
 
