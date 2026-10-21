@@ -10,6 +10,7 @@ import json
 import re
 
 from .host_mining import render_host_mining
+from .host_peer_barter import is_bilateral_asset_exchange
 from .spec import ModuleKind, RobloxModuleSpec, RobloxProposal
 
 
@@ -21,6 +22,9 @@ def render_host_trading(module: RobloxModuleSpec, proposal: RobloxProposal) -> s
     if not re.search(r"resource.*trad", module.name, re.I):
         return None
     description = module.description.lower()
+    # Two-party consent and both-sided asset transfer cannot use a market broker.
+    if is_bilateral_asset_exchange(description):
+        return None
     if (not any(word in description for word in ("trade", "trading", "sell"))
             or "resource" not in description
             or not any(word in description for word in ("currency", "coin", "credit"))):
