@@ -110,6 +110,7 @@ jobs:
             tests/test_host_upgrade_declarative.py \
             tests/test_host_earned_currency.py \
             tests/test_host_mode_lock.py \
+            tests/test_host_mode_navigation.py \
             tests/test_host_performance_mode.py \
             tests/test_host_ship_reconfiguration.py \
             tests/test_host_ship_part_catalog.py \
