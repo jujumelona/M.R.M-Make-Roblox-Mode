@@ -12,6 +12,7 @@ from typing import Any
 
 from .host_catalog_purchase import _ID
 from .host_capped_ship_parts import eligible_capped_ship_parts, _validate as _valid_parts
+from .host_ship_hierarchy import eligible_ship_hierarchy, _validate as _valid_hierarchy
 from .spec import ModuleKind
 
 _SCHEMA = {
@@ -20,7 +21,7 @@ _SCHEMA = {
         "type": "object", "properties": {
             "id": {"type": "string"}, "label": {"type": "string"},
             "targetPart": {"type": "string"},
-            "effect": {"type": "string", "enum": ["weapon", "crew", "hull"]},
+            "effect": {"type": "string", "enum": ["weapon", "crew", "hull", "ship"]},
             "cost": {"type": "integer"}, "bonus": {"type": "integer"},
         },
         "required": ["id", "label", "targetPart", "effect", "cost", "bonus"],
@@ -39,18 +40,36 @@ def eligible_ship_owned_upgrades(module: Any, proposal: Any) -> tuple[str, str] 
     if owner is None:
         return None
     prose = owner.description.casefold()
-    if (not re.search(r"\bupgrades?\b", prose)
-            or not re.search(r"\bpurchas\w*\b", prose)
-            or not re.search(r"\b(?:ship|spaceship)\b", prose)
-            or not re.search(r"\b(?:currency|coins?|credits?)\b", prose)
-            or not re.search(r"\b(?:weapon|crew|hull)\b", prose)
-            or not re.search(r"\b(?:validat|check|reject)\w*\b", prose)
-            or not re.search(r"\b(?:persist|save|datastore)\w*\b", prose)):
+    general_purchase = (
+        re.search(r"\bupgrades?\b", prose)
+        and re.search(r"\bpurchas\w*\b", prose)
+        and re.search(r"\b(?:ship|spaceship)\b", prose)
+        and re.search(r"\b(?:currency|coins?|credits?)\b", prose)
+        and re.search(r"\b(?:weapon|crew|hull)\b", prose)
+        and re.search(r"\b(?:validat|check|reject)\w*\b", prose)
+        and re.search(r"\b(?:persist|save|datastore)\w*\b", prose)
+    )
+    section_expansion = (
+        re.search(r"\b(?:upgrade|expansion)\b", prose)
+        and re.search(r"\bship\s+part\b", prose)
+        and re.search(r"\b(?:currency|coins?|credits?)\b", prose)
+        and re.search(r"\b(?:allow(?:ed)?\s+upgrade\s+list|allowed\s+upgrade)\b", prose)
+        and re.search(r"\b(?:duplicate|already-maxed)\b", prose)
+        and re.search(r"\b(?:persistent|persist|save)\b", prose)
+        and re.search(r"\b(?:validat|reject)\w*\b", prose)
+    )
+    if not (general_purchase or section_expansion):
         return None
-    # Host must have a real planned builder to validate each target part.
-    if sum(eligible_capped_ship_parts(p, proposal) is not None
-           for p in getattr(proposal, "modules", [])
-           if p.kind == ModuleKind.SERVER_MODULE and p.name != server) != 1:
+    # Only a real host-produced part catalog may back an upgrade. Never grant
+    # a target part because the model invented its ID in this module.
+    from .host_ship_hierarchy import eligible_ship_hierarchy
+    builders = [
+        p for p in getattr(proposal, "modules", ())
+        if p.kind == ModuleKind.SERVER_MODULE and p.name != server
+        and (eligible_capped_ship_parts(p, proposal) is not None
+             or eligible_ship_hierarchy(p, proposal) is not None)
+    ]
+    if len(builders) != 1:
         return None
     design = proposal.game_design.get("dynamic_design") or {}
     routes = [(k, v) for k, v in (design.get("host_actions") or {}).items()
@@ -90,7 +109,7 @@ def _validate(value: Any, actual_ids: set[str]) -> list[dict[str, Any]]:
                 or uid.casefold() in seen
                 or not isinstance(label, str) or not 1 <= len(label.strip()) <= 54
                 or target not in actual_ids
-                or effect not in ("weapon", "crew", "hull")
+                or effect not in ("weapon", "crew", "hull", "ship")
                 or type(price) is not int or not 1 <= price <= 1000000
                 or type(bonus) is not int or not 1 <= bonus <= 100):
             raise ValueError("Upgrade must target a real available part with safe ID, cost and bonus")
@@ -101,14 +120,24 @@ def _validate(value: Any, actual_ids: set[str]) -> list[dict[str, Any]]:
 
 
 def _read(proposal: Any, owner: str, router: Any) -> list[dict[str, Any]]:
-    builders = [m for m in proposal.modules if m.kind == ModuleKind.SERVER_MODULE
-                and eligible_capped_ship_parts(m, proposal) is not None]
+    builders = [
+        m for m in proposal.modules if m.kind == ModuleKind.SERVER_MODULE
+        and (eligible_capped_ship_parts(m, proposal) is not None
+             or eligible_ship_hierarchy(m, proposal) is not None)
+    ]
     if len(builders) != 1:
-        raise ValueError("Upgrade requires one real host-owned ship builder")
-    build_data = proposal.game_design.get("_host_capped_ship_parts", {}).get(builders[0].name)
-    if build_data is None:
-        raise ValueError("HOST_SHIP_UPGRADE_MISSING_PART_CATALOG: generate ship builder first")
-    actual = {p["id"] for p in _valid_parts(build_data)["parts"]}
+        raise ValueError("Upgrade requires exactly one real host-owned ship builder")
+    builder = builders[0]
+    if eligible_capped_ship_parts(builder, proposal) is not None:
+        build_data = (proposal.game_design.get("_host_capped_ship_parts") or {}).get(builder.name)
+        if build_data is None:
+            raise ValueError("HOST_SHIP_UPGRADE_MISSING_PART_CATALOG: generate ship builder first")
+        actual = {p["id"] for p in _valid_parts(build_data)["parts"]}
+    else:
+        build_data = (proposal.game_design.get("_host_ship_hierarchy") or {}).get(builder.name)
+        if build_data is None:
+            raise ValueError("HOST_SHIP_UPGRADE_MISSING_PART_CATALOG: generate ship hierarchy first")
+        actual = {p["id"] for p in _valid_hierarchy(build_data)["sections"]}
     store = proposal.game_design.setdefault("_host_ship_owned_upgrades", {})
     if owner in store:
         return _validate({"upgrades": store[owner]}, actual)
@@ -119,7 +148,7 @@ def _read(proposal: Any, owner: str, router: Any) -> list[dict[str, Any]]:
         "Output ONLY JSON {upgrades:[{id,label,targetPart,effect,cost,bonus}]}; "
         "1-8 single-use upgrades. targetPart MUST be one of these actual "
         "host-built ship part IDs: " + json.dumps(sorted(actual)) +
-        ". effect is weapon, crew or hull; cost is positive earned Coins, bonus "
+        ". effect is weapon, crew, hull or ship; cost is positive earned Coins, bonus "
         "integer 1-100. Do NOT output Luau, Roblox APIs, code, profiles, "
         "invented parts, or unauthorized purchasing methods. Requirement: " +
         requirement[:900]
@@ -171,24 +200,29 @@ local ATTRIBUTES = {
     weapon = "RMMWeaponDamageBonus",
     crew = "RMMCrewCapacityBonus",
     hull = "RMMShipShieldBonus",
+    ship = "RMMShipPurchasedPerformanceBonus",
 }
 local LIMIT = 2147483647
 local function report(player, purchases)
-    local weapon, crew, hull = 0, 0, 0
+    local weapon, crew, hull, ship = 0, 0, 0, 0
+    local present = {}
     for id, item in pairs(CHOICES) do
+        present[item.effect] = true
         local saved = purchases[id]
         if type(saved) == "table" and saved.owned == true
             and saved.targetPart == item.part then
             if item.effect == "weapon" then weapon += item.bonus
             elseif item.effect == "crew" then crew += item.bonus
-            elseif item.effect == "hull" then hull += item.bonus end
+            elseif item.effect == "hull" then hull += item.bonus
+            elseif item.effect == "ship" then ship += item.bonus end
         end
     end
-    player:SetAttribute(ATTRIBUTES.weapon, weapon)
-    player:SetAttribute(ATTRIBUTES.crew, crew)
-    player:SetAttribute(ATTRIBUTES.hull, hull)
-    player:SetAttribute("RMMShipUpgradeScore", weapon + crew + hull)
-    return weapon + crew + hull
+    if present.weapon then player:SetAttribute(ATTRIBUTES.weapon, weapon) end
+    if present.crew then player:SetAttribute(ATTRIBUTES.crew, crew) end
+    if present.hull then player:SetAttribute(ATTRIBUTES.hull, hull) end
+    if present.ship then player:SetAttribute(ATTRIBUTES.ship, ship) end
+    player:SetAttribute("RMMShipUpgradeScore", weapon + crew + hull + ship)
+    return weapon + crew + hull + ship
 end
 function Service.start(services)
     assert(type(services) == "table"
