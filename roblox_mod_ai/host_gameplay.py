@@ -9,6 +9,7 @@ from __future__ import annotations
 from .host_mining import render_host_mining
 from .host_trading import render_host_trading
 from .host_currency import render_host_currency
+from .host_earned_currency import render_host_earned_currency
 from .host_peer_trade import render_host_peer_trade
 from .host_peer_barter import render_host_peer_barter
 from .host_progress_dashboard import render_host_progress_dashboard
@@ -19,6 +20,7 @@ from .host_upgrade_purchase import render_host_upgrade_purchase
 from .spec import RobloxModuleSpec, RobloxProposal
 
 RENDERERS = (render_host_mining, render_host_trading, render_host_currency,
+             render_host_earned_currency,
              render_host_peer_trade, render_host_peer_barter,
              render_host_space_progression,
              render_host_world_setup, render_host_upgrade_purchase,
