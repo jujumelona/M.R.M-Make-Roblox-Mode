@@ -77,7 +77,7 @@ def test_exact_failure_is_host_bounded_data_not_scoped_client_luau():
     ui=generator.generate_with_self_correction(client,p)
     assert len(router.calls)==1
     assert router.calls[0][1]["max_tokens"]<=550
-    assert "NO" not in str(router.calls)[:4] or True
+    assert "No Lua code" in router.calls[0][0]
     assert src==try_mode_navigation(server,p,None)
     assert ui==try_mode_navigation(client,p,None)
     for token in (
