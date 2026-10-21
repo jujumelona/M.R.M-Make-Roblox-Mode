@@ -138,6 +138,26 @@ local function verifiedShipPerformance(player, manager)
     if finiteNonnegative(assembly) and assembly % 1 == 0 then
         score = math.max(score, assembly)
     end
+    -- Only purchased upgrades for actually installed ship parts can raise
+    -- launch/mode performance. This is read from server-owned profile state,
+    -- not a client-supplied score or an unverified GUI attribute.
+    local purchases = manager.GetState(player, "RMMUpgradePurchases")
+    if type(purchases) == "table" and type(saved.sections) == "table" then
+        local bonus = 0
+        for _, upgrade in pairs(purchases) do
+            if type(upgrade) == "table" and upgrade.owned == true
+                and upgrade.effect == "ship"
+                and type(upgrade.targetPart) == "string" then
+                local part = saved.sections[upgrade.targetPart]
+                if type(part) == "table" and part.owned == true
+                    and finiteNonnegative(upgrade.bonus)
+                    and upgrade.bonus % 1 == 0 then
+                    bonus = math.min(MAX_VALUE, bonus + upgrade.bonus)
+                end
+            end
+        end
+        score = math.min(MAX_VALUE, score + bonus)
+    end
     if score == 0 then return nil, "ship_performance_unavailable" end
     return score, nil
 end
