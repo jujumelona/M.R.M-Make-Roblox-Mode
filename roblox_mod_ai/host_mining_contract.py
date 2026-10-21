@@ -28,8 +28,17 @@ def _is_named_mining_service(name: str, description: str, prompt: str) -> bool:
     # Split CamelCase service identifiers: CoreEconomy contains the letters
     # "ore" but is NOT a mining mechanic. ResourceMining remains eligible.
     service_tokens = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", name)
+    explicit_mining_source = bool(re.search(
+        r"\b(?:mining|mines?|harvesting|gathering|extracting)\b"
+        r".{0,65}\b(?:resource|ore|mineral)\s+(?:node|deposit)\b",
+        description, re.I,
+    ))
+    # Short planner-generated module names can truncate "Gathering" to
+    # "Gatherin"; the fully authored behavioral contract is authoritative.
+    # Require an actual source-node interaction, not merely the word "ore"
+    # inside an unrelated economy module's CamelCase name.
     return bool(
-        _SERVICE_MINE.search(service_tokens)
+        (_SERVICE_MINE.search(service_tokens) or explicit_mining_source)
         and _MINE.search(prompt)
         and (_RESOURCE.search(description) or _MINE.search(description))
         and _REWARD.search(description)
