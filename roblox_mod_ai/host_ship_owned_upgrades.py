@@ -66,8 +66,8 @@ def eligible_ship_owned_upgrades(module: Any, proposal: Any) -> tuple[str, str] 
     builders = [
         p for p in getattr(proposal, "modules", ())
         if p.kind == ModuleKind.SERVER_MODULE and p.name != server
-        and (eligible_capped_ship_parts(p, proposal) is not None
-             or eligible_ship_hierarchy(p, proposal) is not None)
+        and ((general_purchase and eligible_capped_ship_parts(p, proposal) is not None)
+             or (section_expansion and eligible_ship_hierarchy(p, proposal) is not None))
     ]
     if len(builders) != 1:
         return None
