@@ -23,6 +23,13 @@ def matching_ledger(proposal: Any) -> tuple[str, str] | None:
         if not owner.module_id.startswith("dyn_") or owner.kind != ModuleKind.SERVER_MODULE:
             continue
         desc = owner.description.casefold()
+        # A real world-node mining owner already grants its earned rewards.
+        # Calling the same RemoteFunction an independent currency *ledger*
+        # would claim two incompatible host implementations and mask the
+        # actual mining action. A projection ledger is a separate service.
+        from .host_mining_nodes import mining_world_nodes
+        if mining_world_nodes(proposal, owner):
+            continue
         if (not re.search(r"\b(?:currency|coins?|credits?)\s+balances?\b", desc)
                 or not re.search(r"\b(?:sole owner|server.authoritative|server[- ]owned)\b", desc)
                 or not re.search(r"\bearn(?:ing)?\s+(?:event|source)\b", desc)
