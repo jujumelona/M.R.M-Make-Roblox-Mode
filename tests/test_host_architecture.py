@@ -345,3 +345,58 @@ def test_genuinely_autonomous_server_behavior_still_permitted():
         "Server periodically regenerates ore deposits automatically without player input."
     )
     assert len(_convert(data)["modules"]) == 1
+
+
+def test_semantic_architect_rejects_pvp_when_requested_hostile_npc_and_settlement():
+    wrong = {"systems": [{
+        "name": "TargetPlayerCombat",
+        "server_behavior": (
+            "The server verifies player attack coordinates and damages the "
+            "target player health based on proximity."
+        ),
+        "client_behavior": (
+            "The client shows enemy feedback and target player hit damage "
+            "after the server confirms."
+        ),
+        "interaction": "request_response",
+        "observable_result": "The target player's health decreases after being shot",
+        "world_entities": [],
+    }]}
+    source = [{"id": "req-001",
+               "statement": "Fight alien enemies and colonize a planet"}]
+    with pytest.raises(HostArchitectureError, match="SEMANTIC_SOURCE_CONTRACT"):
+        expand_semantic_facet(
+            wrong, facet_id="intent-combined", requirement_ids=["req-001"],
+            source_requirements=source, reserved_modules=set(),
+            reserved_remotes=set(), reserved_objects=set())
+
+    correct = {"systems": [
+        {"name": "AlienEncounter",
+         "server_behavior": (
+             "The server validates a player's weapon attacks against "
+             "hostile alien NPC enemies, updates enemy health and grants loot."
+         ),
+         "client_behavior": (
+             "The client shows the alien NPC health and a server-confirmed hit."
+         ),
+         "interaction": "request_response",
+         "observable_result": "Enemy aliens receive damage and drop loot.",
+         "world_entities": ["AlienEnemy"]},
+        {"name": "PlanetSettlement",
+         "server_behavior": (
+             "The server validates colonization, deducts real resources and "
+             "records a persistent owned colony settlement on the planet."
+         ),
+         "client_behavior": (
+             "The client displays the confirmed colony and settlement status."
+         ),
+         "interaction": "request_response",
+         "observable_result": "The planet becomes colonized with persistent settlement.",
+         "world_entities": ["Planet"]},
+    ]}
+    built = expand_semantic_facet(
+        correct, facet_id="intent-combined", requirement_ids=["req-001"],
+        source_requirements=source, reserved_modules=set(),
+        reserved_remotes=set(), reserved_objects=set())
+    assert len([m for m in built["modules"] if m["role"] == "server"]) == 2
+    assert len(built["remotes"]) == 2
