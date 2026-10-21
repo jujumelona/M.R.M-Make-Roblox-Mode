@@ -160,3 +160,51 @@ def test_module_names_not_bound_to_specific_past_prompt():
     p, server, client = plan(server_name="UndergroundVesselConstructionServer")
     assert eligible_ship_attachment(server, p)
     assert eligible_ship_attachment(client, p)
+
+
+
+def test_followup_server_contract_uses_existing_ship_profile_not_fake_sibling_api():
+    from roblox_mod_ai.server_modules import module_bootstrap_contract
+    from roblox_mod_ai.host_service_codegen import try_scaffolded_server
+    p, _owner, _client = plan()
+    next_module = RobloxModuleSpec(
+        module_id="dyn_launch", name="OpenWorldLaunchControllerServer",
+        kind=ModuleKind.SERVER_MODULE,
+        file_path="src/server/OpenWorldLaunchControllerServer.luau",
+        roblox_service=RobloxService.SERVER_SCRIPT_SERVICE,
+        description="The server verifies built ship sections and player eligibility before launch.",
+    )
+    p.modules.append(next_module)
+    p.game_design["dynamic_design"]["host_actions"]["LaunchVesselAction"] = {
+        "service": next_module.name, "kind": "RemoteFunction",
+    }
+    p.game_design["dynamic_design"]["remotes"]["LaunchVesselAction"] = "RemoteFunction"
+    exported = module_bootstrap_contract(next_module, p)
+    assert '"RMMShipSections").sections' in exported
+    assert "RMMShipAssemblyPerformance" in exported
+    assert "GetSection" in exported and "Do not call invented" in exported
+
+    class Capture:
+        def __init__(self):
+            self.prompts = []
+            self.last_generation_report = {}
+
+        def complete(self, prompt, **_kwargs):
+            self.prompts.append(prompt)
+            return (
+                'local saved = services.PlayerDataManager.GetState(player, "RMMShipSections")\n'
+                'if not saved or type(saved.sections) ~= "table" then return false end\n'
+                'local installed = 0\n'
+                'for _, part in pairs(saved.sections) do\n'
+                '    if type(part) == "table" and part.owned == true then installed += 1 end\n'
+                'end\n'
+                'if installed < 2 then return false end\n'
+                'player:SetAttribute("RMMVesselLaunchEligible", true)\n'
+                'return true'
+            )
+
+    model = Capture()
+    assert try_scaffolded_server(next_module, p, model, LuauStaticAnalyzer())
+    assert len(model.prompts) == 1
+    assert '"RMMShipSections").sections' in model.prompts[0]
+    assert "getAssembly" in model.prompts[0]
