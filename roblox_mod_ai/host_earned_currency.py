@@ -32,9 +32,9 @@ def matching_ledger(proposal: Any) -> tuple[str, str] | None:
         source_nodes = ((dynamic.get("module_world_objects") or {})
                         .get(owner.module_id) or [])
         is_mining_owner = (
-            re.search(r"\\b(?:mining|mine|gather|gathering|harvest|ore)\\b",
+            re.search(r"\b(?:mining|mine|gather|gathering|harvest|ore)\b",
                       service_tokens, re.I)
-            and re.search(r"\\b(?:mine|mining|gather|harvest|resource)\\w*\\b", desc)
+            and re.search(r"\b(?:mine|mining|gather|harvest|resource)\w*\b", desc)
             and source_nodes
             and mining_world_nodes(proposal, owner)
         )
