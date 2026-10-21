@@ -190,6 +190,9 @@ local MAX_COINS = 2147483647
 -- Assign distinct server-session lots; UserId modulo alone can overlap players.
 local lotsByPlayer = {}
 local occupiedLots = {}
+local marketBindings = {}
+local marketAttributes = {"RMMWeaponDamageBonus", "RMMCrewCapacityBonus",
+    "RMMShipSpeedBonus", "RMMShipShieldBonus"}
 local function lotOf(player)
     if lotsByPlayer[player] ~= nil then return lotsByPlayer[player] end
     local lot = 0
@@ -230,6 +233,13 @@ local function recalc(player, profile)
                 end
             end
         end
+    end
+    -- The separate host purchase market publishes verified, persisted
+    -- upgrades as attributes. Compose them into the same ship performance.
+    for _, key in marketAttributes do
+        local bonus = player:GetAttribute(key)
+        if type(bonus) == "number" and bonus == bonus and bonus >= 0
+            and bonus <= 1000000 then performance += bonus end
     end
     player:SetAttribute("RMMShipPerformance", performance)
 end
@@ -275,6 +285,16 @@ function Service.start(services)
     services.PlayerDataManager.OnReady(function(player)
         local profile = shipState(services, player)
         if not profile then return end
+        if not marketBindings[player] then
+            local connections = {}
+            for _, key in marketAttributes do
+                table.insert(connections, player:GetAttributeChangedSignal(key):Connect(function()
+                    local latest = shipState(services, player)
+                    if latest then recalc(player, latest) end
+                end))
+            end
+            marketBindings[player] = connections
+        end
         recalc(player, profile)
         if type(profile.sections) ~= "table" then return end
         for slot, state in pairs(profile.sections) do
@@ -286,6 +306,10 @@ function Service.start(services)
         end
     end)
     Players.PlayerRemoving:Connect(function(player)
+        if marketBindings[player] then
+            for _, connection in marketBindings[player] do connection:Disconnect() end
+            marketBindings[player] = nil
+        end
         local folder = workspace:FindFirstChild("RMMPlayerShips")
         local ship = folder and folder:FindFirstChild("RMMShip_" .. tostring(player.UserId))
         if ship then ship:Destroy() end
