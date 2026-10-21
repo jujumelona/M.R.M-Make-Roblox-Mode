@@ -28,6 +28,7 @@ from .host_capped_ship_parts import eligible_capped_ship_parts
 from .host_ship_owned_upgrades import eligible_ship_owned_upgrades
 from .host_performance_mode import eligible_performance_mode
 from .host_ship_part_catalog import eligible_ship_part_catalog
+from .host_ship_purchase_facade import eligible_ship_purchase_facade
 from .host_peer_currency_exchange import eligible_peer_currency_exchange
 from .scaffold_policy import (
     single_host_action, single_client_action, single_passive_service,
@@ -48,6 +49,8 @@ def generation_scope(proposal: Any) -> dict[str, Any]:
             strategy = "host_declarative_mode_unlock"
         elif eligible_catalog_purchase(module, proposal) is not None:
             strategy = "host_declarative_catalog"
+        elif eligible_ship_purchase_facade(module, proposal) is not None:
+            strategy = "host_ship_purchase_facade"
         elif eligible_declarative_upgrade(module, proposal) is not None:
             strategy = "host_declarative_general_upgrades"
         elif eligible_ship_slot_configuration(module, proposal) is not None:
