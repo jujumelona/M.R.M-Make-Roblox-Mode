@@ -13,6 +13,7 @@ from typing import Any
 from .host_gameplay import render_host_gameplay
 from .host_catalog_purchase import eligible_catalog_purchase
 from .host_ship_sections import eligible_ship_sections
+from .host_ship_attachment import eligible_ship_attachment
 from .host_ship_part_catalog import eligible_ship_part_catalog
 from .scaffold_policy import (
     single_host_action, single_client_action, single_passive_service,
@@ -31,6 +32,8 @@ def generation_scope(proposal: Any) -> dict[str, Any]:
             strategy = "host_declarative_catalog"
         elif eligible_ship_sections(module, proposal) is not None:
             strategy = "host_declarative_ship_sections"
+        elif eligible_ship_attachment(module, proposal) is not None:
+            strategy = "host_declarative_ship_attachment"
         elif eligible_ship_part_catalog(module, proposal) is not None:
             strategy = "host_declarative_ship_part_catalog"
         elif module.name in design.get("host_client_actions", {}):
