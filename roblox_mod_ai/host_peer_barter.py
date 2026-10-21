@@ -27,6 +27,15 @@ def is_bilateral_asset_exchange(description: str) -> bool:
                 and re.search(r"\b(?:matching offer|selected offer|confirm)\b", prose)
                 and re.search(r"\b(?:exchang|both inventories|trade lifecycle)\w*\b", prose)
             )
+            # A two-sided asset exchange may be phrased as requester and
+            # counterparty, without literally saying "both players".
+            or (
+                re.search(r"\bcounterparty\b", prose)
+                and re.search(r"\b(?:requester|offered items?|offered quantities)\b", prose)
+                and re.search(r"\b(?:requested items?|requested quantities|"
+                              r"requested amount)\b", prose)
+                and re.search(r"\b(?:transfer|exchang|quantit)\w*\b", prose)
+            )
         )
         and re.search(r"\b(?:resource|item|inventory|balance)", prose)
         and re.search(r"\b(?:validat|verif|check|reject)", prose)
