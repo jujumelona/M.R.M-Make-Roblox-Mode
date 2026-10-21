@@ -117,6 +117,8 @@ def test_host_rejects_empty_or_unverifiable_gameplay(mutation):
     [{"name": "OreNode"}],
     [{"name": " OreNode "}],
     ["OreNode", {"name": "CrystalRock"}],
+    [{"name": "외계인"}],
+    ["특수 광물"],
 ])
 def test_host_canonicalizes_world_names_without_trusting_engine_metadata(world):
     result = _convert(_semantic(world=world))
