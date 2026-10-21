@@ -20,9 +20,9 @@ def _replace(source: str, old: str, new: str) -> str:
 # formatting may insert harmless whitespace inside Luau table type annotations.
 # Match the *typed declaration*, not one serialization of its whitespace.
 _STUDIO_EPHEMERAL_DECL = re.compile(
-    r"(?m)^local[ \\t]+studioEphemeral[ \\t]*:[ \\t]*\\{[ \\t]*"
-    r"\\[number\\][ \\t]*:[ \\t]*boolean[ \\t]*\\}[ \\t]*="
-    r"[ \\t]*\\{[ \\t]*\\}[ \\t]*$"
+    r"(?m)^local[ \t]+studioEphemeral[ \t]*:[ \t]*\{[ \t]*"
+    r"\[number\][ \t]*:[ \t]*boolean[ \t]*\}[ \t]*="
+    r"[ \t]*\{[ \t]*\}[ \t]*$"
 )
 
 
