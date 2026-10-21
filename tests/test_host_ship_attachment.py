@@ -256,4 +256,4 @@ def test_replay_failed_log_world_contract_with_two_owned_mining_objects():
     b = gen.generate_with_self_correction(client, p)
     assert len(model.calls) == 1
     assert 'WaitForChild("SectionalSpaceshipConstru2A35951Action", 20)' in b
-    assert 'services.PlayerDataManager.GetState(player, "RMMInventory")' in a
+    assert 'manager.GetState(player, "RMMInventory")' in a
