@@ -163,6 +163,7 @@ class RobloxProductionOrchestrator:
                 return False
 
         def resolve():
+            nonlocal acceptance
             # Uploaded authored plans can carry a stale, optimistic blueprint.
             # Recompute its requirement audit BEFORE model work or checkpoints.
             # A source span retained without a semantic classification is not
@@ -172,6 +173,23 @@ class RobloxProductionOrchestrator:
                 audited = audit_implementation_blueprint(proposal)
                 tool_results["implementation_blueprint_audit"] = audited
                 if not audited["passed"]:
+                    # Preserve the planning diagnostics on the final receipt.
+                    # Earlier eager rejection correctly avoided wasting model
+                    # time but returned no acceptance check IDs, making other
+                    # tools believe the plan had never been audited.
+                    from .request_contract import ledger_complete
+                    ledger = (proposal.game_design.get("pre_design_research") or {}).get("ledger") or {}
+                    covered = ledger_complete(proposal.requested_prompt, ledger)
+                    semantically_classified = not ledger.get("classification_unverified")
+                    acceptance = {"passed": False, "checks": [
+                        {"id": "planning.request_coverage",
+                         "passed": bool(covered and semantically_classified),
+                         "detail": "Original requirements and classified actions: " +
+                                   str(bool(covered and semantically_classified))},
+                        {"id": "planning.integration_blueprint",
+                         "passed": False,
+                         "detail": "; ".join(audited["errors"][:16])},
+                    ]}
                     return {
                         "success": False,
                         "error": "INCOMPLETE_GAMEPLAY_ARCHITECTURE: " +
