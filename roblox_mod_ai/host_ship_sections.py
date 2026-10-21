@@ -41,6 +41,10 @@ def eligible_ship_sections(module: Any, proposal: Any) -> tuple[str, str] | None
     if owner is None:
         return None
     prose = owner.description.casefold()
+    # Never downgrade a currency-priced, refund/delta assembly contract to the
+    # resource-only builder when the priced adapter declines its transport.
+    if re.search(r"\b(?:currency|coins?|credits?)\b", prose):
+        return None
     # Build/attach/add describe the same initial section creation operation.
     # Do not require an *upgrade* verb when the authored contract already
     # includes add, remove and replace: the host supports these as separate
