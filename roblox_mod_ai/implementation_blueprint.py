@@ -211,6 +211,18 @@ def build_implementation_blueprint(proposal: Any) -> dict[str, Any]:
         for m in mechanics if m["missing_owners"]
     ]
     blocked += ["unowned requirement " + r["id"] for r in requirements if r["missing"]]
+    # Exact text ownership is not semantic implementation. Previously a failed
+    # source classifier inserted "Implement only the requested gameplay ..." and
+    # the architect could replace an enemy encounter with PvP or omit settlement
+    # state while the blueprint claimed every requirement was implemented.
+    # A missing semantic classification must be resolved *before* any Luau.
+    unknown_chunks = ledger.get("classification_unverified") or []
+    if unknown_chunks:
+        blocked.append(
+            "unclassified_gameplay_requirements: " +
+            ", ".join(str(chunk) for chunk in unknown_chunks[:16]) +
+            " (reclassify source-anchored actions before designing game modules)"
+        )
     for name in ("decomposition_pending", "unimplemented_facets", "unmatched_requirements"):
         if ledger.get(name):
             blocked.append(name + ": " + ", ".join(map(str, ledger[name])))
