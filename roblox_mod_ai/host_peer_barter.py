@@ -10,6 +10,18 @@ from .host_mining import render_host_mining
 from .spec import ModuleKind, RobloxModuleSpec
 
 
+def is_bilateral_asset_exchange(description: str) -> bool:
+    """Distinguish consensual two-sided exchange from one-way market selling."""
+    prose = description.casefold()
+    return bool(
+        re.search(r"\b(?:trad(?:e|es|ing)|exchang(?:e|es|ing)|barter)\b", prose)
+        and re.search(r"\b(?:two players|both players|both sides|both parties|"
+                      r"two[- ]party|player[- ]to[- ]player|peer[- ]to[- ]peer)\b", prose)
+        and re.search(r"\b(?:resource|item|inventory|balance)", prose)
+        and re.search(r"\b(?:validat|verif|check|reject)", prose)
+    )
+
+
 def render_host_peer_barter(module, proposal):
     if not module.module_id.startswith("dyn_") or module.kind not in (
         ModuleKind.SERVER_MODULE, ModuleKind.CLIENT_SCRIPT
@@ -22,11 +34,7 @@ def render_host_peer_barter(module, proposal):
     if owner is None:
         return None
     prose = owner.description.casefold()
-    if (not re.search(r"\b(?:trad(?:e|es|ing)|exchang(?:e|es|ing)|barter)\b", prose)
-            or not re.search(r"\b(?:two players|both players|both sides|two[- ]party|"
-                             r"player[- ]to[- ]player|peer[- ]to[- ]peer)\b", prose)
-            or not re.search(r"\b(?:resource|item|inventory|balance)", prose)
-            or not re.search(r"\b(?:validat|verif|check|reject)", prose)):
+    if not is_bilateral_asset_exchange(prose):
         return None
     if not any(render_host_mining(m, proposal) is not None
                for m in proposal.modules if m.kind == ModuleKind.SERVER_MODULE):
