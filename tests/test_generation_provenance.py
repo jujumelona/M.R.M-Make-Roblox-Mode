@@ -68,3 +68,26 @@ def test_generate_all_replaces_stale_market_and_builder_luau():
     assert 'builder.handleAction(player, services, "create"' in plan.modules[0].code
     assert 'coins.Value -= netCharge' in plan.modules[2].code
     assert 'remote:InvokeServer("buy", part.id)' in plan.modules[1].code
+
+
+
+def test_imported_unsourced_dynamic_code_is_not_checkpoint_trusted(tmp_path: Path):
+    import hashlib
+    from roblox_mod_ai.generation_provenance import trusted_checkpoint_source
+
+    path = tmp_path / "src" / "server" / "Action.luau"
+    path.parent.mkdir(parents=True)
+    source = "--!strict\nlocal Service = {}\nreturn Service\n"
+    path.write_text(source, encoding="utf-8")
+    current = "current-sources-and-plan"
+    entry = {
+        "input_sha256": current,
+        "source_sha256": hashlib.sha256(source.encode("utf-8")).hexdigest(),
+    }
+    assert trusted_checkpoint_source(path, entry, current) == source
+    assert trusted_checkpoint_source(path, entry, current, source) == source
+    assert trusted_checkpoint_source(path, entry, "changed-host-policy") is None
+    assert trusted_checkpoint_source(path, entry, current,
+                                     "return { forged = true }") is None
+    path.write_text("return { tampered = true }", encoding="utf-8")
+    assert trusted_checkpoint_source(path, entry, current) is None
