@@ -29,6 +29,40 @@ def mining_rewards_currency(owner: RobloxModuleSpec, proposal: RobloxProposal) -
     )
 
 
+def _bind_verified_mined_income(
+    source: str, proposal: RobloxProposal, paid_by_miner: bool,
+) -> str:
+    """Connect a real successful server mining action to the earned ledger.
+
+    No client-submitted amounts or extra remotes are involved. The persisted
+    totalMined counter is monotonic, and the ledger pays each increment once.
+    """
+    if paid_by_miner:
+        return source  # Never pay twice when the miner itself grants Coins.
+    from .host_earned_currency import matching_ledger
+    selected = matching_ledger(proposal)
+    if selected is None:
+        return source
+    service, _ = selected
+    preflight = """    local mined = progress.totalMined
+    if mined == nil then mined = 0 end
+    if type(mined) ~= "number" or mined ~= mined or mined < 0
+        or mined % 1 ~= 0 or mined >= 2147483647 then return false end
+"""
+    before = '    node.remaining -= 1\n'
+    after = '    progress.resources = balance + 1\n'
+    if source.count(before) != 1 or source.count(after) != 1:
+        raise ValueError("Verified mining host template contract drift")
+    source = source.replace(before, preflight + before)
+    post = ('    progress.totalMined = mined + 1\n'
+            + '    local rewardService = services[' + json.dumps(service) + ']\n'
+            + '    if type(rewardService) == "table"'
+              ' and type(rewardService.recordMiningReward) == "function" then\n'
+              '        rewardService.recordMiningReward(player, services)\n'
+              '    end\n')
+    return source.replace(after, after + post)
+
+
 def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> str | None:
     if not module.module_id.startswith("dyn_"):
         return None
@@ -72,7 +106,8 @@ def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> st
         # real target Part to handleAction(player, services, targetPart).
         # Do not create a client or Remote for this mode.
         template = _SERVER if reward_currency else _SERVER_RESOURCES_ONLY
-        return template.replace("__NODES__", "{" + json.dumps(world_name) + "}")
+        code = template.replace("__NODES__", "{" + json.dumps(world_name) + "}")
+        return _bind_verified_mined_income(code, proposal, reward_currency)
     if routes[0][1].get("kind") != "RemoteFunction":
         return None
     remote = routes[0][0]
@@ -80,7 +115,8 @@ def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> st
     no_args = routes[0][1].get("max_args") == 0
     if module.kind == ModuleKind.SERVER_MODULE:
         template = (_SERVER_NEAREST if no_args else _SERVER) if reward_currency else (_SERVER_RESOURCES_NEAREST if no_args else _SERVER_RESOURCES_ONLY)
-        return template.replace("__NODES__", lua_nodes)
+        code = template.replace("__NODES__", lua_nodes)
+        return _bind_verified_mined_income(code, proposal, reward_currency)
     if not module.file_path.startswith("src/client/"):
         return None
     ui = _CLIENT_NEAREST if no_args else _CLIENT
