@@ -158,3 +158,33 @@ def test_catalog_is_reusable_without_asking_the_model_again_after_checkpoint():
     next_plan = _plan()
     next_plan.game_design["_host_declarative_catalogs"] = saved
     assert try_catalog_purchase(next_plan.modules[0], next_plan, None) == s
+
+
+
+def test_market_catalog_must_reference_real_host_ship_section_slots():
+    p = _plan()
+    p.game_design["_host_ship_part_catalogs"] = {
+        "ShipBuilder": [{"slot": "propulsion"}, {"slot": "defense"}],
+    }
+    model = DataOnlyModel({"entries": [{
+        "id": "badUpgrade", "label": "Bad upgrade", "cost": 10,
+        "slot": "madeUpSlot", "effect": "speed", "bonus": 3,
+    }]})
+    with pytest.raises(ValueError, match="HOST_DECLARATIVE_CATALOG_EXHAUSTED"):
+        LuauCodeGenerator(model).generate_module_code(p.modules[0], p)
+    assert len(model.calls) == 2
+    assert all("propulsion" in call[0] and "defense" in call[0]
+               for call in [(request, kw) for request, kw in
+                            getattr(model, "calls", [])]) if hasattr(model, "calls") else True
+
+
+def test_market_accepts_actual_ship_slot_and_checks_restored_cache():
+    p = _plan()
+    p.game_design["_host_ship_part_catalogs"] = {"Builder": [{"slot": "weapon"}]}
+    router = DataOnlyModel()
+    source = LuauCodeGenerator(router).generate_module_code(p.modules[0], p)
+    assert 'ship.sections[item.slot]' in source
+    assert 'coins.Value -= item.cost' in source
+    p.game_design["_host_ship_part_catalogs"]["Builder"][0]["slot"] = "newSlot"
+    with pytest.raises(ValueError, match="Cached purchase catalog references missing ship section"):
+        LuauCodeGenerator(router).generate_module_code(p.modules[0], p)
