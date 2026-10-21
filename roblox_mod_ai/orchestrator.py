@@ -81,6 +81,7 @@ from .module_generation_gate import (
 )
 from .scaffold_policy import is_host_scaffolded_source
 from .generation_scope import generation_scope
+from .implementation_blueprint import audit_implementation_blueprint
 
 class RobloxProductionOrchestrator:
     """Coordinates end-to-end production of a Roblox experience via topological work graph."""
@@ -162,6 +163,22 @@ class RobloxProductionOrchestrator:
                 return False
 
         def resolve():
+            # Uploaded authored plans can carry a stale, optimistic blueprint.
+            # Recompute its requirement audit BEFORE model work or checkpoints.
+            # A source span retained without a semantic classification is not
+            # proof that the right mechanic (NPC vs player, settlement vs UI)
+            # exists. Do not burn 9B retries on an invalid architecture.
+            if "implementation_blueprint" in proposal.game_design:
+                audited = audit_implementation_blueprint(proposal)
+                tool_results["implementation_blueprint_audit"] = audited
+                if not audited["passed"]:
+                    return {
+                        "success": False,
+                        "error": "INCOMPLETE_GAMEPLAY_ARCHITECTURE: " +
+                                 "; ".join(audited["errors"][:16]),
+                        "requires_replanning": True,
+                        "architecture_errors": audited["errors"],
+                    }
             proposal.modules = self.work_graph.topological_sort_modules(proposal.modules)
             design = proposal.game_design.get("dynamic_design") or {}
             host_actions = design.get("host_actions") or {}
