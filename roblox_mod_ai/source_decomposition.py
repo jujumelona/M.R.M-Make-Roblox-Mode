@@ -10,6 +10,7 @@ import re
 from typing import Any
 
 from .request_contract import clean, is_composite, span_coverage
+from .semantic_preservation import source_intent_conflicts
 
 # These are general clause joiners, NOT a vocabulary of genres or mechanics.
 _JOINER = re.compile(
@@ -89,6 +90,10 @@ def valid_chunk_classification(raw: Any, expected: list[dict[str, str]]) -> dict
         # than treating category names as proof that a request was decomposed.
         opaque_label = bool(re.fullmatch(
             r"[a-z][a-z0-9]*(?:_[a-z0-9]+)+", intent, re.IGNORECASE))
+        source = next((item["source_span"] for item in expected
+                       if item["chunk_id"] == chunk_id), "")
+        if source_intent_conflicts(source, intent + " " + query):
+            continue
         if (chunk_id not in allowed or chunk_id in result or
                 not 5 <= len(intent) <= 180 or opaque_label or
                 not 8 <= len(query) <= 160 or
