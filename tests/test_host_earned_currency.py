@@ -143,3 +143,58 @@ def test_unrelated_economy_does_not_make_fake_reward_service():
     p.game_design["dynamic_design"]["host_actions"]["CurrencyBalanceAction"]["service"]=ledger.name
     assert eligible_earned_currency(ledger,p)
     assert eligible_earned_currency(client,p)
+
+
+
+def test_previously_accepted_space_mode_setup_is_host_owned_not_invalid_camera_code():
+    from roblox_mod_ai.host_mode_world_action import render_host_mode_world_action
+    p,miner,_,ledger,client=proposal_fixture()
+    mode=RobloxModuleSpec(
+        module_id="dyn_mode_setup",
+        name="ArbitraryWorldModeActivationServer",
+        kind=ModuleKind.SERVER_MODULE,
+        file_path="src/server/ArbitraryWorldModeActivationServer.luau",
+        roblox_service=RobloxService.SERVER_SCRIPT_SERVICE,
+        description=("The server enables a dedicated Space Mode state for the "
+                     "current game session, activates a themed space environment, "
+                     "and exposes a dedicated game-mode setup that unlocks the "
+                     "space-mode progression loop."),
+    )
+    p.modules.insert(0,mode)
+    design=p.game_design["dynamic_design"]
+    design["world_objects"].append({"name":"SpaceModeF5E8F011","class":"Part"})
+    design["module_world_objects"][mode.module_id]=["SpaceModeF5E8F011"]
+    design["host_world_actions"]={"SpaceModeF5E8F011":{
+        "service":mode.name,"action_text":"Space Mode Setup",
+    }}
+    src=LuauCodeGenerator(NoModel()).generate_with_self_correction(mode,p)
+    assert src==render_host_mode_world_action(mode,p)
+    assert 'local TARGET = "SpaceModeF5E8F011"' in src
+    assert 'local MODE = "Space Mode"' in src
+    assert 'GetState(player,"RMMGameMode")' in src
+    assert 'state.activeMode = MODE' in src
+    assert 'spaceUnlocked=false' in src
+    assert "CurrentCamera" not in src
+    assert "services.Players" not in src
+    assert 'services.PlayerDataManager.OnReady' in src
+    errors=[d for d in LuauStaticAnalyzer().analyze_source(src,mode.file_path)
+            if d.severity=="ERROR"]
+    assert not errors, [(e.rule,e.message) for e in errors]
+
+
+def test_mode_world_action_never_claims_launch_or_unowned_part():
+    from roblox_mod_ai.host_mode_world_action import render_host_mode_world_action
+    p,_,_,_,_=proposal_fixture()
+    mode=RobloxModuleSpec(
+        module_id="dyn_arbitrary",
+        name="ArbitraryModeServer",
+        kind=ModuleKind.SERVER_MODULE,
+        file_path="src/server/ArbitraryModeServer.luau",
+        roblox_service=RobloxService.SERVER_SCRIPT_SERVICE,
+        description="Server enables a dedicated Space Mode environment and progression state.",
+    )
+    p.modules.insert(0,mode)
+    p.game_design["dynamic_design"]["host_world_actions"]={
+        "MadeUpPart":{"service":mode.name,"action_text":"Start"},
+    }
+    assert render_host_mode_world_action(mode,p) is None
