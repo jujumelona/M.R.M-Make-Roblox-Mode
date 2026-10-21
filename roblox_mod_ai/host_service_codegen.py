@@ -145,25 +145,36 @@ def try_scaffolded_server(
     )
     # Expose the verified assembly ABI to later ship, crew, upgrade and
     # launch action bodies; never let them call imaginary service methods.
-    host_assembly_available = any(
+    resource_ship_assembly = any(
         eligible_ship_attachment(peer, proposal) is not None
-        or eligible_capped_ship_parts(peer, proposal) is not None
+        for peer in getattr(proposal, "modules", [])
+        if peer.kind == ModuleKind.SERVER_MODULE and peer.name != module.name
+    )
+    capped_ship_assembly = any(
+        eligible_capped_ship_parts(peer, proposal) is not None
         for peer in getattr(proposal, "modules", [])
         if peer.kind == ModuleKind.SERVER_MODULE and peer.name != module.name
     )
     shared_assembly_abi = (
-        'Verified host ship assembly: the persistent table is '
+        'Verified ship assembly: the authoritative persistent table is '
         'services.PlayerDataManager.GetState(player, "RMMShipSections").sections. '
-        'Installed parts are keyed by section ID and contain owned=true, '
-        'level=1, and a performance contribution. The host publishes '
-        'player:GetAttribute("RMMShipAssemblyPerformance") when the contract '
-        'provides part performance. For capped coin-purchased construction '
-        'the host instead publishes RMMShipPartCount and RMMShipPartTotalCost; '
-        'do not mistake a part count for combat power. '
-        'Never call imaginary getAssembly, applyAttachment, GetShip, SaveShip, '
-        'or GetSection methods on sibling services. Validate against the real '
-        'profile data and verified ownership.\n'
-        if host_assembly_available else ""
+        'Each installed part is keyed by its catalog ID with owned=true, level=1. '
+        + (
+            'For resource-built sections each record has a positive performance '
+            'contribution. The host publishes player attribute '
+            'RMMShipAssemblyPerformance as the total contribution. '
+            if resource_ship_assembly else ''
+        )
+        + (
+            'For capped coin-purchased parts each record has a fixed paid cost; '
+            'the host publishes RMMShipPartCount and RMMShipPartTotalCost. '
+            'These counts are NOT combat power. '
+            if capped_ship_assembly else ''
+        )
+        + 'Never invent getAssembly, applyAttachment, GetShip, SaveShip or GetSection '
+        'methods on sibling services. Reject absent ownership, bad amounts and '
+        'unloaded profiles.\n'
+        if resource_ship_assembly or capped_ship_assembly else ""
     )
     prompt = (
         "Write ONLY the BODY statements of one Roblox Luau server "
