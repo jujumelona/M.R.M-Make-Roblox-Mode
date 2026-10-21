@@ -10,6 +10,9 @@ import re
 from typing import Any
 from .spec import ModuleKind
 from .host_catalog_purchase import _ID
+from .host_ship_currency_sections import (
+    eligible_currency_ship_sections, try_currency_ship_sections,
+)
 
 _SCHEMA = {
     "type": "object",
@@ -24,6 +27,9 @@ _SCHEMA = {
 
 
 def eligible_ship_sections(module: Any, proposal: Any) -> tuple[str, str] | None:
+    currency_sections = eligible_currency_ship_sections(module, proposal)
+    if currency_sections is not None:
+        return currency_sections
     if not module.module_id.startswith("dyn_") or module.kind not in (
         ModuleKind.SERVER_MODULE, ModuleKind.CLIENT_SCRIPT
     ):
@@ -113,6 +119,9 @@ def _read(proposal: Any, owner: str, router: Any) -> list[dict[str, Any]]:
 
 
 def try_ship_sections(module: Any, proposal: Any, router: Any = None) -> str | None:
+    priced_sections = try_currency_ship_sections(module, proposal, router)
+    if priced_sections is not None:
+        return priced_sections
     info = eligible_ship_sections(module, proposal)
     if info is None:
         return None
