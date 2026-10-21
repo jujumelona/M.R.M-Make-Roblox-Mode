@@ -35,7 +35,7 @@ def matching_ledger(proposal: Any) -> tuple[str, str] | None:
             continue
         remote, route = linked[0]
         if (route.get("kind") != "RemoteFunction" or remotes.get(remote) != "RemoteFunction"
-                or route.get("max_args") == 0 and False):
+                or (route.get("max_args") is not None and route["max_args"] < 1)):
             continue
         if not owner.file_path.startswith("src/server/"):
             continue
