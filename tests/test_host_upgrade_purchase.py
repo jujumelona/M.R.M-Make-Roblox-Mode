@@ -157,3 +157,40 @@ def test_host_purchase_not_enabled_for_different_source_request():
     p.requested_prompt = "Plant flowers and water a garden"
     assert render_host_gameplay(p.modules[0], p) is None
     assert render_host_gameplay(p.modules[1], p) is None
+
+
+
+def test_next_purchase_service_after_combined_mining_and_ship_build_is_name_agnostic():
+    # The real ZIP (14) has ShopPurchaseAndPerformanc... instead of the
+    # historical TradingBasedWeaponCrewAnd... pattern.
+    from roblox_mod_ai.generation_scope import generation_scope
+    p=proposal23_purchase()
+    owner,client=p.modules
+    owner.name="ShopPurchaseAndPerformancFEA0A71Server"
+    owner.file_path="src/server/"+owner.name+".luau"
+    client.name="ShopPurchaseAndPerformancFEA0A71Client"
+    client.file_path="src/client/"+client.name+".client.luau"
+    owner.description=(
+        "The server owns all purchase validation and upgrade application. "
+        "When a player requests a purchase, the server checks the player's "
+        "owned in-game currency against the item's price, deducts the "
+        "currency only after the transaction is accepted, and applies "
+        "the weapon, crew, or spaceship performance upgrade to the player's "
+        "persistent inventory and spaceship stats. Each purchase is validated "
+        "against the current currency balance, price and existing upgrade "
+        "state to prevent overspending, duplicate purchases and concurrent "
+        "transactions. Currency is stored in a server-owned data store with "
+        "session locking, so reconnects cannot duplicate purchases."
+    )
+    remote="TradingBasedWeaponCrewAndFEA0A71Action"
+    p.game_design["dynamic_design"]["host_actions"][remote]["service"]=owner.name
+    scope=generation_scope(p)
+    assert all(x["strategy"]=="host_verified_template"
+               for x in scope["modules"] if x["name"] in {owner.name,client.name})
+    for module in (owner,client):
+        code=LuauCodeGenerator(NoModel()).generate_with_self_correction(module,p)
+        assert code==render_host_upgrade_purchase(module,p)
+        assert not [d for d in LuauStaticAnalyzer().analyze_source(code,module.file_path)
+                    if d.severity=="ERROR"]
+    owner.description="The server only provides an unrelated player inventory."
+    assert render_host_upgrade_purchase(owner,p) is None
