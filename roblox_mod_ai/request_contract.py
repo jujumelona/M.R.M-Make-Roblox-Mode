@@ -10,6 +10,8 @@ import hashlib
 import re
 from typing import Any
 
+from .semantic_preservation import source_intent_conflicts
+
 
 def clean(text: str) -> str:
     return " ".join(str(text).split()).strip()
@@ -75,7 +77,7 @@ def validate_model_behaviors(clause: str, behaviors: list[dict[str, Any]]) -> bo
                 len(span) >= len(source) * .75 or span not in source or
                 len(intent) < 5 or len(intent) > 180 or
                 not re.search(r"[A-Za-z]{3,}", query) or len(query) > 160 or
-                span in seen):
+                span in seen or source_intent_conflicts(span, intent + " " + query)):
             return False
         seen.add(span)
         spans.append(span)
