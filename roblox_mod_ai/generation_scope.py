@@ -15,6 +15,7 @@ from .host_catalog_purchase import eligible_catalog_purchase
 from .host_ship_sections import eligible_ship_sections
 from .host_ship_attachment import eligible_ship_attachment
 from .host_capped_ship_parts import eligible_capped_ship_parts
+from .host_ship_owned_upgrades import eligible_ship_owned_upgrades
 from .host_ship_part_catalog import eligible_ship_part_catalog
 from .scaffold_policy import (
     single_host_action, single_client_action, single_passive_service,
@@ -37,6 +38,8 @@ def generation_scope(proposal: Any) -> dict[str, Any]:
             strategy = "host_declarative_ship_attachment"
         elif eligible_capped_ship_parts(module, proposal) is not None:
             strategy = "host_declarative_capped_ship_parts"
+        elif eligible_ship_owned_upgrades(module, proposal) is not None:
+            strategy = "host_declarative_ship_upgrades"
         elif eligible_ship_part_catalog(module, proposal) is not None:
             strategy = "host_declarative_ship_part_catalog"
         elif module.name in design.get("host_client_actions", {}):
