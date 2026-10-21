@@ -161,7 +161,10 @@ class LuauStaticAnalyzer:
                         ["selene", "--config", str(config),
                          "--display-style", "quiet", "-"],
                         input=code, text=True, capture_output=True,
-                        cwd=temp, timeout=12, check=False,
+                        # Rokit shims require the project's rokit.toml;
+                        # an empty temp cwd makes the shim fail before linting.
+                        cwd=str(Path(__file__).resolve().parent.parent),
+                        timeout=12, check=False,
                     )
                 details = "\n".join([lint.stdout, lint.stderr])
                 if lint.returncode != 0 and not re.search(
