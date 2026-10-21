@@ -231,6 +231,7 @@ end
 local send = addButton("Send", "Offer", 10)
 local review = addButton("Review", "Review", 128)
 local accept = addButton("Accept", "Accept reviewed", 246)
+local cancel = addButton("Cancel", "Cancel my offer", 364)
 local resultText = Instance.new("TextLabel")
 resultText.Name = "TradeResult"
 resultText.Size = UDim2.fromOffset(480, 40)
@@ -239,6 +240,8 @@ resultText.Text = "Assets: resources, coins or existing item IDs"
 resultText.Parent = gui
 local busy = false
 local reviewed = nil
+local reviewOffset = 0
+local lastOffered = nil
 local function callRemote(...)
     if busy then return nil end
     busy = true
@@ -258,6 +261,7 @@ send.Activated:Connect(function()
     end
     local response = callRemote("offer", target.UserId, inputs.GiveAsset.Text,
         tonumber(inputs.GiveQty.Text), inputs.WantAsset.Text, tonumber(inputs.WantQty.Text))
+    if response and response.success then lastOffered = response.id end
     resultText.Text = response and (response.success and
         ("Offer #" .. tostring(response.id) .. " created") or tostring(response.reason))
         or "Network error"
@@ -270,10 +274,21 @@ review.Activated:Connect(function()
         resultText.Text = "No pending offers"
         return
     end
-    local offer = response.pending[1]
+    reviewOffset = (reviewOffset % #response.pending) + 1
+    local offer = response.pending[reviewOffset]
     reviewed = offer.id
     resultText.Text = "Receive " .. tostring(offer.giveQty) .. " " .. tostring(offer.giveAsset)
         .. ", pay " .. tostring(offer.wantQty) .. " " .. tostring(offer.wantAsset)
+end)
+cancel.Activated:Connect(function()
+    if lastOffered == nil then
+        resultText.Text = "No active outgoing offer to cancel"
+        return
+    end
+    local response = callRemote("cancel", lastOffered)
+    if response and response.success then lastOffered = nil end
+    resultText.Text = response and (response.success and "Offer canceled"
+        or tostring(response.reason)) or "Network error"
 end)
 accept.Activated:Connect(function()
     if reviewed == nil then
