@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .semantic_preservation import source_intent_conflicts
+
 SCHEMA = "rmm/implementation-blueprint-v1"
 
 # Required module ownership for each known stock mechanic.
@@ -211,6 +213,28 @@ def build_implementation_blueprint(proposal: Any) -> dict[str, Any]:
         for m in mechanics if m["missing_owners"]
     ]
     blocked += ["unowned requirement " + r["id"] for r in requirements if r["missing"]]
+    # A fully classified source span still needs the actual corresponding
+    # gameplay in its server owner. Requiring named hostile NPCs and settlement
+    # state, when those are explicitly requested, prevents a PvE encounter
+    # from being silently rewritten as PvP or a colony into just a menu.
+    for atom in ledger.get("atomic_intents", []):
+        if not isinstance(atom, dict):
+            continue
+        span = atom.get("source_span", "")
+        facet = atom.get("facet_id", "")
+        classification = str(atom.get("intent", "")) + " " + str(atom.get("english_query", ""))
+        for mismatch in source_intent_conflicts(span, classification):
+            blocked.append(str(facet) + ": classifier " + mismatch)
+        server_owners = [
+            m for m in proposal.modules
+            if m.kind.value in ("server_module", "server_script")
+            and facet in (dyn.get("module_facets") or {}).get(m.module_id, [])
+        ]
+        if server_owners:
+            implementation = " ".join(m.description for m in server_owners)
+            expected = str((dyn.get("acceptance_facets") or {}).get(facet, ""))
+            for mismatch in source_intent_conflicts(span, implementation + " " + expected):
+                blocked.append(str(facet) + ": implementation " + mismatch)
     # Exact text ownership is not semantic implementation. Previously a failed
     # source classifier inserted "Implement only the requested gameplay ..." and
     # the architect could replace an enemy encounter with PvP or omit settlement
