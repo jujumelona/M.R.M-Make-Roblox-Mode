@@ -105,3 +105,43 @@ def test_host_ship_sections_rejects_unsupported_and_wrong_transport():
     p = _plan()
     p.modules.pop(0)
     assert eligible_ship_sections(p.modules[0], p) is None
+
+
+def test_synonymous_add_remove_replace_uses_host_owned_section_contract():
+    """A section-by-section saved build is not free-form model Luau."""
+    p = _plan()
+    p.modules[0].description = (
+        "The server owns the ship assembly and validates every construction action. "
+        "A player may add, remove, or replace one ship section at a time; each "
+        "section is independently creatable, tracked in a discrete section slot "
+        "in the player's saved build state. The server validates the allowed "
+        "sections, ship ownership, empty slots and required resources before "
+        "committing the saved section changes."
+    )
+    server, client = p.modules
+    assert eligible_ship_sections(server, p) is not None
+    assert eligible_ship_sections(client, p) is not None
+    assert [row["strategy"] for row in generation_scope(p)["modules"]] == [
+        "host_declarative_ship_sections", "host_declarative_ship_sections"
+    ]
+    model = SlotsOnly()
+    generator = LuauCodeGenerator(model)
+    sources = (generator.generate_module_code(server, p),
+               generator.generate_module_code(client, p))
+    assert len(model.calls) == 1
+    assert 'GetState(player, "RMMShipSections")' in sources[0]
+    assert 'GetState(player, "RMMInventory")' in sources[0]
+    assert 'inventory.resources -= cost' in sources[0]
+    assert 'return remote:InvokeServer(command, slot.id)' in sources[1]
+    for module, source in zip((server, client), sources):
+        issues = [x for x in LuauStaticAnalyzer().analyze_source(
+            source, module.file_path) if x.severity == "ERROR"]
+        assert not issues, [(x.rule, x.message) for x in issues]
+
+
+def test_section_assembly_must_validate_ownership_and_saved_resources():
+    p = _plan()
+    p.modules[0].description = (
+        "Players add, remove and replace ship assembly sections using resources."
+    )
+    assert eligible_ship_sections(p.modules[0], p) is None
