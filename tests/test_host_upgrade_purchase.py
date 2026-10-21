@@ -117,7 +117,7 @@ def test_exact_remote_and_host_rendered_ui_only_transmits_upgrade_id():
     assert "GetDataStore" not in client
     assert "local Service = {}" not in client
     bootstrap = render_dynamic_server_bootstrap(p)
-    assert 'WaitForChild("TradingBasedWeaponCrewAndFEA0A71Action")' in bootstrap
+    assert 'WaitForChild("TradingBasedWeaponCrewAndFEA0A71Action", 20)' in bootstrap
     assert "remote.OnServerInvoke = function(player, ...)" in bootstrap
 
 
