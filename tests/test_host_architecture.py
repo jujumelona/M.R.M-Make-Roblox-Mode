@@ -101,13 +101,75 @@ def test_host_owns_remote_type_and_player_role(mode, expected):
     lambda p: p["systems"][0].update(interaction="RemoteServerInvoke"),
     lambda p: p["systems"][0].update(client_behavior=""),
     lambda p: p["systems"][0].update(observable_result="ok"),
-    lambda p: p["systems"][0].update(world_entities=[{"name": "Ore"}]),
+    lambda p: p["systems"][0].update(world_entities=[{"name": "Ore", "position": [1, 2, 3]}]),
     lambda p: p.update(systems=[]),
 ])
 def test_host_rejects_empty_or_unverifiable_gameplay(mutation):
     data = _semantic()
     mutation(data)
     with pytest.raises(HostArchitectureError):
+        _convert(data)
+
+
+
+@pytest.mark.parametrize("world", [
+    ["OreNode"],
+    [{"name": "OreNode"}],
+    [{"name": " OreNode "}],
+    ["OreNode", {"name": "CrystalRock"}],
+])
+def test_host_canonicalizes_world_names_without_trusting_engine_metadata(world):
+    result = _convert(_semantic(world=world))
+    assert len(result["world_objects"]) == len(world)
+    assert all(entry["class"] == "Part" for entry in result["world_objects"])
+    assert all(entry["position"] != [10_000, 0, 0]
+               for entry in result["world_objects"])
+
+
+@pytest.mark.parametrize("world", [
+    [{"name": "OreNode", "size": [4, 4, 4]}],
+    [{"name": "OreNode", "class": "Script"}],
+    [{"name": "OreNode", "id": "unsafe"}],
+    [{"name": 10}],
+    [{"name": "OreNode", "position": [9999, 0, 0]}],
+    [{"name": ""}],
+])
+def test_host_world_name_normalization_never_accepts_geometry_or_engine_fields(world):
+    with pytest.raises(HostArchitectureError, match="world_entities"):
+        _convert(_semantic(world=world))
+
+
+@pytest.mark.parametrize("server,client", [
+    (
+        "Server validates the offer, applies the trade transfer and persists both inventories after settlement.",
+        "After confirmation the client displays the trade result and the resulting inventory balances.",
+    ),
+    (
+        "The server validates attacks, applies damage and resolves the defeated enemy.",
+        "The client renders enemy health, damage numbers, hit confirmation and defeat feedback.",
+    ),
+    (
+        "The server applies damage from a validated attack and removes the defeated enemy.",
+        "The client displays the server's confirmed attack outcome and observable combat feedback.",
+    ),
+])
+def test_host_recovers_explicit_player_visible_outcomes_without_extra_model_call(server, client):
+    data = _semantic(interaction="request_response")
+    data["systems"][0].update(server_behavior=server, client_behavior=client)
+    data["systems"][0].pop("observable_result")
+    result = _convert(data)
+    assert result["acceptance"][0]["observable_result"] == client
+
+
+@pytest.mark.parametrize("client", [
+    "The client shows a request button with no gameplay result or confirmation.",
+    "The client renders the interface without showing any outcome.",
+])
+def test_host_never_invents_results_from_explicitly_empty_feedback(client):
+    data = _semantic()
+    data["systems"][0]["client_behavior"] = client
+    data["systems"][0].pop("observable_result")
+    with pytest.raises(HostArchitectureError, match="observable result"):
         _convert(data)
 
 
