@@ -194,3 +194,13 @@ def test_next_purchase_service_after_combined_mining_and_ship_build_is_name_agno
                     if d.severity=="ERROR"]
     owner.description="The server only provides an unrelated player inventory."
     assert render_host_upgrade_purchase(owner,p) is None
+
+
+
+def test_generic_semantic_router_handles_legacy_lightweight_proposal_without_modules():
+    from types import SimpleNamespace
+    sample=proposal23_purchase()
+    plan=SimpleNamespace(game_design=sample.game_design,
+                         requested_prompt=sample.requested_prompt)
+    assert render_host_upgrade_purchase(sample.modules[0],plan) is None
+    assert render_host_upgrade_purchase(sample.modules[1],plan) is None
