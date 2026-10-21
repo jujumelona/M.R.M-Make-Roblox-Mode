@@ -187,6 +187,17 @@ local PARTS = {
 __PARTS__
 }
 local MAX_COINS = 2147483647
+-- Assign distinct server-session lots; UserId modulo alone can overlap players.
+local lotsByPlayer = {}
+local occupiedLots = {}
+local function lotOf(player)
+    if lotsByPlayer[player] ~= nil then return lotsByPlayer[player] end
+    local lot = 0
+    while occupiedLots[lot] do lot += 1 end
+    occupiedLots[lot] = true
+    lotsByPlayer[player] = lot
+    return lot
+end
 local function reject(reason)
     return {success = false, reason = reason}
 end
@@ -249,8 +260,9 @@ local function partVisual(player, partId)
     part.Name = definition.slot
     part.Anchored = true
     part.Size = Vector3.new(4, 3, 6)
-    part.Position = Vector3.new(30 + (player.UserId % 17) * 12,
-        5 + definition.ordinal * 3, 30 + (math.floor(player.UserId / 17) % 17) * 12)
+    local lot = lotOf(player)
+    part.Position = Vector3.new(30 + (lot % 12) * 22,
+        5 + definition.ordinal * 3, 30 + math.floor(lot / 12) * 28)
     part:SetAttribute("PartId", partId)
     part.Parent = ship
 end
@@ -277,6 +289,11 @@ function Service.start(services)
         local folder = workspace:FindFirstChild("RMMPlayerShips")
         local ship = folder and folder:FindFirstChild("RMMShip_" .. tostring(player.UserId))
         if ship then ship:Destroy() end
+        local lot = lotsByPlayer[player]
+        if lot ~= nil then
+            occupiedLots[lot] = nil
+            lotsByPlayer[player] = nil
+        end
     end)
 end
 function Service.handleAction(player, services, ...)
