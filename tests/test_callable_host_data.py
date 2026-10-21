@@ -7,6 +7,7 @@ import subprocess
 import pytest
 
 from roblox_mod_ai.code_generator import LuauCodeGenerator
+from roblox_mod_ai.host_player_data import _replace_studio_ephemeral
 from roblox_mod_ai.server_modules import normalize_dynamic_server_modules, render_dynamic_server_bootstrap
 from roblox_mod_ai.server_interface_audit import inspect_dynamic_server_interfaces
 from roblox_mod_ai.spec import RobloxModuleSpec, RobloxProposal
@@ -27,6 +28,32 @@ def _plan():
     network.code = generator.generate_module_code(network, p)
     data.code = generator.generate_module_code(data, p)
     return p, data, feature
+
+
+
+@pytest.mark.parametrize("declaration", [
+    "local studioEphemeral: {[number]: boolean} = {}",
+    "local studioEphemeral: { [number]: boolean } = {}",
+    "local studioEphemeral:\t{ [number] : boolean }\t= { }",
+])
+def test_player_data_adapter_accepts_equivalent_typed_declaration_spacing(declaration):
+    # The original failure was caused by f-string brace whitespace, not the
+    # type or meaning of this host-owned Luau declaration.
+    source = "--!strict\n" + declaration + "\n"
+    replacement = "local studioEphemeral: {[number]: boolean} = {}\n-- ready queue"
+    actual = _replace_studio_ephemeral(source, replacement)
+    assert actual == "--!strict\n" + replacement + "\n"
+
+
+@pytest.mark.parametrize("source", [
+    "local studioEphemeral: {[number]: string} = {}\n",
+    ("local studioEphemeral: {[number]: boolean} = {}\n"
+     "local studioEphemeral: { [number]: boolean } = {}\n"),
+    "local somethingElse: {[number]: boolean} = {}\n",
+])
+def test_player_data_adapter_rejects_wrong_or_duplicate_declarations(source):
+    with pytest.raises(ValueError, match="exactly one"):
+        _replace_studio_ephemeral(source, "should not appear")
 
 
 def test_callable_profile_uses_single_renewal_snapshot_path():
