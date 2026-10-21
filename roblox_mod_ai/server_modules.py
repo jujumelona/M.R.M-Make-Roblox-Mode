@@ -13,6 +13,7 @@ from .spec import ModuleKind, RobloxModuleSpec, RobloxProposal, RobloxService
 from .luau_service_contract import exported_methods
 from .host_mining import render_host_mining
 from .host_ship_attachment import eligible_ship_attachment
+from .host_capped_ship_parts import eligible_capped_ship_parts
 
 _BOOTSTRAP_ID = "mod_dynamic_server_bootstrap"
 _BOOTSTRAP_NAME = "RMMServerBootstrap"
@@ -392,24 +393,41 @@ def module_bootstrap_contract(module: RobloxModuleSpec, proposal: RobloxProposal
             'existing server-owned values; do NOT invent a new resource '
             'namespace or parallel credit account.'
         )
-    # Share only actual host-authored assembly state, never imagined
-    # getAssembly/GetShip/SaveShip methods on a sibling ModuleScript.
-    if module.name != "PlayerDataManager" and any(
-        eligible_ship_attachment(peer, proposal) is not None
-        for peer in proposal.modules if peer.kind == ModuleKind.SERVER_MODULE
-        and peer.name != module.name
-    ):
-        contract += (
-            ' HOST SHIP ASSEMBLY ABI: '
-            'services.PlayerDataManager.GetState(player, "RMMShipSections").sections '
-            'is a persistent server-owned map of section IDs. Each attached '
-            'entry has owned=true, level=1 and performance. The host publishes '
-            'player:GetAttribute("RMMShipAssemblyPerformance") as the sum of '
-            'attached section contributions. Do not call invented methods '
-            'getAssembly/GetShip/GetSection/SaveShip on other services; read '
-            'the existing profile table with a dot GetState call, and reject '
-            'missing or unowned parts.'
+    # Share the actual host-authored assembly state for next mechanisms.
+    if module.name != "PlayerDataManager":
+        resource_build = any(
+            eligible_ship_attachment(peer, proposal) is not None
+            for peer in proposal.modules if peer.kind == ModuleKind.SERVER_MODULE
+            and peer.name != module.name
         )
+        capped_build = any(
+            eligible_capped_ship_parts(peer, proposal) is not None
+            for peer in proposal.modules if peer.kind == ModuleKind.SERVER_MODULE
+            and peer.name != module.name
+        )
+        if resource_build or capped_build:
+            contract += (
+                ' HOST SHIP ASSEMBLY ABI: '
+                'services.PlayerDataManager.GetState(player, "RMMShipSections").sections '
+                'is a persistent server-owned map keyed by part ID. Installed '
+                'records have owned=true and level=1. '
+            )
+            if resource_build:
+                contract += (
+                    'Resource-built records include performance; the host publishes '
+                    'RMMShipAssemblyPerformance as the total installed contributions. '
+                )
+            if capped_build:
+                contract += (
+                    'Coin-purchased capped records include cost and the host publishes '
+                    'RMMShipPartCount and RMMShipPartTotalCost. These are NOT '
+                    'combat performance or a substitute for required upgrades. '
+                )
+            contract += (
+                'Do not invent getAssembly/GetShip/GetSection/SaveShip sibling APIs; '
+                'check the real profile table and existing owned part IDs, and '
+                'reject missing ownership.'
+            )
     # Never bring a currency subsystem into unrelated races, puzzles or
     # weather-only experiences as a misleading few-shot prompt.
     if "EconomyLedger" in registry and module.name != "EconomyLedger":
