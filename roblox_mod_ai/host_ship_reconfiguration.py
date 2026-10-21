@@ -101,9 +101,17 @@ def _validate(value: Any, minimum_performance: int = 0) -> dict[str, Any]:
     if (len(slots) < limit
             or any(not isinstance(slot, str) or slot not in slots for slot in required)
             or len(set(required)) != len(required)
-            or type(minimum_performance) is not int or minimum_performance < 0
-            or sum(sorted(slots.values(), reverse=True)[:limit]) < minimum_performance):
-        raise ValueError("Declared essential slots, part cap or mode performance unreachable")
+            or type(minimum_performance) is not int or minimum_performance < 0):
+        raise ValueError("Invalid required structural slots or per-ship part cap")
+    # The best score must be reachable WHILE all mandatory structural slots
+    # are installed. Picking the highest optional slots alone could falsely
+    # claim that a ship can unlock the next stage.
+    essential = sum(slots[slot] for slot in required)
+    optional = sorted((score for slot, score in slots.items()
+                       if slot not in required), reverse=True)
+    maximum_reachable = essential + sum(optional[:limit - len(required)])
+    if maximum_reachable < minimum_performance:
+        raise ValueError("Required structural parts cannot reach the authored mode performance")
     return {"maxParts":limit, "requiredSlots":required, "parts":cleaned}
 
 
