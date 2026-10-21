@@ -34,7 +34,7 @@ def host_source_must_regenerate(module: Any, strategy: str) -> bool:
         return True
     return bool(
         module.module_id in (
-            "mod_game_objective", "mod_arena_round", "mod_arena_round_controller",
+            "mod_network_bridge", "mod_game_objective", "mod_arena_round", "mod_arena_round_controller",
             "mod_dynamic_server_bootstrap"
         )
         or (
@@ -42,3 +42,26 @@ def host_source_must_regenerate(module: Any, strategy: str) -> bool:
             and module.file_path.endswith("/PlayerDataManager.luau")
         )
     )
+
+
+def trusted_checkpoint_source(path: Path, entry: Any, input_sha256: str,
+                              supplied_code: str | None = None) -> str | None:
+    """Only resume source attested by the current source+plan signature.
+
+    In particular, a loaded proposal's nonempty `module.code` is not proof:
+    it may be code from an old adapter, stale API or another generation run.
+    """
+    if (not isinstance(entry, dict)
+            or entry.get("input_sha256") != input_sha256
+            or not isinstance(entry.get("source_sha256"), str)
+            or not Path(path).is_file()):
+        return None
+    try:
+        source = Path(path).read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return None
+    if not source or hashlib.sha256(source.encode("utf-8")).hexdigest() != entry["source_sha256"]:
+        return None
+    if supplied_code and supplied_code != source:
+        return None
+    return source
