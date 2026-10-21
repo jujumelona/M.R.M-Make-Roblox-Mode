@@ -17,7 +17,7 @@ def render_host_peer_barter(module, proposal):
         return None
     owner_name = (module.name if module.kind == ModuleKind.SERVER_MODULE
                   else module.name.removesuffix("Client") + "Server")
-    owner = next((m for m in proposal.modules
+    owner = next((m for m in getattr(proposal, "modules", [])
                   if m.name == owner_name and m.kind == ModuleKind.SERVER_MODULE), None)
     if owner is None:
         return None
