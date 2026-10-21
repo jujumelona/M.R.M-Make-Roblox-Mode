@@ -311,12 +311,10 @@ end)
 review.Activated:Connect(function()
     reviewed = nil
     local response = callRemote("list")
-    if not response or not response.success or type(response.pending) ~= "table"
-        or #response.pending == 0 then
-        resultText.Text = "No pending offers"
+    if not response or not response.success then
+        resultText.Text = "Cannot load trades or owned assets"
         return
     end
-    reviewOffset = (reviewOffset % #response.pending) + 1
     if type(response.ownedItems) == "table" then
         local shown = {}
         for i, entry in ipairs(response.ownedItems) do
@@ -325,6 +323,11 @@ review.Activated:Connect(function()
         end
         itemsText.Text = #shown > 0 and table.concat(shown, " | ") or "No owned assets"
     end
+    if type(response.pending) ~= "table" or #response.pending == 0 then
+        resultText.Text = "No pending offers"
+        return
+    end
+    reviewOffset = (reviewOffset % #response.pending) + 1
     local offer = response.pending[reviewOffset]
     reviewed = offer.id
     resultText.Text = "Receive " .. tostring(offer.giveQty) .. " " .. tostring(offer.giveAsset)
