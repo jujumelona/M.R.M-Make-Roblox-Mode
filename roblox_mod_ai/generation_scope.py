@@ -27,6 +27,7 @@ from .host_capped_ship_parts import eligible_capped_ship_parts
 from .host_ship_owned_upgrades import eligible_ship_owned_upgrades
 from .host_performance_mode import eligible_performance_mode
 from .host_ship_part_catalog import eligible_ship_part_catalog
+from .host_peer_currency_exchange import eligible_peer_currency_exchange
 from .scaffold_policy import (
     single_host_action, single_client_action, single_passive_service,
 )
@@ -147,6 +148,24 @@ def generation_scope(proposal: Any) -> dict[str, Any]:
                     "The proposed ship builder does not have a verified host "
                     "performance publisher. The mode will reject requests until "
                     "a real server-owned installed-part performance exists."
+                ),
+            })
+
+    # One live-server call can settle both wallets without yielding, but
+    # separate player profile DataStore writes cannot commit atomically.
+    # Never describe a source-only host adapter as verified durable trading.
+    for module in proposal.modules:
+        if (module.kind == ModuleKind.SERVER_MODULE
+                and eligible_peer_currency_exchange(module, proposal) is not None):
+            unverified_dependencies.append({
+                "consumer": module.name,
+                "required": "atomic cross-player persistent settlement and crash recovery",
+                "status": "unverified_cross_player_persistence",
+                "reason": (
+                    "Host trade verifies both consented balances and mutates both in one "
+                    "non-yielding server session. PlayerDataManager persists each user "
+                    "separately. A crash between saves can create an inconsistent "
+                    "cross-player balance, so global atomic durability is NOT verified."
                 ),
             })
 
