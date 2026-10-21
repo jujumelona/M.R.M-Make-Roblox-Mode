@@ -232,7 +232,10 @@ def build_implementation_blueprint(proposal: Any) -> dict[str, Any]:
         ]
         if server_owners:
             implementation = " ".join(m.description for m in server_owners)
-            expected = str((dyn.get("acceptance_facets") or {}).get(facet, ""))
+            expected = (
+                str((dyn.get("acceptance_facets") or {}).get(facet, "")) + " " +
+                str((dyn.get("acceptance") or {}).get(atom.get("requirement_id"), ""))
+            )
             for mismatch in source_intent_conflicts(span, implementation + " " + expected):
                 blocked.append(str(facet) + ": implementation " + mismatch)
     # Exact text ownership is not semantic implementation. Previously a failed
