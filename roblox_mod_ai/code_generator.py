@@ -61,18 +61,17 @@ class LuauCodeGenerator:
                     "Blocked incomplete Roblox implementation blueprint before code generation: "
                     + "; ".join(blueprint_audit["errors"])
                 )
+        from .generation_scope import generation_scope
+        strategy_by_id = {
+            entry["module_id"]: entry["strategy"]
+            for entry in generation_scope(proposal)["modules"]
+        }
         completed_modules: list[RobloxModuleSpec] = []
         for mod in proposal.modules:
-            dynamic = proposal.game_design.get("dynamic_design") or {}
             # Keep standalone bulk generation and production orchestrator on
             # the same host/source ownership policy. The old list omitted new
             # declarative templates, so prior model code could override them.
-            from .generation_scope import generation_scope
-            strategy = next(
-                (entry["strategy"] for entry in generation_scope(proposal)["modules"]
-                 if entry["module_id"] == mod.module_id),
-                "",
-            )
+            strategy = strategy_by_id.get(mod.module_id, "")
             host_owned = host_source_must_regenerate(mod, strategy)
             if host_owned or not mod.code:
                 code = self.generate_with_self_correction(mod, proposal)
