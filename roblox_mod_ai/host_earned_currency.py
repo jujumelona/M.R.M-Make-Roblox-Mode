@@ -28,7 +28,17 @@ def matching_ledger(proposal: Any) -> tuple[str, str] | None:
         # would claim two incompatible host implementations and mask the
         # actual mining action. A projection ledger is a separate service.
         from .host_mining_nodes import mining_world_nodes
-        if mining_world_nodes(proposal, owner):
+        service_tokens = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", owner.name)
+        source_nodes = ((dynamic.get("module_world_objects") or {})
+                        .get(owner.module_id) or [])
+        is_mining_owner = (
+            re.search(r"\\b(?:mining|mine|gather|gathering|harvest|ore)\\b",
+                      service_tokens, re.I)
+            and re.search(r"\\b(?:mine|mining|gather|harvest|resource)\\w*\\b", desc)
+            and source_nodes
+            and mining_world_nodes(proposal, owner)
+        )
+        if is_mining_owner:
             continue
         if (not re.search(r"\b(?:currency|coins?|credits?)\s+balances?\b", desc)
                 or not re.search(r"\b(?:sole owner|server.authoritative|server[- ]owned)\b", desc)
