@@ -31,8 +31,12 @@ RENDERERS = (render_host_mining, render_host_trading, render_host_currency,
 
 
 def render_host_gameplay(module: RobloxModuleSpec, proposal: RobloxProposal) -> str | None:
-    results = [code for render in RENDERERS
+    results = [(render.__name__, code) for render in RENDERERS
                if (code := render(module, proposal)) is not None]
     if len(results) > 1:
-        raise ValueError("Multiple host adapters claim the same game mechanic: " + module.name)
-    return results[0] if results else None
+        owners = ", ".join(name for name, _ in results)
+        raise ValueError(
+            "HOST_ADAPTER_CONFLICT: " + module.name + " is claimed by " + owners
+            + "; split the source-owned responsibilities or tighten eligibility"
+        )
+    return results[0][1] if results else None
