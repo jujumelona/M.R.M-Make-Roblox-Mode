@@ -39,18 +39,33 @@ def eligible_currency_ship_sections(module: Any, proposal: Any) -> tuple[str, st
     if owner is None:
         return None
     prose = owner.description.casefold()
-    # Semantic contract, never a module ID, user prompt substring or example
-    # game. Resource-paid, upgrade-only and non-mutating ships belong elsewhere.
+    # Recognize two equivalent authored operations, not generated file names:
+    # (1) per-section create/replace/remove with paid-price reconciliation;
+    # (2) modular part creation/placement/removal with a paid refund.
+    # Both run through the same server-owned slot, price, ownership, and
+    # performance ledger. The host may expose *replace* as an extra operation,
+    # but a create/remove-only contract must not be sent to free-form Luau.
+    section_editor = (
+        re.search(r"\bsection\s+slots?\b|\bsections?\b.{0,40}\bslots?\b", prose)
+        and re.search(r"\bcreat\w*\b", prose)
+        and re.search(r"\breplac\w*\b", prose)
+        and re.search(r"\bremov\w*\b", prose)
+    )
+    part_editor = (
+        re.search(r"\b(?:modular\s+ship\s+parts?|ship\s+part\s+(?:creation|installation))\b", prose)
+        and re.search(r"\b(?:assembly\s+registry|installed\s+parts?|ship\s+assembly\s+state)\b", prose)
+        and re.search(r"\b(?:creat\w*|plac\w*|install\w*|add)\b", prose)
+        and re.search(r"\b(?:remov\w*|detach\w*)\b", prose)
+        and re.search(r"\b(?:deduct\w*|spend\w*|charge\w*)\b", prose)
+        and re.search(r"\b(?:validat\w*|reject\w*)\b", prose)
+    )
     if (not re.search(r"\b(?:ship|spaceship|vessel)\s+assembly\b", prose)
-            or not re.search(r"\bsection\s+slots?\b|\bsections?\b.{0,40}\bslots?\b", prose)
-            or not re.search(r"\bcreat\w*\b", prose)
-            or not re.search(r"\breplac\w*\b", prose)
-            or not re.search(r"\bremov\w*\b", prose)
+            or not (section_editor or part_editor)
             or not re.search(r"\b(?:currency|coins?|credits?)\b", prose)
             or not re.search(r"\b(?:cost|price)\b", prose)
-            or not re.search(r"\b(?:refund|return|value|delta)\b", prose)
+            or not re.search(r"\b(?:refund\w*|return\w*|value|delta)\b", prose)
             or not re.search(r"\bperformance\b", prose)
-            or not re.search(r"\b(?:persist|save|record)\w*\b", prose)):
+            or not re.search(r"\b(?:persist|sav\w*|record\w*)\b", prose)):
         return None
     design = getattr(proposal, "game_design", {}).get("dynamic_design") or {}
     routes = [(name, val) for name, val in (design.get("host_actions") or {}).items()
