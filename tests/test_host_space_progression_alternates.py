@@ -112,7 +112,7 @@ def test_launch_is_remote_function_but_prior_mode_event_remains_separate():
     assert "remote:FireServer()" not in src
     bootstrap = render_dynamic_server_bootstrap(p)
     assert bootstrap.count("remote.OnServerInvoke = function(player, ...)") == 3
-    assert 'WaitForChild("SpaceLaunchGateAndLaunchS9368211Action")' in bootstrap
+    assert 'WaitForChild("SpaceLaunchGateAndLaunchS9368211Action", 20)' in bootstrap
 
 
 def test_all_alternate_roles_pass_real_parser_static_checks():
