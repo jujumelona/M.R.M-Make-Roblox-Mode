@@ -130,7 +130,7 @@ def test_exact_remote_and_world_part_are_preserved_in_rojo(tmp_path):
         "SpaceModeResourceMiningAn0388601Action"]["$className"] == "RemoteFunction"
     bootstrap = render_dynamic_server_bootstrap(p)
     assert "remote.OnServerInvoke = function(player, ...)" in bootstrap
-    assert 'WaitForChild("SpaceModeResourceMiningAn0388601Action")' in bootstrap
+    assert 'WaitForChild("SpaceModeResourceMiningAn0388601Action", 20)' in bootstrap
 
 
 def test_no_client_server_luau_syntax_errors_in_uploaded_mining_shape():
