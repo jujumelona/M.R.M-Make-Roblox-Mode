@@ -204,8 +204,8 @@ def expand_semantic_facet(
                 entity = entity["name"]
             if (not isinstance(entity, str) or not entity.strip()
                     or len(entity.strip()) > 64
-                    or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_ -]*",
-                                        entity.strip())):
+                    or not re.fullmatch(r"[\w][\w -]*",
+                                        entity.strip(), flags=re.UNICODE)):
                 raise HostArchitectureError(
                     "world_entities must be short names, not geometry")
             clean_world.append(entity.strip())
