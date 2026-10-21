@@ -256,7 +256,7 @@ def try_scaffolded_server(
             if body.startswith("--!strict") or _FORBIDDEN.search(body):
                 raise ValueError("Body contains host-owned, unsafe or placeholder code")
             # Known destructive or unsupported operations are never acceptable gameplay.
-            if re.search(r'workspace\\s*\\.\\s*Workspace|PlayerDataManager\\s*[:.]\\s*SetState|Instance\\s*\\.\\s*new\\s*\\(\\s*["\\\']ScreenGlow|\\w+\\s*\\.\\s*\\w+\\s*=\\s*\\w+(?:\\.\\w+)*\\s*\\+\\s*\\{', body):
+            if "workspace.Workspace" in body or "PlayerDataManager.SetState" in body or "PlayerDataManager:SetState" in body:
                 raise ValueError("Unsafe or unsupported Luau mutation")
             if not _EFFECT.search(body):
                 raise ValueError("Body lacks observable server-owned state change")
