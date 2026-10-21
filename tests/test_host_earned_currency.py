@@ -245,3 +245,33 @@ def test_followup_trade_and_ship_slot_contracts_do_not_require_specific_names():
     strategies={x["name"]:x["strategy"] for x in generation_scope(p)["modules"]}
     assert strategies[trade.name]=="host_verified_template"
     assert strategies[parts.name]=="host_declarative_ship_part_catalog"
+
+
+
+def test_source_owned_mining_and_currency_module_is_not_claimed_as_two_services():
+    # The uploaded failure stopped BEFORE inference: a real mining source
+    # simultaneously looked like a currency balance owner.
+    from roblox_mod_ai.host_gameplay import render_host_gameplay
+    p, other_miner, _mine_ui, owner, _client = proposal_fixture()
+    owner.name = "ResourceMiningCurrencyAcc0388601Server"
+    owner.file_path = "src/server/" + owner.name + ".luau"
+    owner.description = (
+        "The server is the sole owner of currency balances and publishes "
+        "the authoritative client balance. On each earn event it rejects "
+        "duplicate or invalid earning transactions. The server validates "
+        "mining actions on nearby resource nodes, verifies gathering radius "
+        "and depletion, then awards earned currency and gathered resources."
+    )
+    d = p.game_design["dynamic_design"]
+    d["host_actions"]["CurrencyBalanceAction"]["service"] = owner.name
+    d["world_objects"].append({"name": "ResourceNode0388601", "class": "Part"})
+    d["module_world_objects"][owner.module_id] = ["ResourceNode0388601"]
+    assert render_host_mining(owner, p) is not None
+    assert matching_ledger(p) is None
+    source = render_host_gameplay(owner, p)
+    assert source == render_host_mining(owner, p)
+    assert 'coins.Value += 1' in source
+    role = next(x for x in generation_scope(p)["modules"]
+                if x["name"] == owner.name)
+    assert role["strategy"] == "host_verified_template"
+    assert LuauCodeGenerator(NoModel()).generate_with_self_correction(owner,p) == source
