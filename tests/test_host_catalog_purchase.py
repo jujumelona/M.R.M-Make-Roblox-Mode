@@ -115,6 +115,29 @@ def test_fail_closed_when_model_does_not_supply_valid_game_specific_data():
     assert len(model.calls) == 2
 
 
+
+def test_upgrade_market_uses_same_host_transaction_without_full_luau():
+    # An upgrade *market* is semantically different from a new ship-part
+    # installation. A purchase requires an already installed ship section.
+    p = _plan()
+    p.modules[0].description = (
+        "The server owns a catalog of purchasable ship upgrades at fixed "
+        "cost in earned game currency. Every purchase validates ownership "
+        "and the balance; purchased upgrades cannot be bought twice. "
+        "The upgrade adds a performance effect to the player's ship."
+    )
+    assert eligible_catalog_purchase(p.modules[0], p) is not None
+    assert eligible_catalog_purchase(p.modules[1], p) is not None
+    model = DataOnlyModel()
+    gen = LuauCodeGenerator(model)
+    s = gen.generate_module_code(p.modules[0], p)
+    c = gen.generate_module_code(p.modules[1], p)
+    assert len(model.calls) == 1
+    assert 'GetState(player, "RMMShipSections")' in s
+    assert "slot" in s and "coins.Value -= item.cost" in s
+    assert "remote:InvokeServer(item.id)" in c
+
+
 def test_irrelevant_plan_and_transport_never_become_host_owned_purchase():
     p = _plan()
     p.modules[0].description = "Server offers a menu of cosmetic clothes."
