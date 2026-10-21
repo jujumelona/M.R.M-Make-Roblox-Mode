@@ -198,3 +198,50 @@ def test_mode_world_action_never_claims_launch_or_unowned_part():
         "MadeUpPart":{"service":mode.name,"action_text":"Start"},
     }
     assert render_host_mode_world_action(mode,p) is None
+
+
+
+def test_followup_trade_and_ship_slot_contracts_do_not_require_specific_names():
+    from roblox_mod_ai.host_peer_barter import render_host_peer_barter
+    from roblox_mod_ai.host_ship_part_catalog import eligible_ship_part_catalog
+    p,mining,_,ledger,_=proposal_fixture()
+    trade=RobloxModuleSpec(
+        module_id="dyn_real_barter",
+        name="ArbitraryItemExchangeServer", kind=ModuleKind.SERVER_MODULE,
+        file_path="src/server/ArbitraryItemExchangeServer.luau",
+        roblox_service=RobloxService.SERVER_SCRIPT_SERVICE,
+        description=(
+            "The server owns the trade state and validates every exchange. "
+            "When a player submits a trade request, the server checks that "
+            "the player owns each offered item, that each requested item is "
+            "owned by the counterparty, and that quantities are positive integers. "
+            "On approval the server transfers the exact offered quantities "
+            "from the requester and the exact requested quantities from the "
+            "counterparty and records the outcome."
+        ),
+    )
+    parts=RobloxModuleSpec(
+        module_id="dyn_slot_builder",
+        name="ArbitraryPartRegistryServer",kind=ModuleKind.SERVER_MODULE,
+        file_path="src/server/ArbitraryPartRegistryServer.luau",
+        roblox_service=RobloxService.SERVER_SCRIPT_SERVICE,
+        description=(
+            "The server owns the modular spaceship assembly state. It validates "
+            "each part-selection request against the player's owned currency "
+            "and the current ship's available slots, then applies the selected "
+            "part to the ship's part registry, updates the ship's performance "
+            "stats and records the resulting build state. Invalid selections "
+            "are rejected with a clear reason."
+        ),
+    )
+    p.modules.extend([trade,parts])
+    d=p.game_design["dynamic_design"]
+    d["host_actions"]["TradeAction"]={"service":trade.name,"kind":"RemoteFunction"}
+    d["remotes"]["TradeAction"]="RemoteFunction"
+    d["host_actions"]["ShipPartAction"]={"service":parts.name,"kind":"RemoteFunction"}
+    d["remotes"]["ShipPartAction"]="RemoteFunction"
+    assert render_host_peer_barter(trade,p) is not None
+    assert eligible_ship_part_catalog(parts,p) is not None
+    strategies={x["name"]:x["strategy"] for x in generation_scope(p)["modules"]}
+    assert strategies[trade.name]=="host_verified_template"
+    assert strategies[parts.name]=="host_declarative_ship_part_catalog"
