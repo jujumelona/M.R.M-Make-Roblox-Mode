@@ -80,6 +80,23 @@ def test_peer_barter_rejects_single_sided_trade_or_unrelated_mechanics():
     assert render_host_peer_barter(server, plan) is None
 
 
+
+def test_bilateral_trade_never_collides_with_fixed_price_or_market_broker():
+    server, client, plan = make_plan()
+    server.name = "ResourceTradingExchangeServer"
+    client.name = "ResourceTradingExchangeClient"
+    server.description = (
+        "A trade with a counterparty: both players validate each other's "
+        "resource inventory and earned currency balances, then exchange "
+        "agreed item quantities without accepting stale requests."
+    )
+    plan.game_design["dynamic_design"]["host_actions"]["PlayerAssetExchangeAction"]["service"] = server.name
+    expected_server = render_host_peer_barter(server, plan)
+    expected_client = render_host_peer_barter(client, plan)
+    assert expected_server is not None and expected_client is not None
+    assert render_host_gameplay(server, plan) == expected_server
+    assert render_host_gameplay(client, plan) == expected_client
+
 def test_peer_barter_luau_static_analysis_for_both_roles():
     server, client, plan = make_plan()
     analyzer = LuauStaticAnalyzer()
