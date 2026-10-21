@@ -13,6 +13,7 @@ from .host_currency import render_host_currency
 from .host_earned_currency import render_host_earned_currency
 from .host_peer_trade import render_host_peer_trade
 from .host_peer_barter import render_host_peer_barter
+from .host_peer_currency_exchange import render_host_peer_currency_exchange
 from .host_progress_dashboard import render_host_progress_dashboard
 from .host_mode_lock import render_host_mode_lock
 from .host_mode_world_action import render_host_mode_world_action
@@ -25,6 +26,7 @@ from .spec import RobloxModuleSpec, RobloxProposal
 RENDERERS = (render_host_mining, render_host_trading, render_host_currency,
              render_host_earned_currency,
              render_host_peer_trade, render_host_peer_barter,
+             render_host_peer_currency_exchange,
              render_host_space_progression,
              render_host_world_setup, render_host_upgrade_purchase,
              render_host_progress_dashboard, render_host_mode_lock,
