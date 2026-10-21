@@ -80,6 +80,9 @@ def test_part_catalog_is_full_host_code_from_one_small_data_reply():
     assert 'GetState(player, "RMMShipSections")' in server
     assert 'FindFirstChild("Coins")' in server
     assert 'coins.Value -= price' in server
+    assert 'while occupiedLots[lot] do lot += 1 end' in server
+    assert 'occupiedLots[lot] = nil' in server
+    assert '(player.UserId % 17)' not in server
     assert 'existing and existing.owned' in server
     assert 'profile.sections[part.slot] = {owned = true' in server
     assert 'player:SetAttribute("RMMShipPerformance", performance)' in server
