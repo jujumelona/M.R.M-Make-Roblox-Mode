@@ -192,6 +192,24 @@ def expand_semantic_facet(
         if "observable_result" not in system:
             observable = _recover_observable_result(server, client, interaction)
         world = system.get("world_entities", [])
+        # Some constrained-output model providers use name-only objects even
+        # when the requested JSON schema says strings. Normalize only this
+        # representation. Geometry, Roblox class, IDs and transforms are NEVER
+        # trusted as game-specific model input.
+        if not isinstance(world, list) or len(world) > 24:
+            raise HostArchitectureError("world_entities must be a short names array")
+        clean_world = []
+        for entity in world:
+            if isinstance(entity, dict) and set(entity) == {"name"}:
+                entity = entity["name"]
+            if (not isinstance(entity, str) or not entity.strip()
+                    or len(entity.strip()) > 64
+                    or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_ -]*",
+                                        entity.strip())):
+                raise HostArchitectureError(
+                    "world_entities must be short names, not geometry")
+            clean_world.append(entity.strip())
+        world = clean_world
         choices = system.get("action_choices", [])
         if (not isinstance(choices, list) or len(choices) > 12
                 or any(not isinstance(item, dict)
@@ -247,11 +265,6 @@ def expand_semantic_facet(
             raise HostArchitectureError(
                 "Host button is for zero-argument global actions only; "
                 "targeted world interactions need custom input")
-        if not isinstance(world, list) or any(
-            not isinstance(item, str) or not item.strip() for item in world
-        ):
-            raise HostArchitectureError("world_entities must be short names, not geometry")
-
         # Do not silently write an unreachable server-only module for a
         # player-driven mechanic. The host can wire a Remote or world prompt,
         # but interaction='none' explicitly tells it to wire neither.
