@@ -165,7 +165,7 @@ class LuauStaticAnalyzer:
                     )
                 details = "\n".join([lint.stdout, lint.stderr])
                 if lint.returncode != 0 and not re.search(
-                        r"(?:error|warning)\\[(?:undefined_variable|unscoped_variables)\\]",
+                        r"(?:error|warning)\[(?:undefined_variable|unscoped_variables)\]",
                         details, re.I):
                     diagnostics.append(LuauDiagnostic(
                         file_path=file_path, line_number=1,
