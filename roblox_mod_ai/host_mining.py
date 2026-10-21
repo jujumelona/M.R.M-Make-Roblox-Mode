@@ -12,7 +12,21 @@ import re
 from .spec import ModuleKind, RobloxModuleSpec, RobloxProposal
 from .host_mining_nodes import mining_world_nodes
 
-_NODES = re.compile(r"resource.*node|ore.*node|ore.*deposit", re.I)
+_NODES = re.compile(r"resource.*(?:node|deposit)|ore.*(?:node|deposit)", re.I)
+
+
+def mining_rewards_currency(owner: RobloxModuleSpec, proposal: RobloxProposal) -> bool:
+    """True only if the accepted plan explicitly sources Coins from gathering."""
+    description = owner.description.casefold()
+    if any(token in description for token in ("currency", "coin", "credit")):
+        return True
+    return any(
+        peer.kind == ModuleKind.SERVER_MODULE and peer.name != owner.name
+        and re.search(r"\\b(?:resource[- ]gathering|mining|gathering)\\s+actions?\\b", peer.description, re.I)
+        and re.search(r"\\b(?:award|grant|credit|earn)\\w*\\b", peer.description, re.I)
+        and re.search(r"\\b(?:currency|coins?|credits?)\\b", peer.description, re.I)
+        for peer in getattr(proposal, "modules", [])
+    )
 
 
 def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> str | None:
@@ -28,7 +42,7 @@ def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> st
     service_tokens = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", server)
     if (not re.search(r"\b(?:mining|mine|ore|gather|gathering|harvest|harvesting)\b", service_tokens, re.I)
             or not re.search(r"mining|mine|ore|gather|harvest|resource", description)
-            or not any(token in description for token in ("currency", "coin", "credit"))):
+            or not re.search(r"\\b(?:validat|radius|distance|proximity|range|node|deposit|deplet|cooldown|gather)\\w*\\b", description)):
         return None
     design = proposal.game_design.get("dynamic_design") or {}
     # A mineable source-owned Part is the actual evidence of the resource.
@@ -47,6 +61,7 @@ def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> st
     # format the host will provide or duplicate player-facing transports.
     if len(routes) + len(world_routes) != 1:
         return None
+    reward_currency = mining_rewards_currency(owner or module, proposal)
     if world_routes:
         world_name = world_routes[0][0]
         if (module.kind != ModuleKind.SERVER_MODULE
@@ -56,19 +71,22 @@ def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> st
         # Bootstrap already installs ProximityPrompt.Triggered and passes the
         # real target Part to handleAction(player, services, targetPart).
         # Do not create a client or Remote for this mode.
-        return _SERVER.replace("__NODES__", "{" + json.dumps(world_name) + "}")
+        template = _SERVER if reward_currency else _SERVER_RESOURCES_ONLY
+        return template.replace("__NODES__", "{" + json.dumps(world_name) + "}")
     if routes[0][1].get("kind") != "RemoteFunction":
         return None
     remote = routes[0][0]
     lua_nodes = "{" + ", ".join(json.dumps(node) for node in nodes) + "}"
     no_args = routes[0][1].get("max_args") == 0
     if module.kind == ModuleKind.SERVER_MODULE:
-        return (_SERVER_NEAREST if no_args else _SERVER).replace("__NODES__", lua_nodes)
+        template = (_SERVER_NEAREST if no_args else _SERVER) if reward_currency else (_SERVER_RESOURCES_NEAREST if no_args else _SERVER_RESOURCES_ONLY)
+        return template.replace("__NODES__", lua_nodes)
     if not module.file_path.startswith("src/client/"):
         return None
-    return ((_CLIENT_NEAREST if no_args else _CLIENT)
-            .replace("__NODES__", lua_nodes)
-            .replace("__REMOTE__", json.dumps(remote)))
+    ui = _CLIENT_NEAREST if no_args else _CLIENT
+    if not reward_currency:
+        ui = _CLIENT_RESOURCES_NEAREST if no_args else _CLIENT_RESOURCES_ONLY
+    return ui.replace("__NODES__", lua_nodes).replace("__REMOTE__", json.dumps(remote))
 
 
 _SERVER = r'''--!strict
@@ -122,6 +140,10 @@ function Service.handleAction(player, services, ...)
     if (root.Position - part.Position).Magnitude > MAX_RANGE then return false end
     local progress = services.PlayerDataManager.GetState(player, "RMMInventory")
     if not progress then return false end
+    local balance = progress.resources
+    if balance == nil then balance = 0 end
+    if type(balance) ~= "number" or balance ~= balance or balance < 0
+        or balance % 1 ~= 0 or balance >= 2147483647 then return false end
     local leaderstats = player:FindFirstChild("leaderstats")
     local coins = leaderstats and leaderstats:FindFirstChild("Coins")
     if not coins or not coins:IsA("IntValue") or coins.Value > 2147483646 then return false end
@@ -130,7 +152,7 @@ function Service.handleAction(player, services, ...)
     recent[player] = now
     node.remaining -= 1
     coins.Value += 1
-    progress.resources = (type(progress.resources) == "number" and progress.resources or 0) + 1
+    progress.resources = balance + 1
     part:SetAttribute("RemainingResources", node.remaining)
     part:SetAttribute("ResourceDepleted", node.remaining == 0)
     return {success = true, remaining = node.remaining,
@@ -234,3 +256,34 @@ _CLIENT_NEAREST = _CLIENT.replace(
     'remote:InvokeServer(target)', 'remote:InvokeServer()'
 )
 assert _CLIENT_NEAREST != _CLIENT, "Host mining client ABI changed"
+
+
+# Resource-only harvesting uses the same validated world source and the same
+# host-owned RMMInventory namespace, without inventing a money reward.
+_RESOURCE_COIN_CHECK = '''    local leaderstats = player:FindFirstChild("leaderstats")
+    local coins = leaderstats and leaderstats:FindFirstChild("Coins")
+    if not coins or not coins:IsA("IntValue") or coins.Value > 2147483646 then return false end
+'''
+assert _RESOURCE_COIN_CHECK in _SERVER, "Host mining ledger ABI changed"
+_SERVER_RESOURCES_ONLY = (_SERVER
+    .replace(_RESOURCE_COIN_CHECK, "")
+    .replace('    coins.Value += 1\n', "")
+    .replace('credits = coins.Value, resources = progress.resources',
+             'resources = progress.resources'))
+assert "coins.Value" not in _SERVER_RESOURCES_ONLY
+
+_SERVER_RESOURCES_NEAREST = (_SERVER_NEAREST
+    .replace(_RESOURCE_COIN_CHECK, "")
+    .replace('    coins.Value += 1\n', "")
+    .replace('credits = coins.Value, resources = progress.resources',
+             'resources = progress.resources'))
+assert "coins.Value" not in _SERVER_RESOURCES_NEAREST
+
+_CLIENT_RESOURCES_ONLY = _CLIENT.replace(
+    'status.Text = "Coins: " .. tostring(result.credits) ..\n            " | Ore: " .. tostring(result.resources) ..',
+    'status.Text = "Resources: " .. tostring(result.resources) ..')
+assert _CLIENT_RESOURCES_ONLY != _CLIENT, "Mining HUD ABI changed"
+_CLIENT_RESOURCES_NEAREST = _CLIENT_NEAREST.replace(
+    'status.Text = "Coins: " .. tostring(result.credits) ..\n            " | Ore: " .. tostring(result.resources) ..',
+    'status.Text = "Resources: " .. tostring(result.resources) ..')
+assert _CLIENT_RESOURCES_NEAREST != _CLIENT_NEAREST, "Mining HUD ABI changed"
