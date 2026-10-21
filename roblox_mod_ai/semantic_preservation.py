@@ -48,8 +48,21 @@ def source_intent_conflicts(source_span: str, described_intent: str) -> list[str
     source = str(source_span or "").casefold()
     text = str(described_intent or "").casefold()
     errors = []
-    if _COLONIZATION.search(source) and not _INTENT_COLONY.search(text):
-        errors.append("SETTLEMENT_DROPPED: source requests persistent colonization/settlement")
+    if _COLONIZATION.search(source):
+        # Merely displaying a colony menu is not colonization. Require a
+        # meaningful state-changing action, not the noun alone.
+        durable_action = re.search(
+            r"persist\w*|sav\w*|record\w*|claim\w*|found(?:s|ed|ing)?|"
+            r"establish\w*|construct\w*|creat\w*|grant\w*|settle\w*|"
+            r"marks?\s+(?:the\s+)?planet\s+(?:as\s+)?coloniz\w*|"
+            r"식민지화(?:하|되)|정착(?:지)?\s*건설|정착(?:지)?\s*기록",
+            text, re.I,
+        )
+        if not _INTENT_COLONY.search(text) or not durable_action:
+            errors.append(
+                "SETTLEMENT_DROPPED: source requires a persistent settlement "
+                "state change, not only a colony label or UI"
+            )
     if _HOSTILE.search(source) and _COMBAT.search(source):
         if not _INTENT_HOSTILE.search(text):
             errors.append("NPC_COMBAT_DROPPED: enemy combat changed into another target")
