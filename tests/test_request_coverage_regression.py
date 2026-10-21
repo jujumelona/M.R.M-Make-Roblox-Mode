@@ -398,3 +398,22 @@ def test_source_classifier_rejects_category_label_as_gameplay_intent():
     assert valid_chunk_classification(specific, chunks)["chunk-001"]["intent"].startswith(
         "Allow players to establish"
     )
+
+
+def test_short_source_chunks_preserve_separate_independently_requested_mechanics():
+    """Host word partition must not merge separate gameplay obligations."""
+    from roblox_mod_ai.source_decomposition import source_chunks
+
+    examples = (
+        ("우주모드 인데 자원파밍 돈모으기 거래 등으로", "자원파밍", "거래"),
+        ("우주로 나가면 다른행성의 특수 광물 외게인과 싸움", "광물", "외게인"),
+    )
+    for source, left, right in examples:
+        segments = source_chunks(source)
+        assert " ".join(segments) == source
+        assert span_coverage(source, segments) >= .99
+        assert any(left in segment for segment in segments)
+        assert any(right in segment for segment in segments)
+        assert all(not (left in segment and right in segment)
+                   for segment in segments)
+
