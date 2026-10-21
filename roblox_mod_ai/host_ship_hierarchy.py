@@ -174,7 +174,7 @@ def try_ship_hierarchy(module: Any, proposal: Any, router: Any = None) -> str | 
     rows = ",\n".join(
         "[" + json.dumps(x["id"]) + "] = {parent = " + json.dumps(x["parent"]) +
         ", cost = " + str(x["cost"]) + ", power = " + str(x["performance"]) +
-        ", order = " + str(i+1) + ", options = {" +
+        ", order = " + str(i+1) + ", default = " + json.dumps(x["configurations"][0]) + ", options = {" +
         ", ".join("[" + json.dumps(opt) + "] = true" for opt in x["configurations"]) +
         "}}" for i,x in enumerate(data["sections"])
     )
@@ -359,10 +359,8 @@ function Service.handleAction(player, services, ...)
         if resources < def.cost then return reject("insufficient_resources") end
         if not shipFor(player) then return reject("ship_model_unavailable") end
         inventory.resources = resources - def.cost
-        local default = nil
-        for option in pairs(def.options) do default = option; break end
         sections[payload] = {owned = true, parent = def.parent,
-            configuration = default, performance = def.power, level = 1}
+            configuration = def.default, performance = def.power, level = 1}
         redraw(player, sections)
         local result = publish(player, sections)
         return {success = true, action = "add", added = payload,
