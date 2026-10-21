@@ -111,6 +111,30 @@ def test_uploaded_bilateral_offer_contract_is_host_owned_not_llm_body():
         assert not errors,[(d.rule,d.line_number,d.message) for d in errors]
 
 
+
+def test_seller_buyer_ledger_is_selected_without_model_generation():
+    """Regression: distinct seller/buyer offer inventory contracts need the host."""
+    p, mine, server, client = fixture()
+    server.description = (
+        "The server owns the entire trade flow: it validates each player's "
+        "offered and wanted item lists against their current inventory. "
+        "On a confirmed trade the server atomically removes offered items "
+        "from the seller's inventory, adds wanted items to the buyer's "
+        "inventory, records the trade in player data, and rejects duplicates."
+    )
+    assert is_bilateral_asset_exchange(server.description)
+    assert render_host_peer_barter(server, p) is not None
+    assert render_host_peer_barter(client, p) is not None
+    for mod in (server, client):
+        selected = next(row for row in generation_scope(p)["modules"]
+                        if row["name"] == mod.name)
+        assert selected["strategy"] == "host_verified_template"
+        source = LuauCodeGenerator(FailOnLuau()).generate_with_self_correction(mod, p)
+        assert source == render_host_peer_barter(mod, p)
+        assert not [error for error in LuauStaticAnalyzer().analyze_source(
+            source, mod.file_path) if error.severity == "ERROR"]
+
+
 def test_source_ownership_required_and_no_market_as_two_party_trade():
     p, mine, server, client=fixture()
     p.modules.remove(mine)
