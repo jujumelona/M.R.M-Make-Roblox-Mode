@@ -16,6 +16,7 @@ from .scaffold_policy import (single_host_action, single_client_action,
                               single_passive_service, scaffold_exhausted,
                               is_host_scaffolded_source)
 from .host_gameplay import render_host_gameplay
+from .generation_provenance import host_source_must_regenerate
 from .host_mode_navigation import eligible_mode_navigation, try_mode_navigation
 from .host_mode_unlock import eligible_mode_unlock, try_mode_unlock
 from .host_catalog_purchase import eligible_catalog_purchase, try_catalog_purchase
@@ -63,27 +64,16 @@ class LuauCodeGenerator:
         completed_modules: list[RobloxModuleSpec] = []
         for mod in proposal.modules:
             dynamic = proposal.game_design.get("dynamic_design") or {}
-            host_owned = (
-                mod.module_id == "mod_dynamic_server_bootstrap"
-                or (mod.module_id.startswith("dyn_")
-                    and mod.name in dynamic.get("host_client_actions", {}))
-                or render_host_gameplay(mod, proposal) is not None
-                or eligible_mode_navigation(mod, proposal) is not None
-                or eligible_mode_unlock(mod, proposal) is not None
-                or eligible_catalog_purchase(mod, proposal) is not None
-                or eligible_declarative_upgrade(mod, proposal) is not None
-                or eligible_ship_sections(mod, proposal) is not None
-                or eligible_ship_slot_configuration(mod, proposal) is not None
-                or eligible_ship_slot_levels(mod, proposal) is not None
-                or eligible_ship_launch_gate(mod, proposal) is not None
-                or eligible_ship_hierarchy(mod, proposal) is not None
-                or eligible_ship_reconfiguration(mod, proposal) is not None
-                or eligible_ship_attachment(mod, proposal) is not None
-                or eligible_capped_ship_parts(mod, proposal) is not None
-                or eligible_ship_owned_upgrades(mod, proposal) is not None
-                or eligible_ship_part_catalog(mod, proposal) is not None
-                or eligible_ship_purchase_facade(mod, proposal) is not None
+            # Keep standalone bulk generation and production orchestrator on
+            # the same host/source ownership policy. The old list omitted new
+            # declarative templates, so prior model code could override them.
+            from .generation_scope import generation_scope
+            strategy = next(
+                (entry["strategy"] for entry in generation_scope(proposal)["modules"]
+                 if entry["module_id"] == mod.module_id),
+                "",
             )
+            host_owned = host_source_must_regenerate(mod, strategy)
             if host_owned or not mod.code:
                 code = self.generate_with_self_correction(mod, proposal)
                 mod.code = code
