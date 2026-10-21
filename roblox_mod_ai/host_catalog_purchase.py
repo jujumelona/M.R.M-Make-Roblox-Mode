@@ -52,7 +52,7 @@ def eligible_catalog_purchase(module: Any, proposal: Any) -> tuple[str, str] | N
     if (not re.search(r"\b(?:purchas(?:e|es|ing)|buy|buying)\b", description)
             or "catalog" not in description
             or not re.search(r"\b(?:currency|coins?|credits?)\b", description)
-            or not re.search(r"\b(?:spaceship|ship)\s+part\b", description)
+            or not re.search(r"\b(?:spaceship|ship)\s+(?:parts?|upgrades?)\b", description)
             or not re.search(r"\b(?:own|owned|ownership)\b", description)
             or not re.search(r"\b(?:validat|verif|check|reject)\w*\b", description)):
         return None
