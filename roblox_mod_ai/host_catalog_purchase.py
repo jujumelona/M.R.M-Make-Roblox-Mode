@@ -112,6 +112,13 @@ def _read_catalog(proposal: Any, server: str, router: Any) -> list[dict[str, Any
     if router is None or not hasattr(router, "complete_json"):
         raise ValueError("A declarative catalog requires small JSON model output")
     owner = next(m for m in proposal.modules if m.name == server)
+    # Purchase choices must use installed part slots authored by the build
+    # system, not a second set of invented identifiers. This metadata exists
+    # when a prior host ship-part service has produced its validated catalog.
+    part_catalogs = proposal.game_design.get("_host_ship_part_catalogs") or {}
+    actual_slots = sorted({part["slot"] for rows in part_catalogs.values()
+                           if isinstance(rows, list) for part in rows
+                           if isinstance(part, dict) and isinstance(part.get("slot"), str)})
     instructions = (
         "Return ONLY a short JSON list of 1-6 purchasable GAME-SPECIFIC "
         "catalog entries; this is DATA, NOT Luau code. Each entry needs "
@@ -120,6 +127,8 @@ def _read_catalog(proposal: Any, server: str, router: Any) -> list[dict[str, Any
         "effect (damage, capacity, speed, shield), bonus (positive integer). "
         "Do not invent Roblox methods, code, remotes, game currency grants, "
         "or engine boilerplate. Gameplay requirement: " + owner.description[:900]
+        + ("\\nApproved actual ship section slot IDs (choose ONLY these): "
+           + ", ".join(actual_slots) if actual_slots else "")
     )
     last_error = ""
     for _ in range(2):
@@ -130,6 +139,9 @@ def _read_catalog(proposal: Any, server: str, router: Any) -> list[dict[str, Any
                 json_schema=_SCHEMA,
             )
             values = _validated_entries(raw)
+            if actual_slots and any(item["slot"] not in actual_slots for item in values):
+                raise ValueError("Purchase item refers to a slot never installed by the host ship catalog; "
+                                 "approved slots: " + ", ".join(actual_slots))
             catalogs[server] = values
             return values
         except Exception as exc:
