@@ -23,7 +23,8 @@ def render_host_peer_barter(module, proposal):
         return None
     prose = owner.description.casefold()
     if (not re.search(r"\b(?:trad(?:e|es|ing)|exchang(?:e|es|ing)|barter)\b", prose)
-            or not re.search(r"\b(?:two players|both players|both sides)\b", prose)
+            or not re.search(r"\b(?:two players|both players|both sides|two[- ]party|"
+                             r"player[- ]to[- ]player|peer[- ]to[- ]peer)\b", prose)
             or not re.search(r"\b(?:resource|item|inventory|balance)", prose)
             or not re.search(r"\b(?:validat|verif|check|reject)", prose)):
         return None
