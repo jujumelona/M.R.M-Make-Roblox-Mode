@@ -270,5 +270,13 @@ player:GetAttributeChangedSignal("RMMModeShipPerformance"):Connect(function()
         statusText.Text = "Ship performance: " .. tostring(score) .. "/" .. tostring(__THRESHOLD__)
     end
 end)
+-- Builder/upgrade services change only server-owned attributes; refresh the
+-- validated mode state when real installed-part performance changes.
+player:GetAttributeChangedSignal("RMMShipPerformance"):Connect(function()
+    task.defer(function() call("status") end)
+end)
+player:GetAttributeChangedSignal("RMMShipAssemblyPerformance"):Connect(function()
+    task.defer(function() call("status") end)
+end)
 task.defer(function() call("status") end)
 '''
