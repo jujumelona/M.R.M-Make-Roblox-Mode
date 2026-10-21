@@ -97,6 +97,30 @@ def test_bilateral_trade_never_collides_with_fixed_price_or_market_broker():
     assert render_host_gameplay(server, plan) == expected_server
     assert render_host_gameplay(client, plan) == expected_client
 
+
+def test_unmatched_small_model_action_receives_actual_shared_economy_api():
+    from roblox_mod_ai.host_service_codegen import try_scaffolded_server
+    server, _, plan = make_plan()
+
+    class CapturingCoder:
+        def __init__(self):
+            self.prompts = []
+
+        def complete(self, prompt, **_kwargs):
+            self.prompts.append(prompt)
+            return "invalid body -- no real mutation"
+
+    router = CapturingCoder()
+    result = try_scaffolded_server(server, plan, router, LuauStaticAnalyzer())
+    assert result is None
+    assert router.prompts
+    assert all('GetState(player, "RMMInventory").resources' in p
+               for p in router.prompts)
+    assert all('player.leaderstats.Coins.Value' in p for p in router.prompts)
+    assert all("Do NOT call nonexistent trading methods" in p
+               for p in router.prompts)
+
+
 def test_peer_barter_luau_static_analysis_for_both_roles():
     server, client, plan = make_plan()
     analyzer = LuauStaticAnalyzer()
