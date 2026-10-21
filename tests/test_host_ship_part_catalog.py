@@ -134,3 +134,22 @@ def test_server_and_client_share_cached_part_catalog_without_more_inference():
     assert server
     assert try_ship_part_catalog(p.modules[1], p, None)
     assert len(router.calls) == 1
+
+
+
+def test_invalid_host_owned_source_never_escalates_to_model_repair():
+    from types import SimpleNamespace
+    p = make_currency_ship_plan()
+    model = CatalogOnly()
+    coder = LuauCodeGenerator(model)
+
+    class BrokenSourceAnalyzer:
+        def analyze_source(self, code, file_path=""):
+            return [SimpleNamespace(
+                rule="LUAU_PARSER_SYNTAX", file_path=file_path, line_number=2,
+                message="invalid template", severity="ERROR")]
+
+    coder.analyzer = BrokenSourceAnalyzer()
+    with pytest.raises(ValueError, match="Host-owned Luau template failed"):
+        coder.generate_with_self_correction(p.modules[0], p)
+    assert len(model.calls) == 1
