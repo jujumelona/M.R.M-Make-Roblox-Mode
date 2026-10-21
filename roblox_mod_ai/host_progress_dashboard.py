@@ -29,7 +29,7 @@ def eligible_progress_dashboard(module: Any, proposal: Any) -> tuple[str, str] |
             or not re.search(r"\b(?:state|status)\b", desc)
             or not re.search(r"\b(?:currency|coins?|credits?)\b", desc)
             or not re.search(r"\b(?:ship|vehicle|vessel)\b", desc)
-            or not re.search(r"\b(?:upgrade|performance)\b", desc)
+            or not re.search(r"\b(?:upgrade|performance)\w*\b", desc)
             or not re.search(r"\b(?:expand|expansion|settlement|coloniz)\w*\b", desc)):
         return None
     # Only a coordinating facade: independent feature owners must actually
