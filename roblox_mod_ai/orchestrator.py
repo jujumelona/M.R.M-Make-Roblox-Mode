@@ -368,14 +368,27 @@ class RobloxProductionOrchestrator:
                     path = output_dir / module.file_path
                     fingerprint = checkpoint_signature(module)
                     stored = entries.get(module.file_path, {})
-                    if (not module.code and path.is_file()
-                            and isinstance(stored, dict)
-                            and stored.get("input_sha256") == fingerprint):
-                        previous = path.read_text(encoding="utf-8")
-                        if (hashlib.sha256(previous.encode("utf-8")).hexdigest() ==
-                                stored.get("source_sha256")
-                                and not generated_module_errors(
-                                    module, proposal, previous, self.analyzer)):
+                    from .generation_provenance import trusted_checkpoint_source
+                    previous = trusted_checkpoint_source(
+                        path, stored, fingerprint,
+                        module.code if module.module_id.startswith("dyn_")
+                        and not is_host_generated and module.code else None,
+                    )
+                    if (module.module_id.startswith("dyn_")
+                            and not is_host_generated and module.code
+                            and previous is None):
+                        # Imported proposal_partial.json can contain previously
+                        # generated *model* code. Never trust those bytes without
+                        # a checkpoint matching every source file and ABI.
+                        module.code = ""
+                        trajectory.record(
+                            "generation", "discard untrusted inline code " + module.file_path,
+                            {"reason": "No matching signed source checkpoint"},
+                            passed=True,
+                        )
+                    if not module.code and previous is not None:
+                        if not generated_module_errors(
+                                module, proposal, previous, self.analyzer):
                             module.code = previous
                             trajectory.record("generation", "resume " + module.file_path,
                                               {"source_bytes": len(previous),
