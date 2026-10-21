@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import re
 
-from .host_mining import render_host_mining
+from .host_mining import render_host_mining, mining_rewards_currency
 from .spec import ModuleKind, RobloxModuleSpec, RobloxProposal
 
 
@@ -27,6 +27,7 @@ def render_host_currency(module: RobloxModuleSpec, proposal: RobloxProposal) -> 
         return None
     # This observer must have a real server-authoritative earning path.
     if not any(render_host_mining(peer, proposal) is not None
+               and mining_rewards_currency(peer, proposal)
                for peer in proposal.modules
                if peer.kind == ModuleKind.SERVER_MODULE):
         return None
