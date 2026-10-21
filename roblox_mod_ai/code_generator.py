@@ -82,8 +82,11 @@ class LuauCodeGenerator:
                 f"{d.file_path}:{d.line_number} [{d.rule}] {d.message}"
                 for d in errors
             )
-            if render_host_gameplay(module, proposal) is not None:
-                raise ValueError("Host gameplay template failed static checks; fix the host template: " + report)
+            if (render_host_gameplay(module, proposal) is not None
+                    or eligible_catalog_purchase(module, proposal) is not None
+                    or eligible_ship_sections(module, proposal) is not None
+                    or eligible_ship_part_catalog(module, proposal) is not None):
+                raise ValueError("Host-owned Luau template failed static checks; fix host source: " + report)
             if is_host_scaffolded_source(code):
                 # The model authored only a bounded body. Full-module repair
                 # would discard the host shell and repeat the 9B failure.
