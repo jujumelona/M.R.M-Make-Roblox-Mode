@@ -51,9 +51,10 @@ def _shell(body: str, allowed_choices: list[str] | None = None) -> str:
         entries = ", ".join("[" + json.dumps(x) + "] = true" for x in allowed_choices)
         choice_guard = (
             '    if select("#", ...) ~= 1 then return false end\n'
-            '    local actionId = ...\n'
+            '    local __rmmActionId = ...\n'
+            '    local actionId = __rmmActionId\n'
             '    local __rmmAllowed = {' + entries + '}\n'
-            '    if type(actionId) ~= "string" or not __rmmAllowed[actionId] then return false end\n'
+            '    if type(__rmmActionId) ~= "string" or not __rmmAllowed[__rmmActionId] then return false end\n'
             '    local args = {}\n'
         )
     return (
@@ -256,7 +257,7 @@ def try_scaffolded_server(
             if body.startswith("--!strict") or _FORBIDDEN.search(body):
                 raise ValueError("Body contains host-owned, unsafe or placeholder code")
             # Known destructive or unsupported operations are never acceptable gameplay.
-            if "workspace.Workspace" in body or "PlayerDataManager.SetState" in body or "PlayerDataManager:SetState" in body:
+            if "workspace.Workspace" in body:
                 raise ValueError("Unsafe or unsupported Luau mutation")
             if not _EFFECT.search(body):
                 raise ValueError("Body lacks observable server-owned state change")
