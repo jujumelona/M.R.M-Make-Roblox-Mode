@@ -36,6 +36,13 @@ def eligible_declarative_upgrade(module: Any, proposal: Any) -> tuple[str, str] 
     if owner is None:
         return None
     desc = owner.description.casefold()
+    # Purchasing a physical ship part and installing it into saved assembly
+    # slots is NOT a generic weapon/crew/performance upgrade. That action
+    # must go through the one authoritative ship-section builder instead.
+    if (re.search(r"\b(?:ship|spaceship)\s+assembly\s+state\b", desc)
+            and re.search(r"\bparts?\s+purchas\w*\b", desc)
+            and re.search(r"\b(?:adds?|installs?)\s+(?:it|the\s+part)\s+to\b", desc)):
+        return None
     if (not re.search(r"\bpurchas\w*\b", desc)
             or not re.search(r"\bupgrades?\b", desc)
             or not re.search(r"\bweapon\b", desc)
