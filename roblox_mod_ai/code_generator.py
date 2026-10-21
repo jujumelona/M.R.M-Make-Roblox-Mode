@@ -17,6 +17,7 @@ from .scaffold_policy import (single_host_action, single_client_action,
                               is_host_scaffolded_source)
 from .host_gameplay import render_host_gameplay
 from .host_catalog_purchase import eligible_catalog_purchase, try_catalog_purchase
+from .host_ship_sections import eligible_ship_sections, try_ship_sections
 from .economy_core import is_supported_economy_ledger, render_economy_ledger
 from .server_modules import render_dynamic_server_bootstrap
 from .host_client import render_host_client
@@ -53,6 +54,7 @@ class LuauCodeGenerator:
                     and mod.name in dynamic.get("host_client_actions", {}))
                 or render_host_gameplay(mod, proposal) is not None
                 or eligible_catalog_purchase(mod, proposal) is not None
+                or eligible_ship_sections(mod, proposal) is not None
             )
             if host_owned or not mod.code:
                 code = self.generate_with_self_correction(mod, proposal)
@@ -128,6 +130,9 @@ class LuauCodeGenerator:
         # over the generic zero-argument host button; both remain host code.
         # When rules are a bounded item catalog, the small model supplies
         # DATA only; never ask it to generate arbitrary purchase Luau code.
+        declarative_ship = try_ship_sections(module, proposal, self.router)
+        if declarative_ship is not None:
+            return declarative_ship
         declarative_purchase = try_catalog_purchase(module, proposal, self.router)
         if declarative_purchase is not None:
             return declarative_purchase
