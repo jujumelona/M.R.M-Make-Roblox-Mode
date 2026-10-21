@@ -167,9 +167,17 @@ class LuauStaticAnalyzer:
                         timeout=12, check=False,
                     )
                 details = "\n".join([lint.stdout, lint.stderr])
-                if lint.returncode != 0 and not re.search(
-                        r"(?:error|warning)\[(?:undefined_variable|unscoped_variables)\]",
-                        details, re.I):
+                # Selene exits nonzero for style-only warnings too. They
+                # cannot invalidate otherwise correct Luau. Reject only
+                # unexpected execution failure or real parse/error findings.
+                style_only = bool(re.search(
+                    r"Results:\s*0 errors\s+\d+ warnings\s+0 parse errors",
+                    details, re.I,
+                ))
+                if (lint.returncode != 0 and not style_only
+                        and not re.search(
+                            r"(?:error|warning)\[(?:undefined_variable|unscoped_variables)\]",
+                            details, re.I)):
                     diagnostics.append(LuauDiagnostic(
                         file_path=file_path, line_number=1,
                         rule="SELENE_UNEXPECTED_OUTPUT", severity="ERROR",
