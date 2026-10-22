@@ -94,10 +94,14 @@ def scope_semantic_systems(
              if fid != target_id),
             default=0,
         )
-        # A one-word name ("Mining") can be a precise source-aligned system.
-        # Longer titles require two independent topical words, avoiding a
-        # vague word ("space") from stealing unrelated travel/combat systems.
-        if own >= (1 if len(owned_terms) == 1 else 2) and own > foreign:
+        # Source ownership is *comparative*, not a fixed number of
+        # matching English words. Compound names can use a synonym for
+        # the requested verb: e.g. a source's noun may be the only literal
+        # overlap with a correct two-word action name. Require at least one
+        # source-specific anchor AND strictly more evidence for this facet
+        # than for every competing one. Never silently assign tied systems.
+        # Subsequent semantic/engine validators still own correctness.
+        if own > 0 and own > foreign:
             kept.append(system)
         else:
             discarded.append(name)
