@@ -109,7 +109,7 @@ def test_independent_source_actions_use_bounded_host_verified_subtasks(monkeypat
                 assert "this_action" in prompt
                 assert "Fight and damage" in prompt
                 return {"systems": [_system(
-                    "AlienCombat",
+                    "FirstGameplayHandler",
                     "The server checks the attack range, then attacks a "
                     "hostile alien enemy NPC, reduces its health and records defeat.",
                     "The alien enemy loses health and is defeated after attacks.",
@@ -118,7 +118,7 @@ def test_independent_source_actions_use_bounded_host_verified_subtasks(monkeypat
             assert n == 4
             assert "Establish and own settlements" in prompt
             return {"systems": [_system(
-                "PlanetColonization",
+                "SecondGameplayHandler",
                 "The server verifies supplies then establishes a new planet "
                 "colony and records the player's ownership of the settlement.",
                 "The planet becomes colonized, showing newly established colony ownership.",
