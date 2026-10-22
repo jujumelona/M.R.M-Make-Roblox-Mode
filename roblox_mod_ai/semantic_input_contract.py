@@ -61,10 +61,16 @@ def bind_host_standard_transport(raw: dict[str, Any]) -> tuple[dict[str, Any], l
         interaction = row.get("interaction")
         world = row.get("world_entities", [])
         choices = row.get("action_choices", [])
+        # A server-only scheduled/background mechanic is a gameplay
+        # property, not a Remote enum. It must be explicitly marked and
+        # cannot carry choices that require a player's decision.
+        autonomous = row.pop("autonomous", False) is True
+        if autonomous and not choices:
+            mode, interaction = "custom", "none"
         # Explicitly requested world prompts need one host-owned Part.
         # No object or multiple objects means an actionable typed selection
         # UI instead; it must NEVER attach to an arbitrary part.
-        if (mode == "world_prompt" and isinstance(world, list)
+        elif (mode == "world_prompt" and isinstance(world, list)
                 and len(world) == 1 and not choices):
             mode, interaction = "world_prompt", "event"
         elif mode == "host_button" and not world and not choices:
