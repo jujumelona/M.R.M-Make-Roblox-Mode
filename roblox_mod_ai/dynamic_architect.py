@@ -1089,16 +1089,36 @@ class RobloxDynamicArchitect:
                                 and getattr(self.router,
                                             "supports_atomic_action_decomposition",
                                             False)):
-                            # A model-authorized source quote is checked by
-                            # the host against the unchanged user text.
+                            # The model selects ONLY immutable host
+                            # source-span IDs and explains the independent
+                            # actions. It must not reproduce Korean user text
+                            # exactly. Legacy routers with source_quote output
+                            # still pass through the same host admission.
+                            from .atomic_action_quotes import indexed_source_spans
+                            source_spans = indexed_source_spans(slice_request)
+                            action_schema = {
+                                "type": "object",
+                                "properties": {"actions": {
+                                    "type": "array", "minItems": 2, "maxItems": 3,
+                                    "items": {"type": "object", "properties": {
+                                        "source_id": {"type": "string", "enum": [
+                                            row["id"] for row in source_spans]},
+                                        "action": {"type": "string", "minLength": 8,
+                                                   "maxLength": 220},
+                                    }, "required": ["source_id", "action"],
+                                    "additionalProperties": False}}},
+                                "required": ["actions"], "additionalProperties": False,
+                            }
                             raw_actions = self.router.complete_json(
                                 "Identify every INDEPENDENT player/server "
                                 "gameplay action explicitly requested in this "
                                 "source clause. Return JSON "
-                                "{actions:[{source_quote,action}]}; "
-                                "source_quote MUST be an EXACT continuous "
-                                "substring of the provided original text. "
-                                "Each action is short, concrete and distinct. "
+                                "{actions:[{source_id,action}]}; "
+                                "source_id must be one of the provided immutable "
+                                "host source-span IDs. Do NOT emit source_quote "
+                                "or translate/copy the original text. "
+                                "Select DISTINCT IDs for independent actions; "
+                                "each action is short, concrete and distinct. "
                                 "Do not add genre defaults, expand adjectives "
                                 "into actions, or repeat the same action with "
                                 "different names. Do not cite error labels. "
@@ -1106,11 +1126,14 @@ class RobloxDynamicArchitect:
                                 "JSON only.\n"
                                 + json.dumps({
                                     "source_clause": slice_request,
+                                    "candidate_source_spans": [
+                                        {"id": row["id"], "quote": row["quote"]}
+                                        for row in source_spans],
                                     "coverage_failures": problem_statements,
                                 }, ensure_ascii=False),
                                 role="planner", temperature=0.0,
                                 max_tokens=400,
-                                json_schema=_SCOPED_ATOMIC_ACTIONS_SCHEMA,
+                                json_schema=action_schema,
                             )
                             actions = (
                                 raw_actions.get("actions")
