@@ -160,6 +160,29 @@ def generation_scope(proposal: Any) -> dict[str, Any]:
                 ),
             })
 
+    # A purchased part/license is not an installed ship section. The generic
+    # trade catalog records an entitlement in RMMTradeEntitlements; a separate
+    # physical builder must consume the SAME verified ID before it can be
+    # presented as an assembled part. Never label codegen success as game
+    # integration without that consumer, regardless of the module names.
+    from .host_trade_catalog import _required_categories
+    for module in proposal.modules:
+        if (module.kind == ModuleKind.SERVER_MODULE
+                and eligible_trade_catalog(module, proposal) is not None
+                and "section" in _required_categories(module.description)):
+            unverified_dependencies.append({
+                "consumer": module.name,
+                "required": "physical ship builder that consumes purchased "
+                            "RMMTradeEntitlements section license IDs",
+                "status": "unverified_ship_section_license_consumer",
+                "reason": (
+                    "Catalog purchases record persistent owned section licenses, "
+                    "not physical ship parts. A separate verified builder must "
+                    "consume this license and update the ship assembly/geometry. "
+                    "No generic model-authored builder may be assumed to do so."
+                ),
+            })
+
     # One live-server call can settle both wallets without yielding, but
     # separate player profile DataStore writes cannot commit atomically.
     # Never describe a source-only host adapter as verified durable trading.
