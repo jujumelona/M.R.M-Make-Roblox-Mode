@@ -263,7 +263,10 @@ def test_failed_whole_request_recovers_every_original_source_chunk(monkeypatch):
     monkeypatch.setenv("RMM_ENABLE_MODEL_DECOMPOSITION", "1")
     monkeypatch.setenv("RMM_ENABLE_MODEL_QUERY_EXPANSION", "1")
     clauses = source_chunks(SPACE_REQUEST)
-    assert len(clauses) >= 5
+    assert len(clauses) >= 3
+    # Character count must not create independent server actors.
+    assert all(piece not in {"구매 등으로", "거래 등으로"} for piece in clauses)
+    assert any("외게인과 싸움" in piece for piece in clauses)
     assert span_coverage(SPACE_REQUEST, clauses) >= .99
     assert " ".join(clauses) == SPACE_REQUEST
     researched = RobloxPreDesignResearch(
@@ -418,24 +421,49 @@ def test_source_classifier_rejects_category_label_as_gameplay_intent():
     )
 
 
-def test_short_source_chunks_preserve_separate_independently_requested_mechanics():
-    """Host word partition must not merge separate gameplay obligations."""
+def test_short_unseparated_source_remains_one_clause_until_model_grounds_actions():
+    """The host must never invent mechanics at 22-character word boundaries."""
     from roblox_mod_ai.source_decomposition import source_chunks
 
-    # Performance and its purchase are one priced state transition; they
-    # need not be split into two independent services. Mining/trading and
-    # minerals/combat *do* have distinct server-side effects.
-    examples = (
-        ("우주모드 인데 자원파밍 돈모으기 거래 등으로", "자원파밍", "거래"),
-        ("우주로 나가면 다른행성의 특수 광물 외게인과 싸움", "광물", "외게인"),
-    )
-    for source, left, right in examples:
+    for source in (
+        "우주모드 인데 자원파밍 돈모으기 거래 등으로",
+        "우주로 나가면 다른행성의 특수 광물 외게인과 싸움",
+    ):
         segments = source_chunks(source)
-        assert " ".join(segments) == source
-        assert span_coverage(source, segments) >= .99
-        assert all(segment not in {"등으로", "및", "and", "then", "있고"} for segment in segments)
-        assert any(left in segment for segment in segments)
-        assert any(right in segment for segment in segments)
-        assert all(not (left in segment and right in segment)
-                   for segment in segments)
+        assert segments == [source]
+        assert span_coverage(source, segments) == 1.0
+    # An explicit conjunction remains a safe *text* boundary, not proof
+    # that either generated server actually implements its original action.
+    assert source_chunks("우주선 구매해서 조립하고 우주로 간다") == [
+        "우주선 구매해서", "조립하고 우주로 간다",
+    ]
+
+
+def test_model_source_id_recovery_from_unseparated_korean_multi_action_clause():
+    import json
+    from roblox_mod_ai.source_decomposition import recover_unseparated_actions
+
+    source = "외게인과 싸움 식민지화등 여러가지가 가능한 모드"
+    assert is_composite(source)
+
+    class GroundedSelector:
+        def complete_json(self, prompt, **kwargs):
+            assert kwargs["role"] == "planner"
+            payload = json.loads(prompt.split("\n")[-1])
+            ids = {row["quote"]: row["id"] for row in payload["candidate_source_spans"]}
+            return {"actions": [
+                {"source_id": ids["외게인과 싸움"],
+                 "action": "Fight and defeat hostile alien NPC enemies"},
+                {"source_id": ids["식민지화등 여러가지가 가능한 모드"],
+                 "action": "Establish new colonies and record ownership"},
+            ]}
+
+    result = recover_unseparated_actions(GroundedSelector(), source)
+    assert [row["source_span"] for row in result] == [
+        "외게인과 싸움", "식민지화등 여러가지가 가능한 모드"]
+    assert validate_model_behaviors(source, result)
+
+
+def test_short_english_compound_marked_for_semantic_decomposition():
+    assert is_composite("Fight alien enemies and colonize planets")
 
