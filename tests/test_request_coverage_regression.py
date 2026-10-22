@@ -253,6 +253,8 @@ def test_failed_whole_request_recovers_every_original_source_chunk(monkeypatch):
                      if "식민" in c["source_span"] else
                      "Server handles hostile alien NPC enemy combat"
                      if "외계인" in c["source_span"] or "외게인" in c["source_span"] else
+                     "Ship launches into space after completing construction"
+                     if "우주로" in c["source_span"] else
                      "Implement the gameplay action from " + c["source_span"]
                  ),
                  "english_query": "Roblox API for gameplay chunk " + c["chunk_id"]}
@@ -294,6 +296,8 @@ def test_model_omitting_only_one_chunk_gets_targeted_retry(monkeypatch):
                 {"chunk_id": c["chunk_id"],
                  "intent": ("Players attack hostile alien NPC enemies"
                             if "외계인" in c["source_span"]
+                            else "Launch the player's ship into space"
+                            if "우주로" in c["source_span"]
                             else "Implement the source mechanic"),
                  "english_query": "Roblox source implementation " + c["chunk_id"]}
                 for c in batch
