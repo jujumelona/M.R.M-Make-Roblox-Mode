@@ -920,7 +920,7 @@ class RobloxDynamicArchitect:
                     "Describe ONLY the GAMEPLAY transitions directly "
                     "requested by the supplied source clauses. Return JSON "
                     "{systems:[{name,server_behavior,observable_result,"
-                    "world_entities,autonomous?,action_choices?}]}. "
+                    "world_entities,autonomous?}]}. "
                     "Each system is ONE independent action (at most 3). "
                     "Use autonomous=true ONLY for an explicitly scheduled "
                     "or server-driven action without player input; leave "
@@ -929,8 +929,8 @@ class RobloxDynamicArchitect:
                     "a real state change and rejection of invalid inputs. "
                     "observable_result must describe a visible consequence. "
                     "world_entities is a list of named physical objects, "
-                    "or [] when none. Optional action_choices is an array "
-                    "of actual source-authorized id/label choices (<=8). "
+                    "or [] when none. Do not output action_choices: "
+                    "the host is responsible for selection input widgets. "
                     "Do not output interaction, input_mode, client_behavior, "
                     "Remotes, UI, module definitions, classes or geometry; "
                     "the host implements networking, buttons and forms. "
@@ -1468,14 +1468,16 @@ class RobloxDynamicArchitect:
                                         # duplicate input/effect schema before
                                         # the actual Luau codegen. Keep any
                                         # model-proposed action_contract untrusted.
-                                        source_choices = system.get("action_choices") or []
-                                        # Convert approved choices into the
-                                        # typed selection allowlist, so they
-                                        # cannot shadow or bypass this Remote.
+                                        source_choices = system.get("action_choices")
+                                        # A nonconforming local JSON response
+                                        # must never poison the authoritative
+                                        # host input contract. Only complete
+                                        # bounded option objects become a
+                                        # Remote choice allowlist. Otherwise
+                                        # the selection remains typed text and
+                                        # Luau server code validates its meaning.
                                         manifest = host_owned_action_contract(
-                                            source_choices if isinstance(
-                                                source_choices, list) else None
-                                        )
+                                            source_choices)
                                         system = dict(system)
                                         system.pop("action_choices", None)
                                         system.update(
