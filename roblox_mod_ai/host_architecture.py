@@ -71,6 +71,9 @@ HOST_OWNED_SEMANTIC_FACET_SCHEMA = {
             "type": "object",
             "properties": {
                 "name": {"type": "string", "maxLength": 120},
+                # A source-level trigger is legitimate gameplay semantics.
+                # The host still owns Roblox client/server routing.
+                "autonomous": {"type": "boolean"},
                 "server_behavior": {"type": "string", "maxLength": 4096},
                 "observable_result": {"type": "string", "maxLength": 4096},
                 "world_entities": {
