@@ -55,11 +55,16 @@ def verify_or_bind_actions(router: Any, source: str, actions: Any,
     seen_actions = set()
     ungrounded = False
     quotes = set()
+    source_ids = {row["id"]: row["quote"] for row in indexed_source_spans(source)}
     for row in actions:
         if not isinstance(row, dict):
             raise SourceActionBindingError("ATOMIC_ACTION_DECOMPOSITION_INVALID: action object required")
         action = row.get("action")
-        quote = row.get("source_quote")
+        supplied_id = row.get("source_id")
+        if supplied_id is not None and supplied_id not in source_ids:
+            raise SourceActionBindingError("ATOMIC_ACTION_SOURCE_ID_NOT_IN_ORIGINAL_TEXT")
+        quote = (source_ids[supplied_id] if supplied_id is not None
+                 else row.get("source_quote"))
         if not isinstance(action, str) or not 8 <= len(action.strip()) <= 220:
             raise SourceActionBindingError("ATOMIC_ACTION_DECOMPOSITION_INVALID: action text required")
         key = " ".join(action.casefold().split())
