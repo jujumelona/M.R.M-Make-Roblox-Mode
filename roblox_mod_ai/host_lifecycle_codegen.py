@@ -11,6 +11,7 @@ import re
 from typing import Any
 
 from .code_output_guard import LiveCodeRepetitionGuard
+from .dynamic_wiring import _mask_strings, _without_comments
 from .host_service_codegen import _clean_body, _EFFECT
 from .luau_api_sanity import invalid_luau_apis
 from .luau_service_contract import service_contract_checks
@@ -87,8 +88,9 @@ def try_scaffolded_lifecycle(
                     system_prompt="Luau startup statements only. Platform shell is prebuilt.",
                 )
             body = _clean_body(response)
+            executable = _mask_strings(_without_comments(body))
             if (not 60 <= len(body) <= 4500 or body.startswith("--!strict")
-                    or _FORBIDDEN.search(body) or not _EFFECT.search(body)):
+                    or _FORBIDDEN.search(body) or not _EFFECT.search(executable)):
                 raise ValueError(
                     "Passive startup needs real bounded world/state behavior, "
                     "no Service/Remote boilerplate or empty stub"
