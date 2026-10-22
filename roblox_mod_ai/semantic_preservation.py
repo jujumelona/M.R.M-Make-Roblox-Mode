@@ -97,3 +97,58 @@ def source_intent_conflicts(
         ):
             errors.append("NPC_COMBAT_TARGET_AMBIGUOUS: player targets replace hostile NPCs")
     return errors
+
+
+# Observable outcomes and authoritative state contracts answer different
+# questions. A client can faithfully display that a planet *became colonized*
+# without redundantly saying how a DataStore entry was committed. However a
+# menu that merely displays "colonization success" is not evidence that
+# ownership or world state changed.
+_COLONY_VISIBLE_CHANGE = re.compile(
+    r"(?:\b(?:planet|world|territory|outpost|settlement|colony)\b"
+    r".{0,90}\b(?:becomes?|became|is now|was|turns?|is marked|has been|"
+    r"now|established|settled|colonized|colonised|claimed|owned|built)\b"
+    r".{0,90}\b(?:coloniz\w*|colonis\w*|settle\w*|establish\w*|"
+    r"claim\w*|own\w*|built|created)\b)|"
+    r"(?:\b(?:coloniz\w*|colonis\w*|settlement|colony|territory)\b"
+    r".{0,95}\b(?:state|status|level|ownership|progress|territory)\b"
+    r".{0,95}\b(?:changes?|updated|increases?|established|confirmed|"
+    r"acquired|claimed|now owned)\b)|"
+    r"(?:\b(?:colony|settlement|territory)\b"
+    r".{0,95}\b(?:established|created|built|founded|now owned|claimed)\b)|"
+    r"(?:\b(?:established|founded|claimed|created|built)\b"
+    r".{0,95}\b(?:colony|settlement|territory)\b)|"
+    r"(?:행성.{0,35}(?:식민지화|정착지|소유권).{0,35}"
+    r"(?:완료|변경|확립|생성|확정|획득))",
+    re.I,
+)
+# "planet becomes colonized" is a particularly common client status signal.
+_PLANET_BECOMES_COLONIZED = re.compile(
+    r"\b(?:planet|world)\b.{0,55}\b(?:becomes?|became|is now|"
+    r"has been|was)\s+(?:fully\s+)?coloniz(?:ed|ed\b|able)|"
+    r"\b(?:planet|world)\b.{0,55}\b(?:colonized|colonised)\b",
+    re.I,
+)
+
+
+def source_outcome_conflicts(source_span: str, described_result: str) -> list[str]:
+    """Validate a visible state consequence without confusing it with storage.
+
+    The host separately validates server authority using
+    source_intent_conflicts(require_implementation=True). An outcome must
+    identify an actual observable consequence of the requested mechanic,
+    not merely an unrelated saving operation or a generic success notification.
+    """
+    errors = source_intent_conflicts(
+        source_span, described_result, require_implementation=False
+    )
+    if _COLONIZATION.search(source_span) and not (
+        _COLONY_VISIBLE_CHANGE.search(described_result)
+        or _PLANET_BECOMES_COLONIZED.search(described_result)
+    ):
+        errors.append(
+            "SETTLEMENT_RESULT_MISSING: describe the changed planet, "
+            "settlement or ownership state visible to the player, "
+            "not just a colony menu or a generic success message"
+        )
+    return errors
