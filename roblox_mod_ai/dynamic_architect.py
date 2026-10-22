@@ -26,6 +26,9 @@ from .semantic_input_contract import (
     apply_interaction_patch,
 )
 from .semantic_world_entities import normalize_world_names
+from .source_ownership_review import (
+    SOURCE_OWNERSHIP_REVIEW_SCHEMA, ground_source_ownership,
+)
 
 _VALID_NAME = re.compile(r"^[A-Z][A-Za-z0-9]{2,58}$")
 _VALID_REMOTE = re.compile(r"^[A-Z][A-Za-z0-9]{2,55}$")
@@ -1279,8 +1282,76 @@ class RobloxDynamicArchitect:
                         # A small model may echo unrelated features from the
                         # full request. Attribute ONLY demonstrably source-owned
                         # systems; every dropped feature keeps its own facet.
-                        draft, rejected_scope_names = scope_semantic_systems(
-                            draft, facet=facet, all_facets=facets)
+                        try:
+                            draft, rejected_scope_names = scope_semantic_systems(
+                                draft, facet=facet, all_facets=facets)
+                        except ValueError as scope_error:
+                            # English lexical scoring cannot unambiguously
+                            # claim actions shared by adjacent original user
+                            # clauses, particularly after translation. Never
+                            # retry the same 1,400-token gameplay draft solely
+                            # because the name-based scorer is undecided.
+                            # Use a short source/transition quote-backed
+                            # attribution ONLY when zero systems survived.
+                            if (not str(scope_error).startswith(
+                                        "SCOPED_SYSTEM_UNATTRIBUTED:")
+                                    or not getattr(
+                                        self.router,
+                                        "supports_source_ownership_review", False)):
+                                raise
+                            candidates = draft.get("systems", [])
+                            if not isinstance(candidates, list) or not 1 <= len(candidates) <= 3:
+                                raise
+                            other_clauses = [
+                                str(required[rid].get("statement", ""))
+                                for competing in facets
+                                if competing.get("id") != facet_id
+                                for rid in competing.get("requirements", [])
+                                if rid in required and rid not in owned_ids
+                            ]
+                            attribution = self.router.complete_json(
+                                "Attribute these preexisting system candidates "
+                                "to the EXACT original user source clause. "
+                                "This is a source-ownership decision, NOT "
+                                "another game design request. Judge each "
+                                "candidate's REAL server action, not just "
+                                "similar words in its name. Return JSON "
+                                "{bindings:[{index,owned,source_quote,"
+                                "server_quote}]}. Include EXACTLY one binding "
+                                "for EACH candidate index. owned=true only "
+                                "when the server actually performs an action "
+                                "explicitly requested by this source clause. "
+                                "For every true value, copy source_quote "
+                                "verbatim from the original source clause and "
+                                "server_quote verbatim (at least 16 characters) "
+                                "from that SAME candidate's server_behavior "
+                                "to demonstrate the action. For false values "
+                                "use empty quotes. Source clauses can share "
+                                "an action; do not force artificial exclusive "
+                                "ownership if both explicitly request it. "
+                                "Reject unrelated actions, prerequisites or "
+                                "generic menus. Other clauses are context "
+                                "ONLY and never authorize this facet. "
+                                "JSON ONLY.\n"
+                                + json.dumps({
+                                    "original_source_clause": slice_request,
+                                    "other_source_clauses": other_clauses[:14],
+                                    "candidate_systems": [{
+                                        "index": i,
+                                        "name": row.get("name"),
+                                        "server_behavior": str(
+                                            row.get("server_behavior") or "")[:900],
+                                        "observable_result": str(
+                                            row.get("observable_result") or "")[:300],
+                                    } for i, row in enumerate(candidates)
+                                        if isinstance(row, dict)],
+                                }, ensure_ascii=False),
+                                role="planner", temperature=0.0,
+                                max_tokens=540,
+                                json_schema=SOURCE_OWNERSHIP_REVIEW_SCHEMA,
+                            )
+                            draft, rejected_scope_names = ground_source_ownership(
+                                draft, attribution, source_clause=slice_request)
                         # Two disjoint enum domains can be restored after a
                         # verified exchange. Ambiguous input is never guessed.
                         draft, named_world_refs = normalize_world_names(draft)
@@ -1436,6 +1507,17 @@ class RobloxDynamicArchitect:
                         # A newer semantic contract below may replace the
                         # missing-obligations list with more precise evidence.
                         semantic_replan = previous_replan
+                    if ("SOURCE_OWNER_REVIEW_" in previous_error
+                            or "SCOPED_SYSTEM_UNATTRIBUTED:" in previous_error):
+                        # A failed independent source binding must not result
+                        # in three near-identical full regenerations. Ask for
+                        # only the missing source-owned action(s) instead.
+                        semantic_replan = [
+                            "Implement an actual server state transition "
+                            "for each action in the original source clause; "
+                            "do not echo context-only mechanics."
+                        ]
+                        semantic_repair = None
                     if "SEMANTIC_FIDELITY_CONTRACT:" in previous_error:
                         # A coverage reviewer rejected this source action,
                         # regardless of genre. Recreate only the affected
