@@ -42,7 +42,7 @@ _SPACE_INTENT = re.compile(
     re.I,
 )
 _INTENT_COLONY = re.compile(
-    r"coloniz|colonis|settlem|outpost|colony|found(?:s|ing)?|"
+    r"coloniz|colonis|settlem|outpost|colon(?:y|ies)|found(?:s|ing)?|"
     r"식민|정착|개척", re.I,
 )
 _INTENT_HOSTILE = re.compile(
