@@ -839,7 +839,7 @@ class RobloxDynamicArchitect:
                         )
                         draft = self.router.complete_json(
                             query, role="planner", temperature=0.1,
-                            max_tokens=2600, json_schema=SEMANTIC_FACET_SCHEMA,
+                            max_tokens=1400, json_schema=SEMANTIC_FACET_SCHEMA,
                         )
                     if not isinstance(draft, dict):
                         raise DynamicDesignError("Facet architecture must be JSON object")
