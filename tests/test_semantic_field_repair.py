@@ -243,3 +243,145 @@ def test_multi_contract_repair_preserves_enemy_combat_and_commits_colony(monkeyp
     visible = result["acceptance"]["req-001"]
     assert "Hostile alien NPC enemies visibly lose health" in visible
     assert "planet becomes colonized" in visible
+
+def test_plan50_wrong_ship_upgrade_replanned_as_actual_space_departure(monkeypatch):
+    """A wrong action needs a small fresh system, not a prose append or
+    another long 1,400-token generation that can truncate.
+    """
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    prompt = "그렇게해서 우주로 나갈수있고"
+    research = {"ledger": {
+        "original_prompt": prompt,
+        "requirements": [{"id": "req-007", "statement": prompt,
+                          "source": "user_prompt"}],
+        "facets": [{"id": "intent-launch", "requirements": ["req-007"],
+                    "source_span": prompt,
+                    "search_query": "Roblox launch built ship into space"}],
+    }, "evidence": []}
+
+    class SmallModel:
+        def __init__(self):
+            self.calls = []
+        def complete_json(self, request, **options):
+            self.calls.append((request, options))
+            if len(self.calls) == 1:
+                return {"systems": [{
+                    "name": "ShipUpgradeMenu",
+                    "server_behavior": (
+                        "The server validates the ship's parts and charges "
+                        "currency for upgrading each installed module."
+                    ),
+                    "client_behavior": (
+                        "The client shows upgrade and purchase buttons "
+                        "and confirms selected ship modifications."
+                    ),
+                    "interaction": "request_response",
+                    "input_mode": "custom",
+                    "observable_result": (
+                        "The player sees an upgraded ship part and new "
+                        "configuration options available on screen."
+                    ),
+                    "world_entities": [],
+                }]}
+            assert len(self.calls) == 2
+            assert options["max_tokens"] <= 1024
+            assert "missing_obligations" in request
+            assert "source_requirements" in request
+            assert len(request) < 1400
+            return {"systems": [{
+                "name": "ShipLaunch",
+                "server_behavior": (
+                    "The server checks that the spacecraft is assembled and "
+                    "powered, validates the requested departure, records "
+                    "the ship entering space and moves the player into "
+                    "the playable space region."
+                ),
+                "client_behavior": (
+                    "The client offers a launch control and then shows "
+                    "the ship traveling into space on success."
+                ),
+                "observable_result": (
+                    "The spacecraft launches into space, and the player "
+                    "arrives in the orbital exploration region."
+                ),
+                "interaction": "request_response",
+                "input_mode": "custom",
+                "world_entities": [],
+            }]}
+    model = SmallModel()
+    result = RobloxDynamicArchitect(model).design(prompt, research, [])
+    assert len(model.calls) == 2
+    assert "launch" in result["acceptance"]["req-007"].lower()
+    assert all("charge" not in m.description.lower()
+               for m in result["modules"])
+
+
+def test_semantic_repair_accepts_field_named_output_from_small_model(monkeypatch):
+    """Plan 50's schema-key mismatch must not drop a valid semantic delta."""
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    class Model:
+        def __init__(self):
+            self.calls = 0
+        def complete_json(self, prompt, **options):
+            self.calls += 1
+            if self.calls == 1:
+                return {"systems": [{
+                    "name": "AlienColony",
+                    "server_behavior": (
+                        "The server validates alien combat hits and damages "
+                        "hostile alien NPC enemies, and checks the selected "
+                        "planet before colonization."
+                    ),
+                    "client_behavior": CLIENT_GOOD,
+                    "observable_result": RESULT_GOOD,
+                    "interaction": "request_response",
+                    "input_mode": "custom",
+                    "world_entities": [],
+                }]}
+            return {"server_behavior": (
+                "The server persists a newly established planet colony "
+                "settlement with player ownership on successful colonization."
+            )}
+    model = Model()
+    result = RobloxDynamicArchitect(model).design(PROMPT, _research(), [])
+    assert model.calls == 2
+    assert any("newly established planet colony" in m.description
+               for m in result["modules"])
+
+
+def test_semantic_repair_bad_shape_retries_same_small_patch(monkeypatch):
+    """Malformed repair outputs preserve the valid draft and patch budget."""
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    class Model:
+        def __init__(self):
+            self.calls = []
+        def complete_json(self, prompt, **options):
+            self.calls.append((prompt, options))
+            if len(self.calls) == 1:
+                return {"systems": [{
+                    "name": "AlienColony",
+                    "server_behavior": (
+                        "The server validates alien NPC attacks and applies "
+                        "damage to hostile enemies, and checks colony "
+                        "prerequisites without changing planet ownership."
+                    ),
+                    "client_behavior": CLIENT_GOOD,
+                    "observable_result": RESULT_GOOD,
+                    "interaction": "request_response",
+                    "input_mode": "custom",
+                    "world_entities": [],
+                }]}
+            assert options["json_schema"] == _SCOPED_SEMANTIC_REPAIR_SCHEMA
+            if len(self.calls) == 2:
+                return {"unrelated": "Wrong key"}
+            return {"replacement": (
+                "The server saves the newly established owned planet "
+                "colony settlement after validated colonization."
+            )}
+    model = Model()
+    result = RobloxDynamicArchitect(model).design(PROMPT, _research(), [])
+    assert len(model.calls) == 3
+    assert [a["passed"] for a in _research()["ledger"].get(
+        "architecture_attempts", [])] == []
+    assert any("newly established owned planet" in m.description
+               for m in result["modules"])
