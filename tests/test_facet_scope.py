@@ -265,3 +265,25 @@ def test_shared_generic_word_cannot_claim_foreign_action():
     ]}
     with pytest.raises(ValueError, match="SCOPED_SYSTEM_UNATTRIBUTED"):
         scope_semantic_systems(response, facet=facets[0], all_facets=facets)
+
+
+def test_scoped_echo_does_not_claim_foreign_system_from_theme_only():
+    """The same broad theme is not a separate mechanics ownership grant."""
+    facets = [
+        {"id": "theme", "search_query":
+         "Create an ocean mode with a themed environment and mode setup"},
+        {"id": "fishing", "search_query":
+         "Implement resource fishing with a collected inventory"},
+    ]
+    raw = {"systems": [
+        {"name": "Ocean Mode Setup", "server_behavior": "Enable the theme"},
+        {"name": "Ocean Navigation", "server_behavior": "Travel across water"},
+        {"name": "Resource Fishing", "server_behavior": "Catch fish"},
+    ]}
+    scoped, discarded = scope_semantic_systems(
+        raw, facet=facets[0], all_facets=facets,
+    )
+    assert [system["name"] for system in scoped["systems"]] == [
+        "Ocean Mode Setup",
+    ]
+    assert discarded == ["Ocean Navigation", "Resource Fishing"]
