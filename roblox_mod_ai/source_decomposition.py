@@ -21,77 +21,50 @@ _JOINER = re.compile(
 
 def source_chunks(statement: str, *, max_chars: int = 22,
                   max_chunks: int = 48) -> list[str]:
-    """Partition source by word + clause boundary without manufacturing actions.
+    """Losslessly partition only at EXPLICIT clause connectors.
 
-    Eleven-character buckets split Korean predicates and adjuncts ("can",
-    "using", "mode") into fictitious gameplay modules. A chunk is a *semantic
-    candidate*, not a verified independent action. Prefer complete clauses
-    and keep grammatical suffixes with the prior source span. Never use a
-    genre-specific keyword, discard words, or invent gameplay.
+    max_chars is a hint for the subsequent model context, not permission to
+    manufacture independent actions by cutting after N characters. In Korean
+    this previously created fake obligations like "구매 등으로", or separated
+    a verb from the object whose world state it must change.
+
+    If a request offers no provable lexical boundary, return the entire
+    source as one still-composite clause. A later semantic model must
+    decompose it, rather than falsely certifying half-sentences.
     """
     source = clean(statement)
+    if not source:
+        return []
+    if max_chunks < 1:
+        raise ValueError("Host source partition has no available output slots")
     words = source.split(" ")
     if len(words) < 2:
         return [source]
-    pieces: list[str] = []
+    chunks: list[str] = []
     current: list[str] = []
-    for word in words:
-        if (word == "등으로" and len(current) >= 4
-                and len(" ".join(current + [word])) > max_chars):
-            # Preserve the source's preceding means/action plus its connector.
-            # A mechanical max-length flush would strand "trade" with the
-            # previous task and leave an isolated "etc/by" phrase.
-            final_word = current.pop()
-            pieces.append(" ".join(current))
-            current = [final_word]
-        if current and len(" ".join(current + [word])) > max_chars:
-            pieces.append(" ".join(current))
-            current = []
+    # Only full predicates/conjunctions are conservative text boundaries.
+    # A means-connector ("등으로", "using") applies to the FOLLOWING action;
+    # an adjective or suffix is not a separate implementation obligation.
+    boundary = re.compile(
+        r"(?:해서|하고|하며|으면서|면서|있고|거나|그리고|또한|및)$|"
+        r"^(?:and|then)$", re.IGNORECASE)
+    for idx, word in enumerate(words):
         current.append(word)
-        # "X etc/by means of" completes the preceding modifier phrase.
-        # Always close it at the next source boundary, even if short. Otherwise
-        # a transaction modifier absorbs the *next* independently owned action.
-        if _JOINER.search(word) and (
-                len(" ".join(current)) >= 7 or word == "등으로"):
-            pieces.append(" ".join(current))
+        # Never emit a dangling conjunction or a grammatical modifier as a
+        # source-owned game system. A right-hand phrase must exist.
+        if (idx + 1 < len(words) and
+                boundary.search(word) and
+                len(current) >= 2 and
+                len(" ".join(words[idx+1:]).strip()) >= 3):
+            chunks.append(" ".join(current))
             current = []
     if current:
-        pieces.append(" ".join(current))
-    # Force 2 separate implementation owners for a connector-based request.
-    if len(pieces) == 1 and is_composite(source) and len(words) > 1:
-        mid = max(1, len(words) // 2)
-        pieces = [" ".join(words[:mid]), " ".join(words[mid:])]
-    # Do not let one-word particles become a standalone mechanic. The previous
-    # span consumes it instead, keeping all source characters covered.
-    combined: list[str] = []
-    for piece in pieces:
-        if combined and _JOINER.fullmatch(piece):
-            # Redistribute the last two meaningful words into a standalone
-            # action span before attaching the dangling connector. Otherwise
-            # a conjunction can force independent actions into one chunk.
-            words = combined[-1].split(" ")
-            if len(words) >= 4:
-                combined[-1] = " ".join(words[:-2])
-                combined.append(" ".join(words[-2:] + [piece]))
-            else:
-                combined[-1] += " " + piece
-        elif combined and len(piece) < 3:
-            combined[-1] += " " + piece
-        else:
-            combined.append(piece)
-    # A trailing attributive phrase ("possible X", "for X") is not an
-    # executable game mechanic by itself. Attach it to its source antecedent.
-    # This is grammar-level normalization; no game names or fixed prompt terms.
-    if (len(combined) >= 2 and len(combined[-1]) <= 10
-            and re.match(r"^(?:가능한|위한|있는|없는)\s+\S+$", combined[-1])):
-        qualifier = combined.pop()
-        combined[-1] += " " + qualifier
-    if (len(combined) > max_chunks or
-            clean(" ".join(combined)) != source or
-            span_coverage(source, combined) < .99):
-        raise ValueError("Host cannot source-anchor all requested text into bounded chunks")
-    return combined
-
+        chunks.append(" ".join(current))
+    if (len(chunks) > max_chunks or
+            clean(" ".join(chunks)) != source or
+            span_coverage(source, chunks) < .99):
+        raise ValueError("Host cannot source-anchor all requested text")
+    return chunks
 
 
 def classification_context(
