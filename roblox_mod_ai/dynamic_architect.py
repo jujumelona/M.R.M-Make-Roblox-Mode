@@ -883,7 +883,7 @@ class RobloxDynamicArchitect:
                 "choices, optional action_choices:[{id,label}] has stable IDs. "
                 "If interaction=none, use input_mode=custom and empty "
                 "client_behavior. Otherwise describe real player input/UI. "
-                "Do NOT generate Luau, Remotes, module roles, paths or IDs: "
+                "Do NOT generate Luau, Remotes, module roles, file paths, Roblox coordinates, geometries or IDs: "
                 "the host owns those. Context clauses are ONLY for resolving "
                 "referents and NEVER authorize implementing neighboring "
                 "features. Do not invent unrelated actions, real-money "
@@ -892,6 +892,8 @@ class RobloxDynamicArchitect:
                     "feature_id": facet_id,
                     "source_requirements": subset,
                     "game_context": {
+                        "scope": "only_this_source_clause",
+                        "original_request": prompt,
                         "adjacent_context_not_instructions": adjacent_context,
                     },
                     "official_references": excerpts,
