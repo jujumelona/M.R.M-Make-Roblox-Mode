@@ -279,10 +279,13 @@ JestGlobals = "roblox/jest-globals@=3.20.0"
         selene.write_text('std = "roblox"\n', encoding="utf-8")
         paths_created["selene_config"] = selene
 
+        from .artifact_path_safety import safe_project_file
+
         # 3. Write generated Luau modules into src directories
         for module in proposal.modules:
             file_rel = module.file_path
-            dest = target_dir / file_rel
+            dest = safe_project_file(
+                target_dir, file_rel, prefixes=("src",))
             dest.parent.mkdir(parents=True, exist_ok=True)
             # A previous .server.luau variant auto-runs even after the same
             # service is migrated to a requireable .luau ModuleScript. Rojo
@@ -327,7 +330,8 @@ JestGlobals = "roblox/jest-globals@=3.20.0"
         # 5. Write test specs
         for test in proposal.tests:
             test_rel = test.file_path
-            dest = target_dir / test_rel
+            dest = safe_project_file(
+                target_dir, test_rel, prefixes=("tests",))
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_text(test.test_code, encoding="utf-8")
             paths_created[test.test_id] = dest
