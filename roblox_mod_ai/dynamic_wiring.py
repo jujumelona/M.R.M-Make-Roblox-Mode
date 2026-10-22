@@ -30,6 +30,16 @@ _MODES = {
     ),
 }
 
+def _long_bracket_end(source: str, start: int) -> int | None:
+    """End offset for Luau/Lua [=[...]=] literals, if one begins at start."""
+    opener = re.match(r"\[(=*)\[", source[start:])
+    if opener is None:
+        return None
+    closing = "]" + opener.group(1) + "]"
+    end = source.find(closing, start + len(opener.group()))
+    return len(source) if end < 0 else end + len(closing)
+
+
 def _without_comments(code: str) -> str:
     # Strip Luau end-of-line comments outside quotes; avoid a commented-out
     # FireServer or a URL containing -- giving false positives.
@@ -62,6 +72,20 @@ def _without_comments(code: str) -> str:
             out.append(c)
             i+=1
             continue
+        if code.startswith("--[", i):
+            end = _long_bracket_end(code, i + 2)
+            if end is not None:
+                out.extend("\n" if char == "\n" else " " for char in code[i:end])
+                i = end
+                continue
+        if c == "[":
+            end = _long_bracket_end(code, i)
+            if end is not None:
+                # Long bracket strings can contain '--' and quotes, but
+                # those bytes must not start executable comments.
+                out.extend(code[i:end])
+                i = end
+                continue
         if code.startswith("--[[",i):
             block=True
             out.extend("    ")
@@ -93,6 +117,10 @@ def _mask_strings(source: str) -> str:
                 continue
             if c==quote: quote=None
             out.append(" ")
+        elif c == "[" and (end := _long_bracket_end(source, i)) is not None:
+            out.extend("\n" if char == "\n" else " " for char in source[i:end])
+            i = end
+            continue
         elif c in ("'",'"'):
             quote=c
             out.append(" ")
