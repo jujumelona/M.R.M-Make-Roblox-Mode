@@ -193,3 +193,37 @@ def test_real_architect_repairs_report_55_without_regenerating_server_gameplay(
     assert evidence["architecture_attempts"][0]["validator_error"].startswith(
         "DynamicDesignError: SEMANTIC_INPUT_CONTRACT")
     assert evidence["architecture_attempts"][-1]["passed"]
+
+
+@pytest.mark.parametrize("broken", [
+    [], {"unexpected": "object"}, 123, None,
+])
+def test_malformed_transport_enum_never_crashes_before_bounded_repair(broken):
+    raw = {"systems": [dict(_source(), interaction=broken, input_mode="custom")]}
+    assert 0 in interaction_issues(raw)
+    with pytest.raises(ValueError, match="only protocol"):
+        apply_interaction_patch(raw, {
+            "systems": [{"interaction": broken, "input_mode": "custom",
+                         "client_behavior": "Player uses a vehicle build menu."}]
+        })
+    raw_mode = {"systems": [dict(_source(), interaction="request_response",
+                                 input_mode=broken)]}
+    assert 0 in interaction_issues(raw_mode)
+
+
+def test_transport_repairs_two_invalid_systems_by_explicit_index_only():
+    source = dict(_source())
+    raw = {"systems": [source, dict(source, name="Second Task")]}
+    with pytest.raises(ValueError, match="every invalid"):
+        apply_interaction_patch(raw, {"systems": [{
+            "index": 0, "interaction": "request_response",
+            "client_behavior": "Player selects the first part and builds it.",
+        }]})
+    result = apply_interaction_patch(raw, {"systems": [
+        {"index": 0, "interaction": "request_response",
+         "client_behavior": "Player selects the first valid component and builds it."},
+        {"index": 1, "interaction": "event",
+         "client_behavior": "Player selects the second valid component and builds it."},
+    ]})
+    assert interaction_issues(result) == {}
+    assert result["systems"][0]["server_behavior"] == source["server_behavior"]
