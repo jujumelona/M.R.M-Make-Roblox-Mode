@@ -541,3 +541,48 @@ def test_long_english_source_is_partitioned_after_linguistic_classification_not_
     assert " ".join(groups) == source
     assert len(groups) == 2
     assert all(group in source for group in groups)
+
+
+
+def test_saved_atomic_ledger_cannot_claim_deleted_behavior_as_complete(monkeypatch):
+    import copy
+    monkeypatch.setenv("RMM_ENABLE_MODEL_DECOMPOSITION", "1")
+    monkeypatch.setenv("RMM_ENABLE_MODEL_QUERY_EXPANSION", "0")
+    ledger = RobloxPreDesignResearch(
+        router=SourceAnchoredModel(), live_enabled=False).research(ATOMIC_REQUEST)["ledger"]
+    original = dict(ledger, unimplemented_facets=[], unmatched_requirements=[])
+    assert ledger_complete(ATOMIC_REQUEST, original)
+
+    deleted_atom = copy.deepcopy(original)
+    deleted_atom["atomic_intents"].pop()
+    assert not ledger_complete(ATOMIC_REQUEST, deleted_atom)
+
+    altered_owner = copy.deepcopy(original)
+    altered_owner["atomic_intents"][0]["source_span"] = ATOMS[1]
+    assert not ledger_complete(ATOMIC_REQUEST, altered_owner)
+
+    duplicated_owner = copy.deepcopy(original)
+    duplicated_owner["atomic_intents"][1]["requirement_id"] = (
+        duplicated_owner["atomic_intents"][0]["requirement_id"])
+    assert not ledger_complete(ATOMIC_REQUEST, duplicated_owner)
+
+    deleted_facet = copy.deepcopy(original)
+    lost_id = deleted_facet["atomic_intents"][-1]["facet_id"]
+    deleted_facet["facets"] = [f for f in deleted_facet["facets"]
+                               if f["id"] != lost_id]
+    assert not ledger_complete(ATOMIC_REQUEST, deleted_facet)
+
+
+def test_whole_source_echo_twice_is_not_atomic_decomposition():
+    import copy
+    ledger = build_request_ledger(ATOMIC_REQUEST)
+    # A corrupted save cannot claim multiple distinct action owners merely
+    # by assigning two IDs to the same undivided original user clause.
+    ledger["requirements"] = [
+        {"id": "req-001", "statement": ATOMIC_REQUEST, "source": "user_prompt"},
+        {"id": "req-002", "statement": ATOMIC_REQUEST, "source": "user_prompt"},
+    ]
+    ledger["decomposition_method"] = "source_anchored_model"
+    ledger["decomposition_pending"] = []
+    assert not ledger_complete(ATOMIC_REQUEST, dict(
+        ledger, unmatched_requirements=[], unimplemented_facets=[]))
