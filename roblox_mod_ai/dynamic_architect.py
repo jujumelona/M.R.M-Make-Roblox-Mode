@@ -1419,9 +1419,18 @@ class RobloxDynamicArchitect:
                                         # duplicate input/effect schema before
                                         # the actual Luau codegen. Keep any
                                         # model-proposed action_contract untrusted.
-                                        system = dict(
-                                            system,
-                                            action_contract=host_owned_action_contract(),
+                                        source_choices = system.get("action_choices") or []
+                                        # Convert approved choices into the
+                                        # typed selection allowlist, so they
+                                        # cannot shadow or bypass this Remote.
+                                        manifest = host_owned_action_contract(
+                                            source_choices if isinstance(
+                                                source_choices, list) else None
+                                        )
+                                        system = dict(system)
+                                        system.pop("action_choices", None)
+                                        system.update(
+                                            action_contract=manifest,
                                             host_standard_transport=True,
                                         )
                                     elif "action_contract" not in system:
