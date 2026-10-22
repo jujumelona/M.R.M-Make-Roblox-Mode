@@ -359,7 +359,14 @@ def expand_semantic_facet(
                 "name": client_name, "role": "client",
                 "requirement_ids": list(requirement_ids),
                 "facet_ids": [facet_id],
-                "behavior": client.strip(),
+                # A button's client controller is host-generated: the model
+                # need not invent a separate UI. Preserve any real description,
+                # but never feed an empty module contract into the Luau coder.
+                "behavior": (client.strip() or (
+                    "Host-generated button for " + name.strip() +
+                    " invokes the corresponding server action and displays "
+                    "the server-confirmed result to the player."
+                )) if input_mode == "host_button" else client.strip(),
                 "uses_remotes": list(assigned_remotes),
             })
             remotes.append({
