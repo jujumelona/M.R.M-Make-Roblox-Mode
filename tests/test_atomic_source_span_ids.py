@@ -30,9 +30,14 @@ class SpanSelector:
         obj = json.loads(prompt.split("\n")[-1])
         candidates = {row["quote"]: row["id"]
                       for row in obj["candidate_source_spans"]}
+        unbound = obj.get("unbound_actions", obj.get("actions", []))
         return {"bindings": [
-            {"action_index": index, "source_id": candidates[span]}
-            for index, span in enumerate(self.mapping)
+            {"action_index": row["action_index"],
+             "source_id": candidates[
+                 (self.mapping[row["action_index"]]
+                  if len(self.mapping) != len(unbound)
+                  else self.mapping[position])]}
+            for position, row in enumerate(unbound)
         ]}
 
 
@@ -136,3 +141,51 @@ def test_model_cannot_supply_unauthorized_source_id_even_with_valid_quote():
             {"source_quote": "식민지화등",
              "action": "Establish a new planet colony"},
         ])
+
+
+
+def test_long_composite_request_retains_source_tail_and_multitoken_choices():
+    source = " ".join("action" + str(i) for i in range(65))
+    indexed = indexed_source_spans(source)
+    assert len(indexed) <= 48
+    assert all(source[row["start"]:row["end"]] == row["quote"] for row in indexed)
+    assert any("action0" in row["quote"].split() for row in indexed)
+    assert any("action64" in row["quote"].split() for row in indexed)
+    assert any(len(row["quote"].split()) >= 3 for row in indexed)
+    assert any("action32" in row["quote"].split() for row in indexed)
+
+
+def test_repair_request_freezes_accepted_source_owner():
+    original = "Fight alien enemies and colonize planets"
+    selector = SpanSelector(["Fight alien enemies", "colonize planets"])
+    output = verify_or_bind_actions(selector, original, [
+        {"source_quote": "Fight alien enemies",
+         "action": "Fight and defeat hostile alien enemies"},
+        {"source_quote": "translated colony",
+         "action": "Establish new colonies on planets"},
+    ])
+    assert output[0]["source_quote"] == "Fight alien enemies"
+    assert output[1]["source_quote"] == "colonize planets"
+    assert len(selector.calls) == 1
+    payload = __import__("json").loads(selector.calls[0][0].split("\n")[-1])
+    assert [row["action_index"] for row in payload["unbound_actions"]] == [1]
+    assert payload["retained_verified_owners"] == [
+        {"action_index": 0, "source_quote": "Fight alien enemies"}]
+    assert "Fight alien enemies" not in [
+        row["quote"] for row in payload["candidate_source_spans"]]
+
+
+def test_repair_may_not_reassign_valid_owner_even_when_model_invents_an_index():
+    class HostileRebinder:
+        def complete_json(self, prompt, **kwargs):
+            return {"bindings": [
+                {"action_index": 0, "source_id": "s1"},
+            ]}
+    with pytest.raises(SourceActionBindingError, match="MAPPING_INVALID"):
+        verify_or_bind_actions(HostileRebinder(),
+            "Fight alien enemies and colonize planets", [
+                {"source_quote": "Fight alien enemies",
+                 "action": "Fight hostile alien enemies"},
+                {"source_quote": "translated colony",
+                 "action": "Establish colonies on planets"},
+            ])
