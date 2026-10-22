@@ -116,6 +116,46 @@ _SCOPED_DUAL_SEMANTIC_REPAIR_SCHEMA = {
     "required": ["server_addition", "outcome_addition"],
 }
 
+# Genre-independent secondary review. The reviewer must quote actual source
+# actions and visible results from the proposed facet; its own unsupported
+# "yes" is never treated as evidence. The same contract applies to all games.
+_SOURCE_FIDELITY_REVIEW_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "covered": {"type": "boolean"},
+        "server_quote": {"type": "string"},
+        "outcome_quote": {"type": "string"},
+        "missing": {"type": "string"},
+    },
+    "required": ["covered", "server_quote", "outcome_quote", "missing"],
+}
+
+
+def _ground_source_fidelity_review(
+    review: Any, server_text: str, outcome_text: str,
+) -> str:
+    """Return a repairable issue, or empty string for grounded coverage.
+
+    A same-model reviewer is a semantic cross-check, not independent proof
+    of code behavior. Verbatim quotes make unsupported approvals detectable.
+    """
+    if not isinstance(review, dict) or type(review.get("covered")) is not bool:
+        return "Review did not provide a bounded coverage verdict"
+    if not review["covered"]:
+        missing = review.get("missing")
+        return ("Unimplemented source action: " + str(missing or "not specified")[:240])
+    for key, original in (
+        ("server_quote", server_text),
+        ("outcome_quote", outcome_text),
+    ):
+        quote = review.get(key)
+        if (not isinstance(quote, str) or len(quote.strip()) < 16
+                or " ".join(quote.casefold().split())
+                not in " ".join(original.casefold().split())):
+            return "Unsupported " + key + ": evidence must quote the authored mechanic"
+    return ""
+
+
 # These are inspected first-party *code templates*, not third-party libraries.
 # A candidate can be reused only when its behavior is an exact request match.
 _BUILTIN_CONTRACTS = {
@@ -1046,6 +1086,60 @@ class RobloxDynamicArchitect:
                         # systems; every dropped feature keeps its own facet.
                         draft, rejected_scope_names = scope_semantic_systems(
                             draft, facet=facet, all_facets=facets)
+                        # Compare original user actions against the complete
+                        # proposed behavior even for novel genres for which
+                        # no specialized regular-expression validator exists.
+                        # This is intentionally separate from genre adapters.
+                        if (getattr(self.router, "supports_source_fidelity_audit", False)
+                                and os.environ.get(
+                                    "RMM_SOURCE_FIDELITY_AUDIT", "1") != "0"
+                                and not cache_hit):
+                            systems = draft.get("systems", [])
+                            server_text = " ".join(
+                                str(s.get("server_behavior") or "")
+                                for s in systems if isinstance(s, dict))
+                            outcome_text = " ".join(
+                                str(s.get("observable_result")
+                                    or s.get("client_behavior") or "")
+                                for s in systems if isinstance(s, dict))
+                            for original_source in subset:
+                                review = self.router.complete_json(
+                                    "Audit the source requirement AGAINST "
+                                    "the drafted server behavior and observable "
+                                    "result. Determine whether all actions and "
+                                    "their targets explicitly requested by the "
+                                    "source are genuinely implemented, not just "
+                                    "mentioned or used as prerequisites. "
+                                    "An unrelated mechanic, an open menu, "
+                                    "a success toast, or an already-existing "
+                                    "state is not the requested action. "
+                                    "If covered, copy one EXACT continuous "
+                                    "substring (at least 16 characters) "
+                                    "from server_behavior into server_quote "
+                                    "and one from observable_result into "
+                                    "outcome_quote that demonstrate the "
+                                    "requested transition. If not covered, "
+                                    "return covered=false and explain the "
+                                    "missing action in missing. "
+                                    "Return ONLY JSON with covered:boolean, "
+                                    "server_quote:string, outcome_quote:string, "
+                                    "missing:string. No extra keys.\\n"
+                                    + json.dumps({
+                                        "source_requirement": original_source,
+                                        "translated_intent": facet.get(
+                                            "search_query", ""),
+                                        "server_behavior": server_text[:2400],
+                                        "observable_result": outcome_text[:1600],
+                                    }, ensure_ascii=False),
+                                    role="planner", temperature=0.0,
+                                    max_tokens=360,
+                                    json_schema=_SOURCE_FIDELITY_REVIEW_SCHEMA,
+                                )
+                                issue = _ground_source_fidelity_review(
+                                    review, server_text, outcome_text)
+                                if issue:
+                                    raise DynamicDesignError(
+                                        "SEMANTIC_FIDELITY_CONTRACT: " + issue)
                         semantic_errors = request_semantic_errors(draft, prompt)
                         if semantic_errors:
                             raise DynamicDesignError(
@@ -1137,6 +1231,12 @@ class RobloxDynamicArchitect:
                         # A newer semantic contract below may replace the
                         # missing-obligations list with more precise evidence.
                         semantic_replan = previous_replan
+                    if "SEMANTIC_FIDELITY_CONTRACT:" in previous_error:
+                        # A coverage reviewer rejected this source action,
+                        # regardless of genre. Recreate only the affected
+                        # feature; do not keep a falsely validated checkpoint.
+                        semantic_replan = [previous_error]
+                        semantic_repair = None
                     # Compute *all* contracts against the complete scoped
                     # feature, including multi-system responses. Never infer
                     # a repair policy from a scenario-specific error token or
