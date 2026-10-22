@@ -19,14 +19,15 @@ _JOINER = re.compile(
 )
 
 
-def source_chunks(statement: str, *, max_chars: int = 11,
+def source_chunks(statement: str, *, max_chars: int = 22,
                   max_chunks: int = 48) -> list[str]:
-    """Partition a clause by original word boundaries; never drop or invent words.
+    """Partition source by word + clause boundary without manufacturing actions.
 
-    Chunks are deliberately short so adjacent, separately implemented actions
-    are not silently fused into a single model-generated module. Chunking
-    remains lossless and uses only original word boundaries, not genre keywords. A short
-    compositional clause receives at least two independently owned chunks.
+    Eleven-character buckets split Korean predicates and adjuncts ("can",
+    "using", "mode") into fictitious gameplay modules. A chunk is a *semantic
+    candidate*, not a verified independent action. Prefer complete clauses
+    and keep grammatical suffixes with the prior source span. Never use a
+    genre-specific keyword, discard words, or invent gameplay.
     """
     source = clean(statement)
     words = source.split(" ")
@@ -39,7 +40,11 @@ def source_chunks(statement: str, *, max_chars: int = 11,
             pieces.append(" ".join(current))
             current = []
         current.append(word)
-        if _JOINER.search(word) and len(" ".join(current)) >= 7:
+        # "X etc/by means of" completes the preceding modifier phrase.
+        # Always close it at the next source boundary, even if short. Otherwise
+        # a transaction modifier absorbs the *next* independently owned action.
+        if _JOINER.search(word) and (
+                len(" ".join(current)) >= 7 or word == "등으로"):
             pieces.append(" ".join(current))
             current = []
     if current:
@@ -66,6 +71,12 @@ def source_chunks(statement: str, *, max_chars: int = 11,
             combined[-1] += " " + piece
         else:
             combined.append(piece)
+    # A trailing attributive phrase ("possible X", "for X") is not an
+    # executable game mechanic by itself. Attach it to its source antecedent.
+    # This is grammar-level normalization; no game names or fixed prompt terms.
+    if (len(combined) >= 2 and len(combined[-1]) <= 10
+            and re.match(r"^(?:가능한|위한|있는|없는)\s+\S+$", combined[-1])):
+        combined[-2] += " " + combined.pop()
     if (len(combined) > max_chunks or
             clean(" ".join(combined)) != source or
             span_coverage(source, combined) < .99):
