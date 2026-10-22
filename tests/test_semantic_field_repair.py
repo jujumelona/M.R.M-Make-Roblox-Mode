@@ -385,3 +385,67 @@ def test_semantic_repair_bad_shape_retries_same_small_patch(monkeypatch):
         "architecture_attempts", [])] == []
     assert any("newly established owned planet" in m.description
                for m in result["modules"])
+
+def test_compact_replan_truncation_retries_compact_not_original(monkeypatch):
+    """A truncated scoped replan must not restart the large first-call prompt."""
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    source = "Ship can launch into space"
+    research = {"ledger": {
+        "original_prompt": source,
+        "requirements": [{"id": "req-launch", "statement": source}],
+        "facets": [{"id": "intent-launch", "requirements": ["req-launch"],
+                    "source_span": source,
+                    "search_query": "Roblox launch and enter space"}],
+    }, "evidence": []}
+    class Model:
+        def __init__(self):
+            self.calls = []
+        def complete_json(self, prompt, **kwargs):
+            self.calls.append((prompt, kwargs))
+            if len(self.calls) == 1:
+                return {"systems": [{
+                    "name": "UpgradeShip",
+                    "server_behavior": (
+                        "The server charges credits to upgrade ship modules "
+                        "and records the expanded module inventory."
+                    ),
+                    "client_behavior": (
+                        "The UI shows ship upgrades and purchases and "
+                        "confirms completed modifications."
+                    ),
+                    "observable_result": (
+                        "The player sees purchased module upgrades and "
+                        "the changed ship configuration."
+                    ),
+                    "interaction": "request_response",
+                    "world_entities": [],
+                }]}
+            assert "missing_obligations" in prompt
+            assert kwargs["max_tokens"] <= 1024
+            if len(self.calls) == 2:
+                raise ValueError(
+                    "Model JSON completion truncated (finish_reason=length)"
+                )
+            return {"systems": [{
+                "name": "SpaceLaunch",
+                "server_behavior": (
+                    "The server verifies ship readiness, then launches "
+                    "the spacecraft into space and records its departure."
+                ),
+                "client_behavior": (
+                    "The client shows a launch button and updates "
+                    "the space flight HUD after confirmed departure."
+                ),
+                "observable_result": (
+                    "The spacecraft launches into space and the player "
+                    "sees the orbital flight location."
+                ),
+                "interaction": "request_response",
+                "world_entities": [],
+            }]}
+    model = Model()
+    result = RobloxDynamicArchitect(model).design(source, research, [])
+    assert len(model.calls) == 3
+    assert all("missing_obligations" in request
+               for request, _ in model.calls[1:])
+    assert "space" in result["acceptance"]["req-launch"].lower()
