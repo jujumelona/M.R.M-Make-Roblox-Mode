@@ -107,7 +107,11 @@ def build_gameplay_contract(proposal: Any) -> dict[str, Any]:
                       if m.module_id.startswith("dyn_")
                       and facet_id in module_facets.get(m.module_id, [])]
             if owners:
-                units.append(_unit("custom." + facet_id, owners[0], ["--!strict"],
+                # A strict-mode pragma is NOT evidence of gameplay. The
+                # corresponding on-disk server source must include executable
+                # mutation, checked independently below. An empty marker
+                # list avoids certifying any custom behavior from boilerplate.
+                units.append(_unit("custom." + facet_id, owners[0], [],
                                    "execute requested " + facet_id,
                                    str(observable).strip()[:300]))
     graph = [
@@ -207,10 +211,25 @@ def validate_gameplay_contract(proposal: Any, project_root: Path) -> list[dict]:
             code = source.read_text(encoding="utf-8") if source else ""
         except OSError:
             code = ""
-        check("source." + unit.get("id", "unknown"),
-              bool(code) and bool(owner) and all(
-                  token in code for token in unit.get("source_markers", [])),
-              "Actual packaged source supports " + str(unit.get("observable")))
+        # Do not certify a dynamic server action merely because its module
+        # exists and begins with --!strict. Only actual executable code
+        # exhibiting a plausible authoritative mutation is even a candidate
+        # for source-level coverage; semantic/playtest proof is still separate.
+        source_ok = bool(code) and bool(owner) and all(
+            token in code for token in unit.get("source_markers", []))
+        if str(unit.get("id") or "").startswith("custom."):
+            from .dynamic_wiring import _mask_strings, _without_comments
+            from .host_service_codegen import _EFFECT
+            executable = _mask_strings(_without_comments(code))
+            source_ok = (
+                source_ok
+                and bool(owner.file_path.startswith("src/server/"))
+                and bool(_EFFECT.search(executable))
+            )
+        check("source." + unit.get("id", "unknown"), source_ok,
+              "Actual packaged source supplies executable server mutation "
+              "candidate for " + str(unit.get("observable")) +
+              "; static evidence is not a Roblox engine playtest")
     if contract.get("mode") == "round":
         check("round_modules",
               "ArenaRoundService" in modules and "RoundController" in modules,
