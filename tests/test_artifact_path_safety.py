@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from roblox_mod_ai.artifact_path_safety import safe_project_file, safe_segment
+from roblox_mod_ai.artifact_path_safety import safe_project_file, safe_segment, validate_project_layout
 from roblox_mod_ai.project_generator import RobloxProjectGenerator
 from roblox_mod_ai.spec import RobloxModuleSpec, RobloxProposal, ModuleKind, RobloxService
 
@@ -51,3 +51,17 @@ def test_materialization_rejects_path_escape_before_luau_write(tmp_path):
         RobloxProjectGenerator(tmp_path).materialize_project_tree(
             proposal, tmp_path / "game")
     assert not (tmp_path / "hijack.luau").exists()
+
+
+def test_two_modules_cannot_silently_overwrite_the_same_source(tmp_path):
+    a = SimpleNamespace(file_path="src/server/Action.luau")
+    b = SimpleNamespace(file_path="src/server/Action.luau")
+    with pytest.raises(ValueError, match="RMM_PROJECT_PATH_COLLISION"):
+        validate_project_layout(tmp_path, [a, b], [])
+    assert not (tmp_path / "src").exists()
+
+
+def test_reserved_jest_config_cannot_be_replaced_by_model_test(tmp_path):
+    fake = SimpleNamespace(file_path="tests/jest.config.lua")
+    with pytest.raises(ValueError, match="RMM_PROJECT_PATH_RESERVED"):
+        validate_project_layout(tmp_path, [], [fake])
