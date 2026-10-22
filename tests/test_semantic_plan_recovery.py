@@ -209,3 +209,44 @@ def test_cached_model_claims_are_revalidated_and_only_unsafe_chunks_reasked(
     assert corrupted_id in queried
     assert all(atom["intent"] != "Player-to-Player Trading"
                for atom in recovered["atomic_intents"])
+
+
+def test_grammatical_source_units_no_longer_create_fifteen_pseudo_features():
+    """Regression from plan failure (5): 11-character source buckets."""
+    source = (
+        "우주모드 인데 자원파밍 돈모으기 거래 등으로 우주선을 "
+        "부위마다 만들어서 만들수있고 무기 선원 우주선 성능을 거래 "
+        "구매 등으로 업그레이드 확장 할 수 있고 그렇게해서 우주로 "
+        "나갈수있고 우주로 나가면 다른행성의 특수 광물 외게인과 싸움 "
+        "식민지화등 여러가지가 가능한 모드"
+    )
+    spans = source_chunks(source)
+    assert " ".join(spans) == source
+    assert 5 <= len(spans) < 15
+    assert all(span != "가능한 모드" for span in spans)
+    assert any("식민지화" in span and "가능한 모드" in span for span in spans)
+    # A connector must not be a model-owned game mechanic on its own.
+    assert all(span not in ("수 있고", "등으로", "그렇게해서") for span in spans)
+
+
+def test_colony_intent_classification_is_not_persistence_implementation():
+    """Recognizing a requested mechanic is not yet designing its state ABI."""
+    assert source_intent_conflicts(
+        "식민지화등 여러가지가 가능한 모드", "Planet colonization",
+        require_implementation=False
+    ) == []
+    assert source_intent_conflicts(
+        "식민지화등 여러가지가 가능한 모드", "Planet colonization"
+    )
+    selected = [{
+        "chunk_id": "chunk-colony",
+        "source_span": "식민지화등 여러가지가 가능한 모드"
+    }]
+    classified = valid_chunk_classification({
+        "behaviors": [{
+            "chunk_id": "chunk-colony",
+            "intent": "Enable planet colonization as a player gameplay goal",
+            "english_query": "Roblox planet colonization action planning"
+        }]
+    }, selected)
+    assert "chunk-colony" in classified
