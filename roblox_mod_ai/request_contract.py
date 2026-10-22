@@ -20,7 +20,12 @@ def clean(text: str) -> str:
 def clauses(prompt: str) -> list[str]:
     # These are presentation separators only; never assume their absence means
     # the user asked for a single gameplay behavior.
-    pieces = re.split(r"(?:\s*[,;，；\n]\s*|\s+(?:그리고|및|또한|and)\s+)", prompt)
+    # Human-authored conjunctions are source content, not disposable
+    # punctuation. Splitting on "and"/"및"/"그리고" erased the exact
+    # original words and promoted noun lists into separate game mechanics.
+    # Only explicit punctuation/newlines establish raw clause boundaries;
+    # uncertain compound clauses go through source-ID semantic decomposition.
+    pieces = re.split(r"\s*[,;，；\n]\s*", prompt)
     return [part for item in pieces if (part := clean(item))]
 
 
