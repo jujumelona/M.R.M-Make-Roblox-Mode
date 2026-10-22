@@ -33,6 +33,72 @@ def canonicalize_interaction_fields(raw: dict[str, Any]) -> tuple[dict[str, Any]
     return (dict(raw, systems=normalized) if changed else raw), changed
 
 
+
+def bind_host_standard_transport(raw: dict[str, Any]) -> tuple[dict[str, Any], list[int]]:
+    """Compile an existing semantic plan into host-owned Roblox ingress.
+
+    The small model owns *what* the action does, never RemoteEvent vs
+    RemoteFunction, input widget choice or client transport prose. Treat its
+    protocol fields as hints, not instructions. Correct a malformed protocol
+    deterministically without requesting another model call or changing
+    server_behavior, visible results, names, targets, or choices.
+
+    A genuinely passive 'none' action remains passive; world-prompt actions
+    with a single declared object remain proximity interactions. Other
+    player actions use the same typed Remote ABI. Never infer game genre.
+    """
+    systems = raw.get("systems")
+    if not isinstance(systems, list):
+        return raw, []
+    changed: list[int] = []
+    normalized: list[Any] = []
+    for index, original in enumerate(systems):
+        if not isinstance(original, dict):
+            normalized.append(original)
+            continue
+        row = dict(original)
+        mode = row.get("input_mode")
+        interaction = row.get("interaction")
+        world = row.get("world_entities", [])
+        choices = row.get("action_choices", [])
+        # Explicitly requested world prompts need one host-owned Part.
+        # No object or multiple objects means an actionable typed selection
+        # UI instead; it must NEVER attach to an arbitrary part.
+        if mode == "world_prompt" and isinstance(world, list) and len(world) == 1:
+            mode, interaction = "world_prompt", "event"
+        elif mode == "host_button" and not world and not choices:
+            mode, interaction = "host_button", "request_response"
+        else:
+            # All other player input uses the host typed form. A 'none'
+            # action remains passive only when the model specifically
+            # declared it and no explicit choices contradict that intent.
+            mode = "custom"
+            if choices or interaction not in INTERACTIONS:
+                interaction = "request_response"
+            elif interaction == "none":
+                pass
+        row["input_mode"] = mode
+        row["interaction"] = interaction
+        if mode == "custom" and interaction != "none":
+            # The LocalScript is emitted deterministically by the host.
+            # Remove model-authored UI prose, which can invent unrelated
+            # mechanics and is not the networking source of truth.
+            row["client_behavior"] = (
+                "Host-owned typed action form submits validated selection "
+                "and quantity fields over the routed Roblox Remote for " +
+                str(row.get("name") or "the requested gameplay action") + "."
+            )
+        elif mode in {"world_prompt", "host_button"}:
+            row["client_behavior"] = (
+                "Host-owned " + mode + " activates the requested gameplay "
+                "server action and displays its observable result."
+            )
+        if row != original:
+            changed.append(index)
+        normalized.append(row)
+    return dict(raw, systems=normalized), changed
+
+
 def interaction_issues(raw: dict[str, Any]) -> dict[int, list[str]]:
     """Machine-verifiable routing errors, independently of game genre."""
     output: dict[int, list[str]] = {}
