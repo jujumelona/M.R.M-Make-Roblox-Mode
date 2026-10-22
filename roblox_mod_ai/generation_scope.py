@@ -16,6 +16,7 @@ from .host_gameplay import render_host_gameplay
 from .host_mode_navigation import eligible_mode_navigation
 from .host_mode_unlock import eligible_mode_unlock
 from .host_catalog_purchase import eligible_catalog_purchase
+from .host_trade_catalog import eligible_trade_catalog
 from .host_upgrade_declarative import eligible_declarative_upgrade
 from .host_ship_sections import eligible_ship_sections
 from .host_ship_slot_configuration import eligible_ship_slot_configuration
@@ -49,6 +50,8 @@ def generation_scope(proposal: Any) -> dict[str, Any]:
             strategy = "host_declarative_mode_unlock"
         elif eligible_ship_purchase_facade(module, proposal) is not None:
             strategy = "host_ship_purchase_facade"
+        elif eligible_trade_catalog(module, proposal) is not None:
+            strategy = "host_declarative_trade_catalog"
         elif eligible_catalog_purchase(module, proposal) is not None:
             strategy = "host_declarative_catalog"
         elif eligible_declarative_upgrade(module, proposal) is not None:
