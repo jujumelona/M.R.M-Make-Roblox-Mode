@@ -81,7 +81,9 @@ def _shell(
         "    if typeof(player) ~= \"Instance\" or not player:IsA(\"Player\") then return false end\n"
         "    if player.Parent ~= Players then return false end\n"
         + choice_guard
+        + "    -- RMM_GAMEPLAY_BODY_BEGIN\n"
         + "\n".join("    " + line for line in body.splitlines()) + "\n"
+        + "    -- RMM_GAMEPLAY_BODY_END\n"
         "end\n"
         "return Service\n"
     )
