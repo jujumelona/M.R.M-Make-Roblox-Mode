@@ -39,6 +39,7 @@ from .host_ship_purchase_facade import eligible_ship_purchase_facade, try_ship_p
 from .economy_core import is_supported_economy_ledger, render_economy_ledger
 from .server_modules import render_dynamic_server_bootstrap
 from .host_client import render_host_client
+from .typed_action_contract import render_typed_client
 from .host_player_data import render_callable_player_data
 from .gameplay_round import render_arena_round_service, render_arena_round_controller
 from .implementation_blueprint import audit_implementation_blueprint
@@ -150,6 +151,12 @@ class LuauCodeGenerator:
 
     def generate_module_code(self, module: RobloxModuleSpec, proposal: RobloxProposal) -> str:
         """Dispatches Luau code generation to specialized genre and subsystem engines."""
+        # For a typed action, the host deterministically builds all form
+        # controls and its Remote payload. Do not call the smaller coder for
+        # a duplicate client UI or let a genre template bypass this ABI.
+        typed_ui = render_typed_client(module, proposal)
+        if typed_ui is not None:
+            return typed_ui
         # Authored novel mechanics must NEVER be dispatched to same-name
         # first-party templates whose behavior was not contract-matched.
         if module.module_id == "mod_game_objective":
