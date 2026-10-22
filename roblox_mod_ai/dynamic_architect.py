@@ -36,6 +36,7 @@ from .source_ownership_review import (
 )
 from .typed_action_contract import (
     validate_contract, complete_typed_contract, host_owned_action_contract,
+    validated_host_choice_options,
 )
 
 _VALID_NAME = re.compile(r"^[A-Z][A-Za-z0-9]{2,58}$")
@@ -953,6 +954,7 @@ class RobloxDynamicArchitect:
             for attempt in range(3):
                 rejected_scope_names: list[str] = []
                 host_bound_indexes: list[int] = []
+                discarded_ui_choices: list[dict[str, Any]] = []
                 # Preserve compact repair evidence when parsing/validation
                 # rejects it; prior failure bundles only recorded
                 # unavailable_or_too_large and hid the actual model defect.
@@ -1478,6 +1480,15 @@ class RobloxDynamicArchitect:
                                         # Luau server code validates its meaning.
                                         manifest = host_owned_action_contract(
                                             source_choices)
+                                        if source_choices and not validated_host_choice_options(
+                                                source_choices):
+                                            discarded_ui_choices.append({
+                                                "system_index": system_index,
+                                                "system_name": system.get("name"),
+                                                "reason": "untrusted_model_choice_format",
+                                                "raw_choices": str(source_choices)[:600],
+                                                "fallback": "typed_text_selection",
+                                            })
                                         system = dict(system)
                                         system.pop("action_choices", None)
                                         system.update(
@@ -1631,6 +1642,7 @@ class RobloxDynamicArchitect:
                         "out_of_scope_systems_ignored": rejected_scope_names,
                         "typed_contract_attempts": list(typed_attempts),
                         "host_bound_transport_indexes": list(host_bound_indexes),
+                        "discarded_ui_choices": list(discarded_ui_choices),
                     })
                     successful = True
                     break
@@ -1649,6 +1661,7 @@ class RobloxDynamicArchitect:
                             and len(json.dumps(draft, ensure_ascii=False)) <= 16000
                             else "unavailable_or_too_large",
                         "typed_contract_attempts": list(typed_attempts),
+                        "discarded_ui_choices": list(discarded_ui_choices),
                         "transport_repair_response": (
                             repair_response
                             if isinstance(repair_response, (dict, list))
