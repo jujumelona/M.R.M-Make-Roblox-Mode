@@ -87,6 +87,9 @@ class BoundedContextModel:
             elif "외계인" in span or "외게인" in span:
                 action = "Player attacks hostile alien enemy NPCs with validated damage"
                 query = "Roblox server hostile alien NPC attack damage"
+            elif "우주로" in span:
+                action = "The spacecraft launches into space after ship construction"
+                query = "Roblox server validation of launch travel into space"
             else:
                 action = "Implement exactly this source gameplay clause: " + span
                 query = "Roblox server game mechanic " + span
