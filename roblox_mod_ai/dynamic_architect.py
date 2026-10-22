@@ -30,7 +30,7 @@ from .semantic_world_entities import normalize_world_names
 from .source_ownership_review import (
     SOURCE_OWNERSHIP_REVIEW_SCHEMA, ground_source_ownership,
 )
-from .typed_action_contract import SCHEMA as TYPED_ACTION_SCHEMA, validate_contract
+from .typed_action_contract import validate_contract, complete_typed_contract
 
 _VALID_NAME = re.compile(r"^[A-Z][A-Za-z0-9]{2,58}$")
 _VALID_REMOTE = re.compile(r"^[A-Z][A-Za-z0-9]{2,55}$")
@@ -906,6 +906,7 @@ class RobloxDynamicArchitect:
             semantic_repair: tuple[dict[str, Any], dict[str, list[str]]] | None = None
             semantic_replan: list[str] | None = None
             input_repair: tuple[dict[str, Any], dict[int, list[str]]] | None = None
+            typed_attempts: list[dict[str, Any]] = []
             successful = False
             cache_hit = False
             for attempt in range(3):
@@ -1407,43 +1408,12 @@ class RobloxDynamicArchitect:
                                         and system.get("interaction") in {
                                             "event", "request_response"}):
                                     if "action_contract" not in system:
-                                        manifest = self.router.complete_json(
-                                            "Define a SHORT typed INPUT CONTRACT "
-                                            "for the ALREADY EXISTING server action. "
-                                            "Do not redesign the gameplay. Return "
-                                            "JSON {inputs:[{id,label,type,"
-                                            "min,max,options}],target:{kind,name},"
-                                            "state_changes:[{scope,key,operation}]}. "
-                                            "Inputs must be 0-4 fields typed text, "
-                                            "integer (requires min and max), or "
-                                            "choice (1-8 id/label options). Use "
-                                            "target.kind=world_entity only for ONE "
-                                            "explicitly named static world entity; "
-                                            "otherwise use {kind:none}. State "
-                                            "changes are 1-5 authoritative "
-                                            "player/world fields with operation "
-                                            "increment/decrement/set/create/remove. "
-                                            "The state changes must describe the "
-                                            "actual server transitions ALREADY "
-                                            "defined in server_behavior. Do not "
-                                            "invent money, parts, new systems, "
-                                            "generic UI actions or optional keys "
-                                            "not required by field types. JSON only.\n"
-                                            + json.dumps({
-                                                "source_requirements": subset,
-                                                "name": system.get("name"),
-                                                "server_behavior": system.get(
-                                                    "server_behavior"),
-                                                "world_entities": system.get(
-                                                    "world_entities", []),
-                                            }, ensure_ascii=False),
-                                            role="planner", temperature=0.0,
-                                            max_tokens=500,
-                                            json_schema=TYPED_ACTION_SCHEMA,
+                                        manifest = complete_typed_contract(
+                                            self.router, system=system,
+                                            source_requirements=subset,
+                                            attempts_log=typed_attempts,
+                                            system_index=system_index,
                                         )
-                                        manifest = validate_contract(
-                                            manifest, world_entities=system.get(
-                                                "world_entities", []))
                                         system = dict(system, action_contract=manifest)
                                     else:
                                         system = dict(system, action_contract=validate_contract(
@@ -1575,6 +1545,7 @@ class RobloxDynamicArchitect:
                         "cache_hit": cache_hit,
                         "id_binding": id_binding,
                         "out_of_scope_systems_ignored": rejected_scope_names,
+                        "typed_contract_attempts": list(typed_attempts),
                     })
                     successful = True
                     break
@@ -1592,6 +1563,7 @@ class RobloxDynamicArchitect:
                         "model_response": draft if isinstance(draft, dict)
                             and len(json.dumps(draft, ensure_ascii=False)) <= 16000
                             else "unavailable_or_too_large",
+                        "typed_contract_attempts": list(typed_attempts),
                         "transport_repair_response": (
                             repair_response
                             if isinstance(repair_response, (dict, list))
@@ -1599,6 +1571,11 @@ class RobloxDynamicArchitect:
                             else None
                         ),
                     })
+                    # A typed contract has already exhausted its own
+                    # small, schema-constrained retries. NEVER regenerate
+                    # the entire gameplay draft for a metadata failure.
+                    if "TYPED_ACTION_CONTRACT_EXHAUSTED:" in previous_error:
+                        break
                     # Preserve the original facet plan when the model's
                     # bounded repair response is malformed. Retrying the SAME
                     # small repair is preferable to regenerating 1,400+ output
