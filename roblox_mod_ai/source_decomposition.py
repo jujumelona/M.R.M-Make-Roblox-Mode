@@ -84,7 +84,8 @@ def source_chunks(statement: str, *, max_chars: int = 22,
     # This is grammar-level normalization; no game names or fixed prompt terms.
     if (len(combined) >= 2 and len(combined[-1]) <= 10
             and re.match(r"^(?:가능한|위한|있는|없는)\s+\S+$", combined[-1])):
-        combined[-2] += " " + combined.pop()
+        qualifier = combined.pop()
+        combined[-1] += " " + qualifier
     if (len(combined) > max_chunks or
             clean(" ".join(combined)) != source or
             span_coverage(source, combined) < .99):
