@@ -21,24 +21,44 @@ _COMMON = {
 }
 
 
-def _terms(value: str) -> set[str]:
-    words = re.findall(r"[A-Za-z]+", re.sub(r"([a-z])([A-Z])", r"\1 \2", value))
-    result = set()
+def _ordered_terms(value: str) -> list[str]:
+    """Normalize intent and system names without a domain-specific vocabulary.
+
+    Keep order: small models often describe the *actual* source action first
+    and then append adjacent progression context. A flat bag-of-words makes
+    those copied adjuncts equally authoritative and misroutes valid mechanics.
+    """
+    words = re.findall(r"[A-Za-z]+", re.sub(r"([a-z])([A-Z])", r"\\1 \\2", value))
+    result: list[str] = []
     for raw in words:
         word = raw.lower()
         if word in _COMMON or len(word) < 3:
             continue
-        # Lexical folding only; no semantic guessing or replacement actions.
-        if word.endswith("ing") and len(word) > 5:
+        if word.endswith("ation") and len(word) > 8:
+            word = word[:-5]
+        elif word.endswith("ing") and len(word) > 5:
             word = word[:-3]
         elif word.endswith("ed") and len(word) > 5:
+            word = word[:-2]
+        elif word.endswith("er") and len(word) > 5:
             word = word[:-2]
         elif word.endswith("s") and len(word) > 4:
             word = word[:-1]
         if word.endswith("e") and len(word) > 4:
             word = word[:-1]
-        result.add(word)
+        if word and word not in result:
+            result.append(word)
     return result
+
+
+def _terms(value: str) -> set[str]:
+    return set(_ordered_terms(value))
+
+
+def _source_match_score(owned: set[str], intent: list[str]) -> float:
+    """Favor direct source intent over contextual words copied from neighbors."""
+    return sum(1.0 / (position + 1) for position, term
+               in enumerate(intent) if term in owned)
 
 
 def scope_semantic_systems(
@@ -57,11 +77,18 @@ def scope_semantic_systems(
     if not isinstance(systems, list) or len(systems) <= 1:
         return raw, []
     target_id = facet.get("id")
-    labels = {
-        item.get("id"): _terms(str(item.get("search_query") or ""))
+    ordered_labels = {
+        item.get("id"): _ordered_terms(str(item.get("search_query") or ""))
         for item in all_facets if isinstance(item, dict) and item.get("id")
     }
+    labels = {fid: set(words) for fid, words in ordered_labels.items()}
     target = labels.get(target_id, set())
+    # A generic shared noun is not proof of ownership. One matching term
+    # suffices only if it is unique to this source facet; otherwise require
+    # independent evidence from at least two words in the system name.
+    foreign_vocabulary = set().union(
+        *(words for fid, words in labels.items() if fid != target_id)
+    )
     if not target:
         # Multilingual/untranslated ledger facets sometimes contain only a
         # source_span (no English search_query). A single named mechanic with
@@ -88,20 +115,21 @@ def scope_semantic_systems(
         if not isinstance(name, str) or not name.strip():
             raise ValueError("SCOPED_SYSTEM_INVALID: every system needs a name")
         owned_terms = _terms(name)
-        own = len(owned_terms & target)
-        foreign = max(
-            (len(owned_terms & words) for fid, words in labels.items()
-             if fid != target_id),
-            default=0,
+        overlap = owned_terms & target
+        own_score = _source_match_score(owned_terms, ordered_labels[target_id])
+        foreign_score = max(
+            (_source_match_score(owned_terms, words)
+             for fid, words in ordered_labels.items() if fid != target_id),
+            default=0.0,
         )
-        # Source ownership is *comparative*, not a fixed number of
-        # matching English words. Compound names can use a synonym for
-        # the requested verb: e.g. a source's noun may be the only literal
-        # overlap with a correct two-word action name. Require at least one
-        # source-specific anchor AND strictly more evidence for this facet
-        # than for every competing one. Never silently assign tied systems.
-        # Subsequent semantic/engine validators still own correctness.
-        if own > 0 and own > foreign:
+        independently_supported = (
+            len(overlap) >= 2 or bool(overlap - foreign_vocabulary)
+        )
+        # Equal raw token counts used to reject valid compound systems because
+        # other facets' queries repeat source context (e.g. building mentioned
+        # in a trade description). Earlier, direct source terms resolve the tie.
+        # Do not accept an unowned action merely because a shared word appears.
+        if independently_supported and own_score > foreign_score + 1e-9:
             kept.append(system)
         else:
             discarded.append(name)
