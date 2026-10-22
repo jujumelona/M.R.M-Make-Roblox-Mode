@@ -151,8 +151,8 @@ def requires_player_ingress(name: str, server_behavior: str) -> bool:
 def _repeats_empty_claims(prose: str) -> bool:
     """Reject repetitive boilerplate, not legitimate long server contracts."""
     sentences = [
-        re.sub(r"\\s+", " ", item).strip().casefold()
-        for item in re.split(r"[.!?;\\n]+", prose)
+        re.sub(r"\s+", " ", item).strip().casefold()
+        for item in re.split(r"[.!?;\n]+", prose)
         if len(item.strip()) >= 45
     ]
     counts: dict[str, int] = {}
@@ -161,7 +161,6 @@ def _repeats_empty_claims(prose: str) -> bool:
         if counts[sentence] >= 4:
             return True
     return False
-
 
 def expand_semantic_facet(
     raw: dict[str, Any], *, facet_id: str, requirement_ids: list[str],
