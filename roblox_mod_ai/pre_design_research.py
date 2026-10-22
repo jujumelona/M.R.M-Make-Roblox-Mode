@@ -423,7 +423,7 @@ class RobloxPreDesignResearch:
             # classification calls are all repeated on every failed run.
             # Cache ONLY validator-accepted exact source spans, bound to the
             # complete request and current decomposition+semantic code.
-            checkpoint = self.classification_cache
+            chunk_checkpoint = self.classification_cache
             cache_key = hashlib.sha256(json.dumps({
                 "prompt": prompt,
                 "chunks": chunks,
@@ -434,9 +434,9 @@ class RobloxPreDesignResearch:
                     (Path(__file__).parent / "semantic_preservation.py").read_bytes()
                 ).hexdigest(),
             }, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
-            if checkpoint is not None:
+            if chunk_checkpoint is not None:
                 try:
-                    saved = json.loads(checkpoint.read_text(encoding="utf-8"))
+                    saved = json.loads(chunk_checkpoint.read_text(encoding="utf-8"))
                     if (saved.get("schema") == "rmm/semantic-chunk-cache-v1"
                             and saved.get("input_sha256") == cache_key):
                         rows = saved.get("behaviors")
@@ -447,19 +447,19 @@ class RobloxPreDesignResearch:
                     pass
 
             def persist_verified_chunks() -> None:
-                if checkpoint is None:
+                if chunk_checkpoint is None:
                     return
-                checkpoint.parent.mkdir(parents=True, exist_ok=True)
+                chunk_checkpoint.parent.mkdir(parents=True, exist_ok=True)
                 rows = [{"chunk_id": cid, **row}
                         for cid, row in classified.items()
                         if not row["intent"].startswith(
                             "Implement only the requested gameplay in: ")]
-                temp = checkpoint.with_suffix(checkpoint.suffix + ".tmp")
+                temp = chunk_checkpoint.with_suffix(chunk_checkpoint.suffix + ".tmp")
                 temp.write_text(json.dumps({
                     "schema": "rmm/semantic-chunk-cache-v1",
                     "input_sha256": cache_key, "behaviors": rows,
                 }, ensure_ascii=False, indent=2), encoding="utf-8")
-                temp.replace(checkpoint)
+                temp.replace(chunk_checkpoint)
 
             unclassified_source_chunks: list[str] = []
             # One-to-one classification in bounded groups; only missing source
