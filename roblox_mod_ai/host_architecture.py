@@ -14,7 +14,7 @@ import hashlib
 import re
 from typing import Any
 
-from .semantic_preservation import source_intent_conflicts
+from .semantic_preservation import source_intent_conflicts, source_outcome_conflicts
 
 
 class HostArchitectureError(ValueError):
@@ -412,8 +412,10 @@ def expand_semantic_facet(
         for layer, owned_text in (
             ("server", combined_server), ("outcome", combined_outcome)
         ):
-            issues = source_intent_conflicts(
-                source.get("statement", ""), owned_text,
+            issues = (
+                source_intent_conflicts(source.get("statement", ""), owned_text)
+                if layer == "server" else
+                source_outcome_conflicts(source.get("statement", ""), owned_text)
             )
             if issues:
                 raise HostArchitectureError(
