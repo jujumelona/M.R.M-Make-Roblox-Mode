@@ -267,6 +267,7 @@ def test_typed_server_generator_rejects_body_unrelated_to_declared_state_keys():
         modules=expanded["modules"],
         game_design={"dynamic_design": design},
     )
+    normalize_dynamic_server_modules(proposal)
     server = next(m for m in proposal.modules if m.kind == ModuleKind.SERVER_MODULE)
 
     class WrongCoder:
