@@ -467,3 +467,51 @@ def test_model_source_id_recovery_from_unseparated_korean_multi_action_clause():
 def test_short_english_compound_marked_for_semantic_decomposition():
     assert is_composite("Fight alien enemies and colonize planets")
 
+
+
+
+def test_pre_design_unsplittable_source_becomes_two_real_owned_intents(monkeypatch):
+    """Exercise research -> source-span selection -> ledger, not just the helper."""
+    import json
+    monkeypatch.setenv("RMM_ENABLE_MODEL_DECOMPOSITION", "1")
+    monkeypatch.setenv("RMM_ENABLE_MODEL_QUERY_EXPANSION", "0")
+    source = "외게인과 싸움 식민지화등 여러가지가 가능한 모드"
+
+    class Selector:
+        def complete_json(self, prompt, **kwargs):
+            if "Decompose EACH compound Roblox" in prompt:
+                return {"behaviors": []}
+            assert prompt.startswith("SOURCE-SCOPED DECOMPOSITION ONLY")
+            available = json.loads(prompt.split("\n")[-1])
+            ids = {row["quote"]: row["id"]
+                   for row in available["candidate_source_spans"]}
+            return {"actions": [
+                {"source_id": ids["외게인과 싸움"],
+                 "action": "Fight and defeat hostile alien NPC enemies"},
+                {"source_id": ids["식민지화등 여러가지가 가능한 모드"],
+                 "action": "Establish new colonies and record ownership"},
+            ]}
+
+    ledger = RobloxPreDesignResearch(
+        router=Selector(), live_enabled=False).research(source)["ledger"]
+    assert ledger["decomposition_pending"] == []
+    assert ledger["decomposition_method"] == "source_anchored_model"
+    assert [row["source_span"] for row in ledger["atomic_intents"]] == [
+        "외게인과 싸움", "식민지화등 여러가지가 가능한 모드"]
+    assert len(ledger["requirements"]) == 2
+    assert ledger_complete(source, dict(ledger,
+        unmatched_requirements=[], unimplemented_facets=[]))
+
+
+def test_unseparated_source_fails_closed_when_model_invents_actions(monkeypatch):
+    monkeypatch.setenv("RMM_ENABLE_MODEL_DECOMPOSITION", "1")
+    monkeypatch.setenv("RMM_ENABLE_MODEL_QUERY_EXPANSION", "0")
+    source = "외게인과 싸움 식민지화등 여러가지가 가능한 모드"
+    class Malformed:
+        def complete_json(self, prompt, **kwargs):
+            return {"behaviors": []} if "Decompose EACH compound" in prompt else {
+                "actions": [{"source_id": "invented", "action": "Buy premium pets"}]}
+    ledger = RobloxPreDesignResearch(
+        router=Malformed(), live_enabled=False).research(source)["ledger"]
+    assert ledger["decomposition_pending"]
+    assert not ledger_complete(source, ledger)
