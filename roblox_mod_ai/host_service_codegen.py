@@ -150,7 +150,10 @@ def try_scaffolded_server(
             "user parameters, and still verify ownership, available "
             "balances and real server-side game conditions. "
             "The required state changes are declarations, not proof "
-            "of implementation. Implement the actual transitions: " +
+            "of implementation. Reference EVERY EXACT declared state field "
+            "name in the server code, perform its real mutation, and do not "
+            "substitute an unrelated field or other game action. "
+            "Implement the actual transitions: " +
             json.dumps(typed["state_changes"], ensure_ascii=False) +
             ". " +
             ("The host validates one world target and exposes "
@@ -308,10 +311,25 @@ def try_scaffolded_server(
             if not _EFFECT.search(body):
                 raise ValueError("Body lacks observable server-owned state change")
             LiveCodeRepetitionGuard.inspect(body)
-            if typed is not None and typed["inputs"] and not (
-                    "actionArgs" in body or "args[" in body):
-                raise ValueError(
-                    "Typed server implementation ignores validated player inputs")
+            if typed is not None:
+                # Declarative effects must be referenced in the concrete
+                # Luau action, not merely repeated in planning metadata.
+                # Runtime behavior still needs an actual Studio test.
+                missing_effect_keys = [
+                    effect["key"] for effect in typed["state_changes"]
+                    if not re.search(
+                        r"\b" + re.escape(effect["key"].split(".")[-1]) +
+                        r"\b", body, flags=re.I,
+                    )
+                ]
+                if missing_effect_keys:
+                    raise ValueError(
+                        "Server code does not reference declared state keys: " +
+                        ", ".join(missing_effect_keys))
+                if typed["inputs"] and not (
+                        "actionArgs" in body or "args[" in body):
+                    raise ValueError(
+                        "Typed server implementation ignores validated player inputs")
             candidate = _shell(
                 body, [x["id"] for x in choices] if choices else None,
                 typed_contract=typed,
