@@ -144,10 +144,7 @@ class RobloxProductionOrchestrator:
         anchor = self.workspace_root.resolve()
         if not output_dir.resolve().is_relative_to(anchor):
             raise ValueError("RMM_GAME_OUTPUT_ESCAPES_WORKSPACE")
-        for module in proposal.modules:
-            safe_project_file(output_dir, module.file_path, prefixes=("src",))
-        for test in proposal.tests:
-            safe_project_file(output_dir, test.file_path, prefixes=("tests",))
+        validate_project_layout(output_dir, proposal.modules, proposal.tests)
         output_dir.mkdir(parents=True, exist_ok=True)
         trajectory = AgentTrajectory(output_dir)
         for item in world_materializations:
