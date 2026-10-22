@@ -158,4 +158,8 @@ def test_atomic_action_decomposition_rejects_fabricated_quotations(monkeypatch):
     model = Model()
     with pytest.raises(Exception, match="could not be validated"):
         RobloxDynamicArchitect(model).design(source, _proposal(source), [])
-    assert len(model.calls) == 3
+    # Every invalid quotation now triggers a bounded source-ID binding
+    # decision rather than letting the model invent a replacement quote.
+    # The unrequested robot-pet action is still rejected in every attempt.
+    assert len(model.calls) == 5
+    assert sum("candidate_source_spans" in call for call in model.calls) == 2
