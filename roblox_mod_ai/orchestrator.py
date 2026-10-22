@@ -144,7 +144,19 @@ class RobloxProductionOrchestrator:
             began = time.perf_counter()
             try:
                 details = callback()
-                passed = bool(details.get("success", details.get("passed", True)))
+                # Every pipeline stage must return a REAL explicit verdict.
+                # The old default True marked a missing/malformed callback
+                # result as successful and advanced straight to packaging.
+                if not isinstance(details, dict):
+                    raise ValueError("STAGE_RESULT_MUST_BE_OBJECT")
+                verdicts = [details[key] for key in ("success", "passed")
+                            if key in details]
+                if (not verdicts or any(type(value) is not bool for value in verdicts)
+                        or len(set(verdicts)) != 1):
+                    raise ValueError(
+                        "STAGE_RESULT_EXPLICIT_BOOL_REQUIRED: success/passed "
+                        "must exist, be boolean, and agree")
+                passed = verdicts[0]
                 receipt.stages.append(StageReceipt(stage=stage_id, success=passed,
                     duration_ms=(time.perf_counter() - began) * 1000, details=details,
                     errors=[] if passed else [str(details.get("error", "stage not verified"))]))
@@ -239,7 +251,8 @@ class RobloxProductionOrchestrator:
                 "whole_file_model_risk_modules": scope["whole_file_model_risk_modules"],
                 "model_action_risk_modules": scope["model_action_risk_modules"],
             }, passed=True)
-            return {"module_order": [m.name for m in proposal.modules],
+            return {"success": True,
+                    "module_order": [m.name for m in proposal.modules],
                     "generation_scope": scope["counts"],
                     "whole_file_model_risk_modules":
                         scope["whole_file_model_risk_modules"],
