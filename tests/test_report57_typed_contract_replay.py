@@ -10,7 +10,7 @@ from roblox_mod_ai.dynamic_architect import RobloxDynamicArchitect
 from roblox_mod_ai.typed_action_contract import SCHEMA
 
 
-def test_report57_three_source_owned_actions_survive_inactive_input_metadata(monkeypatch):
+def test_report57_only_source_owned_trade_survives_with_typed_contract(monkeypatch):
     monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
     source = "거래 등으로"
     research = {
@@ -81,7 +81,7 @@ def test_report57_three_source_owned_actions_survive_inactive_input_metadata(mon
                 return {"systems": server_actions}
             assert kwargs["json_schema"] == SCHEMA
             assert kwargs["max_tokens"] <= 500
-            if len(self.calls) > 4:
+            if len(self.calls) > 2:
                 raise AssertionError("Must not regenerate full game systems")
             # The local JSON grammar exposes inactive min/max/options on TEXT
             # fields, exactly the representation that previously caused 3
@@ -103,11 +103,14 @@ def test_report57_three_source_owned_actions_survive_inactive_input_metadata(mon
 
     model = RecordedSmallModel()
     result = RobloxDynamicArchitect(model).design(source, research, [])
-    assert len(model.calls) == 4  # 1 original + 3 short typed contracts
-    assert len(result["host_typed_actions"]) == 3
-    assert len(result["host_actions"]) == 3
+    # The source clause owns only Trade, not Buy and Sell from other
+    # requirements. Scope filtering must happen before typed generation.
+    assert len(model.calls) == 2  # one plan + one source-owned typed action
+    assert len(result["host_typed_actions"]) == 1
+    assert len(result["host_actions"]) == 1
     assert research["architecture_attempts"][0]["passed"]
-    assert len(research["architecture_attempts"][0]["typed_contract_attempts"]) == 3
+    assert set(research["architecture_attempts"][0]["out_of_scope_systems_ignored"]) == {"Buy", "Sell"}
+    assert len(research["architecture_attempts"][0]["typed_contract_attempts"]) == 1
     assert all(x["passed"] for x in research["architecture_attempts"][0]["typed_contract_attempts"])
     for spec in result["host_typed_actions"].values():
         assert all("min" not in field for field in spec["contract"]["inputs"]
