@@ -684,6 +684,12 @@ class RobloxDynamicArchitect:
             "scope_policy_sha256": hashlib.sha256(
                 (Path(__file__).parent / "facet_scope.py").read_bytes()
             ).hexdigest(),
+            "semantic_preservation_sha256": hashlib.sha256(
+                (Path(__file__).parent / "semantic_preservation.py").read_bytes()
+            ).hexdigest(),
+            "request_semantics_sha256": hashlib.sha256(
+                (Path(__file__).parent / "request_semantics.py").read_bytes()
+            ).hexdigest(),
             "original_prompt": prompt, "ledger": ledger,
             "reserved_modules": sorted(reserved_modules),
         }, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")).hexdigest()
