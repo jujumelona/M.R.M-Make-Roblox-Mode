@@ -337,12 +337,10 @@ def try_scaffolded_server(
                 # Declarative effects must be referenced in the concrete
                 # Luau action, not merely repeated in planning metadata.
                 # Runtime behavior still needs an actual Studio test.
+                from .gameplay_source_evidence import state_key_used_by_executable_code
                 missing_effect_keys = [
                     effect["key"] for effect in typed["state_changes"]
-                    if not re.search(
-                        r"\b" + re.escape(effect["key"].split(".")[-1]) +
-                        r"\b", body, flags=re.I,
-                    )
+                    if not state_key_used_by_executable_code(body, effect["key"])
                 ]
                 if missing_effect_keys:
                     raise ValueError(
