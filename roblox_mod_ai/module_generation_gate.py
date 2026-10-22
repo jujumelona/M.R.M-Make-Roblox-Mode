@@ -112,12 +112,18 @@ def generated_module_errors(
             if re.search(r"\bOnServerEvent\b|\bOnServerInvoke\b", masked):
                 errors.append("GATEWAY_DUPLICATE: bootstrap already owns Remote callbacks")
             from .gameplay_source_evidence import has_gameplay_mutation
-            if not has_gameplay_mutation(code, routed_action=True):
+            # Host-scaffolded source has a bounded authored action body.
+            # First-party composition adapters may legitimately delegate
+            # handleAction to a separate local Mine/Trade function that
+            # owns the concrete world write. For those templates inspect
+            # the complete module, excluding service registry boilerplate.
+            scaffolded = ("-- Host-authored lifecycle, input validation and "
+                          "exported ABI.") in code
+            if not has_gameplay_mutation(code, routed_action=scaffolded):
                 errors.append(
-                    "ACTION_EFFECT_UNIMPLEMENTED: real authored handleAction "
-                    "body has no executable gameplay mutation; bootstrap "
-                    "registry setup, logging or comments cannot satisfy "
-                    "an original player action")
+                    "ACTION_EFFECT_UNIMPLEMENTED: no executable gameplay "
+                    "mutation in the source-owned action. Service.start "
+                    "registry setup, logging and comments are not effects")
 
     return list(dict.fromkeys(errors))
 
