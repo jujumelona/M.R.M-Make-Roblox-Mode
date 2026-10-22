@@ -30,7 +30,9 @@ from .semantic_world_entities import normalize_world_names
 from .source_ownership_review import (
     SOURCE_OWNERSHIP_REVIEW_SCHEMA, ground_source_ownership,
 )
-from .typed_action_contract import validate_contract, complete_typed_contract
+from .typed_action_contract import (
+    validate_contract, complete_typed_contract, host_owned_action_contract,
+)
 
 _VALID_NAME = re.compile(r"^[A-Z][A-Za-z0-9]{2,58}$")
 _VALID_REMOTE = re.compile(r"^[A-Z][A-Za-z0-9]{2,55}$")
@@ -1401,13 +1403,28 @@ class RobloxDynamicArchitect:
                         # all UI, Remotes, client argument marshaling and
                         # server validation; it is NEVER generated as prose
                         # by the gameplay planner.
-                        if getattr(self.router, "supports_typed_action_contract", False):
+                        if (
+                            getattr(self.router, "supports_host_standard_transport", False)
+                            or getattr(self.router, "supports_typed_action_contract", False)
+                        ):
                             typed_systems = []
                             for system_index, system in enumerate(draft["systems"]):
                                 if (system.get("input_mode", "custom") == "custom"
                                         and system.get("interaction") in {
                                             "event", "request_response"}):
-                                    if "action_contract" not in system:
+                                    if getattr(
+                                            self.router, "supports_host_standard_transport", False):
+                                        # Host supplies a stable input ABI. Never
+                                        # ask a 9B model to invent another
+                                        # duplicate input/effect schema before
+                                        # the actual Luau codegen. Keep any
+                                        # model-proposed action_contract untrusted.
+                                        system = dict(
+                                            system,
+                                            action_contract=host_owned_action_contract(),
+                                            host_standard_transport=True,
+                                        )
+                                    elif "action_contract" not in system:
                                         manifest = complete_typed_contract(
                                             self.router, system=system,
                                             source_requirements=subset,
