@@ -449,3 +449,52 @@ def test_compact_replan_truncation_retries_compact_not_original(monkeypatch):
     assert all("missing_obligations" in request
                for request, _ in model.calls[1:])
     assert "space" in result["acceptance"]["req-launch"].lower()
+
+def test_official_doc_handoff_excludes_unrelated_space_tutorials(monkeypatch):
+    """Only source-relevant evidence should steer the small design model."""
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    source = "Ship can launch into space"
+    facet = "intent-space"
+    research = {"ledger": {
+        "original_prompt": source,
+        "requirements": [{"id": "req-space", "statement": source}],
+        "facets": [{"id": facet, "requirements": ["req-space"],
+                    "source_span": source,
+                    "search_query": "Roblox launch a ship and travel into space"}],
+    }, "evidence": [
+        {"facet": facet, "provider": "official_docs",
+         "grounding": "fetched_official_document",
+         "url": "https://create.roblox.com/docs/tutorials/grouping-the-parts.md",
+         "excerpt": "Group the parts together into one vehicle model."},
+        {"facet": facet, "provider": "official_docs",
+         "grounding": "fetched_official_document",
+         "url": "https://create.roblox.com/docs/tutorials/space-launch.md",
+         "excerpt": "Ship launch travel into space requires a ready spacecraft."},
+    ]}
+    class Model:
+        def __init__(self):
+            self.calls = 0
+        def complete_json(self, prompt, **kwargs):
+            self.calls += 1
+            assert "Group the parts" not in prompt
+            assert "space-launch.md" in prompt
+            return {"systems": [{
+                "name": "SpaceLaunch",
+                "server_behavior": (
+                    "The server validates that the ship can launch and "
+                    "records the ship entering the playable space region."
+                ),
+                "client_behavior": (
+                    "The client displays the launch action and shows "
+                    "the confirmed travel into space."
+                ),
+                "observable_result": (
+                    "The ship launches into space and arrives in orbit."
+                ),
+                "interaction": "request_response",
+                "world_entities": [],
+            }]}
+    model = Model()
+    result = RobloxDynamicArchitect(model).design(source, research, [])
+    assert model.calls == 1
+    assert result["modules"]
