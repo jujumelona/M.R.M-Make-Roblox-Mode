@@ -126,7 +126,7 @@ def valid_chunk_classification(raw: Any, expected: list[dict[str, str]]) -> dict
             r"[a-z][a-z0-9]*(?:_[a-z0-9]+)+", intent, re.IGNORECASE))
         source = next((item["source_span"] for item in expected
                        if item["chunk_id"] == chunk_id), "")
-        if source_intent_conflicts(source, intent + " " + query):
+        if source_intent_conflicts(source, intent + " " + query, require_implementation=False):
             continue
         if (chunk_id not in allowed or chunk_id in result or
                 not 5 <= len(intent) <= 180 or opaque_label or
