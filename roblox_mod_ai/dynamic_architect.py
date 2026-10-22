@@ -1121,13 +1121,13 @@ class RobloxDynamicArchitect:
                                  or "Semantic repair returned no JSON" in previous_error
                                  or "Model JSON completion truncated" in previous_error)):
                         semantic_repair = previous_repair
-                    if (previous_replan is not None
-                            and ("Model JSON completion truncated" in previous_error
-                                 or "SCOPED_SYSTEM_UNATTRIBUTED" in previous_error
-                                 or "systems array" in previous_error)):
-                        # The bounded replan itself may hit a provider length
-                        # limit. Retry the SAME small source slice; never
-                        # fall back to the full, long original prompt.
+                    if previous_replan is not None:
+                        # Any failed bounded replan stays bounded, including
+                        # omitted fields, provider errors, semantic mismatch or
+                        # output truncation. No fallback to the long original
+                        # prompt that caused plan-50's final length failure.
+                        # A newer semantic contract below may replace the
+                        # missing-obligations list with more precise evidence.
                         semantic_replan = previous_replan
                     # Query ALL source contracts on the rejected model
                     # output. Host validators raise only the first failure.
