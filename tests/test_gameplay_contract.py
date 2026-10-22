@@ -158,3 +158,36 @@ def test_dynamic_lifecycle_rejects_strict_only_or_commented_mutation(tmp_path):
         encoding="utf-8")
     assert _checks(plan, tmp_path)["lifecycle.source.custom.pet.hatch"] is True
     assert not plan.game_design["gameplay_contract"]["engine_playtested"]
+
+
+def test_custom_host_composition_checks_real_helper_effect_not_delegation_only(tmp_path):
+    plan = _plan("Mine and exchange resources",
+                 features={"is_coin_collect": False, "is_combat": False},
+                 dynamic={
+                     "acceptance_facets": {"resource.exchange": "Resources change"},
+                     "module_facets": {"dyn_resource": ["resource.exchange"]},
+                     "host_actions": {"ResourceAction": {
+                         "service": "ResourceServer", "kind": "RemoteFunction",
+                     }},
+                 })
+    plan.modules += [SimpleNamespace(
+        module_id="dyn_resource", name="ResourceServer",
+        file_path="src/server/ResourceServer.luau",
+    )]
+    plan.game_design["gameplay_contract"] = build_gameplay_contract(plan)
+    saved = tmp_path / "src/server/ResourceServer.luau"
+    saved.parent.mkdir(parents=True, exist_ok=True)
+    saved.write_text(
+        '--!strict\nlocal Service = {}\n'
+        'local function performResourceAction(player)\n'
+        '  player:SetAttribute("ResourcesEarned", 1)\n'
+        'end\n'
+        'function Service.handleAction(player, services, ...)\n'
+        '  return performResourceAction(player)\n'
+        'end\nreturn Service\n', encoding="utf-8")
+    assert _checks(plan, tmp_path)["lifecycle.source.custom.resource.exchange"] is True
+    saved.write_text(
+        '--!strict\nlocal Service = {}\n'
+        'function Service.handleAction(player, services, ...)\n'
+        '  return true\nend\nreturn Service\n', encoding="utf-8")
+    assert _checks(plan, tmp_path)["lifecycle.source.custom.resource.exchange"] is False
