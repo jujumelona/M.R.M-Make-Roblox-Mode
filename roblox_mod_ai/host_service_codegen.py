@@ -150,7 +150,7 @@ def try_scaffolded_server(
             "missing, unknown, out-of-range or forged fields BEFORE "
             "your body runs. Use actionArgs.fieldId for ALL required "
             "user parameters, and still verify ownership, available "
-            "balances and real server-side game conditions. "
+            "balances and real server-side game conditions. " +
             ("This is a HOST STANDARD INPUT TRANSPORT, not a game "
              "state effect specification. Input selection is a user-provided "
              "item/choice/target ID; quantity is a requested integer (NOT "
