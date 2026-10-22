@@ -580,8 +580,20 @@ class RobloxGameDesignPlanner:
         # definitions while recording the new requirement as unresolved.
         # Do NOT bring back old dynamic code when a new architect succeeded,
         # or reuse arbitrary model-authored source from incompatible state.
-        if unresolved and not revised.game_design.get("dynamic_design"):
-            prior = plan.proposal
+        # A revision is based on the original request PLUS feedback. A new
+        # architecture draft, including a partially authored dynamic draft,
+        # must not erase already assigned deterministic services from that
+        # retained original scope. The previous branch performed this merge
+        # only when dynamic_design was empty; partial model results therefore
+        # silently removed ShopService and its client wiring.
+        prior = plan.proposal
+        missing_owned_host = any(
+            not m.module_id.startswith("dyn_")
+            and m.module_id != "mod_game_objective"
+            and m.name not in {n.name for n in revised.modules}
+            for m in prior.modules
+        )
+        if unresolved or missing_owned_host:
             existing_names = {m.name for m in revised.modules}
             for prior_module in prior.modules:
                 if (prior_module.module_id.startswith("dyn_")
@@ -598,8 +610,8 @@ class RobloxGameDesignPlanner:
             old_features = prior.game_design.get("features") or {}
             features = revised.game_design.get("features") or {}
             revised.game_design["features"] = {
-                key: bool(value or features.get(key))
-                for key, value in old_features.items()
+                key: bool(old_features.get(key) or features.get(key))
+                for key in set(old_features) | set(features)
             }
             revised.game_design["gameplay_contract"] = build_gameplay_contract(revised)
             revised.game_design["implementation_blueprint"] = build_implementation_blueprint(revised)
