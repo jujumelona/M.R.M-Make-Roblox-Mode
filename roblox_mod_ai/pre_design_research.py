@@ -275,6 +275,58 @@ class RobloxPreDesignResearch:
         from .request_contract import validate_model_behaviors, clean, ledger_complete
         from .source_decomposition import (source_chunks, valid_chunk_classification, classification_context)
 
+        # Once the model has validated an entire source decomposition, keep
+        # THAT exact source-to-facet graph across later architecture failures.
+        # Otherwise the same prompt alternates between 9 and 15+ unrelated
+        # module contracts, invalidating scoped architecture checkpoints.
+        checkpoint = (self.classification_cache.with_name(
+            "semantic_decomposition_checkpoint.json")
+            if self.classification_cache is not None else None)
+        source_dir = Path(__file__).resolve().parent
+        source_policy = [
+            "pre_design_research.py", "request_contract.py",
+            "source_decomposition.py", "request_semantics.py",
+            "semantic_preservation.py",
+        ]
+        input_sha = hashlib.sha256(json.dumps({
+            "original_prompt": prompt,
+            "source_requirements": ledger.get("requirements"),
+            "policy": {
+                name: hashlib.sha256((source_dir / name).read_bytes()).hexdigest()
+                for name in source_policy
+            },
+        }, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+        def complete_verified(candidate: Any) -> bool:
+            if not isinstance(candidate, dict):
+                return False
+            if candidate.get("classification_unverified"):
+                return False
+            structural = dict(candidate, unimplemented_facets=[],
+                              unmatched_requirements=[])
+            return ledger_complete(prompt, structural)
+
+        def persist_verified(candidate: dict[str, Any]) -> None:
+            if checkpoint is None or not complete_verified(candidate):
+                return
+            checkpoint.parent.mkdir(parents=True, exist_ok=True)
+            temp = checkpoint.with_suffix(".json.tmp")
+            temp.write_text(json.dumps({
+                "schema": "rmm/verified-decomposition-v1",
+                "input_sha256": input_sha, "ledger": candidate,
+            }, ensure_ascii=False, indent=2), encoding="utf-8")
+            temp.replace(checkpoint)
+
+        if checkpoint is not None and checkpoint.is_file():
+            try:
+                saved = json.loads(checkpoint.read_text(encoding="utf-8"))
+                if (saved.get("schema") == "rmm/verified-decomposition-v1"
+                        and saved.get("input_sha256") == input_sha
+                        and complete_verified(saved.get("ledger"))):
+                    return saved["ledger"]
+            except (OSError, UnicodeError, ValueError, TypeError, AttributeError):
+                pass
+
         pending = set(ledger.get("decomposition_pending", []))
         if not pending:
             return ledger
@@ -341,6 +393,7 @@ class RobloxPreDesignResearch:
             structural = dict(result, unimplemented_facets=[], unmatched_requirements=[])
             if not ledger_complete(prompt, structural):
                 raise ValueError("Atomic spans do not cover full original request")
+            persist_verified(result)
             return result
         except Exception as exc:
             whole_error = type(exc).__name__ + ": " + str(exc)[:200]
@@ -533,6 +586,7 @@ class RobloxPreDesignResearch:
                   str(len(unclassified_source_chunks)), flush=True)
             if not unclassified_source_chunks:
                 self.decomposition_error = None
+                persist_verified(result)
             return result
         except Exception as exc:
             self.decomposition_error = (
