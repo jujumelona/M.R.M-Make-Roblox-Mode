@@ -19,24 +19,69 @@ class SourceActionBindingError(ValueError):
 
 def indexed_source_spans(source: str, *, max_width: int = 4,
                          max_candidates: int = 48) -> list[dict[str, str]]:
-    words = list(re.finditer(r"\S+", source))
+    """Cover the ENTIRE source with bounded immutable phrase candidates.
+
+    Previously width=1 was enumerated from word zero until the 48-candidate
+    cap. A longer Korean/English clause then omitted ALL multiword phrases
+    and often its final player actions. Give each window width a quota,
+    sampling uniformly across the original token positions. For short text
+    keep exhaustive windows for backward-compatible source IDs.
+    """
+    words = list(re.finditer(r"\\S+", source))
     if not words:
         raise SourceActionBindingError("ATOMIC_SOURCE_TEXT_REQUIRED")
-    # Contiguous WORD windows, with byte offsets retained. This generalizes
-    # to Korean, English and mixed requests without a list of gameplay verbs.
-    rows = []
-    seen = set()
-    for width in range(1, min(max_width, len(words)) + 1):
-        for start in range(len(words) - width + 1):
-            span = source[words[start].start():words[start + width - 1].end()]
-            if len(span.strip()) < 2 or span in seen:
+    if max_width < 1 or max_candidates < 1:
+        raise SourceActionBindingError("ATOMIC_SOURCE_WINDOW_BOUNDS_INVALID")
+
+    n = len(words)
+    widths = list(range(1, min(max_width, n) + 1))
+    all_count = sum(n - width + 1 for width in widths)
+    candidates: list[tuple[int, int]] = []
+    if all_count <= max_candidates:
+        # Preserve original short-prompt IDs; tests and checkpoints use them.
+        candidates = [(start, width)
+                      for width in widths
+                      for start in range(n - width + 1)]
+    else:
+        priorities = list(reversed(widths))
+        base, extra = divmod(max_candidates, len(priorities))
+        for index, width in enumerate(priorities):
+            available = n - width + 1
+            quota = min(available, base + (index < extra))
+            if quota <= 0:
                 continue
-            seen.add(span)
-            rows.append({"id": "s" + str(len(rows)), "quote": span,
-                         "start": words[start].start(),
-                         "end": words[start + width - 1].end()})
-            if len(rows) >= max_candidates:
-                return rows
+            if quota == 1:
+                starts = [0 if available == 1 else (available - 1) // 2]
+            else:
+                starts = [i * (available - 1) // (quota - 1)
+                          for i in range(quota)]
+            candidates.extend((start, width) for start in starts)
+
+        # If some widths offered fewer candidates than their quota, fill
+        # unused slots from real source windows, never invented strings.
+        already = set(candidates)
+        for width in priorities:
+            for start in range(n - width + 1):
+                if len(candidates) >= max_candidates:
+                    break
+                if (start, width) not in already:
+                    candidates.append((start, width))
+                    already.add((start, width))
+            if len(candidates) >= max_candidates:
+                break
+
+    rows: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for start, width in candidates:
+        begin, finish = words[start].start(), words[start + width - 1].end()
+        quote = source[begin:finish]
+        if len(quote.strip()) < 2 or quote in seen:
+            continue
+        seen.add(quote)
+        rows.append({"id": "s" + str(len(rows)), "quote": quote,
+                     "start": begin, "end": finish})
+        if len(rows) >= max_candidates:
+            break
     return rows
 
 
@@ -80,26 +125,39 @@ def verify_or_bind_actions(router: Any, source: str, actions: Any,
                            "action": action.strip()})
 
     if ungrounded:
-        candidates = indexed_source_spans(source)
+        # A valid action/source owner is immutable. Only missing/duplicated
+        # quotations are rebound; otherwise even correct earlier facets
+        # become mutable after a single bad model copy.
+        missing = [i for i, row in enumerate(normalized)
+                   if not row["source_quote"]]
+        occupied = {row["source_quote"] for row in normalized
+                    if row["source_quote"]}
+        candidates = [row for row in indexed_source_spans(source)
+                      if row["quote"] not in occupied]
         by_id = {row["id"]: row["quote"] for row in candidates}
+        if len(by_id) < len(missing):
+            raise SourceActionBindingError("ATOMIC_SOURCE_NO_DISTINCT_CANDIDATES")
         schema = {"type": "object", "properties": {"bindings": {
-            "type": "array", "minItems": len(normalized), "maxItems": len(normalized),
+            "type": "array", "minItems": len(missing), "maxItems": len(missing),
             "items": {"type": "object", "properties": {
-                "action_index": {"type": "integer", "minimum": 0, "maximum": len(normalized)-1},
+                "action_index": {"type": "integer", "enum": missing},
                 "source_id": {"type": "string", "enum": list(by_id)},
             }, "required": ["action_index", "source_id"], "additionalProperties": False}}},
             "required": ["bindings"], "additionalProperties": False}
         response = router.complete_json(
-            "SOURCE OWNERSHIP ONLY. Match EACH existing gameplay action to ONE "
-            "exact ORIGINAL user-text span ID from candidates. Return JSON "
-            "{bindings:[{action_index,source_id}]}. Do not rewrite the action, "
-            "do not invent a quote, translate source spans, or add game systems. "
-            "Each action index occurs once; choose distinct spans when the "
-            "actions are independent. A descriptive error label is never "
-            "the original user text. JSON only.\n" + json.dumps({
+            "SOURCE OWNERSHIP REPAIR ONLY. Match only the listed UNBOUND "
+            "existing gameplay actions to original user-text span IDs. "
+            "Return JSON {bindings:[{action_index,source_id}]}. Never "
+            "rewrite an action or change an already verified binding. "
+            "Do not invent a quote or game system. Each listed action index "
+            "must occur once and each selected span must be distinct. "
+            "JSON only.\\n" + json.dumps({
                 "original_source": source,
-                "actions": [{"action_index": i, "action": row["action"]}
-                            for i, row in enumerate(normalized)],
+                "unbound_actions": [{"action_index": i, "action": normalized[i]["action"]}
+                                    for i in missing],
+                "retained_verified_owners": [
+                    {"action_index": i, "source_quote": row["source_quote"]}
+                    for i, row in enumerate(normalized) if row["source_quote"]],
                 "candidate_source_spans": [
                     {"id": row["id"], "quote": row["quote"]} for row in candidates],
                 "coverage_issues_for_context_only": list(missing_obligations)[:3],
@@ -108,21 +166,21 @@ def verify_or_bind_actions(router: Any, source: str, actions: Any,
             json_schema=schema,
         )
         bindings = response.get("bindings") if isinstance(response, dict) else None
-        if not isinstance(bindings, list) or len(bindings) != len(normalized):
+        if not isinstance(bindings, list) or len(bindings) != len(missing):
             raise SourceActionBindingError("ATOMIC_SOURCE_ID_MAPPING_INCOMPLETE")
         seen_indexes, seen_ids = set(), set()
         for binding in bindings:
             if not isinstance(binding, dict):
                 raise SourceActionBindingError("ATOMIC_SOURCE_ID_MAPPING_INVALID")
             index, identifier = binding.get("action_index"), binding.get("source_id")
-            if (type(index) is not int or index < 0 or index >= len(normalized)
+            if (type(index) is not int or index not in missing
                     or index in seen_indexes or identifier not in by_id
                     or identifier in seen_ids):
                 raise SourceActionBindingError("ATOMIC_SOURCE_ID_MAPPING_INVALID")
             seen_indexes.add(index)
             seen_ids.add(identifier)
             normalized[index]["source_quote"] = by_id[identifier]
-        if len(seen_indexes) != len(normalized):
+        if seen_indexes != set(missing):
             raise SourceActionBindingError("ATOMIC_SOURCE_ID_MAPPING_INCOMPLETE")
 
     if len({row["source_quote"] for row in normalized}) != len(normalized):
