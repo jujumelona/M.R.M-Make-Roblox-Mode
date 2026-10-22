@@ -163,6 +163,11 @@ def expand_semantic_facet(
     systems = raw["systems"]
     if not systems:
         raise HostArchitectureError("No game-specific systems proposed")
+    if len(systems) > 3:
+        raise HostArchitectureError(
+            "SCOPED_FEATURE_TOO_LARGE: model must describe at most 3 independent "
+            "actions for this one source requirement"
+        )
     if not requirement_ids or any(
         not isinstance(rid, str) or not rid for rid in requirement_ids
     ):
@@ -229,8 +234,17 @@ def expand_semantic_facet(
             raise HostArchitectureError("Gameplay system needs a descriptive name")
         if not isinstance(server, str) or len(server.strip()) < 24:
             raise HostArchitectureError("Gameplay system needs concrete server behavior")
+        if len(server) > 550:
+            raise HostArchitectureError(
+                "SCOPED_FEATURE_TOO_LARGE: server gameplay description exceeds "
+                "one small module contract; split source-owned actions"
+            )
         if not isinstance(observable, str) or len(observable.strip()) < 18:
             raise HostArchitectureError("Gameplay system needs observable result")
+        if len(observable) > 550:
+            raise HostArchitectureError(
+                "SCOPED_FEATURE_TOO_LARGE: observable acceptance must be concise"
+            )
         if re.search(r"\b(TODO|stub|placeholder|implement later)\b", server, re.I):
             raise HostArchitectureError("Unimplemented gameplay cannot pass host plan")
         # Never accept an explicit server-authority bypass merely because
@@ -259,6 +273,10 @@ def expand_semantic_facet(
         if not isinstance(client, str) or (
                 interaction != "none" and len(client.strip()) < 24):
             raise HostArchitectureError("Client interaction needs a real UI/input behavior")
+        if len(client) > 550:
+            raise HostArchitectureError(
+                "SCOPED_FEATURE_TOO_LARGE: one client UI must not own all gameplay"
+            )
         if input_mode == "world_prompt" and len(world) != 1:
             raise HostArchitectureError(
                 "Host world prompt must attach to exactly one semantic world Part")
