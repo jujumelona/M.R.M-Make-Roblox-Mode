@@ -128,7 +128,9 @@ def try_scaffolded_server(
         try:
             typed = validate_contract(
                 typed_spec.get("contract"),
-                world_entities=typed_spec.get("world_entities", []))
+                world_entities=typed_spec.get("world_entities", []),
+                transport_only=typed_spec.get("transport_only") is True,
+            )
             if typed["target"]["kind"] == "world_entity" and not isinstance(
                     typed_spec.get("world_name"), str):
                 return None
@@ -149,13 +151,21 @@ def try_scaffolded_server(
             "your body runs. Use actionArgs.fieldId for ALL required "
             "user parameters, and still verify ownership, available "
             "balances and real server-side game conditions. "
-            "The required state changes are declarations, not proof "
-            "of implementation. Reference EVERY EXACT declared state field "
-            "name in the server code, perform its real mutation, and do not "
-            "substitute an unrelated field or other game action. "
-            "Implement the actual transitions: " +
-            json.dumps(typed["state_changes"], ensure_ascii=False) +
-            ". " +
+            ("This is a HOST STANDARD INPUT TRANSPORT, not a game "
+             "state effect specification. Input selection is a user-provided "
+             "item/choice/target ID; quantity is a requested integer (NOT "
+             "a reward or authorized price). Interpret fields only when "
+             "needed for the actual game action. Implement real game-side "
+             "state mutations described by the module behavior; never "
+             "invent state variables or claim a successful action without "
+             "an observable server-authoritative mutation. "
+             if typed_spec and typed_spec.get("transport_only") is True else
+             "The required state changes are declarations, not proof "
+             "of implementation. Reference EVERY EXACT declared state field "
+             "name in the server code, perform its real mutation, and do not "
+             "substitute an unrelated field or other game action. "
+             "Implement the actual transitions: " +
+             json.dumps(typed["state_changes"], ensure_ascii=False) + ". ") +
             ("The host validates one world target and exposes "
              "local actionTarget; mutate only the authorized object. "
              if typed["target"]["kind"] == "world_entity" else "") +
