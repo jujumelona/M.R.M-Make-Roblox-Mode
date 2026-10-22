@@ -819,6 +819,7 @@ class RobloxDynamicArchitect:
             for attempt in range(3):
                 rejected_scope_names: list[str] = []
                 previous_repair = semantic_repair
+                previous_replan = semantic_replan
                 try:
                     # A previously validated feature is reused only after the
                     # SAME current source ownership and collision checks.
@@ -1106,6 +1107,14 @@ class RobloxDynamicArchitect:
                                  or "Semantic repair returned no JSON" in previous_error
                                  or "Model JSON completion truncated" in previous_error)):
                         semantic_repair = previous_repair
+                    if (previous_replan is not None
+                            and ("Model JSON completion truncated" in previous_error
+                                 or "SCOPED_SYSTEM_UNATTRIBUTED" in previous_error
+                                 or "systems array" in previous_error)):
+                        # The bounded replan itself may hit a provider length
+                        # limit. Retry the SAME small source slice; never
+                        # fall back to the full, long original prompt.
+                        semantic_replan = previous_replan
                     # Query ALL source contracts on the rejected model
                     # output. Host validators raise only the first failure.
                     if (isinstance(draft, dict)
