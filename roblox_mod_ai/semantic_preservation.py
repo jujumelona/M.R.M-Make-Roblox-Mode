@@ -23,6 +23,24 @@ _HOSTILE = re.compile(
     re.I,
 )
 _COMBAT = re.compile(r"전투|싸움|공격|fight|combat|battle|shoot|attack", re.I)
+# Departing the starting world and entering playable space is its OWN
+# gameplay obligation. Paying for ship upgrades does not fulfil a requested
+# launch/travel action, even though both appear in the same sentence.
+_DEPART_SPACE = re.compile(
+    r"우주(?:로|에)\s*(?:나가|나갈|나간|출발|진입|이동|날아|갈\s*수)|"
+    r"(?:launch|depart|fly|travel|go|enter)\s+(?:(?:the|into|to|outer)\s+)*space|"
+    r"space\s+(?:travel|launch|departure|flight|flight\s+mode)",
+    re.I,
+)
+_SPACE_INTENT = re.compile(
+    r"(?:launch|depart|teleport|transition|travel|fly|flight|enter|go)\b"
+    r".{0,65}\b(?:space|orbit|planet)\b|"
+    r"\b(?:space|orbit|planet)\b.{0,45}"
+    r"\b(?:launch|depart|teleport|transition|travel|fly|flight|arrival)\b|"
+    r"우주\s*(?:진입|이동|출발|여행|비행|도달)|우주로\s*(?:나가|갈|출발|진입)|"
+    r"행성\s*(?:이동|도착|진입)|발사",
+    re.I,
+)
 _INTENT_COLONY = re.compile(
     r"coloniz|colonis|settlem|outpost|colony|found(?:s|ing)?|"
     r"식민|정착|개척", re.I,
@@ -56,6 +74,11 @@ def source_intent_conflicts(
     source = str(source_span or "").casefold()
     text = str(described_intent or "").casefold()
     errors = []
+    if _DEPART_SPACE.search(source) and not _SPACE_INTENT.search(text):
+        errors.append(
+            "SPACE_TRAVEL_DROPPED: user requested departing into space, "
+            "not another ship purchase or upgrade menu"
+        )
     if _COLONIZATION.search(source):
         if not _INTENT_COLONY.search(text):
             errors.append("SETTLEMENT_DROPPED: user requested colony settlement gameplay")
