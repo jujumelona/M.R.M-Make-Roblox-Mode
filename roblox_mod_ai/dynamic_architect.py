@@ -853,24 +853,30 @@ class RobloxDynamicArchitect:
                     elif semantic_replan is not None:
                         missing_rules = list(semantic_replan)
                         semantic_replan = None
-                        # A completely wrong gameplay action must be replaced,
-                        # not kept as a ship-upgrade/menu preamble in a launch
-                        # handler. Minimize the output contract and context for
-                        # 9B-class models after a source-intent drift.
+                        # Discard a design that substituted the requested
+                        # action. This branch is selected by generic source-
+                        # intent coverage, never by a game genre, action name
+                        # or validator error code. Replan ONLY this facet.
+                        # Preserve independent actions: one source clause may
+                        # legitimately require several interacting systems.
                         draft = self.router.complete_json(
-                            "The prior proposal implemented the WRONG action. "
-                            "Write exactly ONE short, playable mechanic for the "
-                            "original source requirement, NOT the rejected action. "
-                            "Return JSON {systems:[{name,server_behavior,"
+                            "The previous proposal did not implement the "
+                            "source-owned gameplay actions. Recreate only "
+                            "the missing source requirement as a short JSON "
+                            "object: {systems:[{name,server_behavior,"
                             "client_behavior,observable_result,interaction,"
-                            "input_mode,world_entities}]}. Name the concrete "
-                            "server-owned state change and the actual visible "
-                            "result. Use interaction=request_response and "
-                            "input_mode=custom for a player-requested action, "
-                            "and world_entities=[] if no physical world object "
-                            "is needed. Do not create shop, upgrade or other "
-                            "unrequested mechanics. Keep the answer under "
-                            "500 words. JSON only.\n"
+                            "input_mode,world_entities}]}. Produce one system "
+                            "per independently triggered player/server action "
+                            "(up to three), each with a real server-owned "
+                            "transition, actor/target and visible consequence. "
+                            "Do not substitute a prerequisite, menu, visual "
+                            "effect or another action for the requested "
+                            "transition. Preserve the request's actual input "
+                            "shape: none, event or request_response; choose "
+                            "world_prompt, host_button or custom only when "
+                            "appropriate. Return world_entities=[] when no "
+                            "physical object is needed. Do not add unrelated "
+                            "mechanics. Short JSON only.\n"
                             + json.dumps({
                                 "source_requirements": subset,
                                 "source_intent": facet.get("search_query", ""),
@@ -1042,7 +1048,9 @@ class RobloxDynamicArchitect:
                             draft, facet=facet, all_facets=facets)
                         semantic_errors = request_semantic_errors(draft, prompt)
                         if semantic_errors:
-                            raise DynamicDesignError("; ".join(semantic_errors))
+                            raise DynamicDesignError(
+                                "SEMANTIC_REQUEST_CONTRACT: " + "; ".join(
+                                    semantic_errors))
                         draft = expand_semantic_facet(
                             draft, facet_id=facet_id,
                             requirement_ids=owned_ids,
@@ -1129,45 +1137,66 @@ class RobloxDynamicArchitect:
                         # A newer semantic contract below may replace the
                         # missing-obligations list with more precise evidence.
                         semantic_replan = previous_replan
-                    # Query ALL source contracts on the rejected model
-                    # output. Host validators raise only the first failure.
+                    # Compute *all* contracts against the complete scoped
+                    # feature, including multi-system responses. Never infer
+                    # a repair policy from a scenario-specific error token or
+                    # blindly edit systems[0] when the model supplied several
+                    # independent gameplay actions.
                     if (isinstance(draft, dict)
                             and isinstance(draft.get("systems"), list)
-                            and len(draft["systems"]) == 1
-                            and "SEMANTIC_SOURCE_CONTRACT " in previous_error):
-                        system = draft["systems"][0]
-                        if isinstance(system, dict):
-                            server_text = str(system.get("server_behavior") or "")
-                            outcome_text = str(
-                                system.get("observable_result")
-                                or system.get("client_behavior") or ""
+                            and draft["systems"]
+                            and all(isinstance(s, dict)
+                                    for s in draft["systems"])
+                            and ("SEMANTIC_SOURCE_CONTRACT " in previous_error
+                                 or "SEMANTIC_REQUEST_CONTRACT:" in previous_error)):
+                        systems = draft["systems"]
+                        server_text = " ".join(
+                            str(s.get("server_behavior") or "") for s in systems)
+                        outcome_text = " ".join(
+                            str(s.get("observable_result")
+                                or s.get("client_behavior") or "")
+                            for s in systems)
+                        issues: dict[str, list[str]] = {}
+                        missing_source_actions: list[str] = []
+                        for source in subset:
+                            statement = str(source.get("statement") or "")
+                            for field, failures in (
+                                ("server_behavior", source_intent_conflicts(
+                                    statement, server_text)),
+                                ("observable_result", source_outcome_conflicts(
+                                    statement, outcome_text)),
+                            ):
+                                if failures:
+                                    issues.setdefault(field, []).extend(failures)
+                            missing_source_actions.extend(
+                                source_intent_conflicts(
+                                    statement, server_text + " " + outcome_text,
+                                    require_implementation=False)
                             )
-                            issues: dict[str, list[str]] = {}
-                            for source in subset:
-                                statement = source.get("statement", "")
-                                server_failures = source_intent_conflicts(
-                                    statement, server_text)
-                                outcome_failures = source_outcome_conflicts(
-                                    statement, outcome_text)
-                                if server_failures:
-                                    issues.setdefault("server_behavior", []).extend(
-                                        server_failures)
-                                if outcome_failures:
-                                    issues.setdefault("observable_result", []).extend(
-                                        outcome_failures)
-                            if issues:
-                                # If an entire mechanic was substituted by a
-                                # different action, APPENDING prose would
-                                # preserve the incorrect action and its UI.
-                                # Replan the one source-owned action with a
-                                # much smaller JSON prompt instead.
-                                missing = [e for values in issues.values()
-                                           for e in values]
-                                if any(e.startswith("SPACE_TRAVEL_DROPPED:")
-                                       for e in missing):
-                                    semantic_replan = missing
-                                else:
-                                    semantic_repair = (draft, issues)
+                        violations = [
+                            e for values in issues.values() for e in values
+                        ]
+                        if "SEMANTIC_REQUEST_CONTRACT:" in previous_error:
+                            # An unsolicited mechanic cannot be safely
+                            # appended around; the model must redesign the
+                            # source-owned feature without it.
+                            semantic_replan = [previous_error]
+                            semantic_repair = None
+                        elif issues and (
+                            missing_source_actions or len(systems) != 1
+                        ):
+                            # A missing requested action is not repairable by
+                            # tacking prose onto an unrelated action. Multiple
+                            # systems cannot be safely patched at index zero.
+                            semantic_replan = (
+                                missing_source_actions or violations)
+                            semantic_repair = None
+                        elif issues:
+                            # Requested action is already present: supplement
+                            # missing state authority or observable feedback,
+                            # preserving the rest of the valid system.
+                            semantic_repair = (draft, issues)
+                            semantic_replan = None
                     if "no client Luau controller" not in previous_error:
                         draft = None
                     print("[RMM architect] feature " + facet_id +
