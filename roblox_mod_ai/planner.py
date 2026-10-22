@@ -43,7 +43,13 @@ class RobloxGameDesignPlanner:
         self.output_root = output_root
         self.creator_store = creator_store or RobloxCreatorStoreCatalog()
         self.test_runner = RobloxPlaytestRunner()
-        self.researcher = pre_design_research or RobloxPreDesignResearch(creator_store=self.creator_store, router=self.router)
+        self.researcher = pre_design_research or RobloxPreDesignResearch(
+            creator_store=self.creator_store, router=self.router,
+            classification_cache=(
+                Path(self.output_root) / "semantic_classification_checkpoint.json"
+                if self.output_root is not None else None
+            ),
+        )
 
     def detect_genres_and_features(self, prompt: str) -> dict[str, bool]:
         """Classifies the gameplay genres and subsystems requested in prompt."""
@@ -342,8 +348,23 @@ class RobloxGameDesignPlanner:
                            not any(features.values()))
         # A model may not claim to implement an unparsed compound request.
         # Parsing must succeed first; otherwise the plan remains explicitly blocked.
-        if (needs_novel and dynamic_design_enabled() and
-                not research["ledger"].get("decomposition_pending")):
+        # A source span with only "Implement the requested gameplay..."
+        # is not a semantic contract. Previous runs still spent 15+ expensive
+        # architecture calls before blueprint rejected those unknown chunks.
+        # Retry bounded contextual classification FIRST, then require real
+        # intent for every source span before launching the architect.
+        missing_semantics = research["ledger"].get("classification_unverified") or []
+        if missing_semantics:
+            research.setdefault("provider_failures", []).append({
+                "facet": "semantic_decomposition",
+                "provider": "source_classification_gate",
+                "reason": "Incomplete semantic source contracts: " +
+                          ", ".join(map(str, missing_semantics)) +
+                          "; re-run source classification before architecture",
+            })
+        if (needs_novel and dynamic_design_enabled()
+                and not research["ledger"].get("decomposition_pending")
+                and not missing_semantics):
             try:
                 # A fixed shop/sword/obby template cannot implement bespoke
                 # mechanics (pet shop, procedural RPG, etc.). Do not transplant
