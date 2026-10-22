@@ -116,8 +116,10 @@ _COLONY_VISIBLE_CHANGE = re.compile(
     r"acquired|claimed|now owned)\b)|"
     r"(?:\b(?:colony|settlement|territory)\b"
     r".{0,95}\b(?:established|created|built|founded|now owned|claimed)\b)|"
-    r"(?:\b(?:established|founded|claimed|created|built)\b"
+    r"(?:\b(?:establish\w*|found\w*|claim\w*|creat\w*|build\w*|built)\b"
     r".{0,95}\b(?:colony|settlement|territory)\b)|"
+    r"(?:\b(?:planet|world|colony|settlement)\b"
+    r".{0,95}\b(?:new owner|new ownership|now owned|claimed territory)\b)|"
     r"(?:행성.{0,35}(?:식민지화|정착지|소유권).{0,35}"
     r"(?:완료|변경|확립|생성|확정|획득))",
     re.I,
