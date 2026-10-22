@@ -39,44 +39,55 @@ _ONLY_PLAYER_TARGET = re.compile(
 )
 
 
-def source_intent_conflicts(source_span: str, described_intent: str) -> list[str]:
-    """Return only high-confidence missing/contradictory gameplay obligations.
+def source_intent_conflicts(
+    source_span: str,
+    described_intent: str,
+    *,
+    require_implementation: bool = True,
+) -> list[str]:
+    """Check fidelity at the appropriate stage, without inventing mechanics.
 
-    Require the *source's* actual mechanic to survive translation. For an
-    ambiguous source span, do not guess what the user requested.
+    During source classification (`require_implementation=False`), establish
+    *what* the user requested: recognizing a colony does not yet require a
+    concrete save operation. During authored implementation and acceptance,
+    require an actual settlement state transition. Conflating both stages
+    made valid source interpretations fail and blocked all code generation.
     """
     source = str(source_span or "").casefold()
     text = str(described_intent or "").casefold()
     errors = []
     if _COLONIZATION.search(source):
-        # Every action has to affect the requested world state. Global
-        # mentions such as "record currency" + "show colonization feedback"
-        # must NOT accidentally certify a colony because both phrases appear
-        # somewhere in one 2000-character multi-feature module description.
-        # Require an establishment/ownership/saved-state action linked to
-        # the colony IN THE SAME SENTENCE.
-        colony_noun = re.compile(
-            r"coloniz\w*|colonis\w*|colon(?:y|ies)|settlem\w*|"
-            r"outpost\w*|식민\w*|정착\w*|개척\w*",
-            re.I,
-        )
-        state_action = re.compile(
-            r"persist\w*|sav\w*|record\w*|claim\w*|"
-            r"found(?:s|ed|ing)?|establish\w*|construct\w*|"
-            r"creat\w*|stor\w*|mark\w*|\bset\b|"
-            r"건설\w*|기록\w*|저장\w*|설립\w*|"
-            r"소유권\w*|점령\w*",
-            re.I,
-        )
-        sentences = re.split(r"[.!?;\n]+", text)
-        durable = any(colony_noun.search(sentence) and
-                      state_action.search(sentence)
-                      for sentence in sentences)
-        if not _INTENT_COLONY.search(text) or not durable:
-            errors.append(
-                "SETTLEMENT_DROPPED: source requires a recorded or established "
-                "colony state, not only a colony label, validation or UI"
+        if not _INTENT_COLONY.search(text):
+            errors.append("SETTLEMENT_DROPPED: user requested colony settlement gameplay")
+        elif require_implementation:
+            # Every action has to affect the requested world state. Global
+            # mentions such as "record currency" + "show colonization feedback"
+            # must NOT accidentally certify a colony because both phrases appear
+            # somewhere in one 2000-character multi-feature module description.
+            # Require an establishment/ownership/saved-state action linked to
+            # the colony IN THE SAME SENTENCE.
+            colony_noun = re.compile(
+                r"coloniz\w*|colonis\w*|colon(?:y|ies)|settlem\w*|"
+                r"outpost\w*|식민\w*|정착\w*|개척\w*",
+                re.I,
             )
+            state_action = re.compile(
+                r"persist\w*|sav\w*|record\w*|claim\w*|"
+                r"found(?:s|ed|ing)?|establish\w*|construct\w*|"
+                r"creat\w*|stor\w*|mark\w*|\bset\b|"
+                r"건설\w*|기록\w*|저장\w*|설립\w*|"
+                r"소유권\w*|점령\w*",
+                re.I,
+            )
+            sentences = re.split(r"[.!?;\n]+", text)
+            durable = any(colony_noun.search(sentence) and
+                          state_action.search(sentence)
+                          for sentence in sentences)
+            if not _INTENT_COLONY.search(text) or not durable:
+                errors.append(
+                    "SETTLEMENT_DROPPED: source requires a recorded or established "
+                    "colony state, not only a colony label, validation or UI"
+                )
     if _HOSTILE.search(source) and _COMBAT.search(source):
         if not _INTENT_HOSTILE.search(text):
             errors.append("NPC_COMBAT_DROPPED: enemy combat changed into another target")
