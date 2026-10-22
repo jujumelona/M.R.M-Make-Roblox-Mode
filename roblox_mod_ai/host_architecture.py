@@ -33,13 +33,13 @@ SEMANTIC_FACET_SCHEMA = {
                 "type": "object",
                 "properties": {
                     "name": {"type": "string"},
-                    "server_behavior": {"type": "string", "maxLength": 550},
-                    "client_behavior": {"type": "string", "maxLength": 550},
+                    "server_behavior": {"type": "string", "maxLength": 4096},
+                    "client_behavior": {"type": "string", "maxLength": 4096},
                     "interaction": {"type": "string", "enum": [
                         "none", "event", "request_response"]},
                     "input_mode": {"type": "string", "enum": [
                         "custom", "host_button", "world_prompt"]},
-                    "observable_result": {"type": "string", "maxLength": 550},
+                    "observable_result": {"type": "string", "maxLength": 4096},
                     "world_entities": {"type": "array", "items": {
                         "type": "string"}},
                     "action_choices": {"type": "array", "items": {
@@ -147,6 +147,22 @@ def requires_player_ingress(name: str, server_behavior: str) -> bool:
 
 
 
+
+def _repeats_empty_claims(prose: str) -> bool:
+    """Reject repetitive boilerplate, not legitimate long server contracts."""
+    sentences = [
+        re.sub(r"\\s+", " ", item).strip().casefold()
+        for item in re.split(r"[.!?;\\n]+", prose)
+        if len(item.strip()) >= 45
+    ]
+    counts: dict[str, int] = {}
+    for sentence in sentences:
+        counts[sentence] = counts.get(sentence, 0) + 1
+        if counts[sentence] >= 4:
+            return True
+    return False
+
+
 def expand_semantic_facet(
     raw: dict[str, Any], *, facet_id: str, requirement_ids: list[str],
     source_requirements: list[dict[str, Any]],
@@ -234,16 +250,20 @@ def expand_semantic_facet(
             raise HostArchitectureError("Gameplay system needs a descriptive name")
         if not isinstance(server, str) or len(server.strip()) < 24:
             raise HostArchitectureError("Gameplay system needs concrete server behavior")
-        if len(server) > 550:
+        # Number of prose characters is not the number of gameplay actions.
+        # Real server-side atomicity, ownership and rollback rules can require
+        # >1000 characters; rejecting at 550 caused identical model retries.
+        # Bound only pathologically large responses and repeated filler.
+        if len(server) > 4096 or _repeats_empty_claims(server):
             raise HostArchitectureError(
-                "SCOPED_FEATURE_TOO_LARGE: server gameplay description exceeds "
-                "one small module contract; split source-owned actions"
+                "SCOPED_FEATURE_TOO_LARGE: repetitive or unbounded server "
+                "description; specify one concrete source-owned transition"
             )
         if not isinstance(observable, str) or len(observable.strip()) < 18:
             raise HostArchitectureError("Gameplay system needs observable result")
-        if len(observable) > 550:
+        if len(observable) > 4096 or _repeats_empty_claims(observable):
             raise HostArchitectureError(
-                "SCOPED_FEATURE_TOO_LARGE: observable acceptance must be concise"
+                "SCOPED_FEATURE_TOO_LARGE: repeated or unbounded acceptance"
             )
         if re.search(r"\b(TODO|stub|placeholder|implement later)\b", server, re.I):
             raise HostArchitectureError("Unimplemented gameplay cannot pass host plan")
@@ -273,9 +293,9 @@ def expand_semantic_facet(
         if not isinstance(client, str) or (
                 interaction != "none" and len(client.strip()) < 24):
             raise HostArchitectureError("Client interaction needs a real UI/input behavior")
-        if len(client) > 550:
+        if len(client) > 4096 or _repeats_empty_claims(client):
             raise HostArchitectureError(
-                "SCOPED_FEATURE_TOO_LARGE: one client UI must not own all gameplay"
+                "SCOPED_FEATURE_TOO_LARGE: repeated or unbounded client description"
             )
         if input_mode == "world_prompt" and len(world) != 1:
             raise HostArchitectureError(
