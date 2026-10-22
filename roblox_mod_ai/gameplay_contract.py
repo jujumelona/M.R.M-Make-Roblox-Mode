@@ -218,13 +218,17 @@ def validate_gameplay_contract(proposal: Any, project_root: Path) -> list[dict]:
         source_ok = bool(code) and bool(owner) and all(
             token in code for token in unit.get("source_markers", []))
         if str(unit.get("id") or "").startswith("custom."):
-            from .dynamic_wiring import _mask_strings, _without_comments
-            from .host_service_codegen import _EFFECT
-            executable = _mask_strings(_without_comments(code))
+            from .gameplay_source_evidence import has_gameplay_mutation
+            design = proposal.game_design.get("dynamic_design") or {}
+            routed = any(
+                isinstance(action, dict) and action.get("service") == unit.get("owner")
+                for group in ("host_actions", "host_world_actions")
+                for action in (design.get(group) or {}).values()
+            )
             source_ok = (
                 source_ok
                 and bool(owner.file_path.startswith("src/server/"))
-                and bool(_EFFECT.search(executable))
+                and has_gameplay_mutation(code, routed_action=routed)
             )
         check("source." + unit.get("id", "unknown"), source_ok,
               "Actual packaged source supplies executable server mutation "
