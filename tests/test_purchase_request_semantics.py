@@ -121,3 +121,63 @@ def test_explicit_peer_to_peer_trades_are_still_allowed(user_prompt):
     }]}
     assert not any("UNREQUESTED_PEER_TRADE" in e
                    for e in request_semantic_errors(model, user_prompt))
+
+
+def test_scoped_architect_repairs_unsolicited_peer_trade_without_replanning_all(monkeypatch):
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    prompt = "Mine resources and trade them for earned credits"
+    ledger = {
+        "original_prompt": prompt,
+        "requirements": [
+            {"id": "req-001", "statement": "trade them for earned credits",
+             "source": "user_prompt"}],
+        "facets": [
+            {"id": "intent-resource-exchange", "requirements": ["req-001"],
+             "source_span": "trade them for earned credits",
+             "search_query": "Roblox server resource sale catalog"}],
+    }
+
+    class MiniModel:
+        def __init__(self):
+            self.calls = []
+        def complete_json(self, query, **_options):
+            self.calls.append(query)
+            if len(self.calls) == 1:
+                return {"systems": [{
+                    "name": "Player-to-Player Trading",
+                    "server_behavior": (
+                        "The server validates both players' inventories and "
+                        "sends a counteroffer before persisting both profiles."
+                    ),
+                    "client_behavior": (
+                        "The player offers another player's inventory items "
+                        "and awaits the peer trade decision."
+                    ),
+                    "interaction": "request_response", "input_mode": "custom",
+                    "observable_result": "Both player inventories change on acceptance.",
+                    "world_entities": [],
+                }]}
+            assert "UNREQUESTED_PEER_TRADE" in query
+            return {"systems": [{
+                "name": "ResourceExchange",
+                "server_behavior": (
+                    "The server validates the selected catalog item, the user's "
+                    "owned resource quantity, and a server-fixed sale price, "
+                    "debits the resource and credits earned game currency."
+                ),
+                "client_behavior": (
+                    "The player selects a resource to sell to the game market "
+                    "and sees the new server-confirmed coin balance."
+                ),
+                "interaction": "request_response", "input_mode": "custom",
+                "observable_result": "Sold resources decrease and earned credits increase.",
+                "world_entities": [],
+            }]}
+    model = MiniModel()
+    research = {"ledger": ledger, "evidence": []}
+    result = RobloxDynamicArchitect(model).design(prompt, research, [])
+    assert len(model.calls) == 2
+    assert len(result["modules"]) == 2
+    assert all("both players" not in m.description.casefold()
+               for m in result["modules"])
+    assert [x["passed"] for x in research["architecture_attempts"]] == [False, True]
