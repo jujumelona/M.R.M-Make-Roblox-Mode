@@ -131,3 +131,30 @@ def test_stage_finish_is_distinct_from_repetitive_progression():
     ]
     plan.game_design["gameplay_contract"] = build_gameplay_contract(plan)
     assert plan.game_design["gameplay_contract"]["completion_kind"] == "final_checkpoint"
+
+
+def test_dynamic_lifecycle_rejects_strict_only_or_commented_mutation(tmp_path):
+    """The previous dynamic unit accepted any source containing --!strict."""
+    plan = _plan("펫 부화", features={"is_coin_collect": False, "is_combat": False},
+                 dynamic={"acceptance_facets": {"pet.hatch": "Pet egg hatches"},
+                          "module_facets": {"dyn_pet": ["pet.hatch"]}})
+    plan.modules += [SimpleNamespace(module_id="dyn_pet", name="PetHatching",
+                                     file_path="src/server/PetHatching.luau")]
+    plan.game_design["gameplay_contract"] = build_gameplay_contract(plan)
+    file = tmp_path / "src/server/PetHatching.luau"
+    file.parent.mkdir(parents=True)
+    for text in (
+        "--!strict\\nreturn {}\\n",
+        '--!strict\\n-- pet:SetAttribute("Hatched", true)\\nreturn {}\\n',
+        '--!strict\\nprint("pet:SetAttribute(\\\"Hatched\\\", true)")\\nreturn {}\\n',
+    ):
+        file.write_text(text, encoding="utf-8")
+        assert _checks(plan, tmp_path)["lifecycle.source.custom.pet.hatch"] is False
+    file.write_text(
+        '--!strict\\nlocal Service = {}\\n'
+        'function Service.handleAction(player, services)\\n'
+        '  player:SetAttribute("PetHatched", true)\\n'
+        'end\\nreturn Service\\n',
+        encoding="utf-8")
+    assert _checks(plan, tmp_path)["lifecycle.source.custom.pet.hatch"] is True
+    assert not plan.game_design["gameplay_contract"]["engine_playtested"]
