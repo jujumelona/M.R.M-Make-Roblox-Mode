@@ -202,3 +202,20 @@ platform.Parent = workspace
     assert router.calls == [("plain", 1200), ("plain", 1200), ("json_body", 1000)]
     assert 'platform.Parent = workspace' in code
     assert 'function Service.start(services)' in code
+
+
+
+def test_passive_start_does_not_accept_commented_or_printed_world_mutation():
+    plan = passive_plan()
+    deceptive = (
+        '-- workspace:SetAttribute("EnvironmentReady", true)\n'
+        'local instruction = "meteor.Parent = workspace"\n'
+        'print(instruction)\n'
+        'return nil\n'
+    )
+    router = RecordingRouter([deceptive, deceptive])
+    assert try_scaffolded_lifecycle(
+        plan.modules[0], plan, router, LuauStaticAnalyzer()) is None
+    assert len(router.requests) == 2
+    assert all("Passive startup needs real" in row["diagnostics"][0]
+               for row in router.last_lifecycle_scaffold_attempts)
