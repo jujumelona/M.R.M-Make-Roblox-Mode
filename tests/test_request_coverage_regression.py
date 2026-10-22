@@ -586,3 +586,13 @@ def test_whole_source_echo_twice_is_not_atomic_decomposition():
     ledger["decomposition_pending"] = []
     assert not ledger_complete(ATOMIC_REQUEST, dict(
         ledger, unmatched_requirements=[], unimplemented_facets=[]))
+
+
+
+def test_numeric_comma_does_not_split_requested_amount_into_fake_features():
+    from roblox_mod_ai.request_contract import clauses
+    assert clauses("Collect 1,000 coins") == ["Collect 1,000 coins"]
+    assert clauses("Collect 1,000 coins, upgrade a ship") == [
+        "Collect 1,000 coins", "upgrade a ship"]
+    assert clauses("Mine ore, trade resources") == [
+        "Mine ore", "trade resources"]
