@@ -771,6 +771,9 @@ class RobloxDynamicArchitect:
             "scope_policy_sha256": hashlib.sha256(
                 (Path(__file__).parent / "facet_scope.py").read_bytes()
             ).hexdigest(),
+            "atomic_source_ownership_sha256": hashlib.sha256(
+                (Path(__file__).parent / "atomic_action_quotes.py").read_bytes()
+            ).hexdigest(),
             "semantic_preservation_sha256": hashlib.sha256(
                 (Path(__file__).parent / "semantic_preservation.py").read_bytes()
             ).hexdigest(),
