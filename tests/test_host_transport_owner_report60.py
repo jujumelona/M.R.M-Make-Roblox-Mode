@@ -243,8 +243,46 @@ def test_host_semantic_schema_disallows_model_authored_transport_fields():
         "properties"]["systems"]["items"]["properties"])
     assert model_keys == {
         "name", "server_behavior", "observable_result",
-        "world_entities", "action_choices",
+        "world_entities", "autonomous", "action_choices",
     }
     legacy_keys = set(SEMANTIC_FACET_SCHEMA[
         "properties"]["systems"]["items"]["properties"])
     assert {"interaction", "input_mode", "client_behavior"} <= legacy_keys
+
+
+def test_semantic_only_server_autonomous_action_has_no_fake_ui():
+    raw = {"systems": [{
+        "name": "AutomaticWeatherCycle",
+        "server_behavior": (
+            "On the server timer automatically rotate the weather type "
+            "every 60 seconds and persist the current weather state."
+        ),
+        "observable_result": "The sky and lighting visibly change with weather.",
+        "world_entities": [],
+        "autonomous": True,
+    }]}
+    mapped, changes = bind_host_standard_transport(raw)
+    assert changes == [0]
+    only = mapped["systems"][0]
+    assert only["interaction"] == "none"
+    assert only["input_mode"] == "custom"
+    assert only["client_behavior"] == ""
+    assert "autonomous" not in only
+    assert interaction_issues(mapped) == {}
+    assert raw["systems"][0]["autonomous"] is True
+
+
+def test_player_choices_override_conflicting_autonomous_hint():
+    raw = {"systems": [{
+        "name": "SelectCraftingRecipe",
+        "server_behavior": "Server validates recipe and ingredients before craft.",
+        "observable_result": "The crafted item appears in the inventory.",
+        "world_entities": [],
+        "autonomous": True,
+        "action_choices": [{"id": "Build", "label": "Build"}],
+    }]}
+    mapped, _ = bind_host_standard_transport(raw)
+    row = mapped["systems"][0]
+    assert row["interaction"] == "request_response"
+    assert row["client_behavior"].startswith("Host-owned typed")
+    assert interaction_issues(mapped) == {}
