@@ -34,9 +34,8 @@ _FORBIDDEN = re.compile(
 _EFFECT = re.compile(
     r"\b(?:TrySpend|Grant|SetAttribute|PivotTo|Teleport|"
     r"TakeDamage|Create|Destroy|AddItem|RemoveItem|SetPrimaryPartCFrame|"
-    r"FireClient|FireAllClients|ApplyImpulse|LoadCharacter)\s*\(|"
-    r"\b[A-Za-z_]\w*(?:\.[A-Za-z_]\w*|\[[^\]]+\])\s*(?:\+=|-=|=(?!=))|"
-    r"\bInstance\.new\s*\(", re.I,
+    r"ApplyImpulse|LoadCharacter)\s*\(|"
+    r"\b[A-Za-z_]\w*(?:\.[A-Za-z_]\w*|\[[^\]]+\])\s*(?:\+=|-=|=(?!=))", re.I,
 )
 
 
@@ -318,8 +317,13 @@ def try_scaffolded_server(
             # Known destructive or unsupported operations are never acceptable gameplay.
             if "workspace.Workspace" in body:
                 raise ValueError("Unsafe or unsupported Luau mutation")
+            # Client notifications and unparented Instance.new() calls
+            # change neither an authoritative player/world state nor a live
+            # world object. They must never satisfy a real gameplay action.
             if not _EFFECT.search(body):
-                raise ValueError("Body lacks observable server-owned state change")
+                raise ValueError(
+                    "Body lacks authoritative gameplay mutation; Remote "
+                    "notifications and unparented Instances are not effects")
             LiveCodeRepetitionGuard.inspect(body)
             if typed is not None:
                 # Declarative effects must be referenced in the concrete
