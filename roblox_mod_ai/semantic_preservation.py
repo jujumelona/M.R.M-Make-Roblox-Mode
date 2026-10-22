@@ -84,6 +84,43 @@ def source_intent_conflicts(
             "SPACE_TRAVEL_DROPPED: user requested departing into space, "
             "not another ship purchase or upgrade menu"
         )
+    # Spending/selling EXISTING inventory for earned coins is not evidence
+    # that the user can mine, harvest or gather NEW resources. This was the
+    # exact gameplay inversion in proposal 48: a "farming" module only
+    # decremented the resource balance and credited currency.
+    gathering_requested = re.search(
+        r"자원\s*(?:파밍|채굴|수집|획득)|자원파밍|광물\s*(?:채굴|수집)|"
+        r"\b(?:resource\s+farm\w*|mining|mine\s+resources?|"
+        r"gather\s+resources?|harvest\s+resources?)\b",
+        source, re.I,
+    )
+    inventory_sale = re.search(
+        r"(?:decrement|deduct|subtract|consume|remove)\w*"
+        r".{0,85}\b(?:resource|ore|mineral)\b.{0,40}"
+        r"\b(?:balance|quantity|amount|count|inventory)\b|"
+        r"(?:decrement|deduct|subtract|consume|remove)\w*"
+        r".{0,55}\b(?:requested\s+amount|owned\s+resources?)\b",
+        text, re.I,
+    )
+    paid_instead = re.search(
+        r"(?:increment|credit|award|increase)\w*"
+        r".{0,70}\b(?:currency|coins?|credits?)\b",
+        text, re.I,
+    )
+    real_gathering = re.search(
+        r"\b(?:mine|harvest|extract|gather|collect|gathered|harvested)\w*"
+        r".{0,75}\b(?:node|deposit|ore|world|ground|mineral|resource)\b|"
+        r"\b(?:resource|ore|mineral)\b.{0,50}"
+        r"\b(?:node|deposit|spawn|mine|harvest|gather|collect|extract)\w*\b",
+        text, re.I,
+    )
+    if (require_implementation and gathering_requested and inventory_sale
+            and paid_instead and not real_gathering):
+        errors.append(
+            "RESOURCE_FARMING_DROPPED: the server only sells existing "
+            "resources for currency and never acquires new resources "
+            "from an authoritative gatherable source"
+        )
     if _COLONIZATION.search(source):
         if not _INTENT_COLONY.search(text):
             errors.append("SETTLEMENT_DROPPED: user requested colony settlement gameplay")
