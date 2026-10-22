@@ -58,10 +58,14 @@ class RobloxGameDesignPlanner:
             "is_shop": any(w in p for w in ["shop", "store", "buy", "merchant", "상점", "구매", "상점가", "아이템샵"]),
             "is_obby": any(w in p for w in ["obby", "parkour", "jump", "checkpoint", "점프맵", "파쿠르", "스테이지", "용암"]),
             "is_tycoon": any(w in p for w in ["tycoon", "dropper", "conveyor", "타이쿤", "드롭퍼", "컨베이어", "공장"]),
-            "is_simulator": any(w in p for w in ["simulator", "click", "mining", "bag", "시뮬레이터", "클릭", "가방", "채광"]),
+            # Inventories/bags and ordinary mining are mechanics, NOT proof
+            # that the user requested a click-simulator prefab.
+            "is_simulator": any(w in p for w in ["simulator", "시뮬레이터", "clicker", "클릭 시뮬레이터"]),
             "is_magic": any(w in p for w in ["magic", "spell", "staff", "ability", "마법", "스킬", "지팡이"]),
-            "is_combat": any(w in p for w in ["combat", "sword", "arena", "battle", "pvp", "pve", "검투", "아레나", "전투", "배틀", "무기"]),
-            "is_coin_collect": any(w in p for w in ["coin", "coins", "코인", "동전", "수집"]),
+            # Buying/upgrading a weapon is not itself a combat action.
+            "is_combat": any(w in p for w in ["combat", "arena", "battle", "fight", "attack", "pvp", "pve", "검투", "아레나", "전투", "배틀", "싸움", "싸우", "공격"]),
+            # Gathering any resources must not invent a coin-pickup system.
+            "is_coin_collect": any(w in p for w in ["coin", "coins", "코인", "동전"]),
             "is_leaderboard": any(w in p for w in ["leaderboard", "leaderstats", "리더보드", "순위"]),
         }
 
