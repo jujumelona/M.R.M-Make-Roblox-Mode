@@ -28,7 +28,7 @@ def _ordered_terms(value: str) -> list[str]:
     and then append adjacent progression context. A flat bag-of-words makes
     those copied adjuncts equally authoritative and misroutes valid mechanics.
     """
-    words = re.findall(r"[A-Za-z]+", re.sub(r"([a-z])([A-Z])", r"\\1 \\2", value))
+    words = re.findall(r"[A-Za-z]+", re.sub(r"([a-z])([A-Z])", r"\1 \2", value))
     result: list[str] = []
     for raw in words:
         word = raw.lower()
