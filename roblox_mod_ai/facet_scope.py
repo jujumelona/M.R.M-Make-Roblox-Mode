@@ -108,6 +108,13 @@ def scope_semantic_systems(
         )
     kept: list[dict[str, Any]] = []
     discarded: list[str] = []
+    # A theme word occurring in several returned systems cannot by itself
+    # claim all of them. Prefer a system supported by several source terms,
+    # without making the set of other requested facets a hard-coded taxonomy.
+    names_to_terms = [
+        _terms(str(row.get("name") or "")) if isinstance(row, dict) else set()
+        for row in systems
+    ]
     for index, system in enumerate(systems):
         if not isinstance(system, dict):
             raise ValueError("SCOPED_SYSTEM_INVALID: model systems must be objects")
@@ -122,8 +129,15 @@ def scope_semantic_systems(
              for fid, words in ordered_labels.items() if fid != target_id),
             default=0.0,
         )
+        better_same_topic = any(
+            index != other_index
+            and len(other_terms & target) > len(overlap)
+            and bool((other_terms & target) & overlap)
+            for other_index, other_terms in enumerate(names_to_terms)
+        )
         independently_supported = (
-            len(overlap) >= 2 or bool(overlap - foreign_vocabulary)
+            len(overlap) >= 2
+            or (bool(overlap - foreign_vocabulary) and not better_same_topic)
         )
         # Equal raw token counts used to reject valid compound systems because
         # other facets' queries repeat source context (e.g. building mentioned
