@@ -252,7 +252,9 @@ class RobloxPreDesignResearch:
     def __init__(self, docs: RobloxOfficialDocs | None = None,
                  creator_store: RobloxCreatorStoreCatalog | None = None,
                  *, live_enabled: bool | None = None,
-                 router: ModelRouter | None = None) -> None:
+                 router: ModelRouter | None = None,
+                 classification_cache: Path | None = None) -> None:
+        self.classification_cache = Path(classification_cache) if classification_cache else None
         self.docs = docs if docs is not None else RobloxOfficialDocs()
         self.router = router
         self.creator_store = creator_store if creator_store is not None else RobloxCreatorStoreCatalog()
@@ -364,12 +366,54 @@ class RobloxPreDesignResearch:
             if len(chunks) > 80:
                 raise ValueError("Too many source chunks to audit in a single plan")
             classified: dict[str, dict[str, str]] = {}
+            # An architecture cannot safely resume if earlier small-model
+            # classification calls are all repeated on every failed run.
+            # Cache ONLY validator-accepted exact source spans, bound to the
+            # complete request and current decomposition+semantic code.
+            checkpoint = self.classification_cache
+            cache_key = hashlib.sha256(json.dumps({
+                "prompt": prompt,
+                "chunks": chunks,
+                "decomposer_sha": hashlib.sha256(
+                    (Path(__file__).parent / "source_decomposition.py").read_bytes()
+                ).hexdigest(),
+                "semantic_sha": hashlib.sha256(
+                    (Path(__file__).parent / "semantic_preservation.py").read_bytes()
+                ).hexdigest(),
+            }, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
+            if checkpoint is not None:
+                try:
+                    saved = json.loads(checkpoint.read_text(encoding="utf-8"))
+                    if (saved.get("schema") == "rmm/semantic-chunk-cache-v1"
+                            and saved.get("input_sha256") == cache_key):
+                        rows = saved.get("behaviors")
+                        if isinstance(rows, list):
+                            classified.update(valid_chunk_classification(
+                                {"behaviors": rows}, chunks))
+                except (OSError, ValueError, TypeError, AttributeError):
+                    pass
+
+            def persist_verified_chunks() -> None:
+                if checkpoint is None:
+                    return
+                checkpoint.parent.mkdir(parents=True, exist_ok=True)
+                rows = [{"chunk_id": cid, **row}
+                        for cid, row in classified.items()
+                        if not row["intent"].startswith(
+                            "Implement only the requested gameplay in: ")]
+                temp = checkpoint.with_suffix(checkpoint.suffix + ".tmp")
+                temp.write_text(json.dumps({
+                    "schema": "rmm/semantic-chunk-cache-v1",
+                    "input_sha256": cache_key, "behaviors": rows,
+                }, ensure_ascii=False, indent=2), encoding="utf-8")
+                temp.replace(checkpoint)
+
             unclassified_source_chunks: list[str] = []
             # One-to-one classification in bounded groups; only missing source
             # chunks are retried, not all previously verified capabilities.
             for offset in range(0, len(chunks), 3):
                 group = chunks[offset:offset+3]
-                missing = group
+                missing = [c for c in group if c["chunk_id"] not in classified]
                 for retry in range(2):
                     if not missing:
                         break
@@ -424,6 +468,7 @@ class RobloxPreDesignResearch:
                             print("[RMM research] Single-chunk retry " +
                                   str(retry+1) + ": " + type(exc).__name__, flush=True)
                 missing = [c for c in group if c["chunk_id"] not in classified]
+                persist_verified_chunks()
                 if missing:
                     # The HOST already established exact, lossless source ownership.
                     # Missing classifier prose is not permission to discard user
