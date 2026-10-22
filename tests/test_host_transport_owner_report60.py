@@ -175,3 +175,76 @@ def test_world_prompt_cannot_bypass_choice_allowlist():
     assert fixed["systems"][0]["input_mode"] == "custom"
     assert fixed["systems"][0]["interaction"] == "request_response"
     assert interaction_issues(fixed) == {}
+
+
+def test_production_model_schema_is_semantic_only_and_works_without_protocol(
+        monkeypatch):
+    from roblox_mod_ai.host_architecture import (
+        HOST_OWNED_SEMANTIC_FACET_SCHEMA,
+    )
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    source = "Water crops by spending gathered rainwater"
+    research = {
+        "ledger": {
+            "original_prompt": source,
+            "requirements": [{"id": "req-1", "statement": source}],
+            "facets": [{
+                "id": "facet-1",
+                "source_span": source,
+                "requirements": ["req-1"],
+                "search_query": "Roblox water crops gathered rainwater",
+            }],
+        },
+        "evidence": [],
+    }
+    item_schema = (
+        HOST_OWNED_SEMANTIC_FACET_SCHEMA["properties"]["systems"]
+        ["items"]["properties"]
+    )
+    assert all(key not in item_schema
+               for key in ("interaction", "input_mode", "client_behavior"))
+
+    class GameplayModel:
+        supports_host_standard_transport = True
+        def __init__(self): self.calls = []
+        def complete_json(self, prompt, **kwargs):
+            self.calls.append((prompt, kwargs))
+            if len(self.calls) != 1:
+                raise AssertionError("Host metadata must never trigger more inference")
+            assert kwargs["json_schema"] == HOST_OWNED_SEMANTIC_FACET_SCHEMA
+            return {"systems": [{
+                "name": "WaterCrops",
+                "server_behavior": (
+                    "Validate selected crop ownership and gathered water "
+                    "balance, deduct the watering cost and increase the "
+                    "authoritative crop growth state."
+                ),
+                "observable_result": (
+                    "The crop advances to its next growth stage and "
+                    "player water inventory decreases."
+                ),
+                "world_entities": [],
+            }]}
+
+    model = GameplayModel()
+    generated = RobloxDynamicArchitect(model).design(source, research, [])
+    assert len(model.calls) == 1
+    assert len(generated["host_typed_actions"]) == 1
+    assert len(generated["host_actions"]) == 1
+    assert research["architecture_attempts"][0]["passed"] is True
+    assert research["architecture_attempts"][0]["host_bound_transport_indexes"] == [0]
+
+
+def test_host_semantic_schema_disallows_model_authored_transport_fields():
+    from roblox_mod_ai.host_architecture import (
+        HOST_OWNED_SEMANTIC_FACET_SCHEMA, SEMANTIC_FACET_SCHEMA,
+    )
+    model_keys = set(HOST_OWNED_SEMANTIC_FACET_SCHEMA[
+        "properties"]["systems"]["items"]["properties"])
+    assert model_keys == {
+        "name", "server_behavior", "observable_result",
+        "world_entities", "action_choices",
+    }
+    legacy_keys = set(SEMANTIC_FACET_SCHEMA[
+        "properties"]["systems"]["items"]["properties"])
+    assert {"interaction", "input_mode", "client_behavior"} <= legacy_keys
