@@ -654,10 +654,12 @@ class RobloxDynamicArchitect:
         observations = research.setdefault("architecture_attempts", [])
         checkpoints = research.setdefault("architecture_subplans", [])
 
-        # A failed seventh feature must NOT make the next Colab run spend
-        # several minutes redesigning the first six. Checkpoints are tied to
-        # the original source ledger, reference evidence and this validator
-        # implementation. Invalid/tampered drafts are strictly revalidated.
+        # Preserve valid feature semantics across re-retrieval of official
+        # documentation. Search ranking, snippets and last_updated metadata
+        # fluctuate even if the user's request, action ownership and host ABI
+        # are unchanged. Documentation is reference evidence, not a source
+        # contract; every cached design is still validated with current host
+        # policy, source facet IDs, collisions and action/Remote constraints.
         signature = hashlib.sha256(json.dumps({
             "policy_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
             "host_policy_sha256": hashlib.sha256(
@@ -668,10 +670,6 @@ class RobloxDynamicArchitect:
             ).hexdigest(),
             "original_prompt": prompt, "ledger": ledger,
             "reserved_modules": sorted(reserved_modules),
-            "reference_hashes": [
-                (e.get("facet"), e.get("content_sha256"))
-                for e in docs
-            ],
         }, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")).hexdigest()
         stored_parts: dict[str, Any] = {}
         if self.checkpoint_file is not None and os.environ.get(
