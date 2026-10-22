@@ -99,6 +99,13 @@ _CLIENT_PATCH_SCHEMA = {
     "properties": {"modules": {"type": "array", "items": _FACET_MODULE_SCHEMA}},
     "required": ["modules"],
 }
+# Only the semantically incorrect field should be retried, never a previously
+# accepted combat/state-change contract in the same feature.
+_SCOPED_SEMANTIC_REPAIR_SCHEMA = {
+    "type": "object",
+    "properties": {"replacement": {"type": "string", "maxLength": 4096}},
+    "required": ["replacement"],
+}
 
 # These are inspected first-party *code templates*, not third-party libraries.
 # A candidate can be reused only when its behavior is an exact request match.
@@ -786,6 +793,7 @@ class RobloxDynamicArchitect:
             )
             previous_error = ""
             draft: dict[str, Any] | None = None
+            semantic_repair: tuple[dict[str, Any], str] | None = None
             successful = False
             cache_hit = False
             for attempt in range(3):
@@ -806,6 +814,46 @@ class RobloxDynamicArchitect:
                     )
                     if cache_hit:
                         pass  # validation below, no model inference needed
+                    elif semantic_repair is not None:
+                        previous_draft, field = semantic_repair
+                        semantic_repair = None
+                        original_system = previous_draft["systems"][0]
+                        # Preserve the previously valid rules and host-owned
+                        # contracts. A new model call edits only one field.
+                        patch = self.router.complete_json(
+                            "Repair ONLY the failed gameplay contract field "
+                            "for this user-authored action. Return JSON "
+                            "{replacement:string}, not a new system. "
+                            "For server_behavior, preserve every requested "
+                            "mechanic and implement its authoritative state "
+                            "transition. For observable_result, describe "
+                            "the server-confirmed changed state visible to "
+                            "the player; do not repeat persistence internals. "
+                            "Alien NPCs must not become PvP targets. "
+                            "Do not supply Luau code, Remote IDs, or Roblox "
+                            "geometry.\n"
+                            + json.dumps({
+                                "field": field,
+                                "validator_error": previous_error,
+                                "source_requirements": subset,
+                                "previous_system": original_system,
+                            }, ensure_ascii=False),
+                            role="planner", temperature=0.0,
+                            max_tokens=780,
+                            json_schema=_SCOPED_SEMANTIC_REPAIR_SCHEMA,
+                        )
+                        replacement_text = (
+                            patch.get("replacement") if isinstance(patch, dict) else None
+                        )
+                        if (not isinstance(replacement_text, str)
+                                or not 24 <= len(replacement_text.strip()) <= 4096):
+                            raise DynamicDesignError(
+                                "Bounded semantic repair returned no valid replacement"
+                            )
+                        draft = dict(previous_draft)
+                        draft["systems"] = [
+                            dict(original_system, **{field: replacement_text.strip()})
+                        ]
                     elif missing_role:
                         patch = self.router.complete_json(
                             "Return ONLY JSON {\"modules\":[...]} with NEW "
@@ -927,8 +975,22 @@ class RobloxDynamicArchitect:
                             and len(json.dumps(draft, ensure_ascii=False)) <= 16000
                             else "unavailable_or_too_large",
                     })
-                    # No stale draft after a failure other than missing-client:
-                    # only that failure has a safe, append-only correction.
+                    # When only one model-owned system failed a known
+                    # semantic contract, patch that field on the next pass.
+                    # Unknown failures and multiple systems regenerate safely.
+                    if (isinstance(draft, dict)
+                            and isinstance(draft.get("systems"), list)
+                            and len(draft["systems"]) == 1
+                            and "SEMANTIC_SOURCE_CONTRACT " in previous_error):
+                        field = (
+                            "server_behavior"
+                            if "SEMANTIC_SOURCE_CONTRACT server:" in previous_error
+                            else "observable_result"
+                            if "SEMANTIC_SOURCE_CONTRACT outcome:" in previous_error
+                            else None
+                        )
+                        if field is not None:
+                            semantic_repair = (draft, field)
                     if "no client Luau controller" not in previous_error:
                         draft = None
                     print("[RMM architect] feature " + facet_id +
