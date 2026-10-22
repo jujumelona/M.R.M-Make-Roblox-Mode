@@ -83,6 +83,20 @@ from .scaffold_policy import is_host_scaffolded_source
 from .generation_scope import generation_scope
 from .implementation_blueprint import audit_implementation_blueprint
 
+def explicit_stage_verdict(details: Any) -> bool:
+    """No missing/contradictory stage return can be treated as success."""
+    if not isinstance(details, dict):
+        raise ValueError("STAGE_RESULT_MUST_BE_OBJECT")
+    verdicts = [details[key] for key in ("success", "passed")
+                if key in details]
+    if (not verdicts or any(type(value) is not bool for value in verdicts)
+            or len(set(verdicts)) != 1):
+        raise ValueError(
+            "STAGE_RESULT_EXPLICIT_BOOL_REQUIRED: success/passed "
+            "must exist, be boolean, and agree")
+    return verdicts[0]
+
+
 class RobloxProductionOrchestrator:
     """Coordinates end-to-end production of a Roblox experience via topological work graph."""
 
@@ -147,16 +161,7 @@ class RobloxProductionOrchestrator:
                 # Every pipeline stage must return a REAL explicit verdict.
                 # The old default True marked a missing/malformed callback
                 # result as successful and advanced straight to packaging.
-                if not isinstance(details, dict):
-                    raise ValueError("STAGE_RESULT_MUST_BE_OBJECT")
-                verdicts = [details[key] for key in ("success", "passed")
-                            if key in details]
-                if (not verdicts or any(type(value) is not bool for value in verdicts)
-                        or len(set(verdicts)) != 1):
-                    raise ValueError(
-                        "STAGE_RESULT_EXPLICIT_BOOL_REQUIRED: success/passed "
-                        "must exist, be boolean, and agree")
-                passed = verdicts[0]
+                passed = explicit_stage_verdict(details)
                 receipt.stages.append(StageReceipt(stage=stage_id, success=passed,
                     duration_ms=(time.perf_counter() - began) * 1000, details=details,
                     errors=[] if passed else [str(details.get("error", "stage not verified"))]))
