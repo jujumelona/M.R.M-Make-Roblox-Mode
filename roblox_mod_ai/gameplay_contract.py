@@ -225,10 +225,16 @@ def validate_gameplay_contract(proposal: Any, project_root: Path) -> list[dict]:
                 for group in ("host_actions", "host_world_actions")
                 for action in (design.get(group) or {}).values()
             )
+            # Model-authored host scaffolds delimit the actual action body.
+            # First-party composites delegate to verified local Mine/Barter
+            # helpers, so their action body may contain only delegation.
+            # Apply the same ownership rule as the per-module gate.
+            scaffolded = ("-- Host-authored lifecycle, input validation and "
+                          "exported ABI.") in code
             source_ok = (
                 source_ok
                 and bool(owner.file_path.startswith("src/server/"))
-                and has_gameplay_mutation(code, routed_action=routed)
+                and has_gameplay_mutation(code, routed_action=routed and scaffolded)
             )
         check("source." + unit.get("id", "unknown"), source_ok,
               "Actual packaged source supplies executable server mutation "
