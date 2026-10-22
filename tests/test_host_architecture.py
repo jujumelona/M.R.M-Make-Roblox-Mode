@@ -534,3 +534,69 @@ def test_accepted_facet_design_survives_external_document_snippet_churn(
         x.name for x in first["modules"]
     ]
     assert all(row["cache_hit"] for row in updated_docs["architecture_subplans"])
+
+
+def test_real_failure_46_server_state_and_visible_colonization_must_pass():
+    """Replays the first rejected 9B feature: server commits planet ownership,
+    client reports the actual transitioned planet, optional result is omitted.
+    """
+    raw = {"systems": [{
+        "name": "Alien combat and planet colonization mode",
+        "server_behavior": (
+            "The server runs a space-mode gameplay loop where players fight "
+            "aliens and colonize planets. Combat is resolved server-side: each "
+            "alien has a server-owned health value, and each player attack is "
+            "validated against the target's current health before damage is "
+            "applied, with the result committed on the server. Colonization "
+            "is a server-owned progression system: a planet's colonized state "
+            "is stored server-side, and only the server marks a planet as "
+            "colonized after the required conditions are met."
+        ),
+        "client_behavior": (
+            "The client displays the space-mode interface and shows the visible "
+            "result of each server-validated action: combat feedback for alien "
+            "attacks and player hits, and colonization feedback when a planet "
+            "becomes colonized. The client does not decide combat or colonization "
+            "outcomes; it only renders what the server reports."
+        ),
+        "interaction": "request_response",
+        "input_mode": "custom",
+        "action_choices": [
+            {"id": "combat", "label": "Fight aliens"},
+            {"id": "colonize", "label": "Colonize planet"},
+            {"id": "gather", "label": "Gather resources"},
+        ],
+        "world_entities": ["alien", "planet", "resource_node"],
+    }]}
+    built = expand_semantic_facet(
+        raw, facet_id="intent-unique", requirement_ids=["req-001"],
+        source_requirements=[{"id": "req-001", "statement":
+            "외게인과 싸움 식민지화등 여러가지가 가능한 모드"}],
+        reserved_modules=set(), reserved_remotes=set(),
+        reserved_objects=set())
+    assert len(built["modules"]) == 2
+    assert "becomes colonized" in built["acceptance"][0]["observable_result"]
+    assert any("alien" in m["behavior"].lower()
+               for m in built["modules"] if m["role"] == "server")
+
+
+def test_colony_feedback_cannot_redeem_a_server_without_owned_state():
+    """Visible planet transitions never excuse missing authoritative state."""
+    raw = _semantic(interaction="request_response")
+    raw["systems"][0]["name"] = "Colony"
+    raw["systems"][0]["server_behavior"] = (
+        "The server validates a colonization request by checking that the "
+        "player can view the planet and acknowledges their selected option."
+    )
+    raw["systems"][0]["client_behavior"] = (
+        "The client displays a server-confirmed visible planet result and "
+        "shows the planet when it becomes colonized."
+    )
+    raw["systems"][0].pop("observable_result")
+    with pytest.raises(HostArchitectureError, match="SEMANTIC_SOURCE_CONTRACT server"):
+        expand_semantic_facet(
+            raw, facet_id="intent-unique", requirement_ids=["req-001"],
+            source_requirements=[{"id": "req-001", "statement":
+                "Colonize the planet"}],
+            reserved_modules=set(), reserved_remotes=set(),
+            reserved_objects=set())
