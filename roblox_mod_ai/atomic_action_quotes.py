@@ -43,30 +43,45 @@ def indexed_source_spans(source: str, *, max_width: int = 4,
                       for width in widths
                       for start in range(n - width + 1)]
     else:
-        priorities = list(reversed(widths))
-        base, extra = divmod(max_candidates, len(priorities))
-        for index, width in enumerate(priorities):
+        # First prove complete lexical coverage. Uniformly sampled sliding
+        # windows can leave arbitrary middle words absent despite including
+        # the beginning and end (observed in the 65-word regression).
+        cover_width = widths[-1]
+        if n > max_candidates * cover_width:
+            raise SourceActionBindingError(
+                "ATOMIC_SOURCE_TOO_LONG_FOR_SPAN_WINDOW: split the ORIGINAL "
+                "source into smaller host-owned clauses; never drop words")
+        candidates = [
+            (start, min(cover_width, n - start))
+            for start in range(0, n, cover_width)
+        ]
+        already = set(candidates)
+        # Spend the remaining budget on shorter overlapping choices, with
+        # even distribution across the entire text rather than its prefix.
+        for width in list(reversed(widths)):
+            remaining = max_candidates - len(candidates)
+            if remaining <= 0:
+                break
             available = n - width + 1
-            quota = min(available, base + (index < extra))
+            quota = min(available, remaining)
             if quota <= 0:
                 continue
-            if quota == 1:
-                starts = [0 if available == 1 else (available - 1) // 2]
-            else:
-                starts = [i * (available - 1) // (quota - 1)
-                          for i in range(quota)]
-            candidates.extend((start, width) for start in starts)
-
-        # If some widths offered fewer candidates than their quota, fill
-        # unused slots from real source windows, never invented strings.
-        already = set(candidates)
-        for width in priorities:
+            starts = ([0] if quota == 1 else
+                      [i * (available - 1) // (quota - 1)
+                       for i in range(quota)])
+            for start in starts:
+                candidate = (start, width)
+                if candidate not in already:
+                    candidates.append(candidate)
+                    already.add(candidate)
+        for width in list(reversed(widths)):
             for start in range(n - width + 1):
                 if len(candidates) >= max_candidates:
                     break
-                if (start, width) not in already:
-                    candidates.append((start, width))
-                    already.add((start, width))
+                candidate = (start, width)
+                if candidate not in already:
+                    candidates.append(candidate)
+                    already.add(candidate)
             if len(candidates) >= max_candidates:
                 break
 
