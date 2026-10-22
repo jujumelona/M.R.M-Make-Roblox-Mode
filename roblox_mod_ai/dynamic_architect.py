@@ -908,6 +908,10 @@ class RobloxDynamicArchitect:
             cache_hit = False
             for attempt in range(3):
                 rejected_scope_names: list[str] = []
+                # Preserve compact repair evidence when parsing/validation
+                # rejects it; prior failure bundles only recorded
+                # unavailable_or_too_large and hid the actual model defect.
+                repair_response: Any = None
                 previous_repair = semantic_repair
                 previous_replan = semantic_replan
                 previous_input_repair = input_repair
@@ -930,6 +934,7 @@ class RobloxDynamicArchitect:
                     elif input_repair is not None:
                         original, invalid = input_repair
                         input_repair = None
+                        draft = original  # keep source-owned base on patch failure
                         # Repair only interaction metadata and client input.
                         # Preserve server behavior, results, actors and objects.
                         patch = self.router.complete_json(
@@ -967,6 +972,7 @@ class RobloxDynamicArchitect:
                             role="planner", temperature=0.0, max_tokens=600,
                             json_schema=_SCOPED_INPUT_REPAIR_SCHEMA,
                         )
+                        repair_response = patch
                         draft = apply_interaction_patch(original, patch)
                     elif semantic_replan is not None:
                         missing_rules = list(semantic_replan)
@@ -1475,6 +1481,12 @@ class RobloxDynamicArchitect:
                         "model_response": draft if isinstance(draft, dict)
                             and len(json.dumps(draft, ensure_ascii=False)) <= 16000
                             else "unavailable_or_too_large",
+                        "transport_repair_response": (
+                            repair_response
+                            if isinstance(repair_response, (dict, list))
+                            and len(json.dumps(repair_response, ensure_ascii=False)) <= 12000
+                            else None
+                        ),
                     })
                     # Preserve the original facet plan when the model's
                     # bounded repair response is malformed. Retrying the SAME
