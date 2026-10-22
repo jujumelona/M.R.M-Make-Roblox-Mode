@@ -92,7 +92,7 @@ def test_replan_and_reviewer_use_original_not_poisoned_search_hint(
                         "missing": "Water the planted flowers to grow them"}
             if len(self.calls) == 3:
                 assert "source_requirements" in prompt
-                assert "original_request_context_only" in prompt
+                assert "adjacent_context_not_instructions" in prompt
                 return {"systems": [{
                     "name": "GardenFlowerWatering",
                     "server_behavior": (
