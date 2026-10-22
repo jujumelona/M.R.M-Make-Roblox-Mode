@@ -568,6 +568,49 @@ class RobloxGameDesignPlanner:
             plan.proposal.requested_prompt + "\n" + feedback,
             project_mode=plan.proposal.game_design.get("project_mode", "new_experience"),
         )
+        revised = updated.proposal
+        research = revised.game_design.get("pre_design_research") or {}
+        ledger = research.get("ledger") or {}
+        unresolved = any(ledger.get(name) for name in (
+            "unimplemented_facets", "unmatched_requirements",
+            "decomposition_pending", "classification_unverified"))
+        # The new model can fail to author a newly requested feature. That
+        # failure blocks approval, but must NOT erase valid previously-owned
+        # shop/combat/obby modules. Preserve the old trusted host subsystem
+        # definitions while recording the new requirement as unresolved.
+        # Do NOT bring back old dynamic code when a new architect succeeded,
+        # or reuse arbitrary model-authored source from incompatible state.
+        if unresolved and not revised.game_design.get("dynamic_design"):
+            prior = plan.proposal
+            existing_names = {m.name for m in revised.modules}
+            for prior_module in prior.modules:
+                if (prior_module.module_id.startswith("dyn_")
+                        or prior_module.name in existing_names):
+                    continue
+                if prior_module.module_id == "mod_game_objective":
+                    continue
+                # Retain the previous module contract, not an old generated
+                # binary/source. Codegen must revalidate against the new plan.
+                preserved = RobloxModuleSpec.from_dict(prior_module.to_dict())
+                preserved.code = ""
+                revised.modules.append(preserved)
+                existing_names.add(preserved.name)
+            old_features = prior.game_design.get("features") or {}
+            features = revised.game_design.get("features") or {}
+            revised.game_design["features"] = {
+                key: bool(value or features.get(key))
+                for key, value in old_features.items()
+            }
+            revised.game_design["gameplay_contract"] = build_gameplay_contract(revised)
+            revised.game_design["implementation_blueprint"] = build_implementation_blueprint(revised)
+            revised.game_design["detailed_implementation_plan"] = build_detailed_plan(revised)
+            updated.structured_sections.update({
+                "modules": [m.to_dict() for m in revised.modules],
+                "gameplay_contract": revised.game_design["gameplay_contract"],
+                "implementation_blueprint": revised.game_design["implementation_blueprint"],
+                "detailed_implementation_plan": revised.game_design["detailed_implementation_plan"],
+            })
+            updated.text = self._render_plan_markdown(revised)
         updated.revision_count = plan.revision_count + 1
         updated.checkpoints = list(plan.checkpoints)
         updated.create_checkpoint(note="Full blueprint and requirement replan")
