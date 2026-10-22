@@ -25,6 +25,9 @@ class ModelRouter:
         # gameplay. Lightweight testing transports remain free to provide
         # their own verifier capability explicitly.
         self.supports_source_fidelity_audit = True
+        # Genre-neutral atomic source actions can be planned in bounded calls
+        # instead of relying on one large multi-action JSON completion.
+        self.supports_atomic_action_decomposition = True
         self.adapters: dict[str, ModelAdapter] = {}
         self._init_adapters()
 
