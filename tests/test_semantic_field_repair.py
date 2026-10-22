@@ -184,3 +184,62 @@ def test_semantic_repair_cannot_accept_an_unrelated_new_feature(monkeypatch):
     model = Model()
     with pytest.raises(DynamicDesignError):
         RobloxDynamicArchitect(model).design(PROMPT, _research(), [])
+
+def test_multi_contract_repair_preserves_enemy_combat_and_commits_colony(monkeypatch):
+    """Reproduce the plan-49 case: colony write and visible outcome fail together."""
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    class SmallPlanner:
+        def __init__(self):
+            self.calls = []
+
+        def complete_json(self, request, **options):
+            self.calls.append((request, options))
+            if len(self.calls) == 1:
+                return {"systems": [{
+                    "name": "CombatAndSettlement",
+                    "server_behavior": (
+                        "The server validates attacks against hostile alien NPC "
+                        "enemies and applies weapon damage to their health. "
+                        "For colonization it checks player resources and "
+                        "the selected planet's existing state."
+                    ),
+                    "client_behavior": (
+                        "The player sees combat feedback and colony feedback "
+                        "after submitting the chosen action."
+                    ),
+                    "interaction": "request_response",
+                    "input_mode": "custom",
+                    "world_entities": [],
+                }]}
+            assert len(self.calls) == 2, "Both deficits must be repaired together"
+            from roblox_mod_ai.dynamic_architect import (
+                _SCOPED_DUAL_SEMANTIC_REPAIR_SCHEMA,
+            )
+            assert options["json_schema"] == _SCOPED_DUAL_SEMANTIC_REPAIR_SCHEMA
+            assert '"server_behavior"' in request
+            assert '"observable_result"' in request
+            return {
+                "server_addition": (
+                    "After successful colonization the server records a newly "
+                    "established colony settlement and persists ownership "
+                    "of the chosen planet in the player profile."
+                ),
+                "outcome_addition": (
+                    "Hostile alien NPC enemies visibly lose health from "
+                    "successful attacks, and the planet becomes colonized "
+                    "with an established owned settlement in the world."
+                ),
+            }
+
+    research = _research()
+    model = SmallPlanner()
+    result = RobloxDynamicArchitect(model).design(PROMPT, research, [])
+    assert len(model.calls) == 2
+    assert [attempt["passed"] for attempt in
+            research["architecture_attempts"]] == [False, True]
+    server = next(m for m in result["modules"] if m.name.endswith("Server"))
+    assert "applies weapon damage" in server.description
+    assert "records a newly established colony settlement" in server.description
+    visible = result["acceptance"]["req-001"]
+    assert "Hostile alien NPC enemies visibly lose health" in visible
+    assert "planet becomes colonized" in visible
