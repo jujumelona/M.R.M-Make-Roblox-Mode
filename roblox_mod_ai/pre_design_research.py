@@ -273,7 +273,10 @@ class RobloxPreDesignResearch:
         for EVERY span; one response cannot certify the rest of the game.
         """
         from .request_contract import validate_model_behaviors, clean, ledger_complete
-        from .source_decomposition import (source_chunks, valid_chunk_classification, classification_context)
+        from .source_decomposition import (
+            source_chunks, valid_chunk_classification, classification_context,
+            recover_unseparated_actions,
+        )
 
         # Once the model has validated an entire source decomposition, keep
         # THAT exact source-to-facet graph across later architecture failures.
@@ -404,13 +407,31 @@ class RobloxPreDesignResearch:
 
         try:
             chunks: list[dict[str, str]] = []
+            host_bound_actions: dict[str, dict[str, str]] = {}
             for clause in ledger["requirements"]:
                 if clause["id"] not in pending:
                     continue
                 spans = source_chunks(clause["statement"])
                 if len(spans) < 2:
-                    raise ValueError(
-                        "Cannot independently source-chunk compound clause " + clause["id"])
+                    # A word-count boundary is not proof of an independent
+                    # game mechanic. Let the local model select two or three
+                    # different ORIGINAL source IDs and verify coverage first.
+                    # If it cannot do so, retain failure rather than mint
+                    # two fake requirements from a character midpoint.
+                    recovered = recover_unseparated_actions(
+                        self.router, clause["statement"])
+                    for row in recovered:
+                        chunk_id = f"chunk-{len(chunks)+1:03d}"
+                        chunks.append({
+                            "chunk_id": chunk_id,
+                            "clause_id": clause["id"],
+                            "source_span": row["source_span"],
+                        })
+                        host_bound_actions[chunk_id] = {
+                            "intent": row["intent"],
+                            "english_query": row["english_query"],
+                        }
+                    continue
                 for span in spans:
                     chunks.append({
                         "chunk_id": f"chunk-{len(chunks)+1:03d}",
@@ -419,7 +440,7 @@ class RobloxPreDesignResearch:
                     })
             if len(chunks) > 80:
                 raise ValueError("Too many source chunks to audit in a single plan")
-            classified: dict[str, dict[str, str]] = {}
+            classified: dict[str, dict[str, str]] = dict(host_bound_actions)
             # An architecture cannot safely resume if earlier small-model
             # classification calls are all repeated on every failed run.
             # Cache ONLY validator-accepted exact source spans, bound to the
