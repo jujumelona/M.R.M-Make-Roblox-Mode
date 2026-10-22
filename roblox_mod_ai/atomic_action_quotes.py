@@ -27,7 +27,7 @@ def indexed_source_spans(source: str, *, max_width: int = 4,
     sampling uniformly across the original token positions. For short text
     keep exhaustive windows for backward-compatible source IDs.
     """
-    words = list(re.finditer(r"\\S+", source))
+    words = list(re.finditer(r"\S+", source))
     if not words:
         raise SourceActionBindingError("ATOMIC_SOURCE_TEXT_REQUIRED")
     if max_width < 1 or max_candidates < 1:
@@ -151,7 +151,7 @@ def verify_or_bind_actions(router: Any, source: str, actions: Any,
             "rewrite an action or change an already verified binding. "
             "Do not invent a quote or game system. Each listed action index "
             "must occur once and each selected span must be distinct. "
-            "JSON only.\\n" + json.dumps({
+            "JSON only.\n" + json.dumps({
                 "original_source": source,
                 "unbound_actions": [{"action_index": i, "action": normalized[i]["action"]}
                                     for i in missing],
