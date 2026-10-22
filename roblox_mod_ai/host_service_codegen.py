@@ -11,6 +11,7 @@ import re
 from typing import Any
 
 from .code_output_guard import LiveCodeRepetitionGuard
+from .dynamic_wiring import _mask_strings, _without_comments
 from .host_mining import render_host_mining
 from .host_ship_attachment import eligible_ship_attachment
 from .host_capped_ship_parts import eligible_capped_ship_parts
@@ -320,10 +321,15 @@ def try_scaffolded_server(
             # Client notifications and unparented Instance.new() calls
             # change neither an authoritative player/world state nor a live
             # world object. They must never satisfy a real gameplay action.
-            if not _EFFECT.search(body):
+            # Model prose/comments/strings are not executable game changes.
+            # Reuse the same Luau-aware masking employed by Remote validation,
+            # so a printed string containing SetAttribute(...) cannot certify
+            # a gameplay effect.
+            executable = _mask_strings(_without_comments(body))
+            if not _EFFECT.search(executable):
                 raise ValueError(
                     "Body lacks authoritative gameplay mutation; Remote "
-                    "notifications and unparented Instances are not effects")
+                    "notifications, comments and unparented Instances are not effects")
             LiveCodeRepetitionGuard.inspect(body)
             if typed is not None:
                 # Declarative effects must be referenced in the concrete
