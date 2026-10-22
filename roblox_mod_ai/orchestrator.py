@@ -134,7 +134,20 @@ class RobloxProductionOrchestrator:
         # targets, yields or a parallel economy API.
         world_materializations = ensure_mining_world_contract(proposal)
         addon_mode = proposal.game_design.get("project_mode") == "existing_experience_addon"
-        output_dir = self.workspace_root / run_name / proposal.game_title
+        from .artifact_path_safety import safe_segment, safe_project_file
+        run_component = safe_segment(run_name, field="run_name")
+        title_component = safe_segment(proposal.game_title, field="game_title")
+        output_dir = self.workspace_root / run_component / title_component
+        # Check the full resolved tree before creating it; a symlink or
+        # imported relative path must never redirect writes outside the
+        # designated workspace. This includes cached source and test paths.
+        anchor = self.workspace_root.resolve()
+        if not output_dir.resolve().is_relative_to(anchor):
+            raise ValueError("RMM_GAME_OUTPUT_ESCAPES_WORKSPACE")
+        for module in proposal.modules:
+            safe_project_file(output_dir, module.file_path, prefixes=("src",))
+        for test in proposal.tests:
+            safe_project_file(output_dir, test.file_path, prefixes=("tests",))
         output_dir.mkdir(parents=True, exist_ok=True)
         trajectory = AgentTrajectory(output_dir)
         for item in world_materializations:
