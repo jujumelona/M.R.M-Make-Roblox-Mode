@@ -223,6 +223,9 @@ def ledger_complete(prompt: str, ledger: dict[str, Any]) -> bool:
                         and x["id"].startswith("intent-")}
         mapped_facets = [x.get("facet_id") for x in model_atoms]
         mapped_requirements = [x.get("requirement_id") for x in model_atoms]
+        if (any(not isinstance(owner, str) for owner in mapped_facets)
+                or any(not isinstance(owner, str) for owner in mapped_requirements)):
+            return False
         if (len(set(mapped_facets)) != len(mapped_facets)
                 or len(set(mapped_requirements)) != len(mapped_requirements)
                 or set(mapped_facets) != expected_ids):
