@@ -28,13 +28,33 @@ def test_game_specific_korean_request_preserves_enemy_and_settlement_roles():
         "몬스터와 전투", "The player attacks enemy NPC monsters within range")
 
 
-def test_small_source_chunks_unfuse_independent_gameplay_actions():
+def test_source_chunks_do_not_lose_independent_gameplay_actions():
     statement = "외계인과 싸움 식민지화등 여러가지가"
     chunks = source_chunks(statement)
     assert " ".join(chunks) == statement
     assert any("싸움" in row for row in chunks)
     assert any("식민지화" in row for row in chunks)
-    assert all(not ("싸움" in row and "식민지화" in row) for row in chunks)
+    # Exact word boundaries in natural language need not isolate every action.
+    # If a chunk owns both, its ONE classification must still retain BOTH
+    # obligations. The 9B game planner may then create distinct server actions.
+    for chunk in chunks:
+        if "싸움" in chunk and "식민지화" in chunk:
+            wrong = {"behaviors": [{
+                "chunk_id": "both",
+                "intent": "Alien NPC combat",
+                "english_query": "Roblox hostile NPC fight",
+            }]}
+            assert valid_chunk_classification(
+                wrong, [{"chunk_id": "both", "source_span": chunk}]
+            ) == {}
+            correct = {"behaviors": [{
+                "chunk_id": "both",
+                "intent": "Fight alien NPCs and colonize the planet",
+                "english_query": "Roblox NPC combat and colony settlement",
+            }]}
+            assert "both" in valid_chunk_classification(
+                correct, [{"chunk_id": "both", "source_span": chunk}]
+            )
 
 
 def test_classifier_must_keep_settlement_and_hostile_npc_owners():
