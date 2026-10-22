@@ -78,7 +78,7 @@ def validate_model_behaviors(clause: str, behaviors: list[dict[str, Any]]) -> bo
                 len(intent) < 5 or len(intent) > 180 or
                 not re.search(r"[A-Za-z]{3,}", query) or len(query) > 160 or
                 span in seen or source_intent_conflicts(
-                    span, intent + " " + query, require_implementation=False))::
+                    span, intent + " " + query, require_implementation=False)):
             return False
         seen.add(span)
         spans.append(span)
