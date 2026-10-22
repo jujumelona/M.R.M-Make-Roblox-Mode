@@ -499,3 +499,38 @@ def test_repetitive_description_is_rejected_instead_of_legitimate_detail():
     ) * 8
     with pytest.raises(HostArchitectureError, match="SCOPED_FEATURE_TOO_LARGE"):
         _convert(bad)
+
+
+def test_accepted_facet_design_survives_external_document_snippet_churn(
+        tmp_path, monkeypatch):
+    """Only source + host policy, not search-result ordering, owns plan identity."""
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    first_model = SemanticOnlySevenFeatureModel()
+    original = {"ledger": _user_space_ledger(), "evidence": [{
+        "facet": "intent-mining", "provider": "official_docs",
+        "grounding": "fetched_official_document",
+        "url": "https://create.roblox.com/docs/reference/engine/classes/BasePart",
+        "excerpt": "Server validates nearby ore nodes",
+        "content_sha256": "stable-source-doc-v1",
+    }]}
+    first = RobloxDynamicArchitect(
+        first_model, checkpoint_dir=tmp_path
+    ).design(_PROMPT, original, [])
+    assert len(first_model.calls) == 7
+    assert len(first["modules"]) == 14
+    next_model = SemanticOnlySevenFeatureModel()
+    updated_docs = {"ledger": _user_space_ledger(), "evidence": [{
+        "facet": "intent-mining", "provider": "official_docs",
+        "grounding": "fetched_official_document",
+        "url": "https://create.roblox.com/docs/reference/engine/classes/BasePart",
+        "excerpt": "Updated API excerpt and publication timestamp",
+        "content_sha256": "changed-after-research-refresh",
+    }]}
+    second = RobloxDynamicArchitect(
+        next_model, checkpoint_dir=tmp_path
+    ).design(_PROMPT, updated_docs, [])
+    assert next_model.calls == []
+    assert [x.name for x in second["modules"]] == [
+        x.name for x in first["modules"]
+    ]
+    assert all(row["cache_hit"] for row in updated_docs["architecture_subplans"])
