@@ -292,3 +292,72 @@ def test_typed_server_generator_rejects_body_unrelated_to_declared_state_keys():
         for attempt in wrong.last_scaffold_attempts
         for diagnostic in attempt["diagnostics"]
     )
+
+
+def test_production_codegen_uses_validated_server_body_for_typed_client_action():
+    """No full-file rewrite: actual dispatcher -> typed shell -> parsed Luau."""
+    from roblox_mod_ai.dynamic_architect import _clean_model_json
+    from roblox_mod_ai.spec import ModuleKind
+
+    ledger = {
+        "original_prompt": "Trade resources for earned credits",
+        "requirements": [{"id": "r-trade",
+                          "statement": "Trade resources for earned credits"}],
+        "facets": [{"id": "f-trade", "source_span":
+                    "Trade resources for earned credits",
+                    "requirements": ["r-trade"]}],
+    }
+    part = _convert(dict(_system(), action_contract=_contract()))
+    verified = _clean_model_json(part, ledger, set())
+    remote, typed = next(iter(part["_host_typed_actions"].items()))
+    model = RobloxProposal(
+        requested_prompt=ledger["original_prompt"],
+        game_title="TypedTrade", description="",
+        modules=verified["modules"], game_design={
+            "dynamic_design": {
+                "remotes": verified["remotes"],
+                "module_remotes": verified["module_remotes"],
+                "host_actions": {remote: {
+                    "kind": "RemoteFunction", "max_args": 1,
+                    "service": typed["server"],
+                }},
+                "host_world_actions": {},
+                "host_action_choices": {},
+                "host_typed_actions": {remote: typed},
+            },
+        },
+    )
+    normalize_dynamic_server_modules(model)
+    server = next(m for m in model.modules if m.kind == ModuleKind.SERVER_MODULE)
+
+    class Coder:
+        def __init__(self):
+            self.calls = 0
+        def complete(self, prompt, **kwargs):
+            self.calls += 1
+            assert "actionArgs" in prompt
+            assert "wallet.credits" in prompt
+            return (
+                'local resource = actionArgs["resource"]\n'
+                'local quantity = actionArgs["quantity"]\n'
+                'if type(resource) ~= "string" or quantity <= 0 then return false end\n'
+                'local inventory = services.PlayerDataManager.GetState(player, "RMMInventory")\n'
+                'if not inventory or type(inventory.resources) ~= "number" then return false end\n'
+                'if inventory.resources < quantity then return false end\n'
+                'local wallet = services.PlayerDataManager.GetState(player, "RMMWallet")\n'
+                'if not wallet then return false end\n'
+                'inventory.resources -= quantity\n'
+                'wallet.credits = (wallet.credits or 0) + quantity\n'
+                'return true'
+            )
+        def complete_json(self, prompt, **kwargs):
+            return {"body": self.complete(prompt)}
+
+    coder = Coder()
+    generated = LuauCodeGenerator(coder).generate_module_code(server, model)
+    assert coder.calls >= 1
+    assert generated.startswith("--!strict")
+    assert generated.index('__rmmAllowedFields') < generated.index('inventory.resources -=')
+    assert 'local actionArgs = ...' in generated
+    assert 'wallet.credits' in generated
+    assert generated.endswith('return Service\n')
