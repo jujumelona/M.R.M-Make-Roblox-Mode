@@ -23,7 +23,8 @@ from .host_architecture import SEMANTIC_FACET_SCHEMA, expand_semantic_facet
 from .facet_scope import scope_semantic_systems, _terms
 from .semantic_input_contract import (
     canonicalize_interaction_fields, interaction_issues,
-    apply_interaction_patch,
+    apply_interaction_patch, apply_client_input_completion,
+    CLIENT_INPUT_ONLY_SCHEMA,
 )
 from .semantic_world_entities import normalize_world_names
 from .source_ownership_review import (
@@ -935,9 +936,51 @@ class RobloxDynamicArchitect:
                         original, invalid = input_repair
                         input_repair = None
                         draft = original  # keep source-owned base on patch failure
-                        # Repair only interaction metadata and client input.
-                        # Preserve server behavior, results, actors and objects.
-                        patch = self.router.complete_json(
+                        # A missing custom UI is NOT a reason to make the
+                        # 9B model restate transport enums/world objects. The
+                        # host owns those already. Ask for exactly ONE string,
+                        # then verify action identity without touching gameplay.
+                        ui_only = (
+                            len(invalid) == 1 and next(iter(invalid.values()))
+                            == ["custom player input needs substantive client_behavior"]
+                        )
+                        if ui_only:
+                            system_index = next(iter(invalid))
+                            system = original["systems"][system_index]
+                            patch = self.router.complete_json(
+                                "Describe the REAL PLAYER INPUT for THIS "
+                                "ONE existing gameplay action, and no other. "
+                                "Return JSON {client_behavior:string} ONLY. "
+                                "Include the existing system name in the "
+                                "description and describe how the player "
+                                "selects/enters any needed target, item or "
+                                "amount and submits the action. Do not invent "
+                                "an unrelated menu, different action or "
+                                "server-side mutation; these are already "
+                                "defined by the existing server design. "
+                                "Do not return systems, world_entities, "
+                                "action_choices or transport protocol fields. "
+                                "JSON only.\\n"
+                                + json.dumps({
+                                    "original_source_requirement": subset,
+                                    "system_name": system.get("name"),
+                                    "server_behavior": system.get(
+                                        "server_behavior"),
+                                    "observable_result": system.get(
+                                        "observable_result"),
+                                    "previous_rejection": previous_error,
+                                }, ensure_ascii=False),
+                                role="planner", temperature=0.0,
+                                max_tokens=260,
+                                json_schema=CLIENT_INPUT_ONLY_SCHEMA,
+                            )
+                            repair_response = patch
+                            draft = apply_client_input_completion(
+                                original, patch, index=system_index)
+                        else:
+                            # A wrong enum/routing must still use the existing
+                            # full metadata repair, with gameplay fields frozen.
+                            patch = self.router.complete_json(
                             "Correct ONLY the interaction protocol for the "
                             "indicated existing system indexes. Return JSON "
                             "{systems:[{index,interaction,input_mode,"
@@ -972,8 +1015,8 @@ class RobloxDynamicArchitect:
                             role="planner", temperature=0.0, max_tokens=600,
                             json_schema=_SCOPED_INPUT_REPAIR_SCHEMA,
                         )
-                        repair_response = patch
-                        draft = apply_interaction_patch(original, patch)
+                            repair_response = patch
+                            draft = apply_interaction_patch(original, patch)
                     elif semantic_replan is not None:
                         missing_rules = list(semantic_replan)
                         semantic_replan = None
