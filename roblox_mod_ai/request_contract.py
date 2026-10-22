@@ -187,8 +187,14 @@ def ledger_complete(prompt: str, ledger: dict[str, Any]) -> bool:
         if not pieces:
             return False
         if is_composite(fragment):
-            if (len(pieces) < 2 or span_coverage(fragment, pieces) < .78 or
-                    ledger.get("decomposition_method") not in ("source_anchored_model", "source_anchored_host")):
+            # Two IDs pointing at the same whole clause are not independent
+            # gameplay requirements. Prevent stale/synthetic ledgers from
+            # passing by duplicating one complete span under different IDs.
+            if (len(set(pieces)) < 2
+                    or fragment in pieces
+                    or span_coverage(fragment, pieces) < .78
+                    or ledger.get("decomposition_method")
+                    not in ("source_anchored_model", "source_anchored_host")):
                 return False
         elif fragment not in pieces and span_coverage(fragment, pieces) < .95:
             return False
@@ -196,13 +202,38 @@ def ledger_complete(prompt: str, ledger: dict[str, Any]) -> bool:
     if ledger.get("decomposition_method") in ("source_anchored_model", "source_anchored_host"):
         if not intents or not isinstance(intents, list):
             return False
-        mapped = {x.get("requirement_id") for x in intents if isinstance(x, dict)}
-        # Model-extracted source spans each have an independent acceptance facet.
-        if not mapped.issubset(ids):
+        # Saved ledgers are untrusted. A facet and its source-owned atomic
+        # behavior must exist in BOTH directions, with an exact matching
+        # source phrase and a unique requirement/owner. The previous
+        # one-way subset test let a cached or edited ledger silently drop
+        # an atom while keeping the same source coverage and claiming success.
+        model_atoms = [x for x in intents if isinstance(x, dict)]
+        if len(model_atoms) != len(intents):
             return False
-        facet_ids = {x.get("id") for x in ledger.get("facets", []) if isinstance(x, dict)}
-        if any(x.get("facet_id") not in facet_ids for x in intents):
+        facets = {f["id"]: f for f in ledger.get("facets", [])
+                  if isinstance(f, dict) and isinstance(f.get("id"), str)}
+        if len(facets) != len([f for f in ledger.get("facets", [])
+                               if isinstance(f, dict) and isinstance(f.get("id"), str)]):
             return False
+        expected_ids = {x["id"] for x in ledger.get("facets", [])
+                        if isinstance(x, dict) and isinstance(x.get("id"), str)
+                        and x["id"].startswith("intent-")}
+        mapped_facets = [x.get("facet_id") for x in model_atoms]
+        mapped_requirements = [x.get("requirement_id") for x in model_atoms]
+        if (len(set(mapped_facets)) != len(mapped_facets)
+                or len(set(mapped_requirements)) != len(mapped_requirements)
+                or set(mapped_facets) != expected_ids):
+            return False
+        by_requirement = {item["id"]: clean(item.get("statement", ""))
+                          for item in requirements}
+        for atom in model_atoms:
+            rid, fid = atom.get("requirement_id"), atom.get("facet_id")
+            facet = facets.get(fid)
+            if (rid not in ids or facet is None
+                    or clean(atom.get("source_span", "")) != by_requirement[rid]
+                    or clean(facet.get("source_span", "")) != by_requirement[rid]
+                    or facet.get("requirements") != [rid]):
+                return False
         # A host fallback carries the *literal source*, not a verified model
         # interpretation. Persisted plans must not be able to relabel an
         # unclassified requirement as independently model-certified.
