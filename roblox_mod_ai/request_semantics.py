@@ -33,11 +33,30 @@ def _positive_monetization(text: str) -> bool:
     return False
 
 
+
+# Peer-to-peer trades add a new actor, two mutable inventories, an atomicity
+# requirement and exploit cases. Do not silently introduce that scope when
+# the request merely says "trade / 거래" in a resource economy.
+_EXPLICIT_PEER_TRADE = re.compile(
+    r"플레이어\s*(?:간|끼리|들\s*끼리)|유저\s*(?:간|끼리)|"
+    r"사용자\s*(?:간|끼리)|(?:서로|상호)\s*(?:거래|교환)|"
+    r"\b(?:p2p|peer[- ]to[- ]peer|player[- ]to[- ]player)\b|"
+    r"\bplayers?\s+(?:can\s+)?trade\s+(?:with\s+)?(?:each\s+other|one\s+another)\b|"
+    r"\bplayers\s+(?:can\s+)?(?:trade|exchange)\b",
+    re.I,
+)
+_PEER_TRADE_OUTPUT = re.compile(
+    r"\bplayer[- ]to[- ]player\s+(?:trade|trading|exchange)\b|"
+    r"\b(?:p2p|peer[- ]to[- ]peer)\s+(?:trade|trading|exchange)\b|"
+    r"\b(?:two|both|other)\s+players?'?\s*(?:inventor(?:y|ies)|trade|offers?)\b|"
+    r"\b(?:trades?|exchanges?)\s+(?:with|between)\s+(?:other\s+)?players?\b|"
+    r"\bother\s+player['’]s\s+inventor(?:y|ies)\b|"
+    r"플레이어\s*(?:간|끼리)\s*(?:거래|교환)|유저\s*(?:간|끼리)\s*(?:거래|교환)",
+    re.I,
+)
+
 def request_semantic_errors(value: Any, original_prompt: str) -> list[str]:
     """Reject unsolicited platform monetization with a repairable diagnosis."""
-    if _positive_monetization(original_prompt):
-        return []
-
     def values(item: Any):
         if isinstance(item, str):
             yield item
@@ -48,11 +67,21 @@ def request_semantic_errors(value: Any, original_prompt: str) -> list[str]:
             for child in item:
                 yield from values(child)
 
-    if any(_positive_monetization(text) for text in values(value)):
-        return [
+    errors: list[str] = []
+    if (not _positive_monetization(original_prompt)
+            and any(_positive_monetization(text) for text in values(value))):
+        errors.append(
             "UNREQUESTED_MONETIZATION: the original user did not request Robux, "
             "game passes or real-money products. Implement buying/trading with "
             "the game's earned currency and owned items. Do not introduce "
             "MarketplaceService or a Robux balance API."
-        ]
-    return []
+        )
+    if (not _EXPLICIT_PEER_TRADE.search(original_prompt)
+            and any(_PEER_TRADE_OUTPUT.search(text) for text in values(value))):
+        errors.append(
+            "UNREQUESTED_PEER_TRADE: user requested trading without authorizing "
+            "two-party item exchange. Do not invent P2P counters, double-profile "
+            "writes or peer-owned inventory. Keep trade within a server-priced "
+            "catalog until the source explicitly requires player-to-player trading."
+        )
+    return errors
