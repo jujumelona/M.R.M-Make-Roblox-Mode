@@ -75,18 +75,23 @@ def state_key_used_by_executable_code(body: str, key: str) -> bool:
         return False
     raw = _without_comments(body)
     executable = _mask_strings(raw)
-    if re.search(r"\b" + re.escape(leaf) + r"\b", executable, flags=re.I):
-        return True
+    # The key must identify a mutated owner/field, not merely appear in
+    # an unrelated local variable, guard expression, or right-hand operand.
+    for line in executable.splitlines():
+        for match in _MUTATION.finditer(line):
+            if re.search(r"\b" + re.escape(leaf) + r"\b",
+                         line[:match.end()], flags=re.I):
+                return True
 
-    # Check literal state keys at real invocation offsets; print("key")
-    # and a string containing the text ':SetAttribute("key")' do not count.
+    # A quoted key is evidence only when it is a literal argument of a
+    # state-MUTATING operation. Reading GetState("key") is not writing it.
     selector = re.compile(
-        r"\b(?:SetAttribute|GetAttribute|GetState|SetState|UpdateState)"
+        r"\b(?:SetAttribute|SetState|UpdateState)"
         r"\s*\(\s*(['\"])" + re.escape(leaf) + r"\1",
         re.I,
     )
     for match in selector.finditer(raw):
-        if re.search(r"\b(?:SetAttribute|GetAttribute|GetState|SetState|UpdateState)"
-                     r"\s*\(", executable[match.start():match.start()+35], re.I):
+        if re.match(r"\b(?:SetAttribute|SetState|UpdateState)"
+                    r"\s*\(", executable[match.start():], re.I):
             return True
     return False
