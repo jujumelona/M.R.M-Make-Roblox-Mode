@@ -25,6 +25,7 @@ from .semantic_input_contract import (
     canonicalize_interaction_fields, interaction_issues,
     apply_interaction_patch,
 )
+from .semantic_world_entities import normalize_world_names
 
 _VALID_NAME = re.compile(r"^[A-Z][A-Za-z0-9]{2,58}$")
 _VALID_REMOTE = re.compile(r"^[A-Z][A-Za-z0-9]{2,55}$")
@@ -118,6 +119,19 @@ _SCOPED_DUAL_SEMANTIC_REPAIR_SCHEMA = {
         "outcome_addition": {"type": "string", "maxLength": 4096},
     },
     "required": ["server_addition", "outcome_addition"],
+}
+
+_SCOPED_ATOMIC_ACTIONS_SCHEMA = {
+    "type": "object",
+    "properties": {"actions": {"type": "array", "maxItems": 3, "items": {
+        "type": "object",
+        "properties": {
+            "source_quote": {"type": "string", "maxLength": 200},
+            "action": {"type": "string", "maxLength": 220},
+        },
+        "required": ["source_quote", "action"],
+    }}},
+    "required": ["actions"],
 }
 
 _SCOPED_INPUT_REPAIR_SCHEMA = {
@@ -965,38 +979,147 @@ class RobloxDynamicArchitect:
                     elif semantic_replan is not None:
                         missing_rules = list(semantic_replan)
                         semantic_replan = None
-                        # Discard a design that substituted the requested
-                        # action. This branch is selected by generic source-
-                        # intent coverage, never by a game genre, action name
-                        # or validator error code. Replan ONLY this facet.
+                        # Replan exclusively from original source ownership.
+                        # If several independent source actions were lost,
+                        # separate them into small, quoted, verifiable tasks:
+                        # one 9B call must never regenerate every mechanic.
+                        # No genre or scenario is privileged.
                         # Preserve independent actions: one source clause may
                         # legitimately require several interacting systems.
-                        draft = self.router.complete_json(
-                            "The previous proposal did not implement the "
-                            "source-owned gameplay actions. Recreate only "
-                            "the missing source requirement as a short JSON "
-                            "object: {systems:[{name,server_behavior,"
-                            "client_behavior,observable_result,interaction,"
-                            "input_mode,world_entities}]}. Produce one system "
-                            "per independently triggered player/server action "
-                            "(up to three), each with a real server-owned "
-                            "transition, actor/target and visible consequence. "
-                            "Do not substitute a prerequisite, menu, visual "
-                            "effect or another action for the requested "
-                            "transition. Preserve the request's actual input "
-                            "shape: none, event or request_response; choose "
-                            "world_prompt, host_button or custom only when "
-                            "appropriate. Return world_entities=[] when no "
-                            "physical object is needed. Do not add unrelated "
-                            "mechanics. Short JSON only.\n"
-                            + json.dumps({
-                                "source_requirements": subset,
-                                "original_request_context_only": prompt,
-                                "missing_obligations": missing_rules,
-                            }, ensure_ascii=False),
-                            role="planner", temperature=0.0,
-                            max_tokens=1024, json_schema=SEMANTIC_FACET_SCHEMA,
-                        )
+                        # Do not hand machine-check error identifiers to
+                        # the model as proposed system names. They diagnose
+                        # the contract, not gameplay.
+                        problem_statements = [
+                            str(reason).split(": ", 1)[-1]
+                            for reason in missing_rules
+                        ]
+                        distinct_contracts = {
+                            str(reason).split(":", 1)[0]
+                            for reason in missing_rules
+                            if ":" in str(reason)
+                        }
+                        if (len(distinct_contracts) >= 2
+                                and getattr(self.router,
+                                            "supports_atomic_action_decomposition",
+                                            False)):
+                            # A model-authorized source quote is checked by
+                            # the host against the unchanged user text.
+                            raw_actions = self.router.complete_json(
+                                "Identify every INDEPENDENT player/server "
+                                "gameplay action explicitly requested in this "
+                                "source clause. Return JSON "
+                                "{actions:[{source_quote,action}]}; "
+                                "source_quote MUST be an EXACT continuous "
+                                "substring of the provided original text. "
+                                "Each action is short, concrete and distinct. "
+                                "Do not add genre defaults, expand adjectives "
+                                "into actions, or repeat the same action with "
+                                "different names. Do not cite error labels. "
+                                "Return between 2 and 3 source-owned actions. "
+                                "JSON only.\n"
+                                + json.dumps({
+                                    "source_clause": slice_request,
+                                    "coverage_failures": problem_statements,
+                                }, ensure_ascii=False),
+                                role="planner", temperature=0.0,
+                                max_tokens=400,
+                                json_schema=_SCOPED_ATOMIC_ACTIONS_SCHEMA,
+                            )
+                            actions = (
+                                raw_actions.get("actions")
+                                if isinstance(raw_actions, dict) else None
+                            )
+                            if (not isinstance(actions, list)
+                                    or not 2 <= len(actions) <= 3):
+                                raise DynamicDesignError(
+                                    "ATOMIC_ACTION_DECOMPOSITION_INVALID: "
+                                    "multiple source actions must be identified"
+                                )
+                            claimed: set[str] = set()
+                            verified_actions: list[dict[str, str]] = []
+                            for entry in actions:
+                                if not isinstance(entry, dict):
+                                    raise DynamicDesignError(
+                                        "ATOMIC_ACTION_DECOMPOSITION_INVALID: "
+                                        "action must be an object"
+                                    )
+                                quote = entry.get("source_quote")
+                                action = entry.get("action")
+                                if (not isinstance(quote, str)
+                                        or quote.strip() not in slice_request
+                                        or len(quote.strip()) < 2
+                                        or not isinstance(action, str)
+                                        or not 8 <= len(action.strip()) <= 220
+                                        or quote.strip() in claimed):
+                                    raise DynamicDesignError(
+                                        "ATOMIC_ACTION_DECOMPOSITION_INVALID: "
+                                        "action quote must be unique and "
+                                        "anchored to the source"
+                                    )
+                                claimed.add(quote.strip())
+                                verified_actions.append({
+                                    "source_quote": quote.strip(),
+                                    "action": action.strip(),
+                                })
+                            proposed_systems: list[dict[str, Any]] = []
+                            for owned_action in verified_actions:
+                                part = self.router.complete_json(
+                                    "Describe ONLY this ONE explicitly "
+                                    "source-owned gameplay action. Return "
+                                    "JSON {systems:[{name,server_behavior,"
+                                    "client_behavior,observable_result,"
+                                    "interaction,input_mode,world_entities}]}. "
+                                    "Exactly one system, with the server's "
+                                    "actual state transition and a distinct "
+                                    "observable outcome. A menu, prerequisite "
+                                    "or animation alone is not the action. "
+                                    "Use world_entities as an array of NAMES "
+                                    "(strings) only, not objects or geometry; "
+                                    "the host owns Roblox object construction. "
+                                    "Use valid interaction (none/event/"
+                                    "request_response) and input_mode "
+                                    "(custom/host_button/world_prompt). "
+                                    "JSON only.\n"
+                                    + json.dumps({
+                                        "source_clause": slice_request,
+                                        "this_action": owned_action,
+                                    }, ensure_ascii=False),
+                                    role="planner", temperature=0.0,
+                                    max_tokens=600,
+                                    json_schema=SEMANTIC_FACET_SCHEMA,
+                                )
+                                sub = part.get("systems") if isinstance(part, dict) else None
+                                if (not isinstance(sub, list) or len(sub) != 1
+                                        or not isinstance(sub[0], dict)):
+                                    raise DynamicDesignError(
+                                        "ATOMIC_ACTION_IMPLEMENTATION_INVALID: "
+                                        "each action must return one system"
+                                    )
+                                proposed_systems.append(sub[0])
+                            draft = {"systems": proposed_systems}
+                        else:
+                            draft = self.router.complete_json(
+                                "The previous proposal did not implement the "
+                                "source-owned gameplay actions. Recreate only "
+                                "the missing source requirement as short JSON "
+                                "{systems:[{name,server_behavior,"
+                                "client_behavior,observable_result,interaction,"
+                                "input_mode,world_entities}]}. Include one "
+                                "system per independently triggered action "
+                                "with a real server-owned state transition "
+                                "and visible result; do not substitute menus "
+                                "or prerequisites. world_entities must be a "
+                                "list of NAME strings, not objects or Roblox "
+                                "geometry. Do not add unrelated features. "
+                                "JSON only.\n"
+                                + json.dumps({
+                                    "source_requirements": subset,
+                                    "original_request_context_only": prompt,
+                                    "missing_obligations": problem_statements,
+                                }, ensure_ascii=False),
+                                role="planner", temperature=0.0,
+                                max_tokens=1024, json_schema=SEMANTIC_FACET_SCHEMA,
+                            )
                     elif semantic_repair is not None:
                         previous_draft, field_issues = semantic_repair
                         semantic_repair = None
@@ -1160,6 +1283,7 @@ class RobloxDynamicArchitect:
                             draft, facet=facet, all_facets=facets)
                         # Two disjoint enum domains can be restored after a
                         # verified exchange. Ambiguous input is never guessed.
+                        draft, named_world_refs = normalize_world_names(draft)
                         draft, swapped_indexes = canonicalize_interaction_fields(draft)
                         invalid_input = interaction_issues(draft)
                         if invalid_input:
@@ -1369,8 +1493,18 @@ class RobloxDynamicArchitect:
                             # A missing requested action is not repairable by
                             # tacking prose onto an unrelated action. Multiple
                             # systems cannot be safely patched at index zero.
+                            # Preserve *all* rejected server actions for a
+                            # compound source. Previously the first missing
+                            # action alone suppressed the second; a small
+                            # model kept writing one mechanic per retry.
+                            server_failures = issues.get("server_behavior", [])
+                            server_codes = {
+                                str(item).split(":", 1)[0]
+                                for item in server_failures
+                            }
                             semantic_replan = (
-                                missing_source_actions or violations)
+                                server_failures if len(server_codes) >= 2
+                                else (missing_source_actions or violations))
                             semantic_repair = None
                         elif issues:
                             # Requested action is already present: supplement
