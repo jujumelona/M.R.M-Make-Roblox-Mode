@@ -38,11 +38,19 @@ class CompleteChatReply:
                             or bool(proposal.game_design.get("dynamic_design"))))
         # Imported stale plans may have nonempty modules but blank acceptance.
         # Replan them before codegen instead of producing a second broken ZIP.
-        if (research.get("schema") == "rmm/pre-design-rag-v1"
-                and proposal.game_design.get("project_mode", "new_experience") == "new_experience"):
-            return bool(is_complete and audit_implementation_blueprint(proposal)["passed"]
-                        and audit_detailed_plan(proposal)["passed"])
-        return bool(is_complete)
+        # All production modes, including Existing Experience add-ons and
+        # imported plans with older research schemas, need the SAME audited
+        # implementation ownership and detailed state/effect contract.
+        # Otherwise a valid-looking source ledger can bypass the blueprint
+        # and resume code from an incompatible plan revision.
+        if research.get("schema") != "rmm/pre-design-rag-v1":
+            return False
+        if proposal.game_design.get("project_mode", "new_experience") not in (
+                "new_experience", "existing_experience_addon"):
+            return False
+        return bool(is_complete
+                    and audit_implementation_blueprint(proposal)["passed"]
+                    and audit_detailed_plan(proposal)["passed"])
 
 
 class CompleteRobloxAISession:
