@@ -361,3 +361,177 @@ def test_production_codegen_uses_validated_server_body_for_typed_client_action()
     assert 'local actionArgs = ...' in generated
     assert 'wallet.credits' in generated
     assert generated.endswith('return Service\n')
+
+
+def test_shared_grammar_unused_field_metadata_is_ignored_not_replanned():
+    """Common real GGUF JSON layout: min/max/options for EVERY input kind."""
+    original = _contract()
+    emitted = copy.deepcopy(original)
+    emitted["inputs"][0].update(min=0, max=0)
+    emitted["inputs"][1].update(options=[])
+    emitted["inputs"][2].update(min=0, max=120, options=[])
+    emitted["target"]["name"] = ""
+    normalized = validate_contract(emitted, world_entities=[])
+    assert normalized == original
+    assert emitted["inputs"][2]["max"] == 120  # untouched input
+    guard = lua_server_guard(normalized)
+    assert 'actionArgs["resource"]' in guard
+    assert 'actionArgs["quantity"] > 25' in guard
+    assert 'type(actionArgs["note"]) ~= "string"' in guard
+
+
+def test_shared_grammar_discards_inapplicable_attributes_not_unknown_ones():
+    base = _contract()
+    with_wrong = copy.deepcopy(base)
+    with_wrong["inputs"][2].update(
+        options=[{"id": "invalid", "label": "Ignored on a text field"}],
+        min=-123, max=321,
+    )
+    assert validate_contract(with_wrong, world_entities=[]) == base
+    with_wrong["inputs"][2]["arbitrary_remote"] = "Forged"
+    with pytest.raises(TypedActionContractError, match="unknown metadata"):
+        validate_contract(with_wrong, world_entities=[])
+
+
+def test_zero_input_player_action_is_host_renderable_without_dummy_fields():
+    contract = {
+        "inputs": [], "target": {"kind": "none", "name": ""},
+        "state_changes": [{"scope": "player", "key": "dailyClaims",
+                           "operation": "increment"}],
+    }
+    clean = validate_contract(contract, world_entities=[])
+    assert clean["inputs"] == []
+    assert clean["target"] == {"kind": "none"}
+    guard = lua_server_guard(clean)
+    assert 'typeof(actionArgs) ~= "table"' in guard
+    assert 'not __rmmAllowedFields[key]' in guard
+
+
+def test_microtask_retry_keeps_server_design_and_logs_exact_rejected_json():
+    from roblox_mod_ai.typed_action_contract import complete_typed_contract
+    class SmallModel:
+        def __init__(self):
+            self.calls = []
+        def complete_json(self, prompt, **kwargs):
+            self.calls.append((prompt, kwargs))
+            assert kwargs["json_schema"] == SCHEMA
+            assert kwargs["max_tokens"] <= 500
+            if len(self.calls) == 1:
+                invalid = copy.deepcopy(_contract())
+                invalid["inputs"][1]["max"] = -100
+                return invalid
+            assert "Previous contract was rejected" in prompt
+            good = copy.deepcopy(_contract())
+            good["inputs"][2].update(min=0, max=120, options=[])
+            return good
+    model = SmallModel()
+    original = _system()
+    records = []
+    clean = complete_typed_contract(
+        model, system=original,
+        source_requirements=[{"id": "req", "statement": "Trade resources"}],
+        attempts_log=records, system_index=0,
+    )
+    assert clean == _contract()
+    assert len(model.calls) == 2
+    assert [x["passed"] for x in records] == [False, True]
+    assert '"max": -100' in records[0]["raw_contract"]
+    assert records[1]["normalization"] is True
+    assert original["client_behavior"].startswith("The player submits")
+
+
+def test_plan_does_not_regenerate_server_systems_when_typed_contract_exhausts(
+        monkeypatch):
+    """Exact structural regression of plan-failure (16): never rerun long plan."""
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    source = "Trade resources for earned credits"
+    research = {"ledger": {
+        "original_prompt": source,
+        "requirements": [{"id": "r-trade", "statement": source}],
+        "facets": [{
+            "id": "f-trade", "source_span": source,
+            "requirements": ["r-trade"],
+            "search_query": "Roblox Trade resources for earned credits",
+        }],
+    }, "evidence": []}
+    class SmallModel:
+        supports_typed_action_contract = True
+        def __init__(self):
+            self.calls = []
+        def complete_json(self, prompt, **kwargs):
+            self.calls.append((prompt, kwargs))
+            if len(self.calls) == 1:
+                assert kwargs["max_tokens"] > 500
+                return {"systems": [_system()]}
+            assert kwargs["json_schema"] == SCHEMA
+            assert kwargs["max_tokens"] <= 500
+            broken = copy.deepcopy(_contract())
+            broken["inputs"][1]["min"] = 50
+            broken["inputs"][1]["max"] = 1
+            return broken
+    model = SmallModel()
+    with pytest.raises(Exception, match="could not be validated"):
+        RobloxDynamicArchitect(model).design(source, research, [])
+    assert len(model.calls) == 4  # 1 gameplay, 3 SMALL typed prompts
+    failed = [x for x in research["architecture_attempts"]
+              if x["facet_id"] == "f-trade" and not x["passed"]]
+    assert len(failed) == 1  # NOT 3 complete system rewrites
+    assert "TYPED_ACTION_CONTRACT_EXHAUSTED" in failed[0]["validator_error"]
+    assert len(failed[0]["typed_contract_attempts"]) == 3
+    assert all(not x["passed"] for x in failed[0]["typed_contract_attempts"])
+    assert all('"min": 50' in x["raw_contract"]
+               for x in failed[0]["typed_contract_attempts"])
+
+
+def test_shared_grammar_normalization_applies_to_non_trade_actions(monkeypatch):
+    """No trade/space-specific exception: orchard watering uses the same gate."""
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    source = "Water an apple tree to increase its growth"
+    research = {"ledger": {
+        "original_prompt": source,
+        "requirements": [{"id": "req-water", "statement": source}],
+        "facets": [{
+            "id": "intent-water", "source_span": source,
+            "requirements": ["req-water"],
+            "search_query": "Roblox water an apple tree growth",
+        }],
+    }, "evidence": []}
+    system = {
+        "name": "WaterTree",
+        "server_behavior": (
+            "The server checks the player's tree selection and available "
+            "water, deducts used water and increases the selected apple "
+            "tree's authoritative growth state."
+        ),
+        "client_behavior": "",
+        "observable_result": (
+            "The watered apple tree advances to the next visible growth stage."
+        ),
+        "interaction": "request_response", "input_mode": "custom",
+        "world_entities": [],
+    }
+    class SmallModel:
+        supports_typed_action_contract = True
+        def __init__(self): self.calls = 0
+        def complete_json(self, prompt, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                return {"systems": [system]}
+            return {"inputs": [
+                {"id": "treeName", "label": "Apple tree", "type": "text",
+                 "min": 0, "max": 120, "options": []},
+                {"id": "waterAmount", "label": "Amount", "type": "integer",
+                 "min": 1, "max": 5, "options": []},
+            ], "target": {"kind": "none", "name": ""},
+            "state_changes": [
+                {"scope": "player", "key": "water", "operation": "decrement"},
+                {"scope": "world", "key": "growth", "operation": "increment"},
+            ]}
+    model = SmallModel()
+    result = RobloxDynamicArchitect(model).design(source, research, [])
+    assert model.calls == 2
+    assert result["host_typed_actions"]
+    typed = next(iter(result["host_typed_actions"].values()))["contract"]
+    assert typed["inputs"][0] == {
+        "id": "treeName", "label": "Apple tree", "type": "text"}
+    assert "options" not in typed["inputs"][1]
