@@ -21,6 +21,10 @@ class ModelRouter:
 
     def __init__(self, profile: str = "t4_local") -> None:
         self.profile = profile
+        # Real model backends review semantic coverage for any requested
+        # gameplay. Lightweight testing transports remain free to provide
+        # their own verifier capability explicitly.
+        self.supports_source_fidelity_audit = True
         self.adapters: dict[str, ModelAdapter] = {}
         self._init_adapters()
 
