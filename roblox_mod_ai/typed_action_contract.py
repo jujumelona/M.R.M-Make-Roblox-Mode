@@ -147,6 +147,83 @@ def validate_contract(raw: Any, *, world_entities: list[str]) -> dict[str, Any]:
     return {"inputs": clean_fields, "target": clean_target, "state_changes": changes}
 
 
+
+def complete_typed_contract(
+    router: Any, *, system: dict[str, Any],
+    source_requirements: list[dict[str, Any]],
+    attempts_log: list[dict[str, Any]],
+    system_index: int,
+    max_attempts: int = 3,
+) -> dict[str, Any]:
+    """A single recoverable microtask. Never re-author the gameplay plan.
+
+    The model returns only the schema. The host normalizes inactive metadata
+    and enforces all active constraints. If it remains invalid, retry ONLY
+    this contract with exact error feedback. Store raw output for diagnostics.
+    """
+    context = {
+        "source_requirements": source_requirements,
+        "name": system.get("name"),
+        "server_behavior": system.get("server_behavior"),
+        "world_entities": system.get("world_entities", []),
+    }
+    prompt = (
+        "Describe typed player INPUT and server state changes for this "
+        "ALREADY-EXISTING action. Never redesign the server behavior. "
+        "JSON {inputs:[{id,label,type,min,max,options}],target:{kind,name},"
+        "state_changes:[{scope,key,operation}]}. input type=text needs "
+        "id/label/type only, integer needs min/max integer bounds, choice "
+        "needs options id/label array. Target is {kind:none} unless the "
+        "existing action targets ONE declared world entity. State changes "
+        "name the actual server-owned fields already changed by the "
+        "existing action (1-5). Zero input fields are permitted when "
+        "the player only presses Submit; never invent dummy fields. "
+        "Do not add new mechanics, purchases, targets or outcomes. "
+        "The host generates the UI and server validator. JSON only.\\n"
+        + json.dumps(context, ensure_ascii=False)
+    )
+    last_error = ""
+    for attempt in range(max_attempts):
+        response: Any = None
+        try:
+            instruction = prompt
+            if last_error:
+                instruction += (
+                    "\\nPrevious contract was rejected: " + last_error[:500] +
+                    ". Correct ONLY this short input contract. Do NOT "
+                    "regenerate the gameplay or return a systems array."
+                )
+            response = router.complete_json(
+                instruction, role="planner", temperature=0.0,
+                max_tokens=520, json_schema=SCHEMA,
+            )
+            valid = validate_contract(
+                response, world_entities=system.get("world_entities", []))
+            attempts_log.append({
+                "system_index": system_index, "system_name": system.get("name"),
+                "attempt": attempt + 1, "passed": True,
+                "normalization": response != valid,
+            })
+            return valid
+        except Exception as exc:
+            last_error = type(exc).__name__ + ": " + str(exc)[:500]
+            try:
+                emitted = json.dumps(response, ensure_ascii=False)
+            except (TypeError, ValueError):
+                emitted = repr(response)
+            attempts_log.append({
+                "system_index": system_index, "system_name": system.get("name"),
+                "attempt": attempt + 1, "passed": False,
+                "error": last_error,
+                "raw_contract": emitted[:6000],
+                "model_runtime": getattr(router, "last_generation_report", {}),
+            })
+    raise TypedActionContractError(
+        "TYPED_ACTION_CONTRACT_EXHAUSTED: " + str(system.get("name"))
+        + ": " + last_error
+    )
+
+
 def lua_server_guard(contract: dict[str, Any], *, world_name: str | None = None) -> str:
     """Generate server-side type/bounds/allowlist validation. Never trust UI."""
     fields = contract["inputs"]
