@@ -139,3 +139,26 @@ def test_source_classifier_cannot_certify_missing_space_departure():
         "english_query": "Roblox server validated space launch travel"
     }]}
     assert "chunk-007" in valid_chunk_classification(correct, chunk)
+
+
+
+def test_when_arrived_in_space_does_not_make_every_planet_miner_a_ship_launcher():
+    from roblox_mod_ai.semantic_preservation import source_intent_conflicts
+    # Conditional subordinate clause is the scope of a downstream mechanic.
+    condition = "우주로 나가면 다른행성의 특수 광물"
+    mineral = (
+        "The server validates mining on an other-planet deposit, removes "
+        "one mineral unit and adds it to the player's inventory."
+    )
+    assert source_intent_conflicts(condition, mineral) == []
+    battle = "우주로 나가면 외계인과 싸움 식민지화가 가능"
+    design = (
+        "The server validates alien NPC damage and records the player's "
+        "established persistent colony settlement on the destination planet."
+    )
+    assert source_intent_conflicts(battle, design) == []
+    # In contrast explicit launch as its own requested action needs movement.
+    assert any("SPACE_TRAVEL_DROPPED" in e for e in
+               source_intent_conflicts(
+                   "그렇게해서 우주로 나갈수있고",
+                   "The server buys a ship speed upgrade."))
