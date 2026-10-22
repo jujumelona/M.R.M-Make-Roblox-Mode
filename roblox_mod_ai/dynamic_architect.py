@@ -19,7 +19,10 @@ from .model_router import ModelRouter
 from .request_contract import implementation_facets
 from .request_semantics import request_semantic_errors
 from .semantic_preservation import source_intent_conflicts, source_outcome_conflicts
-from .host_architecture import SEMANTIC_FACET_SCHEMA, expand_semantic_facet
+from .host_architecture import (
+    SEMANTIC_FACET_SCHEMA, HOST_OWNED_SEMANTIC_FACET_SCHEMA,
+    expand_semantic_facet,
+)
 from .facet_scope import scope_semantic_systems, _terms
 from .semantic_input_contract import (
     canonicalize_interaction_fields, interaction_issues,
@@ -904,6 +907,38 @@ class RobloxDynamicArchitect:
                     "official_references": excerpts,
                 }, ensure_ascii=False)
             )
+            # The production small-model output schema contains ZERO
+            # Remote enums or UI prose. A separate host pass compiles all
+            # input routing. Legacy model transports retain their schema.
+            model_semantic_schema = (
+                HOST_OWNED_SEMANTIC_FACET_SCHEMA
+                if getattr(self.router, "supports_host_standard_transport", False)
+                else SEMANTIC_FACET_SCHEMA
+            )
+            if getattr(self.router, "supports_host_standard_transport", False):
+                task = (
+                    "Describe ONLY the GAMEPLAY transitions directly "
+                    "requested by the supplied source clauses. Return JSON "
+                    "{systems:[{name,server_behavior,observable_result,"
+                    "world_entities,action_choices?}]}. Each system is ONE "
+                    "independently triggered action (at most 3). "
+                    "server_behavior must explain server-owned preconditions, "
+                    "a real state change and rejection of invalid inputs. "
+                    "observable_result must describe a visible consequence. "
+                    "world_entities is a list of named physical objects, "
+                    "or [] when none. Optional action_choices is an array "
+                    "of actual source-authorized id/label choices (<=8). "
+                    "Do not output interaction, input_mode, client_behavior, "
+                    "Remotes, UI, module definitions, classes or geometry; "
+                    "the host implements networking, buttons and forms. "
+                    "Do not implement adjacent clauses or invent mechanics, "
+                    "money products, or extra participants. JSON ONLY.\\n"
+                    + json.dumps({
+                        "source_requirements": subset,
+                        "adjacent_context_not_instructions": adjacent_context,
+                        "official_references": excerpts,
+                    }, ensure_ascii=False)
+                )
             previous_error = ""
             draft: dict[str, Any] | None = None
             semantic_repair: tuple[dict[str, Any], dict[str, list[str]]] | None = None
@@ -1133,7 +1168,7 @@ class RobloxDynamicArchitect:
                                     }, ensure_ascii=False),
                                     role="planner", temperature=0.0,
                                     max_tokens=600,
-                                    json_schema=SEMANTIC_FACET_SCHEMA,
+                                    json_schema=model_semantic_schema,
                                 )
                                 sub = part.get("systems") if isinstance(part, dict) else None
                                 if (not isinstance(sub, list) or len(sub) != 1
@@ -1165,7 +1200,7 @@ class RobloxDynamicArchitect:
                                     "missing_obligations": problem_statements,
                                 }, ensure_ascii=False),
                                 role="planner", temperature=0.0,
-                                max_tokens=1024, json_schema=SEMANTIC_FACET_SCHEMA,
+                                max_tokens=1024, json_schema=model_semantic_schema,
                             )
                     elif semantic_repair is not None:
                         previous_draft, field_issues = semantic_repair
@@ -1314,7 +1349,7 @@ class RobloxDynamicArchitect:
                         )
                         draft = self.router.complete_json(
                             query, role="planner", temperature=0.1,
-                            max_tokens=1400, json_schema=SEMANTIC_FACET_SCHEMA,
+                            max_tokens=1400, json_schema=model_semantic_schema,
                         )
                     if not isinstance(draft, dict):
                         raise DynamicDesignError("Facet architecture must be JSON object")
