@@ -163,3 +163,73 @@ def test_atomic_action_decomposition_rejects_fabricated_quotations(monkeypatch):
     # The unrequested robot-pet action is still rejected in every attempt.
     assert len(model.calls) == 5
     assert sum("candidate_source_spans" in call for call in model.calls) == 2
+
+
+
+def test_report21_korean_compound_facets_reach_real_gameplay_modules_from_source_ids(monkeypatch):
+    """Run the real architect path for the uploaded two-mechanic Korean clause.
+
+    A scripted planner simulates the original partial first attempt. This is
+    an architecture integration test, NOT a claim of local-LLM/Studio success.
+    """
+    import json
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    source = "외게인과 싸움 식민지화등 여러가지가 가능한 모드"
+
+    class IndexedModel:
+        supports_atomic_action_decomposition = True
+
+        def __init__(self):
+            self.calls = []
+
+        def complete_json(self, prompt, **kwargs):
+            self.calls.append((prompt, kwargs))
+            n = len(self.calls)
+            if n == 1:
+                # A menu/mode label is neither NPC combat nor a colony
+                # transition. It must be replanned.
+                return {"systems": [_system(
+                    "Colonization mode",
+                    "The server validates and enters colonization mode.",
+                    "The player sees the colonization mode screen.",
+                    "The client shows a colony mode button.",
+                )]}
+            if n == 2:
+                assert "source_id" in prompt
+                payload = json.loads(prompt.split("\\n")[-1])
+                choices = {row["quote"]: row["id"]
+                           for row in payload["candidate_source_spans"]}
+                return {"actions": [
+                    {"source_id": choices["외게인과 싸움"],
+                     "action": "Fight hostile alien NPC enemies"},
+                    {"source_id": choices["식민지화등"],
+                     "action": "Establish a planet colony and record ownership"},
+                ]}
+            if n == 3:
+                assert "Fight hostile alien" in prompt
+                return {"systems": [_system(
+                    "AlienCombat",
+                    "The server verifies attack range then damages hostile "
+                    "alien enemies, reducing NPC health and recording defeat.",
+                    "The alien enemy loses health and is defeated in combat.",
+                    "Player fights and damages alien enemy NPCs.",
+                )]}
+            assert n == 4
+            assert "record ownership" in prompt
+            return {"systems": [_system(
+                "PlanetColonization",
+                "The server checks colony resources then establishes the "
+                "new planet colony and records ownership in world state.",
+                "The planet becomes colonized and new colony ownership is visible.",
+                "Player selects a planet to establish a settlement.",
+            )]}
+
+    model = IndexedModel()
+    result = RobloxDynamicArchitect(model).design(source, _proposal(source), [])
+    assert len(model.calls) == 4
+    assert any("alien" in module.description.casefold()
+               for module in result["modules"])
+    assert any("colony" in module.description.casefold()
+               for module in result["modules"])
+    assert all("colonization mode screen" not in module.description.casefold()
+               for module in result["modules"])
