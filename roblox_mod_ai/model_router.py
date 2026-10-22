@@ -31,6 +31,8 @@ class ModelRouter:
         # Resolve ties between source-owned actions and cross-language names
         # without making retrieval translations the implementation authority.
         self.supports_source_ownership_review = True
+        # Real local inference must provide structured UI/server transport contracts.
+        self.supports_typed_action_contract = True
         self.adapters: dict[str, ModelAdapter] = {}
         self._init_adapters()
 
