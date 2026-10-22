@@ -245,3 +245,60 @@ def test_source_npc_combat_and_colony_require_real_owner_behavior():
     dynamic["acceptance"]["req-002"] = "Persistent settlement exists on colonized planet"
     fixed = build_implementation_blueprint(plan)
     assert fixed["ready_for_codegen"] is True
+
+
+
+def test_client_promised_launch_cannot_substitute_for_missing_server_spaceflight():
+    """Regression from proposal 48 req-007: ship upgrade approved as launch."""
+    from roblox_mod_ai.spec import ModuleKind, RobloxModuleSpec, RobloxService, RobloxProposal
+    owner = RobloxModuleSpec(
+        module_id="dyn_ship_feature", name="ShipFeatureServer",
+        kind=ModuleKind.SERVER_MODULE,
+        roblox_service=RobloxService.SERVER_SCRIPT_SERVICE,
+        file_path="src/server/ShipFeatureServer.luau",
+        description=(
+            "The server validates the player's coins, deducts a purchase cost "
+            "and applies a new ship speed upgrade to owned ship performance."
+        ),
+    )
+    source = "그렇게해서 우주로 나갈수있고"
+    ledger = {
+        "requirements": [{"id": "req-007", "statement": source}],
+        "atomic_intents": [{
+            "facet_id": "intent-depart", "requirement_id": "req-007",
+            "source_span": source,
+            "intent": "Launch the spacecraft into space",
+            "english_query": "Roblox server space launch travel",
+        }],
+        "facets": [{"id": "intent-depart", "requirements": ["req-007"]}],
+        "unimplemented_facets": [], "unmatched_requirements": [],
+        "decomposition_pending": [], "classification_unverified": [],
+    }
+    dynamic = {
+        "module_facets": {"dyn_ship_feature": ["intent-depart"]},
+        "module_requirements": {"dyn_ship_feature": ["req-007"]},
+        "acceptance_facets": {
+            "intent-depart": "The player sees their spaceship launch into space"
+        },
+        "acceptance": {
+            "req-007": "The player sees their spaceship launch into space"
+        },
+    }
+    plan = RobloxProposal(
+        requested_prompt=source, game_title="GeneralGame", description="Launch",
+        modules=[owner], game_design={
+            "features": {}, "dynamic_design": dynamic,
+            "pre_design_research": {"ledger": ledger},
+        },
+    )
+    bad = build_implementation_blueprint(plan)
+    assert not bad["ready_for_codegen"]
+    assert any("SPACE_TRAVEL_DROPPED" in x
+               for x in bad["blocking_issues"])
+    owner.description = (
+        "The server verifies owned ship parts and fuel, launches the "
+        "spacecraft into space, updates its authoritative flight state "
+        "and moves the player into orbit."
+    )
+    good = build_implementation_blueprint(plan)
+    assert good["ready_for_codegen"]
