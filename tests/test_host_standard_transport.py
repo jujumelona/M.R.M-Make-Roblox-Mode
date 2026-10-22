@@ -191,3 +191,66 @@ def test_host_standard_does_not_call_second_json_or_fake_success(
     assert [x["id"] for x in binding["contract"]["inputs"][0]["options"]] == [
         "Sell", "Buy"]
     assert not got["host_action_choices"]
+
+
+def test_real_58_trade_server_plan_is_accepted_without_model_schema_call(
+        monkeypatch):
+    """Exact 17th failure's valid model-authored Trade system, not invented
+    fixture prose. The host may reject gameplay semantics, NEVER an extra
+    schema whose operator enums differ from the 9B's vocabulary.
+    """
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    full_prompt = (
+        "우주모드 인데 자원파밍 돈모으기 거래 등으로 우주선을 "
+        "부위마다 만들어서 만들수있고 무기 선원 우주선 성능을 "
+        "거래 구매 등으로 업그레이드 확장 할 수 있고 "
+        "그렇게해서 우주로 나갈수있고 우주로 나가면 다른행성의 "
+        "특수 광물 외게인과 싸움 식민지화등 여러가지가 가능한 모드"
+    )
+    research = {
+        "ledger": {
+            "original_prompt": full_prompt,
+            "requirements": [{"id": "req-002", "statement": "거래 등으로"}],
+            "facets": [{
+                "id": "intent-fda66d6d99", "requirements": ["req-002"],
+                "source_span": "거래 등으로",
+                "search_query": (
+                    "Roblox Trade to build ship sections, upgrade weapons, "
+                    "crew, and ship performance, and expand the ship."
+                ),
+            }],
+        },
+        "evidence": [],
+    }
+    class RecordedModel:
+        supports_host_standard_transport = True
+        supports_typed_action_contract = False
+        def __init__(self): self.calls = 0
+        def complete_json(self, prompt, **kwargs):
+            self.calls += 1
+            assert self.calls == 1, "Repeated/full replan must be impossible"
+            return {"systems": [{
+                "name": "Trade",
+                "server_behavior": (
+                    "Validate the player's trade request against the "
+                    "server-authoritative inventory and currency state, "
+                    "then apply the agreed transfer of resources or credits "
+                    "and commit the resulting inventory and balance changes "
+                    "as a server-authoritative state transition."
+                ),
+                "client_behavior": "",
+                "observable_result": (
+                    "The player's inventory and currency change after the "
+                    "trade completes."
+                ),
+                "interaction": "request_response",
+                "input_mode": "custom",
+                "world_entities": [],
+            }]}
+    model = RecordedModel()
+    result = RobloxDynamicArchitect(model).design(
+        full_prompt, research, [])
+    assert model.calls == 1
+    assert result["host_typed_actions"]
+    assert research["architecture_attempts"][0]["passed"] is True
+    assert research["architecture_attempts"][0]["typed_contract_attempts"] == []
