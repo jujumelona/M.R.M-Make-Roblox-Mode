@@ -67,36 +67,75 @@ def interaction_issues(raw: dict[str, Any]) -> dict[int, list[str]]:
 def apply_interaction_patch(
     raw: dict[str, Any], corrections: Any,
 ) -> dict[str, Any]:
-    """Allow metadata/client-input changes only. Never rewrite server gameplay."""
-    systems = raw.get("systems", [])
-    if (not isinstance(corrections, dict)
-            or not isinstance(corrections.get("systems"), list)):
+    """Apply an explicitly bounded input/transport patch.
+
+    Small constrained-output backends can return a whole unchanged system,
+    omit the sole obvious index, or leave unchanged fields implicit. Accept
+    such *representations*, never an unauthorized gameplay modification.
+    Server behavior, world entities, action choices, identity and visible
+    results are immutable. An ambiguous mapping is always rejected.
+    """
+    systems = raw.get("systems")
+    if not isinstance(systems, list) or not all(
+            isinstance(row, dict) for row in systems):
+        raise ValueError("Transport repair requires existing system objects")
+    invalid = interaction_issues(raw)
+    if not invalid:
+        raise ValueError("Transport repair has no invalid input to correct")
+    if not isinstance(corrections, dict):
+        raise ValueError("Transport repair must return an object")
+    patches = corrections.get("systems")
+    if isinstance(patches, dict):
+        patches = [patches]
+    if patches is None and len(invalid) == 1:
+        # A single-system local JSON response sometimes omits the systems
+        # envelope. No system identity can be misattributed in that case.
+        patches = [corrections]
+    if not isinstance(patches, list):
         raise ValueError("Transport repair must return a systems array")
-    patches = corrections["systems"]
     if not patches:
         raise ValueError("Transport repair returned no corrections")
-    result = [dict(s) for s in systems]
+    if len(patches) != len(invalid):
+        raise ValueError("Transport repair must address every invalid system")
+    allowed = {"index", "interaction", "input_mode", "client_behavior"}
+    result = [dict(row) for row in systems]
     seen: set[int] = set()
-    for patch in patches:
-        if not isinstance(patch, dict):
+    for candidate in patches:
+        if not isinstance(candidate, dict):
             raise ValueError("Transport repair system must be an object")
-        idx = patch.get("index")
-        if type(idx) is not int or not 0 <= idx < len(result) or idx in seen:
-            raise ValueError("Transport repair index must be a unique existing index")
-        seen.add(idx)
-        if (set(patch) != {"index", "interaction", "input_mode", "client_behavior"}
-                or patch["interaction"] not in INTERACTIONS
-                or patch["input_mode"] not in INPUT_MODES
-                or not isinstance(patch["client_behavior"], str)):
-            raise ValueError("Transport repair may edit only protocol and client input")
-        result[idx].update(
-            interaction=patch["interaction"], input_mode=patch["input_mode"],
-            client_behavior=patch["client_behavior"],
+        index = candidate.get("index")
+        if index is None and len(invalid) == 1 and len(patches) == 1:
+            index = next(iter(invalid))
+        if (type(index) is not int or index not in invalid
+                or index in seen):
+            raise ValueError("Transport repair index must be a unique invalid index")
+        seen.add(index)
+        original = systems[index]
+        # Echoed original fields are harmless only if byte-for-byte identical
+        # to the preserved source-owned system. Never discard a real change
+        # to server gameplay or world targets as if it were metadata.
+        extra = set(candidate) - allowed
+        if any(candidate[field] != original.get(field) for field in extra):
+            raise ValueError(
+                "Transport repair may edit only protocol and client input"
+            )
+        interaction = candidate.get("interaction", original.get("interaction"))
+        mode = candidate.get("input_mode", original.get("input_mode", "custom"))
+        client = candidate.get("client_behavior", original.get("client_behavior", ""))
+        if (interaction not in INTERACTIONS or mode not in INPUT_MODES
+                or not isinstance(client, str)):
+            raise ValueError(
+                "Transport repair may edit only protocol and client input"
+            )
+        result[index].update(
+            interaction=interaction, input_mode=mode,
+            client_behavior=client,
         )
-    if seen != set(interaction_issues(raw)):
+    if seen != set(invalid):
         raise ValueError("Transport repair must address every invalid system")
     merged = dict(raw, systems=result)
     remaining = interaction_issues(merged)
     if remaining:
-        raise ValueError("Transport repair did not satisfy protocol: " + str(remaining))
+        raise ValueError(
+            "Transport repair did not satisfy protocol: " + str(remaining))
     return merged
