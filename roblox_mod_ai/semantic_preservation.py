@@ -49,19 +49,33 @@ def source_intent_conflicts(source_span: str, described_intent: str) -> list[str
     text = str(described_intent or "").casefold()
     errors = []
     if _COLONIZATION.search(source):
-        # Merely displaying a colony menu is not colonization. Require a
-        # meaningful state-changing action, not the noun alone.
-        durable_action = re.search(
-            r"persist\w*|sav\w*|record\w*|claim\w*|found(?:s|ed|ing)?|"
-            r"establish\w*|construct\w*|creat\w*|grant\w*|settle\w*|"
-            r"marks?\s+(?:the\s+)?planet\s+(?:as\s+)?coloniz\w*|"
-            r"식민지화(?:하|되)|정착(?:지)?\s*건설|정착(?:지)?\s*기록",
-            text, re.I,
+        # Every action has to affect the requested world state. Global
+        # mentions such as "record currency" + "show colonization feedback"
+        # must NOT accidentally certify a colony because both phrases appear
+        # somewhere in one 2000-character multi-feature module description.
+        # Require an establishment/ownership/saved-state action linked to
+        # the colony IN THE SAME SENTENCE.
+        colony_noun = re.compile(
+            r"coloniz\\w*|colonis\\w*|colon(?:y|ies)|settlem\\w*|"
+            r"outpost\\w*|식민\\w*|정착\\w*|개척\\w*",
+            re.I,
         )
-        if not _INTENT_COLONY.search(text) or not durable_action:
+        state_action = re.compile(
+            r"persist\\w*|sav\\w*|record\\w*|claim\\w*|"
+            r"found(?:s|ed|ing)?|establish\\w*|construct\\w*|"
+            r"creat\\w*|stor\\w*|mark\\w*|\bset\\b|"
+            r"건설\\w*|기록\\w*|저장\\w*|설립\\w*|"
+            r"소유권\\w*|점령\\w*",
+            re.I,
+        )
+        sentences = re.split(r"[.!?;\\n]+", text)
+        durable = any(colony_noun.search(sentence) and
+                      state_action.search(sentence)
+                      for sentence in sentences)
+        if not _INTENT_COLONY.search(text) or not durable:
             errors.append(
-                "SETTLEMENT_DROPPED: source requires a persistent settlement "
-                "state change, not only a colony label or UI"
+                "SETTLEMENT_DROPPED: source requires a recorded or established "
+                "colony state, not only a colony label, validation or UI"
             )
     if _HOSTILE.search(source) and _COMBAT.search(source):
         if not _INTENT_HOSTILE.search(text):
