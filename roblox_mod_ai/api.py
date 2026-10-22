@@ -43,7 +43,12 @@ class CompleteChatReply:
         # implementation ownership and detailed state/effect contract.
         # Otherwise a valid-looking source ledger can bypass the blueprint
         # and resume code from an incompatible plan revision.
-        if research.get("schema") != "rmm/pre-design-rag-v1":
+        # Some test/connector research providers supply a source ledger but
+        # omit an optional schema marker. Do not accept an unknown *declared*
+        # schema, yet allow schema-free in-memory research only when BOTH
+        # current implementation and detailed-plan audits pass below.
+        # Old persisted plans cannot bypass either content audit.
+        if research.get("schema") not in (None, "rmm/pre-design-rag-v1"):
             return False
         if proposal.game_design.get("project_mode", "new_experience") not in (
                 "new_experience", "existing_experience_addon"):
