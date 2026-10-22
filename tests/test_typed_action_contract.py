@@ -207,3 +207,87 @@ def test_end_to_end_real_architect_typed_ui_requires_no_second_client_model(
     assert 'controls["quantity"]' in ui
     assert remote in ui
     assert route["server"].endswith("Server")
+
+
+def test_typed_server_shell_is_parsed_and_guards_contract_before_state_writes():
+    from roblox_mod_ai.host_service_codegen import _shell
+    from roblox_mod_ai.luau_analyzer import LuauStaticAnalyzer
+    contract = validate_contract(_contract(), world_entities=[])
+    body = (
+        'local resource = actionArgs["resource"]\n'
+        'local quantity = actionArgs["quantity"]\n'
+        'local inventory = services.PlayerDataManager.GetState(player, "RMMInventory")\n'
+        'if not inventory or type(inventory.resources) ~= "number" then return false end\n'
+        'if inventory.resources < quantity then return false end\n'
+        'inventory.resources -= quantity\n'
+        'local wallet = services.PlayerDataManager.GetState(player, "RMMWallet")\n'
+        'if not wallet then return false end\n'
+        'wallet.credits = (wallet.credits or 0) + quantity\n'
+        'return true'
+    )
+    source = _shell(body, typed_contract=contract)
+    assert source.index('typeof(actionArgs)') < source.index('inventory.resources -=')
+    assert source.index('for key, _ in pairs(actionArgs)') < source.index('wallet.credits =')
+    assert '["ore"] = true' in source and '["wood"] = true' in source
+    errors = [d.message for d in LuauStaticAnalyzer().analyze_source(
+        source, "src/server/TypedTrade.luau") if d.severity == "ERROR"]
+    assert errors == [], errors
+
+
+def test_typed_server_generator_rejects_body_unrelated_to_declared_state_keys():
+    from roblox_mod_ai.dynamic_architect import _clean_model_json
+    from roblox_mod_ai.host_service_codegen import try_scaffolded_server
+    from roblox_mod_ai.luau_analyzer import LuauStaticAnalyzer
+    from roblox_mod_ai.spec import ModuleKind
+
+    raw = _convert(dict(_system(), action_contract=_contract()))
+    ledger = {
+        "original_prompt": "Trade resources for earned credits",
+        "requirements": [{"id": "r-trade",
+                          "statement": "Trade resources for earned credits"}],
+        "facets": [{"id": "f-trade", "requirements": ["r-trade"],
+                    "source_span": "Trade resources for earned credits"}],
+    }
+    expanded = _clean_model_json(raw, ledger, set())
+    remote, typed = next(iter(raw["_host_typed_actions"].items()))
+    design = {
+        "host_actions": {
+            remote: {"kind": "RemoteFunction", "service": typed["server"],
+                     "max_args": 1}
+        },
+        "host_typed_actions": {remote: typed},
+        "host_action_choices": {},
+        "host_world_actions": {},
+        "module_remotes": expanded["module_remotes"],
+        "remotes": expanded["remotes"],
+    }
+    proposal = RobloxProposal(
+        requested_prompt=ledger["original_prompt"],
+        game_title="TypedTrade", description="",
+        modules=expanded["modules"],
+        game_design={"dynamic_design": design},
+    )
+    server = next(m for m in proposal.modules if m.kind == ModuleKind.SERVER_MODULE)
+
+    class WrongCoder:
+        def complete(self, prompt, **kwargs):
+            # This still mutates a real server state; it is simply NOT the
+            # state transition the declared game contract requires.
+            return (
+                'local args = actionArgs\n'
+                'local state = services.PlayerDataManager.GetState(player, "Wrong")\n'
+                'if not state then return false end\n'
+                'state.unrelated = (state.unrelated or 0) + 1\n'
+                'return true'
+            )
+        def complete_json(self, prompt, **kwargs):
+            return {"body": self.complete(prompt)}
+    wrong = WrongCoder()
+    assert try_scaffolded_server(
+        server, proposal, wrong, LuauStaticAnalyzer()) is None
+    assert len(wrong.last_scaffold_attempts) == 3
+    assert any(
+        "does not reference declared state keys" in diagnostic
+        for attempt in wrong.last_scaffold_attempts
+        for diagnostic in attempt["diagnostics"]
+    )
