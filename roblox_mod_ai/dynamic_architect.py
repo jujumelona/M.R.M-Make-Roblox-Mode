@@ -914,6 +914,7 @@ class RobloxDynamicArchitect:
             cache_hit = False
             for attempt in range(3):
                 rejected_scope_names: list[str] = []
+                host_bound_indexes: list[int] = []
                 # Preserve compact repair evidence when parsing/validation
                 # rejects it; prior failure bundles only recorded
                 # unavailable_or_too_large and hid the actual model defect.
