@@ -10,6 +10,7 @@ from roblox_mod_ai.atomic_action_quotes import (
     SourceActionBindingError,
     indexed_source_spans,
     verify_or_bind_actions,
+    validate_atomic_system_ownership,
 )
 
 
@@ -189,3 +190,47 @@ def test_repair_may_not_reassign_valid_owner_even_when_model_invents_an_index():
                 {"source_quote": "translated colony",
                  "action": "Establish colonies on planets"},
             ])
+
+
+
+def test_each_action_requires_its_own_server_transition_not_parent_mentions():
+    actions = [
+        {"source_quote": "Fight alien enemies",
+         "action": "Fight hostile alien NPC enemies"},
+        {"source_quote": "colonize planets",
+         "action": "Establish new planet colony ownership"},
+    ]
+    systems = [
+        {"server_behavior": "The server checks attack range and damages "
+         "hostile alien NPC enemies, reducing health upon valid hits.",
+         "observable_result": "Alien NPC enemies lose health and fall when defeated."},
+        {"server_behavior": "The server checks an attack range again "
+         "and damages hostile alien NPC enemies rather than changing colony data.",
+         "observable_result": "The target enemy health goes down."},
+    ]
+    with pytest.raises(SourceActionBindingError,
+                       match="ATOMIC_SYSTEM_OWNED_ACTION_NOT_IMPLEMENTED"):
+        validate_atomic_system_ownership(
+            actions, systems,
+            original_prompt="Fight alien enemies and colonize planets")
+
+
+def test_unfamiliar_handler_names_cannot_erase_real_atomic_source_ownership():
+    actions = [
+        {"source_quote": "Fight alien enemies",
+         "action": "Fight hostile alien NPC enemies"},
+        {"source_quote": "colonize planets",
+         "action": "Establish new planet colony ownership"},
+    ]
+    systems = [
+        {"name": "FirstHandler",
+         "server_behavior": "The server validates target range then damages "
+         "hostile alien enemy NPCs and records damage to their health.",
+         "observable_result": "The hostile alien enemy loses health after the combat hit."},
+        {"name": "SecondHandler",
+         "server_behavior": "The server checks available colony resources, "
+         "then establishes a new planet colony and records ownership in state.",
+         "observable_result": "The planet becomes colonized and its owner is shown."},
+    ]
+    validate_atomic_system_ownership(actions, systems,
+        original_prompt="Fight alien enemies and colonize planets")
