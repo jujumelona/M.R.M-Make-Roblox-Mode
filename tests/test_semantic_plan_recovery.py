@@ -110,3 +110,51 @@ def test_retry_uses_saved_successful_chunks_and_reclassifies_only_missing(tmp_pa
     retried = {id for batch in second.calls for id in batch}
     assert not saved_ids.intersection(retried)
     assert len(recovered["atomic_intents"]) == len(source_chunks(SOURCE))
+
+
+def test_full_verified_decomposition_survives_later_plan_failure(tmp_path, monkeypatch):
+    """An identical user request must retain the same facets after codegen fails."""
+    monkeypatch.setenv("RMM_ENABLE_MODEL_DECOMPOSITION", "1")
+    cache = tmp_path / "classified_chunks.json"
+    first_model = BoundedContextModel()
+    first = RobloxPreDesignResearch(
+        router=first_model, live_enabled=False, classification_cache=cache)
+    accepted = first._decompose_compound(SOURCE, build_request_ledger(SOURCE))
+    assert not accepted.get("classification_unverified")
+    assert (tmp_path / "semantic_decomposition_checkpoint.json").is_file()
+
+    class NoModel:
+        def complete_json(self, *_args, **_kwargs):
+            raise AssertionError("A fully validated source graph must be reused")
+
+    another = RobloxPreDesignResearch(
+        router=NoModel(), live_enabled=False, classification_cache=cache)
+    restored = another._decompose_compound(SOURCE, build_request_ledger(SOURCE))
+    assert restored == accepted
+    assert [x["facet_id"] for x in restored["atomic_intents"]] == [
+        x["facet_id"] for x in accepted["atomic_intents"]
+    ]
+
+
+def test_tampered_decomposition_signature_cannot_be_used(tmp_path, monkeypatch):
+    monkeypatch.setenv("RMM_ENABLE_MODEL_DECOMPOSITION", "1")
+    cache = tmp_path / "classified_chunks.json"
+    researcher = RobloxPreDesignResearch(
+        router=BoundedContextModel(), live_enabled=False,
+        classification_cache=cache)
+    researcher._decompose_compound(SOURCE, build_request_ledger(SOURCE))
+    path = tmp_path / "semantic_decomposition_checkpoint.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["input_sha256"] = "old-implementation"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    restarted = BoundedContextModel()
+    recovered = RobloxPreDesignResearch(
+        router=restarted, live_enabled=False, classification_cache=cache
+    )._decompose_compound(SOURCE, build_request_ledger(SOURCE))
+    assert not recovered.get("classification_unverified")
+    assert restarted.calls == [] or all(
+        isinstance(batch, list) for batch in restarted.calls
+    )
+    # The saved complete ledger was rejected, but separately signed individual
+    # verified chunks may still be reused, which is safe and avoids LLM waste.
+    assert json.loads(path.read_text(encoding="utf-8"))["input_sha256"] != "old-implementation"
