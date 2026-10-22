@@ -236,6 +236,8 @@ JestGlobals = "roblox/jest-globals@=3.20.0"
         target_dir: Path,
     ) -> dict[str, Path]:
         """Writes all Luau files, default.project.json, wally.toml, and asset loaders to target directory."""
+        from .artifact_path_safety import validate_project_layout
+        validate_project_layout(target_dir, proposal.modules, proposal.tests)
         target_dir.mkdir(parents=True, exist_ok=True)
         paths_created: dict[str, Path] = {}
 
