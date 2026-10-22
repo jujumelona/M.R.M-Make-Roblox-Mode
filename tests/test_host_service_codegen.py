@@ -139,3 +139,16 @@ def test_unparented_instance_is_not_authoritative_gameplay():
     assert _EFFECT.search('local orphan = Instance.new("Part")') is None
     assert _EFFECT.search(
         'game.ReplicatedStorage.GameReply:FireClient(player, true)') is None
+
+
+
+def test_fake_effect_in_string_or_comment_never_counts():
+    model = FakeRouter(
+        'local message = "player:SetAttribute(\\\"ColonyOwned\\\", true)"\n'
+        '-- workspace:SetAttribute("ColonyOwned", true)\n'
+        'print(message)\n'
+        'return true'
+    )
+    assert try_scaffolded_server(*inputs(), model, NoDiagnosticAnalyzer()) is None
+    assert any("authoritative gameplay mutation" in str(row["diagnostics"])
+               for row in model.last_scaffold_attempts)
