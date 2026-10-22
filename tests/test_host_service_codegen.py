@@ -111,3 +111,31 @@ def test_scoped_repair_uses_exact_rejected_body_and_diagnostic():
     assert len(model.calls) == 2
     assert model.last_scaffold_attempts[0]["mode"] == "host_scaffolded_action_body"
     assert "profile.shipUpgrade" in generated
+
+
+
+def test_client_notification_does_not_count_as_server_gameplay():
+    model = FakeRouter(
+        'local result = { success = true, note = "the client has received a notice" }\n'
+        'game.ReplicatedStorage.GameReply:FireClient(player, result)\n'
+        'return true'
+    )
+    assert try_scaffolded_server(*inputs(), model, NoDiagnosticAnalyzer()) is None
+    assert any("authoritative gameplay mutation" in str(attempt["diagnostics"])
+               for attempt in model.last_scaffold_attempts)
+
+
+def test_unparented_instance_is_not_authoritative_gameplay():
+    model = FakeRouter(
+        'local orphan = Instance.new("Part")\n'
+        'orphan.Name = "PreviewObject"\n'
+        'return true'
+    )
+    # Setting properties on a fresh unparented Instance is not sufficient
+    # proof the requested world action ever took place. This example also
+    # has an assignment, so the stronger authoring review must still reject
+    # it; test the static mutation predicate's narrower guarantee explicitly.
+    from roblox_mod_ai.host_service_codegen import _EFFECT
+    assert _EFFECT.search('local orphan = Instance.new("Part")') is None
+    assert _EFFECT.search(
+        'game.ReplicatedStorage.GameReply:FireClient(player, true)') is None
