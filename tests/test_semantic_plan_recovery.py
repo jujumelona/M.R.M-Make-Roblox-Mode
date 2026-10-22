@@ -74,10 +74,17 @@ class BoundedContextModel:
             # safely determine the role of short coordinating fragments.
             assert row["source_clause"]
             assert row["source_span"] in row["source_clause"]
-            if "식민" in span:
+            if "식민" in span and ("외계인" in span or "외게인" in span):
+                # One unpunctuated original span can contain TWO actions.
+                # The model must retain both, not pretend a UI or PvP target
+                # fully implements a player request.
+                action = ("Player fights hostile alien NPC enemies and "
+                          "establishes a persistent owned colony settlement")
+                query = "Roblox NPC battle and colony settlement ownership"
+            elif "식민" in span:
                 action = "Establish a persistent owned colony settlement on the planet"
                 query = "Roblox DataStore persistent colony settlement ownership"
-            elif "외계인" in span:
+            elif "외계인" in span or "외게인" in span:
                 action = "Player attacks hostile alien enemy NPCs with validated damage"
                 query = "Roblox server hostile alien NPC attack damage"
             else:
