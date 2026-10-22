@@ -116,10 +116,18 @@ def test_full_verified_decomposition_survives_later_plan_failure(tmp_path, monke
     """An identical user request must retain the same facets after codegen fails."""
     monkeypatch.setenv("RMM_ENABLE_MODEL_DECOMPOSITION", "1")
     cache = tmp_path / "classified_chunks.json"
-    first_model = BoundedContextModel()
+    # Reproduce actual recoverable failure first: only part of the source
+    # can be classified in run one, the missing spans in run two.
+    first_model = BoundedContextModel(fail_chunk_once=True)
     first = RobloxPreDesignResearch(
         router=first_model, live_enabled=False, classification_cache=cache)
-    accepted = first._decompose_compound(SOURCE, build_request_ledger(SOURCE))
+    partial = first._decompose_compound(SOURCE, build_request_ledger(SOURCE))
+    assert partial.get("classification_unverified")
+    recovered_model = BoundedContextModel()
+    second = RobloxPreDesignResearch(
+        router=recovered_model, live_enabled=False, classification_cache=cache)
+    accepted = second._decompose_compound(SOURCE, build_request_ledger(SOURCE))
+    assert accepted.get("decomposition_strategy") == "source_chunk_model_classification"
     assert not accepted.get("classification_unverified")
     assert (tmp_path / "semantic_decomposition_checkpoint.json").is_file()
 
@@ -139,10 +147,15 @@ def test_full_verified_decomposition_survives_later_plan_failure(tmp_path, monke
 def test_tampered_decomposition_signature_cannot_be_used(tmp_path, monkeypatch):
     monkeypatch.setenv("RMM_ENABLE_MODEL_DECOMPOSITION", "1")
     cache = tmp_path / "classified_chunks.json"
+    partial = RobloxPreDesignResearch(
+        router=BoundedContextModel(fail_chunk_once=True), live_enabled=False,
+        classification_cache=cache)
+    partial._decompose_compound(SOURCE, build_request_ledger(SOURCE))
     researcher = RobloxPreDesignResearch(
         router=BoundedContextModel(), live_enabled=False,
         classification_cache=cache)
-    researcher._decompose_compound(SOURCE, build_request_ledger(SOURCE))
+    accepted = researcher._decompose_compound(SOURCE, build_request_ledger(SOURCE))
+    assert accepted.get("decomposition_strategy") == "source_chunk_model_classification"
     path = tmp_path / "semantic_decomposition_checkpoint.json"
     payload = json.loads(path.read_text(encoding="utf-8"))
     payload["input_sha256"] = "old-implementation"
