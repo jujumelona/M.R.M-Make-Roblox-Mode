@@ -244,6 +244,11 @@ def test_failed_whole_request_recovers_every_original_source_chunk(monkeypatch):
             return {"behaviors": [
                 {"chunk_id": c["chunk_id"],
                  "intent": (
+                     "Server handles hostile alien NPC combat and "
+                     "establishes a persisted planet colony settlement"
+                     if "식민" in c["source_span"] and (
+                         "외계인" in c["source_span"] or
+                         "외게인" in c["source_span"]) else
                      "Server establishes and persists a planet colony settlement"
                      if "식민" in c["source_span"] else
                      "Server handles hostile alien NPC enemy combat"
