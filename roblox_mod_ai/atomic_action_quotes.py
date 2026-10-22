@@ -85,6 +85,45 @@ def indexed_source_spans(source: str, *, max_width: int = 4,
     return rows
 
 
+def validate_atomic_system_ownership(
+    actions: list[dict[str, str]], systems: Any, *, original_prompt: str,
+) -> None:
+    """Require each ONE-system author response to implement its OWN source.
+
+    Independent source-ID calls already establish provenance by their call
+    boundary. Filtering their names afterward with a broad retrieval query
+    silently discarded legitimate foreign-language/novel gameplay. Check
+    actual server/outcome semantics per child before preserving the bundle;
+    full Luau, security and game tests still run later.
+    """
+    from .semantic_preservation import source_outcome_conflicts
+    from .request_semantics import request_semantic_errors
+
+    if (not isinstance(systems, list) or len(systems) != len(actions)
+            or not all(isinstance(row, dict) for row in systems)):
+        raise SourceActionBindingError("ATOMIC_SYSTEM_OWNER_COUNT_INVALID")
+    for index, (action, system) in enumerate(zip(actions, systems)):
+        server = str(system.get("server_behavior") or "")
+        outcome = str(system.get("observable_result") or "")
+        if len(server.strip()) < 24 or len(outcome.strip()) < 18:
+            raise SourceActionBindingError(
+                "ATOMIC_SYSTEM_GAMEPLAY_INCOMPLETE: " + str(index))
+        # Both the exact user quote and the anchored authored interpretation
+        # matter. A server may mention the parent facet while implementing an
+        # unrelated second child. This rejects that silent coverage loss.
+        errors = [
+            *source_intent_conflicts(action["source_quote"], server),
+            *source_intent_conflicts(action["action"], server),
+            *source_outcome_conflicts(action["source_quote"], outcome),
+            *source_outcome_conflicts(action["action"], outcome),
+            *request_semantic_errors(system, original_prompt),
+        ]
+        if errors:
+            raise SourceActionBindingError(
+                "ATOMIC_SYSTEM_OWNED_ACTION_NOT_IMPLEMENTED: "
+                + str(index) + ": " + "; ".join(dict.fromkeys(errors)))
+
+
 def verify_or_bind_actions(router: Any, source: str, actions: Any,
                            *, missing_obligations=()) -> list[dict[str, str]]:
     """Preserve the model's action descriptions; rebind only invalid quotes.
