@@ -31,8 +31,14 @@ class ModelRouter:
         # Resolve ties between source-owned actions and cross-language names
         # without making retrieval translations the implementation authority.
         self.supports_source_ownership_review = True
-        # Real local inference must provide structured UI/server transport contracts.
-        self.supports_typed_action_contract = True
+        # Host owns a stable typed Remote/UI ABI. Model-authored transport
+        # metadata has repeatedly blocked the entire generated experience
+        # even when the underlying gameplay action was valid. No second
+        # input/effect generation call is required in the production pipeline.
+        self.supports_host_standard_transport = True
+        # Keep the legacy experimental type-manifest path opt-in for tests
+        # and explicit research, never as the production hard gate.
+        self.supports_typed_action_contract = False
         self.adapters: dict[str, ModelAdapter] = {}
         self._init_adapters()
 
