@@ -30,7 +30,8 @@ def eligible_trade_catalog(module: Any, proposal: Any) -> tuple[str, str] | None
         return None
     server = (module.name if module.kind == ModuleKind.SERVER_MODULE
               else module.name.removesuffix("Client") + "Server")
-    owner = next((row for row in proposal.modules if row.kind == ModuleKind.SERVER_MODULE
+    owner = next((row for row in getattr(proposal, "modules", ())
+                  if row.kind == ModuleKind.SERVER_MODULE
                   and row.name == server), None)
     if owner is None:
         return None
