@@ -33,3 +33,21 @@ def safe_project_file(
     if not candidate.is_relative_to(anchor):
         raise ValueError("RMM_PROJECT_PATH_ESCAPES_WORKSPACE: " + relative)
     return candidate
+
+
+
+def validate_project_layout(root: Path, modules: list, tests: list) -> None:
+    """Validate ALL paths and collisions before writing even one output file."""
+    claimed: dict[Path, str] = {}
+    for owner, entries, prefix in (
+            ("module", modules, "src"), ("test", tests, "tests")):
+        for entry in entries:
+            relative = getattr(entry, "file_path", None)
+            target = safe_project_file(root, relative, prefixes=(prefix,))
+            if target in claimed:
+                raise ValueError("RMM_PROJECT_PATH_COLLISION: " + str(relative)
+                                 + " owners=" + claimed[target] + "," + owner)
+            claimed[target] = owner
+    reserved = Path(root).resolve() / "tests" / "jest.config.lua"
+    if reserved in claimed:
+        raise ValueError("RMM_PROJECT_PATH_RESERVED: tests/jest.config.lua")
