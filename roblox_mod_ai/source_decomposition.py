@@ -36,6 +36,14 @@ def source_chunks(statement: str, *, max_chars: int = 22,
     pieces: list[str] = []
     current: list[str] = []
     for word in words:
+        if (word == "등으로" and len(current) >= 4
+                and len(" ".join(current + [word])) > max_chars):
+            # Preserve the source's preceding means/action plus its connector.
+            # A mechanical max-length flush would strand "trade" with the
+            # previous task and leave an isolated "etc/by" phrase.
+            final_word = current.pop()
+            pieces.append(" ".join(current))
+            current = [final_word]
         if current and len(" ".join(current + [word])) > max_chars:
             pieces.append(" ".join(current))
             current = []
