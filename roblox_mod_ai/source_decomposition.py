@@ -73,6 +73,40 @@ def source_chunks(statement: str, *, max_chars: int = 11,
     return combined
 
 
+
+def classification_context(
+    all_chunks: list[dict[str, str]],
+    selected: list[dict[str, str]],
+    clauses: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    """Keep each exact source span while adding bounded adjacent context.
+
+    Arbitrary byte/word boundaries are NOT independent semantic clauses. A
+    fragment like "can ... by purchasing" or a dangling conjunction needs
+    adjacent text to describe its role without inventing a standalone system.
+    Only the selected chunk IDs may appear in the model's response.
+    """
+    by_id = {item["id"]: item["statement"] for item in clauses}
+    locations = {entry["chunk_id"]: index for index, entry in enumerate(all_chunks)}
+    result = []
+    for entry in selected:
+        i = locations[entry["chunk_id"]]
+        before = all_chunks[i-1] if i else None
+        after = all_chunks[i+1] if i+1 < len(all_chunks) else None
+        result.append({
+            "chunk_id": entry["chunk_id"],
+            "source_span": entry["source_span"],
+            "previous": (before["source_span"][:100]
+                         if before and before["clause_id"] == entry["clause_id"]
+                         else ""),
+            "next": (after["source_span"][:100]
+                     if after and after["clause_id"] == entry["clause_id"]
+                     else ""),
+            "source_clause": by_id.get(entry["clause_id"], "")[:360],
+        })
+    return result
+
+
 def valid_chunk_classification(raw: Any, expected: list[dict[str, str]]) -> dict[str, dict[str, str]]:
     """Only complete, unique descriptions of EXACT requested chunk IDs pass."""
     if not isinstance(raw, dict) or not isinstance(raw.get("behaviors"), list):
