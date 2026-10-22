@@ -398,18 +398,47 @@ def render_typed_client(module: RobloxModuleSpec, proposal: RobloxProposal) -> s
     return "\n".join(lines) + "\n"
 
 
-def host_owned_action_contract(choices: list[dict[str, str]] | None = None) -> dict[str, Any]:
-    """Stable genre-agnostic transport ABI, not another small-model task.
+def validated_host_choice_options(raw: Any) -> list[dict[str, str]]:
+    """Admit only a complete, bounded host-enforceable option table.
 
-    The two fields are *input channels*, not trusted rewards, prices, targets,
-    or inferred game-state operations. The server author must validate how
-    each field is interpreted against real server-owned state. Optional future
-    richer UX can be layered on WITHOUT blocking planning.
+    Model-produced arrays of strings or partial option objects are NOT an
+    authorization list. Do not guess IDs or reinterpret labels as privileged
+    server actions. With no valid allowlist the host uses a validated text
+    selection and the server must resolve and authorize its meaning.
     """
+    import re
+
+    if not isinstance(raw, list) or not 1 <= len(raw) <= 8:
+        return []
+    clean: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, dict) or set(item) != {"id", "label"}:
+            return []
+        ident, label = item["id"], item["label"]
+        if (not isinstance(ident, str)
+                or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,31}", ident)
+                or ident in seen
+                or not isinstance(label, str)
+                or not 1 <= len(label.strip()) <= 70):
+            return []
+        seen.add(ident)
+        clean.append({"id": ident, "label": label.strip()})
+    return clean
+
+
+def host_owned_action_contract(choices: Any = None) -> dict[str, Any]:
+    """Host-owned typed ingress independent of the small-model output shape.
+
+    A wrong optional UI selection declaration must NEVER invalidate actual
+    gameplay semantics or trigger full-scoped regeneration. Known-safe option
+    tables are maintained as allowlists; everything else is untrusted text.
+    """
+    approved = validated_host_choice_options(choices)
     selection: dict[str, Any] = (
         {"id": "selection", "label": "Allowed action choice",
-         "type": "choice", "options": choices}
-        if choices else
+         "type": "choice", "options": approved}
+        if approved else
         {"id": "selection", "label": "Item, action, or target ID",
          "type": "text"}
     )
