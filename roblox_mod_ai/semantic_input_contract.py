@@ -126,7 +126,18 @@ def apply_interaction_patch(
         # to the preserved source-owned system. Never discard a real change
         # to server gameplay or world targets as if it were metadata.
         extra = set(candidate) - allowed
-        if any(candidate[field] != original.get(field) for field in extra):
+        # JSON schemas often materialize omitted optional collection fields
+        # as empty lists. These are semantically identical to an absent
+        # world_entities/action_choices default and MUST NOT turn a valid
+        # repair into an infinite retry. Other extra keys remain forbidden.
+        default_empty = {"world_entities", "action_choices"}
+        if any(
+            candidate[field] != (
+                original.get(field, []) if field in default_empty
+                else original.get(field)
+            )
+            for field in extra
+        ):
             raise ValueError(
                 "Transport repair may edit only protocol and client input"
             )
@@ -152,3 +163,89 @@ def apply_interaction_patch(
         raise ValueError(
             "Transport repair did not satisfy protocol: " + str(remaining))
     return merged
+
+
+# When an already-correct transport lacks ONLY a custom input description,
+# the repair output must NOT contain another full system / protocol / world
+# definition. This entirely removes the class of JSON field drift seen in
+# plan_failure_logs (14) and (15).
+CLIENT_INPUT_ONLY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "client_behavior": {"type": "string", "maxLength": 1200},
+    },
+    "required": ["client_behavior"],
+}
+
+
+def apply_client_input_completion(
+    raw: dict[str, Any], completion: Any, *, index: int,
+) -> dict[str, Any]:
+    """Complete only the missing user interaction; keep all game state immutable.
+
+    The original system name is the source-authorized action identity. Require
+    that identity to appear in the proposed input description rather than
+    silently accepting a UI for some unrelated action. This is a lightweight
+    check in addition to later gameplay and Luau validation, not proof that
+    the action actually works.
+    """
+    import re
+
+    systems = raw.get("systems")
+    if (not isinstance(systems, list) or type(index) is not int
+            or not 0 <= index < len(systems)
+            or not isinstance(systems[index], dict)):
+        raise ValueError("Client-only repair requires an existing system index")
+    issues = interaction_issues(raw)
+    if issues != {
+        index: ["custom player input needs substantive client_behavior"]
+    }:
+        raise ValueError("Client-only repair requires exactly one missing custom UI")
+    if not isinstance(completion, dict) or set(completion) != {"client_behavior"}:
+        raise ValueError("Client-only repair may edit only client_behavior")
+    client = completion["client_behavior"]
+    if not isinstance(client, str) or not 24 <= len(client.strip()) <= 1200:
+        raise ValueError("Client-only repair must describe actual player input")
+    # A missing UI for "Trade" must not be replaced by "Repair console".
+    # Match meaningful system identity words without an English genre list.
+    name = str(systems[index].get("name") or "")
+    words = [
+        token.casefold() for token in re.findall(
+            r"[A-Za-z]{4,}", re.sub(r"([a-z])([A-Z])", r"\1 \2", name)
+        )
+        if token.casefold() not in {
+            "system", "service", "server", "client", "action",
+            "request", "player", "validated", "mode", "module",
+        }
+    ]
+    client_words = [
+        token.casefold() for token in re.findall(r"[A-Za-z]{3,}", client)
+    ]
+
+    def stem(word: str) -> str:
+        for ending in ("ation", "ing", "ment", "ed", "es", "s"):
+            if word.endswith(ending) and len(word) >= len(ending) + 4:
+                return word[:-len(ending)]
+        return word
+
+    if words and not any(
+        stem(identity)[:4] == stem(word)[:4]
+        for identity in words for word in client_words
+    ):
+        raise ValueError(
+            "Client-only repair describes an unrelated user action"
+        )
+    # A generic "an animation will play" is NOT an interactive input path.
+    if not re.search(
+        r"\b(?:click|press|select|choose|pick|enter|type|tap|"
+        r"target|submit|drag|open|activate|input|touch|"
+        r"key(?:board)?|button|menu|interact|confirm)\w*\b",
+        client, re.I,
+    ):
+        raise ValueError("Client-only repair lacks a player input action")
+    result = [dict(row) for row in systems]
+    result[index]["client_behavior"] = client.strip()
+    fixed = dict(raw, systems=result)
+    if interaction_issues(fixed):
+        raise ValueError("Client-only repair did not resolve input contract")
+    return fixed
