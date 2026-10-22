@@ -93,3 +93,49 @@ def test_whole_clause_classifier_cannot_claim_pvp_as_npc_combat():
          "english_query": "Roblox colony settlement state"},
     ]
     assert not validate_model_behaviors(source, sections)
+
+
+def test_space_launch_is_not_disguised_as_another_ship_upgrade_purchase():
+    from roblox_mod_ai.semantic_preservation import (
+        source_intent_conflicts, source_outcome_conflicts,
+    )
+    source = "그렇게해서 우주로 나갈수있고"
+    wrong = (
+        "The server validates the player's currency balance and buys "
+        "a ship performance upgrade. The client displays an upgrade menu."
+    )
+    assert any("SPACE_TRAVEL_DROPPED" in error for error in
+               source_intent_conflicts(source, wrong,
+                                       require_implementation=False))
+    assert any("SPACE_TRAVEL_DROPPED" in error for error in
+               source_intent_conflicts(source, wrong))
+    assert any("SPACE_TRAVEL_DROPPED" in error for error in
+               source_outcome_conflicts(source, wrong))
+    correct = (
+        "After verified construction and fuel checks, the server launches "
+        "the player's spacecraft into space and changes their location."
+    )
+    assert not source_intent_conflicts(source, correct)
+    assert not source_outcome_conflicts(
+        source, "The player sees the spacecraft launch into space.")
+    # Intent alone does not mean a generic 'space mode' label requires launch.
+    assert not source_intent_conflicts(
+        "우주모드 자원 파밍", "Mine resource nodes in the space game")
+
+
+def test_source_classifier_cannot_certify_missing_space_departure():
+    from roblox_mod_ai.source_decomposition import valid_chunk_classification
+    chunk = [{"chunk_id": "chunk-007",
+              "source_span": "그렇게해서 우주로 나갈수있고"}]
+    wrong = {"behaviors": [{
+        "chunk_id": "chunk-007",
+        "intent": "Buy spaceship parts and improve ship performance",
+        "english_query": "Roblox server ship upgrade catalog"
+    }]}
+    assert valid_chunk_classification(wrong, chunk) == {}
+    correct = {"behaviors": [{
+        "chunk_id": "chunk-007",
+        "intent": "Launch the spacecraft into space after assembly",
+        "english_query": "Roblox server validated space launch travel"
+    }]}
+    assert "chunk-007" in valid_chunk_classification(correct, chunk)
