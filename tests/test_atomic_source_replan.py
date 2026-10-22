@@ -162,7 +162,7 @@ def test_atomic_action_decomposition_rejects_fabricated_quotations(monkeypatch):
     # decision rather than letting the model invent a replacement quote.
     # The unrequested robot-pet action is still rejected in every attempt.
     assert len(model.calls) == 5
-    assert sum(call.startswith("SOURCE OWNERSHIP ONLY")
+    assert sum(call.startswith("SOURCE OWNERSHIP REPAIR ONLY")
                for call in model.calls) == 2
 
 
