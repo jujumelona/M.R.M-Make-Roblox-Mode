@@ -1116,38 +1116,20 @@ class RobloxDynamicArchitect:
                                 raw_actions.get("actions")
                                 if isinstance(raw_actions, dict) else None
                             )
-                            if (not isinstance(actions, list)
-                                    or not 2 <= len(actions) <= 3):
-                                raise DynamicDesignError(
-                                    "ATOMIC_ACTION_DECOMPOSITION_INVALID: "
-                                    "multiple source actions must be identified"
+                            from .atomic_action_quotes import (
+                                verify_or_bind_actions, SourceActionBindingError,
+                            )
+                            # Keep the actual small-model response in the
+                            # failure bundle; previously all invalid source
+                            # quotations appeared as unavailable_or_too_large.
+                            repair_response = raw_actions
+                            try:
+                                verified_actions = verify_or_bind_actions(
+                                    self.router, slice_request, actions,
+                                    missing_obligations=problem_statements,
                                 )
-                            claimed: set[str] = set()
-                            verified_actions: list[dict[str, str]] = []
-                            for entry in actions:
-                                if not isinstance(entry, dict):
-                                    raise DynamicDesignError(
-                                        "ATOMIC_ACTION_DECOMPOSITION_INVALID: "
-                                        "action must be an object"
-                                    )
-                                quote = entry.get("source_quote")
-                                action = entry.get("action")
-                                if (not isinstance(quote, str)
-                                        or quote.strip() not in slice_request
-                                        or len(quote.strip()) < 2
-                                        or not isinstance(action, str)
-                                        or not 8 <= len(action.strip()) <= 220
-                                        or quote.strip() in claimed):
-                                    raise DynamicDesignError(
-                                        "ATOMIC_ACTION_DECOMPOSITION_INVALID: "
-                                        "action quote must be unique and "
-                                        "anchored to the source"
-                                    )
-                                claimed.add(quote.strip())
-                                verified_actions.append({
-                                    "source_quote": quote.strip(),
-                                    "action": action.strip(),
-                                })
+                            except SourceActionBindingError as bind_error:
+                                raise DynamicDesignError(str(bind_error)) from bind_error
                             proposed_systems: list[dict[str, Any]] = []
                             for owned_action in verified_actions:
                                 part = self.router.complete_json(
