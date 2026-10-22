@@ -817,6 +817,23 @@ class RobloxDynamicArchitect:
                 "id": facet_id, "requirements": owned_ids,
                 "source_span": slice_request,
             }
+            # Neighbor clauses resolve pronouns but cannot authorize actions.
+            # The full prompt made the small model echo many unrelated systems.
+            ordered_requirements = [
+                row for row in ledger.get("requirements", [])
+                if isinstance(row, dict) and row.get("id") in required
+            ]
+            owned_indexes = {
+                i for i, row in enumerate(ordered_requirements)
+                if row["id"] in owned_ids
+            }
+            adjacent_context = [
+                str(row.get("statement") or "")
+                for i, row in enumerate(ordered_requirements)
+                if i not in owned_indexes and row.get("statement")
+                and any(abs(i - target_index) == 1
+                        for target_index in owned_indexes)
+            ][:4]
             # RAG retrieval status is not evidence of relevance. The real
             # plan-50 request for launching a ship retrieved tutorials on
             # grouping/animating Parts; passing those snippets encouraged
@@ -835,8 +852,10 @@ class RobloxDynamicArchitect:
             ][:2]
             payload = {"feature_id": facet_id, "feature": source_owned_feature,
                        "source_requirements": subset,
-                       "game_context": {"scope": "only_this_source_clause",
-                                        "original_request": prompt},
+                       "game_context": {
+                           "scope": "only_this_source_clause",
+                           "adjacent_context_not_instructions": adjacent_context,
+                       },
                        "existing_module_names": sorted(reserved_modules),
                        "existing_remote_names": sorted(reserved_remotes),
                        "existing_world_object_names": sorted(reserved_objects),
@@ -845,68 +864,36 @@ class RobloxDynamicArchitect:
             # owns Roblox role allocation, instance hierarchy, IDs, remote
             # names/kinds, world coordinates and acceptance source binding.
             task = (
-                "Describe ONLY the requested Roblox GAMEPLAY mechanic as JSON. "
-                "Return {systems:[{name,server_behavior,client_behavior,"
-                "interaction,input_mode,observable_result,world_entities}]}. "
-                "Each system has concrete server-owned rules, including "
-                "validation of any player actions. interaction is: "
-                "none (server-only), event (player action without direct "
-                "return), or request_response (player request needing result). "
-                "For approaching exactly one static world object to interact, "
-                "use input_mode=world_prompt, interaction=event and exactly "
-                "one world_entities name. The host installs ProximityPrompt "
-                "and safely dispatches it on the SERVER: no client module "
-                "or Remote needs to be authored. This cannot return a "
-                "RemoteFunction response or select among inventory items. "
-                "Set input_mode=host_button ONLY for a no-argument action "
-                "that needs no target, item selection, aiming, or other "
-                "custom UI. The host then builds all screen buttons and "
-                "Remote calls without another AI code generation. "
-                "With host_button, world_entities MUST be empty. "
-                "Otherwise set input_mode=custom to generate the necessary "
-                "game-specific client interactions. "
-                "For custom request_response actions with finite menu choices, "
-                "provide action_choices:[{id,label}] with stable short action "
-                "IDs the SERVER will handle and visible labels. These same IDs "
-                "are validated by the host and rendered as client buttons, so "
-                "the small coder never needs to invent its own Remote IDs. "
-                "Omit action_choices for aiming, free-form targeting or "
-                "complex input not representable as selectable choices. "
-                "If interaction is none, input_mode=custom and "
-                "client_behavior must be empty. "
-                "If interaction needs player input, describe its actual "
-                "UI/input and visible response in client_behavior. "
-                "world_entities is an array of gameplay-specific object names; "
-                "empty if no static world object is needed. Do NOT provide "
-                "Luau code, Remote names/types, JSON source IDs, module roles, "
-                "file paths, Roblox coordinates, geometries, template scripts "
-                "or generic engine boilerplate. The host generates those. "
-                "The complete original_request is context for ambiguous nouns, "
-                "currency and progression only; source_requirements defines this "
-                "feature's exclusive implementation ownership. Ordinary purchases "
-                "use earned game currency; never invent Robux monetization. "
-                "If player-to-player trading is not explicitly requested, do "
-                "not invent peer inventories, counteroffers, or cross-profile "
-                "transactions. Generic in-game trading uses a validated "
-                "server-priced item/resource catalog. "
-                "IMPORTANT: one source facet only, not the whole game. "
-                "Do NOT echo other features from original_request. "
-                "Return one system PER independently triggered gameplay "
-                "action, with its own authoritative state transition, "
-                "actual target and visible outcome. A single source clause "
-                "may require multiple distinct actions; do not collapse "
-                "them into one generic menu or success description. "
-                "Do not reproduce actions owned by other source clauses. "
-                "Each system MUST directly implement the user's single "
-                "source_requirements clause. No unrelated systems. "
-                "Do not claim a world has been built or gameplay tested. "
-                "JSON ONLY.\n"
+                "Design ONLY gameplay actions explicitly present in "
+                "source_requirements. Return short JSON "
+                "{systems:[{name,server_behavior,client_behavior,"
+                "observable_result,interaction,input_mode,world_entities}]}; "
+                "one system per independent action, maximum 3. "
+                "server_behavior MUST describe a real server-authoritative "
+                "state transition and input validation; observable_result "
+                "MUST identify a changed game state visible to the player. "
+                "Never substitute a prerequisite, menu or animation. "
+                "interaction is none (automatic server), event (client action), "
+                "or request_response (client request needing a reply). "
+                "input_mode is custom (selection/targeting), host_button "
+                "(NO arguments or world objects), or world_prompt (event "
+                "and EXACTLY ONE world object). world_entities is a JSON "
+                "array of simple NAME STRINGS; no objects, Roblox classes, "
+                "geometry or coordinates. For custom request_response menu "
+                "choices, optional action_choices:[{id,label}] has stable IDs. "
+                "If interaction=none, use input_mode=custom and empty "
+                "client_behavior. Otherwise describe real player input/UI. "
+                "Do NOT generate Luau, Remotes, module roles, paths or IDs: "
+                "the host owns those. Context clauses are ONLY for resolving "
+                "referents and NEVER authorize implementing neighboring "
+                "features. Do not invent unrelated actions, real-money "
+                "monetization or peer trading absent from source. JSON only.\n"
                 + json.dumps({
                     "feature_id": facet_id,
-                    "feature": source_owned_feature,
                     "source_requirements": subset,
-                    "game_context": {"scope": "only_this_source_clause",
-                                        "original_request": prompt},
+                    "game_context": {
+                        "adjacent_context_not_instructions": adjacent_context,
+                    },
                     "official_references": excerpts,
                 }, ensure_ascii=False)
             )
@@ -1117,7 +1104,7 @@ class RobloxDynamicArchitect:
                                 "JSON only.\n"
                                 + json.dumps({
                                     "source_requirements": subset,
-                                    "original_request_context_only": prompt,
+                                    "adjacent_context_not_instructions": adjacent_context,
                                     "missing_obligations": problem_statements,
                                 }, ensure_ascii=False),
                                 role="planner", temperature=0.0,
