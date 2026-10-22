@@ -144,17 +144,17 @@ def test_dynamic_lifecycle_rejects_strict_only_or_commented_mutation(tmp_path):
     file = tmp_path / "src/server/PetHatching.luau"
     file.parent.mkdir(parents=True)
     for text in (
-        "--!strict\\nreturn {}\\n",
-        '--!strict\\n-- pet:SetAttribute("Hatched", true)\\nreturn {}\\n',
-        '--!strict\\nprint("pet:SetAttribute(\\\"Hatched\\\", true)")\\nreturn {}\\n',
+        "--!strict\nreturn {}\n",
+        '--!strict\n-- pet:SetAttribute("Hatched", true)\nreturn {}\n',
+        '--!strict\nprint("pet:SetAttribute(\\\"Hatched\\\", true)")\nreturn {}\n',
     ):
         file.write_text(text, encoding="utf-8")
         assert _checks(plan, tmp_path)["lifecycle.source.custom.pet.hatch"] is False
     file.write_text(
-        '--!strict\\nlocal Service = {}\\n'
-        'function Service.handleAction(player, services)\\n'
-        '  player:SetAttribute("PetHatched", true)\\n'
-        'end\\nreturn Service\\n',
+        '--!strict\nlocal Service = {}\n'
+        'function Service.handleAction(player, services)\n'
+        '  player:SetAttribute("PetHatched", true)\n'
+        'end\nreturn Service\n',
         encoding="utf-8")
     assert _checks(plan, tmp_path)["lifecycle.source.custom.pet.hatch"] is True
     assert not plan.game_design["gameplay_contract"]["engine_playtested"]
