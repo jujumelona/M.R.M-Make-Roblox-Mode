@@ -188,3 +188,21 @@ def test_resource_farming_must_not_be_only_a_currency_sale():
         "credits the player a fixed earned-currency reward."
     )
     assert not source_intent_conflicts(source, genuine)
+
+def test_colony_precondition_is_not_an_authoritative_settlement_write():
+    from roblox_mod_ai.semantic_preservation import source_intent_conflicts
+
+    source = "Colonize a planet after space exploration"
+    guard_only = (
+        "The server requires the target planet to have a recorded or "
+        "established colony state before a settlement can be dropped; "
+        "if no colony exists the server rejects the request."
+    )
+    assert any("SETTLEMENT_DROPPED" in err for err in
+               source_intent_conflicts(source, guard_only))
+
+    commits_state = (
+        "The server validates player resources, then records the new planet "
+        "colony settlement ownership after a successful colonization request."
+    )
+    assert source_intent_conflicts(source, commits_state) == []
