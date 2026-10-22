@@ -67,6 +67,59 @@ def source_chunks(statement: str, *, max_chars: int = 22,
     return chunks
 
 
+def recover_unseparated_actions(router: Any, source: str) -> list[dict[str, str]]:
+    """Model-select 2-3 original source spans when no lexical boundary exists.
+
+    Do not invent a midpoint, shorten a grammatical modifier into a new game
+    mechanic, or consider whole-clause echoing an atomic decomposition. This
+    call grounds separately described actions to host-owned verbatim source
+    spans and verifies combined text coverage before creating requirements.
+    """
+    import json
+
+    from .atomic_action_quotes import indexed_source_spans, verify_or_bind_actions
+
+    candidates = indexed_source_spans(source)
+    schema = {
+        "type": "object",
+        "properties": {"actions": {
+            "type": "array", "minItems": 2, "maxItems": 3,
+            "items": {"type": "object", "properties": {
+                "source_id": {"type": "string", "enum": [row["id"] for row in candidates]},
+                "action": {"type": "string", "minLength": 8, "maxLength": 220},
+            }, "required": ["source_id", "action"], "additionalProperties": False}}},
+        "required": ["actions"], "additionalProperties": False,
+    }
+    raw = router.complete_json(
+        "SOURCE-SCOPED DECOMPOSITION ONLY. The original user clause has "
+        "multiple gameplay actions but no safe grammatical split. Select "
+        "2-3 DISTINCT original source-span IDs for the independent actions. "
+        "Do not invent a new gameplay action, an API, or a quote. Use long "
+        "spans when needed to preserve the original complete meaning and "
+        "qualifiers. Explain each selected action in concrete English. "
+        "Do not simply echo the whole clause as one action. JSON only.\\n"
+        + json.dumps({
+            "original_source": source,
+            "candidate_source_spans": [
+                {"id": row["id"], "quote": row["quote"]}
+                for row in candidates],
+        }, ensure_ascii=False),
+        role="planner", temperature=0.0, max_tokens=520,
+        json_schema=schema,
+    )
+    actions = verify_or_bind_actions(
+        router, source, raw.get("actions") if isinstance(raw, dict) else None)
+    parts = [{"source_span": row["source_quote"],
+              "intent": row["action"],
+              "english_query": ("Roblox gameplay API for " + row["action"])[:160]}
+             for row in actions]
+    if not validate_model_behaviors(source, parts):
+        raise ValueError(
+            "SOURCE_UNSEPARATED_DECOMPOSITION_UNPROVEN: selected source "
+            "spans must represent distinct actions and cover the whole clause")
+    return parts
+
+
 def classification_context(
     all_chunks: list[dict[str, str]],
     selected: list[dict[str, str]],
