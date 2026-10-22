@@ -78,7 +78,7 @@ def source_intent_conflicts(
     # its downstream gameplay; it does not require each downstream feature
     # to implement launch as well. A standalone "can depart into space"
     # still requires a real launch/travel behavior.
-    scoped_source = re.sub(r"우주로\\s*나가면", "", source)
+    scoped_source = re.sub(r"우주로\s*나가면", "", source)
     if _DEPART_SPACE.search(scoped_source) and not _SPACE_INTENT.search(text):
         errors.append(
             "SPACE_TRAVEL_DROPPED: user requested departing into space, "
