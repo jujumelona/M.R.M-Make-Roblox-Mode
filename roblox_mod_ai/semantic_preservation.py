@@ -14,7 +14,7 @@ import re
 # Include common Korean terms because source spans may be Korean while a
 # small model's architecture prose is written in English.
 _COLONIZATION = re.compile(
-    r"식민|정착|개척|coloniz|colonis|settlem|found(?:ing)?\s+(?:a\s+)?colony|outpost",
+    r"식민|정착|개척|coloniz|colonis|colon(?:y|ies)|settlem|found(?:ing)?\s+(?:a\s+)?colony|outpost",
     re.I,
 )
 _HOSTILE = re.compile(
