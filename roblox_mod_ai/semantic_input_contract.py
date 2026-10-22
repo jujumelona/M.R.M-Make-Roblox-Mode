@@ -25,7 +25,8 @@ def canonicalize_interaction_fields(raw: dict[str, Any]) -> tuple[dict[str, Any]
             normalized.append(row)
             continue
         interaction, mode = row.get("interaction"), row.get("input_mode", "custom")
-        if interaction in INPUT_MODES and mode in INTERACTIONS:
+        if (isinstance(interaction, str) and interaction in INPUT_MODES
+                and isinstance(mode, str) and mode in INTERACTIONS):
             row = dict(row, interaction=mode, input_mode=interaction)
             changed.append(index)
         normalized.append(row)
@@ -43,9 +44,9 @@ def interaction_issues(raw: dict[str, Any]) -> dict[int, list[str]]:
         world = row.get("world_entities", [])
         choices = row.get("action_choices", [])
         errors: list[str] = []
-        if interaction not in INTERACTIONS:
+        if not isinstance(interaction, str) or interaction not in INTERACTIONS:
             errors.append("interaction must be none, event or request_response")
-        if mode not in INPUT_MODES:
+        if not isinstance(mode, str) or mode not in INPUT_MODES:
             errors.append("input_mode must be custom, host_button or world_prompt")
         if mode == "world_prompt" and interaction != "event":
             errors.append("world_prompt requires event interaction")
@@ -130,7 +131,9 @@ def apply_interaction_patch(
         interaction = candidate.get("interaction", original.get("interaction"))
         mode = candidate.get("input_mode", original.get("input_mode", "custom"))
         client = candidate.get("client_behavior", original.get("client_behavior", ""))
-        if (interaction not in INTERACTIONS or mode not in INPUT_MODES
+        if (not isinstance(interaction, str)
+                or interaction not in INTERACTIONS
+                or not isinstance(mode, str) or mode not in INPUT_MODES
                 or not isinstance(client, str)):
             raise ValueError(
                 "Transport repair may edit only protocol and client input"
