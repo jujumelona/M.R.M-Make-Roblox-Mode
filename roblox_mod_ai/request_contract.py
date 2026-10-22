@@ -33,7 +33,20 @@ def is_composite(statement: str) -> bool:
         r"[가-힣]{2,}(?:해서|하고|하며|으며|면서|거나|고|며)(?=\s|$)",
         text,
     )
-    return (len(text) >= 85 or len(action_connectors) >= 2 or
+    # Detect unpunctuated independent actions before any fake midpoint
+    # partition is attempted. "and"/"then" with a substantive clause, or
+    # Korean exemplar plural "등" plus another phrase, are uncertainty
+    # signals, not proof of a genre or one implementation per word.
+    english_join = (
+        len(text.split()) >= 5
+        and bool(re.search(r"\b(?:and|then)\b", text, re.I))
+    )
+    korean_examples = (
+        len(text.split()) >= 4
+        and bool(re.search(r"[가-힣]{2,}등(?:으로|의)?(?:\s|$)", text))
+    )
+    return (len(text) >= 85 or len(action_connectors) >= 2
+            or english_join or korean_examples or
             (len(text) >= 52 and bool(re.search(
                 r"(?:할\s*수\s*있고|할\s*수\s*있으며|하(?:고|면서)|그러고|그렇게해서|그리고|및|등으로|and|then)",
                 text, flags=re.IGNORECASE))))
