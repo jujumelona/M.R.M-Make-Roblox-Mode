@@ -59,6 +59,43 @@ SEMANTIC_FACET_SCHEMA = {
 }
 
 
+
+# Production-local GGUF planner output. A gameplay author must not be asked to
+# choose RemoteEvent/RemoteFunction/client_behavior: these have no meaning as
+# source-level game mechanics. The host derives the transport AFTER source
+# semantics and emits the UI. This schema deliberately has NO transport keys.
+HOST_OWNED_SEMANTIC_FACET_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "systems": {"type": "array", "maxItems": 3, "items": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "maxLength": 120},
+                "server_behavior": {"type": "string", "maxLength": 4096},
+                "observable_result": {"type": "string", "maxLength": 4096},
+                "world_entities": {
+                    "type": "array", "maxItems": 24,
+                    "items": {"type": "string", "maxLength": 64},
+                },
+                "action_choices": {"type": "array", "maxItems": 8, "items": {
+                    "type": "object",
+                    "properties": {
+                        "id": {"type": "string"},
+                        "label": {"type": "string"},
+                    },
+                    "required": ["id", "label"],
+                }},
+            },
+            "required": [
+                "name", "server_behavior", "observable_result",
+                "world_entities",
+            ],
+        }},
+    },
+    "required": ["systems"],
+}
+
+
 def _pascal(value: str, fallback: str) -> str:
     # Suffix is always host-generated to avoid collisions across seven facets.
     words = re.findall(r"[A-Za-z][A-Za-z0-9]*", value)
