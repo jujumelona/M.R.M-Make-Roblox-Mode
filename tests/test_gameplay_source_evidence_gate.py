@@ -2,7 +2,7 @@
 from types import SimpleNamespace
 
 from roblox_mod_ai.gameplay_source_evidence import (
-    authored_action_body, has_gameplay_mutation,
+    authored_action_body, has_gameplay_mutation, state_key_used_by_executable_code,
 )
 from roblox_mod_ai.module_generation_gate import generated_module_errors
 from roblox_mod_ai.spec import ModuleKind
@@ -77,3 +77,32 @@ def test_generation_checkpoint_rejects_fake_routed_effect():
     )
     corrected = generated_module_errors(module, proposal, implementation, Analyzer())
     assert not any(error.startswith("ACTION_EFFECT_UNIMPLEMENTED:") for error in corrected)
+
+
+def test_typed_effect_key_must_appear_on_real_mutation_target():
+    assert not state_key_used_by_executable_code(
+        '-- player:SetAttribute("ColonyOwned", true)\n'
+        'print("ColonyOwned")\n'
+        'workspace:SetAttribute("UnrelatedWorldFlag", true)\n',
+        "ColonyOwned",
+    )
+    assert not state_key_used_by_executable_code(
+        'local ColonyOwned = true\n'
+        'workspace:SetAttribute("WrongFlag", ColonyOwned)\n',
+        "ColonyOwned",
+    )
+    assert not state_key_used_by_executable_code(
+        'services.PlayerDataManager.GetState(player, "ColonyOwned")\n'
+        'workspace:SetAttribute("WrongFlag", true)\n',
+        "ColonyOwned",
+    )
+    assert state_key_used_by_executable_code(
+        'player:SetAttribute("ColonyOwned", true)\n',
+        "ColonyOwned",
+    )
+    assert state_key_used_by_executable_code(
+        "inventory.resources += 1\n", "RMMInventory.resources",
+    )
+    assert state_key_used_by_executable_code(
+        "coins.Value += 1\n", "Coins",
+    )
