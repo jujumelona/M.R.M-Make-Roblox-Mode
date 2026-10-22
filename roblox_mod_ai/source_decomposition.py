@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .request_contract import clean, is_composite, span_coverage
+from .request_contract import clean, is_composite, span_coverage, validate_model_behaviors
 from .semantic_preservation import source_intent_conflicts
 
 # These are general clause joiners, NOT a vocabulary of genres or mechanics.
