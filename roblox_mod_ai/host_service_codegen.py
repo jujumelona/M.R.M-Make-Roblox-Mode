@@ -19,6 +19,9 @@ from .luau_service_contract import service_contract_checks
 from .server_interface_audit import dependency_api_errors
 from .request_semantics import request_semantic_errors
 from .spec import ModuleKind, RobloxModuleSpec, RobloxProposal
+from .typed_action_contract import (
+    lua_server_guard, validate_contract, TypedActionContractError,
+)
 
 
 _FORBIDDEN = re.compile(
@@ -45,8 +48,16 @@ def _clean_body(raw: str) -> str:
     return body
 
 
-def _shell(body: str, allowed_choices: list[str] | None = None) -> str:
-    choice_guard = '    local args = {...}\n'
+def _shell(
+    body: str, allowed_choices: list[str] | None = None,
+    *, typed_contract: dict[str, Any] | None = None,
+    world_name: str | None = None,
+) -> str:
+    choice_guard = (
+        lua_server_guard(typed_contract, world_name=world_name)
+        if typed_contract is not None else
+        '    local args = {...}\n'
+    )
     if allowed_choices:
         entries = ", ".join("[" + json.dumps(x) + "] = true" for x in allowed_choices)
         choice_guard = (
@@ -105,6 +116,24 @@ def try_scaffolded_server(
     route_info = (world or actions)[route]
     choices = ((design.get("host_action_choices") or {}).get(route)
                if kind == "remote" else None)
+    typed_spec = ((design.get("host_typed_actions") or {}).get(route)
+                  if kind == "remote" else None)
+    typed = None
+    if typed_spec is not None:
+        if (not isinstance(typed_spec, dict)
+                or typed_spec.get("server") != module.name
+                or route_info.get("max_args") != 1
+                or choices is not None):
+            return None
+        try:
+            typed = validate_contract(
+                typed_spec.get("contract"),
+                world_entities=typed_spec.get("world_entities", []))
+            if typed["target"]["kind"] == "world_entity" and not isinstance(
+                    typed_spec.get("world_name"), str):
+                return None
+        except TypedActionContractError:
+            return None
     if choices is not None and (
             not isinstance(choices, list) or not choices
             or any(not isinstance(x, dict)
@@ -112,7 +141,24 @@ def try_scaffolded_server(
                    or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,31}", x["id"])
                    for x in choices)):
         return None
-    if kind == "world":
+    if typed is not None:
+        input_contract = (
+            "The HOST validates ONE table payload and exposes local "
+            "actionArgs with named, typed fields. The shell rejects "
+            "missing, unknown, out-of-range or forged fields BEFORE "
+            "your body runs. Use actionArgs.fieldId for ALL required "
+            "user parameters, and still verify ownership, available "
+            "balances and real server-side game conditions. "
+            "The required state changes are declarations, not proof "
+            "of implementation. Implement the actual transitions: " +
+            json.dumps(typed["state_changes"], ensure_ascii=False) +
+            ". " +
+            ("The host validates one world target and exposes "
+             "local actionTarget; mutate only the authorized object. "
+             if typed["target"]["kind"] == "world_entity" else "") +
+            "Never trust client-provided cost or rewards."
+        )
+    elif kind == "world":
         input_contract = (
             "The host calls handleAction(player, services, targetPart). "
             "Your BODY receives targetPart as the first vararg. "
@@ -262,7 +308,16 @@ def try_scaffolded_server(
             if not _EFFECT.search(body):
                 raise ValueError("Body lacks observable server-owned state change")
             LiveCodeRepetitionGuard.inspect(body)
-            candidate = _shell(body, [x["id"] for x in choices] if choices else None)
+            if typed is not None and typed["inputs"] and not (
+                    "actionArgs" in body or "args[" in body):
+                raise ValueError(
+                    "Typed server implementation ignores validated player inputs")
+            candidate = _shell(
+                body, [x["id"] for x in choices] if choices else None,
+                typed_contract=typed,
+                world_name=(typed_spec.get("world_name")
+                            if typed_spec else None),
+            )
             diagnostics = [
                 f"{d.rule} {d.file_path}:{d.line_number}: {d.message}"
                 for d in analyzer.analyze_source(candidate, module.file_path)
