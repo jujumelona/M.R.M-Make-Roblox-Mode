@@ -111,6 +111,13 @@ def generated_module_errors(
         if host_routes or world_routes:
             if re.search(r"\bOnServerEvent\b|\bOnServerInvoke\b", masked):
                 errors.append("GATEWAY_DUPLICATE: bootstrap already owns Remote callbacks")
+            from .gameplay_source_evidence import has_gameplay_mutation
+            if not has_gameplay_mutation(code, routed_action=True):
+                errors.append(
+                    "ACTION_EFFECT_UNIMPLEMENTED: real authored handleAction "
+                    "body has no executable gameplay mutation; bootstrap "
+                    "registry setup, logging or comments cannot satisfy "
+                    "an original player action")
 
     return list(dict.fromkeys(errors))
 
