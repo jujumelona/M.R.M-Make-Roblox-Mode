@@ -158,3 +158,20 @@ def test_legacy_nonproduction_path_is_not_silently_rewritten():
     assert converted == raw
     assert changed == []
     assert interaction_issues(converted)
+
+
+def test_world_prompt_cannot_bypass_choice_allowlist():
+    # A malicious or confused plan can specify a world prompt AND selectable
+    # commands. The host must route them through the single typed form
+    # rather than attaching an unvalidated one-way world action.
+    row = dict(_raw_system(), input_mode="world_prompt",
+               interaction="event", world_entities=["Machine"],
+               action_choices=[
+                   {"id": "Add", "label": "Add"},
+                   {"id": "Remove", "label": "Remove"},
+               ])
+    fixed, changes = bind_host_standard_transport({"systems": [row]})
+    assert changes == [0]
+    assert fixed["systems"][0]["input_mode"] == "custom"
+    assert fixed["systems"][0]["interaction"] == "request_response"
+    assert interaction_issues(fixed) == {}
