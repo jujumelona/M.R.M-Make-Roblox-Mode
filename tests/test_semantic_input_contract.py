@@ -10,6 +10,7 @@ import pytest
 
 from roblox_mod_ai.semantic_input_contract import (
     canonicalize_interaction_fields, interaction_issues, apply_interaction_patch,
+    apply_client_input_completion, CLIENT_INPUT_ONLY_SCHEMA,
 )
 from roblox_mod_ai.dynamic_architect import RobloxDynamicArchitect
 
@@ -154,3 +155,122 @@ def test_architect_repairs_malformed_transport_without_replanning_gameplay(monke
                for m in result["modules"])
     assert all("purchases new components" not in m.description
                for m in result["modules"])
+
+
+def _trade_missing_client():
+    return {"systems": [{
+        "name": "Trade",
+        "server_behavior": (
+            "Validate the player's trade request against the authoritative "
+            "inventory and money state, transfer resources or credits, then "
+            "commit both balances to the server-owned economy."
+        ),
+        "client_behavior": "",
+        "observable_result": (
+            "The inventory count and earned currency balance update visibly."
+        ),
+        "interaction": "request_response",
+        "input_mode": "custom",
+        "world_entities": [],
+    }]}
+
+
+def test_real_plan_56_empty_optional_schema_keys_are_idempotent():
+    raw = _trade_missing_client()
+    original = deepcopy(raw)
+    patch = {"systems": [{
+        "index": 0,
+        "interaction": "request_response",
+        "input_mode": "custom",
+        "world_entities": [],
+        "action_choices": [],
+        "client_behavior": (
+            "The player opens the Trade interface, selects a resource and "
+            "quantity, reviews the in-game price, and submits the transaction."
+        ),
+    }]}
+    got = apply_interaction_patch(raw, patch)
+    assert interaction_issues(got) == {}
+    assert got["systems"][0]["server_behavior"] == raw["systems"][0]["server_behavior"]
+    assert "action_choices" not in got["systems"][0]
+    assert raw == original
+
+
+def test_client_only_completion_guards_actual_report_56_unrelated_repair_ui():
+    raw = _trade_missing_client()
+    wrong = {
+        "client_behavior": (
+            "Player opens a repair console UI and selects a damaged vehicle "
+            "then pays credits to perform a mechanical repair."
+        )
+    }
+    with pytest.raises(ValueError, match="unrelated user action"):
+        apply_client_input_completion(raw, wrong, index=0)
+    correct = {
+        "client_behavior": (
+            "The player opens a Trade panel, selects the item and amount "
+            "to sell, and submits the trade request to the server."
+        )
+    }
+    fixed = apply_client_input_completion(raw, correct, index=0)
+    assert interaction_issues(fixed) == {}
+    assert fixed["systems"][0]["client_behavior"] == correct["client_behavior"]
+    for key in ("name", "server_behavior", "observable_result",
+                "interaction", "input_mode", "world_entities"):
+        assert fixed["systems"][0][key] == raw["systems"][0][key]
+    assert raw["systems"][0]["client_behavior"] == ""
+
+
+@pytest.mark.parametrize("bad", [
+    {"client_behavior": "Trade animation appears"},
+    {"client_behavior": "Trade player selects a resource", "world_entities": []},
+    {"systems": [{"client_behavior": "Open trade"}]},
+    {"client_behavior": ""},
+])
+def test_client_only_patch_cannot_change_contract_or_invent_ui(bad):
+    with pytest.raises(ValueError):
+        apply_client_input_completion(_trade_missing_client(), bad, index=0)
+
+
+def test_client_only_output_for_full_architect_not_another_protocol_replan(monkeypatch):
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    source = "Trade earned game resources for credits"
+    research = {"ledger": {
+        "original_prompt": source,
+        "requirements": [{"id": "req-trade", "statement": source}],
+        "facets": [{
+            "id": "intent-trade", "source_span": source,
+            "requirements": ["req-trade"],
+            "search_query": "Roblox Trade earned game resources for credits",
+        }],
+    }, "evidence": []}
+    raw = _trade_missing_client()
+    calls = []
+    class Router:
+        def complete_json(self, prompt, **kwargs):
+            calls.append((prompt, kwargs))
+            if len(calls) == 1:
+                return deepcopy(raw)
+            if len(calls) == 2:
+                assert kwargs["json_schema"] == CLIENT_INPUT_ONLY_SCHEMA
+                assert kwargs["max_tokens"] <= 260
+                assert "original_source_requirement" in prompt
+                # Original 15th-failure repair generated an unrelated UI.
+                return {"client_behavior": (
+                    "Player opens a repair console and selects a vehicle "
+                    "repair item, then confirms the repair request."
+                )}
+            assert len(calls) == 3
+            assert kwargs["json_schema"] == CLIENT_INPUT_ONLY_SCHEMA
+            return {"client_behavior": (
+                "Player opens the Trade window, selects their stored item "
+                "and quantity, then submits the priced trade request."
+            )}
+    result = RobloxDynamicArchitect(Router()).design(
+        source, research, [])
+    assert len(calls) == 3
+    assert any("transfer resources or credits" in m.description
+               for m in result["modules"])
+    assert all("repair console" not in m.description
+               for m in result["modules"])
+    assert research["architecture_attempts"][-1]["passed"]
