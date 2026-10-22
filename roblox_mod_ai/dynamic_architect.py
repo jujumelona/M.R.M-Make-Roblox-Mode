@@ -30,6 +30,7 @@ from .semantic_world_entities import normalize_world_names
 from .source_ownership_review import (
     SOURCE_OWNERSHIP_REVIEW_SCHEMA, ground_source_ownership,
 )
+from .typed_action_contract import SCHEMA as TYPED_ACTION_SCHEMA, validate_contract
 
 _VALID_NAME = re.compile(r"^[A-Z][A-Za-z0-9]{2,58}$")
 _VALID_REMOTE = re.compile(r"^[A-Z][A-Za-z0-9]{2,55}$")
@@ -1394,6 +1395,73 @@ class RobloxDynamicArchitect:
                         # verified exchange. Ambiguous input is never guessed.
                         draft, named_world_refs = normalize_world_names(draft)
                         draft, swapped_indexes = canonicalize_interaction_fields(draft)
+                        # Production models provide only a short declarative
+                        # typed input/target/effect manifest. The host owns
+                        # all UI, Remotes, client argument marshaling and
+                        # server validation; it is NEVER generated as prose
+                        # by the gameplay planner.
+                        if getattr(self.router, "supports_typed_action_contract", False):
+                            typed_systems = []
+                            for system_index, system in enumerate(draft["systems"]):
+                                if (system.get("input_mode", "custom") == "custom"
+                                        and system.get("interaction") in {
+                                            "event", "request_response"}):
+                                    if "action_contract" not in system:
+                                        manifest = self.router.complete_json(
+                                            "Define a SHORT typed INPUT CONTRACT "
+                                            "for the ALREADY EXISTING server action. "
+                                            "Do not redesign the gameplay. Return "
+                                            "JSON {inputs:[{id,label,type,"
+                                            "min,max,options}],target:{kind,name},"
+                                            "state_changes:[{scope,key,operation}]}. "
+                                            "Inputs must be 0-4 fields typed text, "
+                                            "integer (requires min and max), or "
+                                            "choice (1-8 id/label options). Use "
+                                            "target.kind=world_entity only for ONE "
+                                            "explicitly named static world entity; "
+                                            "otherwise use {kind:none}. State "
+                                            "changes are 1-5 authoritative "
+                                            "player/world fields with operation "
+                                            "increment/decrement/set/create/remove. "
+                                            "The state changes must describe the "
+                                            "actual server transitions ALREADY "
+                                            "defined in server_behavior. Do not "
+                                            "invent money, parts, new systems, "
+                                            "generic UI actions or optional keys "
+                                            "not required by field types. JSON only.\n"
+                                            + json.dumps({
+                                                "source_requirements": subset,
+                                                "name": system.get("name"),
+                                                "server_behavior": system.get(
+                                                    "server_behavior"),
+                                                "world_entities": system.get(
+                                                    "world_entities", []),
+                                            }, ensure_ascii=False),
+                                            role="planner", temperature=0.0,
+                                            max_tokens=500,
+                                            json_schema=TYPED_ACTION_SCHEMA,
+                                        )
+                                        manifest = validate_contract(
+                                            manifest, world_entities=system.get(
+                                                "world_entities", []))
+                                        system = dict(system, action_contract=manifest)
+                                    else:
+                                        system = dict(system, action_contract=validate_contract(
+                                            system["action_contract"],
+                                            world_entities=system.get(
+                                                "world_entities", [])))
+                                    # Host generates typed UI, not an imaginary
+                                    # client_behavior text. The semantic field
+                                    # remains a readable trace for legacy
+                                    # validators and module descriptions.
+                                    system = dict(system, client_behavior=(
+                                        "Host generates a typed action form for " +
+                                        str(system.get("name") or "this action") +
+                                        " and sends only the validated player "
+                                        "input fields to the server Remote."
+                                    ))
+                                typed_systems.append(system)
+                            draft = dict(draft, systems=typed_systems)
                         invalid_input = interaction_issues(draft)
                         if invalid_input:
                             input_repair = (draft, invalid_input)
@@ -1721,6 +1789,25 @@ class RobloxDynamicArchitect:
                             "Action IDs must belong to one declared host RemoteFunction")
                     approved_choices[remote_name] = choices
             result["host_action_choices"] = approved_choices
+            typed_actions: dict[str, dict[str, Any]] = {}
+            for part in accepted_parts:
+                for remote_name, typed in part.get(
+                        "_host_typed_actions", {}).items():
+                    if (remote_name in typed_actions or
+                            remote_name not in host_actions or
+                            not isinstance(typed, dict) or
+                            typed.get("server") != host_actions[remote_name]["service"]):
+                        raise DynamicDesignError(
+                            "Typed action not bound to one host-owned server Remote")
+                    typed_actions[remote_name] = typed
+                    # Typed remote payload is one validated table. Never let
+                    # legacy host no-argument or choice-ID routes shadow it.
+                    if (remote_name in approved_choices or
+                            host_actions[remote_name].get("max_args") == 0):
+                        raise DynamicDesignError(
+                            "Typed action conflicts with existing Remote input")
+                    host_actions[remote_name]["max_args"] = 1
+            result["host_typed_actions"] = typed_actions
             # A Roblox ProximityPrompt already renders a cross-platform
             # object interaction. Host owns its Instance and server callback;
             # no fabricated client module or client-to-server Remote.
