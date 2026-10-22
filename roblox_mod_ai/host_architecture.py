@@ -15,6 +15,7 @@ import re
 from typing import Any
 
 from .semantic_preservation import source_intent_conflicts, source_outcome_conflicts
+from .typed_action_contract import validate_contract, TypedActionContractError
 
 
 class HostArchitectureError(ValueError):
@@ -197,6 +198,7 @@ def expand_semantic_facet(
     objects: list[dict[str, Any]] = []
     host_world_actions: dict[str, dict[str, str]] = {}
     host_action_choices: dict[str, list[dict[str, str]]] = {}
+    host_typed_actions: dict[str, dict[str, Any]] = {}
     results: list[str] = []
     used_modules = set(reserved_modules)
     used_remotes = set(reserved_remotes)
@@ -233,6 +235,15 @@ def expand_semantic_facet(
                     "world_entities must be short names, not geometry")
             clean_world.append(entity.strip())
         world = clean_world
+        typed_contract = system.get("action_contract")
+        if typed_contract is not None:
+            if interaction not in {"event", "request_response"} or input_mode != "custom":
+                raise HostArchitectureError("Typed action contract requires custom player input")
+            try:
+                typed_contract = validate_contract(
+                    typed_contract, world_entities=world)
+            except TypedActionContractError as exc:
+                raise HostArchitectureError("INVALID_TYPED_ACTION_CONTRACT: " + str(exc)) from exc
         choices = system.get("action_choices", [])
         if (not isinstance(choices, list) or len(choices) > 12
                 or any(not isinstance(item, dict)
@@ -243,6 +254,9 @@ def expand_semantic_facet(
                        for item in choices)
                 or len({item["id"] for item in choices}) != len(choices)):
             raise HostArchitectureError("Action choices must be unique stable IDs with labels")
+        if typed_contract is not None and choices:
+            raise HostArchitectureError(
+                "Typed action inputs and legacy action choices cannot coexist")
         if choices and not (interaction == "request_response" and input_mode == "custom"):
             raise HostArchitectureError("Selectable actions require a custom request_response ingress")
         if not isinstance(name, str) or not name.strip():
@@ -328,6 +342,7 @@ def expand_semantic_facet(
         behavior_signature = (
             server.strip(), client.strip(), interaction, input_mode,
             tuple(world), observable.strip(),
+            repr(typed_contract),
         )
         if behavior_signature in seen_behaviors:
             continue
@@ -375,6 +390,23 @@ def expand_semantic_facet(
                          else "RemoteFunction"),
             })
         results.append(observable.strip())
+        if typed_contract is not None:
+            if not assigned_remotes or len(assigned_remotes) != 1:
+                raise HostArchitectureError(
+                    "Typed action requires exactly one routed Remote")
+            target = typed_contract["target"]
+            resolved_world = None
+            if target["kind"] == "world_entity":
+                index_of_target = world.index(target["name"])
+                stem = _pascal(target["name"], "WorldObject")
+                resolved_world = (
+                    stem[:23] + suffix + str(index_of_target + 1))
+            host_typed_actions[remote_name] = {
+                "contract": typed_contract,
+                "server": server_name, "client": client_name,
+                "world_entities": list(world),
+                "world_name": resolved_world,
+            }
         if choices and assigned_remotes:
             host_action_choices[remote_name] = [
                 {"id": item["id"], "label": item["label"].strip()}
@@ -444,6 +476,7 @@ def expand_semantic_facet(
     return {
         "_host_world_actions": host_world_actions,
         "_host_action_choices": host_action_choices,
+        "_host_typed_actions": host_typed_actions,
         "_host_client_actions": {
             modules_row["name"]: {
                 "remote": modules_row["uses_remotes"][0],
