@@ -211,12 +211,15 @@ class LuauCodeGenerator:
         earned_upgrades = try_declarative_upgrade(module, proposal, self.router)
         if earned_upgrades is not None:
             return earned_upgrades
-        verified_market = try_trade_catalog(module, proposal, self.router)
-        if verified_market is not None:
-            return verified_market
+        # An installed-part-linked catalog has stronger validated ownership
+        # semantics than a general one-time entitlement market; keep its
+        # original host route instead of weakening it.
         declarative_purchase = try_catalog_purchase(module, proposal, self.router)
         if declarative_purchase is not None:
             return declarative_purchase
+        verified_market = try_trade_catalog(module, proposal, self.router)
+        if verified_market is not None:
+            return verified_market
         host_source = render_host_gameplay(module, proposal)
         if host_source is not None:
             return host_source
