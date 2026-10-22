@@ -232,11 +232,12 @@ def build_implementation_blueprint(proposal: Any) -> dict[str, Any]:
         ]
         if server_owners:
             implementation = " ".join(m.description for m in server_owners)
-            expected = (
-                str((dyn.get("acceptance_facets") or {}).get(facet, "")) + " " +
-                str((dyn.get("acceptance") or {}).get(atom.get("requirement_id"), ""))
-            )
-            for mismatch in source_intent_conflicts(span, implementation + " " + expected):
+            # Authoritative server behavior must satisfy the original action
+            # ON ITS OWN. Previously concatenating client acceptance could
+            # turn an unrelated ship-upgrade server into a "valid launcher"
+            # just by mentioning launch in the UI. Never allow a client-side
+            # promise to fulfill absent backend mechanics.
+            for mismatch in source_intent_conflicts(span, implementation):
                 blocked.append(str(facet) + ": implementation " + mismatch)
     # Exact text ownership is not semantic implementation. Previously a failed
     # source classifier inserted "Implement only the requested gameplay ..." and
