@@ -223,7 +223,7 @@ def build_implementation_blueprint(proposal: Any) -> dict[str, Any]:
         span = atom.get("source_span", "")
         facet = atom.get("facet_id", "")
         classification = str(atom.get("intent", "")) + " " + str(atom.get("english_query", ""))
-        for mismatch in source_intent_conflicts(span, classification):
+        for mismatch in source_intent_conflicts(span, classification, require_implementation=False):
             blocked.append(str(facet) + ": classifier " + mismatch)
         server_owners = [
             m for m in proposal.modules
