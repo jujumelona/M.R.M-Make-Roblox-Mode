@@ -134,7 +134,7 @@ class RobloxProductionOrchestrator:
         # targets, yields or a parallel economy API.
         world_materializations = ensure_mining_world_contract(proposal)
         addon_mode = proposal.game_design.get("project_mode") == "existing_experience_addon"
-        from .artifact_path_safety import safe_segment, safe_project_file
+        from .artifact_path_safety import safe_segment, validate_project_layout
         run_component = safe_segment(run_name, field="run_name")
         title_component = safe_segment(proposal.game_title, field="game_title")
         output_dir = self.workspace_root / run_component / title_component
