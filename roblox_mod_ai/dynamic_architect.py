@@ -818,20 +818,21 @@ class RobloxDynamicArchitect:
                         previous_draft, field = semantic_repair
                         semantic_repair = None
                         original_system = previous_draft["systems"][0]
-                        # Preserve the previously valid rules and host-owned
-                        # contracts. A new model call edits only one field.
+                        # The previous implementation REPLACED the entire
+                        # server_behavior with the one missing rule and thus
+                        # deleted previously valid mechanics. Treat the model
+                        # response as a delta, never as the new field.
                         patch = self.router.complete_json(
-                            "Repair ONLY the failed gameplay contract field "
-                            "for this user-authored action. Return JSON "
-                            "{replacement:string}, not a new system. "
-                            "For server_behavior, preserve every requested "
-                            "mechanic and implement its authoritative state "
-                            "transition. For observable_result, describe "
-                            "the server-confirmed changed state visible to "
-                            "the player; do not repeat persistence internals. "
-                            "Alien NPCs must not become PvP targets. "
-                            "Do not supply Luau code, Remote IDs, or Roblox "
-                            "geometry.\n"
+                            "Return ONLY JSON {replacement:string} containing "
+                            "the ADDITIONAL missing behavioral rule. The host "
+                            "will APPEND it to the existing field, preserving "
+                            "all validated original actions. Do not repeat or "
+                            "reword existing rules and do not introduce new "
+                            "gameplay beyond the source_requirements. For a "
+                            "server field add the missing authoritative state "
+                            "transition; for a visible outcome add the actual "
+                            "state consequence observed by the player. Never "
+                            "invent Roblox code or Remote IDs.\n"
                             + json.dumps({
                                 "field": field,
                                 "validator_error": previous_error,
@@ -850,9 +851,29 @@ class RobloxDynamicArchitect:
                             raise DynamicDesignError(
                                 "Bounded semantic repair returned no valid replacement"
                             )
+                        existing = original_system.get(field)
+                        if not isinstance(existing, str):
+                            existing = ""
+                        # If the optional outcome was absent, preserve the
+                        # independently model-authored client feedback that
+                        # the host would have used as its observable result.
+                        if field == "observable_result" and not existing:
+                            existing = original_system.get("client_behavior", "")
+                        addition = replacement_text.strip()
+                        if addition.casefold() in existing.casefold():
+                            raise DynamicDesignError(
+                                "Scoped repair repeated the previous rule "
+                                "instead of adding the missing behavior"
+                            )
+                        combined = (existing.strip().rstrip(". ") + ". " + addition
+                                    if existing.strip() else addition)
+                        if len(combined) > 4096:
+                            raise DynamicDesignError(
+                                "Scoped repair exceeds the bounded single-field contract"
+                            )
                         draft = dict(previous_draft)
                         draft["systems"] = [
-                            dict(original_system, **{field: replacement_text.strip()})
+                            dict(original_system, **{field: combined})
                         ]
                     elif missing_role:
                         patch = self.router.complete_json(
