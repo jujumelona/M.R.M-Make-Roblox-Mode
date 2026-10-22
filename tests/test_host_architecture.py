@@ -218,8 +218,13 @@ class SemanticOnlySevenFeatureModel:
             "client_behavior": "Client displays " + label +
                                " UI and sends a validated player action to the server.",
             "interaction": "event",
-            "observable_result": "User performs " + label +
-                                 " actions and sees server-confirmed state updates.",
+            "observable_result": (
+                "The player establishes a saved colony settlement and the "
+                "planet shows its new owner and territory."
+                if "colony" in fid else
+                "User performs " + label +
+                " actions and sees server-confirmed state updates."
+            ),
             "world_entities": ["OreNode"] if "mining" in fid else [],
         }]}
 
