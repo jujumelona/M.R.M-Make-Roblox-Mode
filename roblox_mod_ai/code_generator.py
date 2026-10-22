@@ -23,6 +23,7 @@ from .host_catalog_purchase import eligible_catalog_purchase, try_catalog_purcha
 from .host_trade_catalog import eligible_trade_catalog, try_trade_catalog
 from .host_upgrade_declarative import eligible_declarative_upgrade, try_declarative_upgrade
 from .host_ship_sections import eligible_ship_sections, try_ship_sections
+from .host_resource_ship_builder import eligible_resource_ship_builder, try_resource_ship_builder
 from .host_ship_slot_configuration import (
     eligible_ship_slot_configuration, try_ship_slot_configuration,
 )
@@ -104,6 +105,7 @@ class LuauCodeGenerator:
                     or eligible_trade_catalog(module, proposal) is not None
                     or eligible_catalog_purchase(module, proposal) is not None
                     or eligible_declarative_upgrade(module, proposal) is not None
+                    or eligible_resource_ship_builder(module, proposal) is not None
                     or eligible_ship_sections(module, proposal) is not None
                     or eligible_ship_slot_configuration(module, proposal) is not None
                     or eligible_ship_slot_levels(module, proposal) is not None
@@ -200,6 +202,9 @@ class LuauCodeGenerator:
         configured_ship = try_ship_slot_configuration(module, proposal, self.router)
         if configured_ship is not None:
             return configured_ship
+        resource_ship = try_resource_ship_builder(module, proposal, self.router)
+        if resource_ship is not None:
+            return resource_ship
         declarative_ship = try_ship_sections(module, proposal, self.router)
         if declarative_ship is not None:
             return declarative_ship
