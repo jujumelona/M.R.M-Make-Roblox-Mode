@@ -592,7 +592,10 @@ def test_colony_feedback_cannot_redeem_a_server_without_owned_state():
         "The client displays a server-confirmed visible planet result and "
         "shows the planet when it becomes colonized."
     )
-    raw["systems"][0].pop("observable_result")
+    raw["systems"][0]["observable_result"] = (
+        "The client shows that the planet becomes colonized and displays "
+        "the resulting newly owned territory."
+    )
     with pytest.raises(HostArchitectureError, match="SEMANTIC_SOURCE_CONTRACT server"):
         expand_semantic_facet(
             raw, facet_id="intent-unique", requirement_ids=["req-001"],
