@@ -644,3 +644,111 @@ def test_generic_semantic_replan_must_allow_multiple_independent_actions(
     assert len(model.calls) == 2
     assert len(result["modules"]) >= 4
     assert all("Decoration" not in m.name for m in result["modules"])
+
+def test_general_source_fidelity_review_repairs_unseen_gardening_mechanic(
+        monkeypatch):
+    """Unknown game domains must not be accepted merely because regexes do not know them."""
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    monkeypatch.setenv("RMM_SOURCE_FIDELITY_AUDIT", "1")
+    source = "Plant seeds and water the growing garden"
+    audit = {"ledger": {
+        "original_prompt": source,
+        "requirements": [{"id": "req-garden", "statement": source}],
+        "facets": [{"id": "intent-garden", "requirements": ["req-garden"],
+                    "source_span": source,
+                    "search_query": "Roblox plant seeds and water garden to grow plants"}],
+    }, "evidence": []}
+    bad = {"systems": [{
+        "name": "GardenDecorationShop",
+        "server_behavior": (
+            "The server charges currency for decoration skins and stores "
+            "the purchased decorations in the player's inventory."
+        ),
+        "client_behavior": (
+            "The client opens a cosmetics catalog and shows purchased items."
+        ),
+        "observable_result": (
+            "The player receives a purchased decoration for the garden."
+        ),
+        "interaction": "request_response",
+        "input_mode": "custom",
+        "world_entities": [],
+    }]}
+    good = {"systems": [{
+        "name": "SeedPlanting",
+        "server_behavior": (
+            "The server validates the selected plot, plants the seed "
+            "in the garden soil and saves its growth state."
+        ),
+        "client_behavior": (
+            "The player selects a seed and a target plot and requests "
+            "planting from the server."
+        ),
+        "observable_result": (
+            "The player sees the seed planted in the soil plot."
+        ),
+        "interaction": "request_response",
+        "input_mode": "custom",
+        "world_entities": [],
+    }, {
+        "name": "GardenWatering",
+        "server_behavior": (
+            "The server validates water availability, waters the garden "
+            "plant and increases its saved growth progress."
+        ),
+        "client_behavior": (
+            "The player chooses a planted plot and requests watering."
+        ),
+        "observable_result": (
+            "The planted seed visibly grows after being watered."
+        ),
+        "interaction": "request_response",
+        "input_mode": "custom",
+        "world_entities": [],
+    }]}
+    class Model:
+        supports_source_fidelity_audit = True
+
+        def __init__(self):
+            self.calls = []
+        def complete_json(self, prompt, **options):
+            self.calls.append((prompt, options))
+            if len(self.calls) == 1:
+                return deepcopy(bad)
+            if len(self.calls) == 2:
+                assert options["max_tokens"] <= 360
+                assert "source_requirement" in prompt
+                return {"covered": False, "server_quote": "",
+                        "outcome_quote": "",
+                        "missing": "Plant and water seeds, not buy garden decorations"}
+            if len(self.calls) == 3:
+                assert "missing_obligations" in prompt
+                return deepcopy(good)
+            assert len(self.calls) == 4
+            assert options["max_tokens"] <= 360
+            return {"covered": True,
+                    "server_quote": "plants the seed in the garden soil",
+                    "outcome_quote": "The planted seed visibly grows",
+                    "missing": ""}
+    model = Model()
+    result = RobloxDynamicArchitect(model).design(source, audit, [])
+    assert len(model.calls) == 4
+    assert any("plants the seed" in m.description for m in result["modules"])
+    assert any("waters the garden" in m.description for m in result["modules"])
+    assert not any("decoration skins" in m.description for m in result["modules"])
+
+
+def test_source_fidelity_rejects_unsupported_model_self_certification():
+    from roblox_mod_ai.dynamic_architect import _ground_source_fidelity_review
+    server = "The server updates a catalog of cosmetic items and prices."
+    visible = "The player sees a purchased cosmetic item on screen."
+    assert "Unsupported server_quote" in _ground_source_fidelity_review(
+        {"covered": True,
+         "server_quote": "server plants and waters a garden plot",
+         "outcome_quote": "purchased cosmetic item",
+         "missing": ""},
+        server, visible)
+    assert "Unimplemented source action" in _ground_source_fidelity_review(
+        {"covered": False, "missing": "growing plants",
+         "server_quote": "", "outcome_quote": ""},
+        server, visible)
