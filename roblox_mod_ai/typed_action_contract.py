@@ -75,19 +75,26 @@ def validate_contract(raw: Any, *, world_entities: list[str]) -> dict[str, Any]:
                 or kind not in ("text", "integer", "choice")):
             raise TypedActionContractError("Invalid, duplicated or unsupported typed input")
         seen.add(field_id)
+        # The shared JSON grammar exposes min/max/options for every field
+        # kind. Constrained local models may materialize those optional
+        # siblings even on TEXT fields. Reject unknown metadata, but let
+        # the discriminator (type) own the meaning of known siblings.
+        # Discard inapplicable siblings; NEVER pass them to UI or server.
+        allowed_metadata = {"id", "label", "type", "min", "max", "options"}
+        if set(field) - allowed_metadata:
+            raise TypedActionContractError("Input contains unknown metadata")
         if kind == "integer":
             low, high = field.get("min"), field.get("max")
             if (type(low) is not int or type(high) is not int
                     or not -1000000 <= low <= high <= 1000000):
                 raise TypedActionContractError("Integer input requires bounded min/max")
-            if set(field) != {"id", "type", "label", "min", "max"}:
-                raise TypedActionContractError("Integer field must have only min/max")
+            # options belongs only to choice; a generated empty options
+            # array is inactive and cannot change integer semantics.
             clean_fields.append({"id": field_id, "label": field["label"].strip(),
                                  "type": kind, "min": low, "max": high})
         elif kind == "choice":
             options = field.get("options")
-            if (set(field) != {"id", "type", "label", "options"}
-                    or not isinstance(options, list) or not 1 <= len(options) <= 8):
+            if not isinstance(options, list) or not 1 <= len(options) <= 8:
                 raise TypedActionContractError("Choice needs 1-8 fixed options")
             items, option_ids = [], set()
             for option in options:
@@ -103,13 +110,17 @@ def validate_contract(raw: Any, *, world_entities: list[str]) -> dict[str, Any]:
             clean_fields.append({"id": field_id, "label": field["label"].strip(),
                                  "type": kind, "options": items})
         else:
-            if set(field) != {"id", "type", "label"}:
-                raise TypedActionContractError("Text field has unsupported metadata")
+            # min/max/options are inert for text. Keep the canonical
+            # text field only; its length is enforced on the server.
             clean_fields.append({"id": field_id, "label": field["label"].strip(), "type": kind})
     if not isinstance(target, dict) or target.get("kind") not in ("none", "world_entity"):
         raise TypedActionContractError("Unsupported input target")
     if target["kind"] == "none":
-        if set(target) != {"kind"}:
+        if set(target) - {"kind", "name"}:
+            raise TypedActionContractError("No-target action has unknown fields")
+        # Constrained JSON can emit name="" for an unselected target.
+        # A nonblank target name must not be silently disregarded.
+        if target.get("name") not in (None, ""):
             raise TypedActionContractError("No-target action cannot claim a world object")
         clean_target = {"kind": "none"}
     else:
@@ -119,8 +130,9 @@ def validate_contract(raw: Any, *, world_entities: list[str]) -> dict[str, Any]:
                 or world_entities.count(name) != 1):
             raise TypedActionContractError("World target must reference one declared object")
         clean_target = {"kind": "world_entity", "name": name}
-    if not fields and clean_target["kind"] == "none":
-        raise TypedActionContractError("Empty typed action should use the existing host_button")
+    # Zero-field player actions are still valid: the host renders a submit
+    # button carrying one empty, validated table. Do not send this case
+    # back to the small model just to rename it host_button.
     changes = []
     for effect in effects:
         if (not isinstance(effect, dict)
