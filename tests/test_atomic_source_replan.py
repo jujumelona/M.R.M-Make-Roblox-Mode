@@ -196,7 +196,7 @@ def test_report21_korean_compound_facets_reach_real_gameplay_modules_from_source
                 )]}
             if n == 2:
                 assert "source_id" in prompt
-                payload = json.loads(prompt.split("\\n")[-1])
+                payload = json.loads(prompt.split("\n")[-1])
                 choices = {row["quote"]: row["id"]
                            for row in payload["candidate_source_spans"]}
                 return {"actions": [
