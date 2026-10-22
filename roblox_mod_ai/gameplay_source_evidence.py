@@ -79,8 +79,11 @@ def state_key_used_by_executable_code(body: str, key: str) -> bool:
     # an unrelated local variable, guard expression, or right-hand operand.
     for line in executable.splitlines():
         for match in _MUTATION.finditer(line):
+            # Only the actual mutated expression can own this key; a
+            # similarly named local variable earlier on the SAME line is
+            # not a state effect.
             if re.search(r"\b" + re.escape(leaf) + r"\b",
-                         line[:match.end()], flags=re.I):
+                         match.group(), flags=re.I):
                 return True
 
     # A quoted key is evidence only when it is a literal argument of a
