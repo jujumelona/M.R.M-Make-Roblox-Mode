@@ -232,7 +232,11 @@ def test_grammatical_source_units_no_longer_create_fifteen_pseudo_features():
     )
     spans = source_chunks(source)
     assert " ".join(spans) == source
-    assert 5 <= len(spans) < 15
+    assert 2 <= len(spans) < 15
+    # A short character target must never split off a dangling modifier
+    # or hide the final independent colony/combat action.
+    assert " ".join(spans) == source
+    assert all(len(span.strip()) > 10 for span in spans)
     assert all(span != "가능한 모드" for span in spans)
     assert any("식민지화" in span and "가능한 모드" in span for span in spans)
     # A connector must not be a model-owned game mechanic on its own.
