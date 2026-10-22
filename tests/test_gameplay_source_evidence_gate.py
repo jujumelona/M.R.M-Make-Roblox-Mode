@@ -1,0 +1,79 @@
+"""Routed gameplay cannot pass on host boilerplate or a textual effect claim."""
+from types import SimpleNamespace
+
+from roblox_mod_ai.gameplay_source_evidence import (
+    authored_action_body, has_gameplay_mutation,
+)
+from roblox_mod_ai.module_generation_gate import generated_module_errors
+from roblox_mod_ai.spec import ModuleKind
+
+
+SOURCE = """--!strict
+local Service = {}
+function Service.start(services)
+    Service._services = services
+end
+function Service.handleAction(player, services, ...)
+    -- RMM_GAMEPLAY_BODY_BEGIN
+    print("player:SetAttribute('Colonized', true)")
+    -- workspace:SetAttribute("Colonized", true)
+    return true
+    -- RMM_GAMEPLAY_BODY_END
+end
+return Service
+"""
+
+
+def test_routed_source_cannot_use_host_registry_or_printed_mutation():
+    assert authored_action_body(SOURCE).strip().startswith("-- RMM_GAMEPLAY_BODY_BEGIN") is False
+    assert not has_gameplay_mutation(SOURCE, routed_action=True)
+    assert not has_gameplay_mutation(
+        '--!strict\nlocal Service = {}\nfunction Service.start(s)\n'
+        'Service._services = services\nend\nreturn Service\n'
+    )
+
+
+def test_mutation_must_be_inside_action_not_an_unrelated_startup():
+    code = SOURCE.replace(
+        '    print("player:SetAttribute(\'Colonized\', true)")',
+        '    print("nothing happens")',
+    ).replace("    Service._services = services",
+              '    workspace:SetAttribute("NotRequested", true)\n    Service._services = services')
+    assert not has_gameplay_mutation(code, routed_action=True)
+    assert has_gameplay_mutation(code)
+
+
+def test_real_routed_action_candidate_is_detectable():
+    code = SOURCE.replace(
+        '    print("player:SetAttribute(\'Colonized\', true)")',
+        '    player:SetAttribute("Colonized", true)',
+    )
+    assert has_gameplay_mutation(code, routed_action=True)
+
+
+def test_generation_checkpoint_rejects_fake_routed_effect():
+    module = SimpleNamespace(
+        name="WorldInteractionServer", module_id="dyn_world",
+        file_path="src/server/WorldInteractionServer.luau",
+        kind=ModuleKind.SERVER_MODULE,
+    )
+    proposal = SimpleNamespace(
+        modules=[module],
+        game_design={"dynamic_design": {
+            "host_actions": {"Act": {"service": module.name}},
+            "host_world_actions": {},
+        }},
+    )
+
+    class Analyzer:
+        def analyze_source(self, *_args, **_kwargs):
+            return []
+
+    errors = generated_module_errors(module, proposal, SOURCE, Analyzer())
+    assert any(error.startswith("ACTION_EFFECT_UNIMPLEMENTED:") for error in errors)
+    implementation = SOURCE.replace(
+        '    print("player:SetAttribute(\'Colonized\', true)")',
+        '    player:SetAttribute("Colonized", true)',
+    )
+    corrected = generated_module_errors(module, proposal, implementation, Analyzer())
+    assert not any(error.startswith("ACTION_EFFECT_UNIMPLEMENTED:") for error in corrected)
