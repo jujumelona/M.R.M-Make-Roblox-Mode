@@ -458,3 +458,44 @@ def test_colony_requires_server_settlement_commit_and_observable_world_result():
         source_requirements=requirement,
         reserved_modules=set(), reserved_remotes=set(), reserved_objects=set())
     assert result["modules"]
+
+
+def test_long_valid_server_action_is_not_rejected_by_arbitrary_prose_length():
+    """Reproduce length-only failures: valid trading/mining safety needs >550 chars."""
+    from copy import deepcopy
+    plan = _semantic()
+    service = deepcopy(plan["systems"][0])
+    service["server_behavior"] = (
+        "The server validates the authenticated player, their owned mining "
+        "tool, the nearest resource node, the node's remaining amount, a "
+        "reasonable interaction distance and a per-player mining cooldown. "
+        "If every condition is valid, it deducts one unit from the node, "
+        "increments a stored resource counter and adds an earned currency "
+        "reward through the authoritative profile manager. Any malformed "
+        "request, deleted node, missing tool or insufficient resource amount "
+        "returns a rejection without modifying the profile. The server "
+        "serializes concurrent actions by the same player and persists the "
+        "updated balance through the profile service. Disconnects cannot "
+        "create a second reward and duplicate requests do not produce items. "
+        "A valid mining result includes the amount extracted, server current "
+        "balance and remaining node capacity."
+    )
+    assert 550 < len(service["server_behavior"]) < 4096
+    service["client_behavior"] = (
+        "The player receives the server's validated resource extraction "
+        "response and displays the updated owned resources and currency. "
+        "The UI shows rejection details for invalid or repeated requests."
+    )
+    plan["systems"] = [service]
+    result = _convert(plan)
+    assert result["modules"] and result["acceptance"]
+
+
+def test_repetitive_description_is_rejected_instead_of_legitimate_detail():
+    from copy import deepcopy
+    bad = deepcopy(_semantic())
+    bad["systems"][0]["server_behavior"] = (
+        "The server owns all gameplay and validates the action before processing. "
+    ) * 8
+    with pytest.raises(HostArchitectureError, match="SCOPED_FEATURE_TOO_LARGE"):
+        _convert(bad)
