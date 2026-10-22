@@ -157,6 +157,28 @@ class LuauCodeGenerator:
         typed_ui = render_typed_client(module, proposal)
         if typed_ui is not None:
             return typed_ui
+        # A typed Remote MUST reach a server handler with the same validated
+        # input schema. Specialized genre renderers have different ABIs; do
+        # not let them silently receive an incompatible typed payload.
+        if module.module_id.startswith("dyn_") and module.kind == ModuleKind.SERVER_MODULE:
+            design = proposal.game_design.get("dynamic_design") or {}
+            routes = [
+                name for name in (design.get("module_remotes") or {}).get(
+                    module.module_id, [])
+                if name in (design.get("host_typed_actions") or {})
+            ]
+            if routes:
+                if len(routes) != 1 or not single_host_action(proposal, module):
+                    raise ValueError(
+                        "Typed action requires exactly one host-routed server handler")
+                self.router.last_scaffold_attempts = []
+                body = try_scaffolded_server(
+                    module, proposal, self.router, self.analyzer)
+                if body is None:
+                    raise scaffold_exhausted(
+                        module, getattr(self.router, "last_scaffold_attempts", []),
+                        "typed_server_action")
+                return body
         # Authored novel mechanics must NEVER be dispatched to same-name
         # first-party templates whose behavior was not contract-matched.
         if module.module_id == "mod_game_objective":
