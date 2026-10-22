@@ -434,6 +434,9 @@ class RobloxPreDesignResearch:
                 "semantic_sha": hashlib.sha256(
                     (Path(__file__).parent / "semantic_preservation.py").read_bytes()
                 ).hexdigest(),
+                "request_policy_sha": hashlib.sha256(
+                    (Path(__file__).parent / "request_semantics.py").read_bytes()
+                ).hexdigest(),
             }, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
             if chunk_checkpoint is not None:
                 try:
@@ -442,8 +445,17 @@ class RobloxPreDesignResearch:
                             and saved.get("input_sha256") == cache_key):
                         rows = saved.get("behaviors")
                         if isinstance(rows, list):
+                            # Cached JSON is never authoritative: apply the
+                            # same current semantic policy as fresh model
+                            # output, per exact source chunk. This avoids
+                            # reusing a previously hallucinated P2P trade or
+                            # monetization claim after the policy changes.
+                            safe_rows = [
+                                row for row in rows
+                                if not request_semantic_errors(row, prompt)
+                            ]
                             classified.update(valid_chunk_classification(
-                                {"behaviors": rows}, chunks))
+                                {"behaviors": safe_rows}, chunks))
                 except (OSError, ValueError, TypeError, AttributeError):
                     pass
 
