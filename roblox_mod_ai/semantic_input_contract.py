@@ -64,7 +64,9 @@ def interaction_issues(raw: dict[str, Any]) -> dict[int, list[str]]:
         # here so it enters the metadata/client-only repair pathway rather
         # than regenerating valid authoritative server gameplay. Host-owned
         # world prompts and zero-argument buttons are intentionally exempt.
-        if (interaction in {"event", "request_response"} and mode == "custom"
+        if (isinstance(interaction, str)
+                and interaction in {"event", "request_response"}
+                and mode == "custom"
                 and (not isinstance(row.get("client_behavior"), str)
                      or len(row["client_behavior"].strip()) < 24)):
             errors.append("custom player input needs substantive client_behavior")
