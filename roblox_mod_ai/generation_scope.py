@@ -19,6 +19,7 @@ from .host_catalog_purchase import eligible_catalog_purchase
 from .host_trade_catalog import eligible_trade_catalog
 from .host_upgrade_declarative import eligible_declarative_upgrade
 from .host_ship_sections import eligible_ship_sections
+from .host_resource_ship_builder import eligible_resource_ship_builder
 from .host_ship_slot_configuration import eligible_ship_slot_configuration
 from .host_ship_slot_levels import eligible_ship_slot_levels
 from .host_ship_launch_gate import eligible_ship_launch_gate
@@ -62,6 +63,8 @@ def generation_scope(proposal: Any) -> dict[str, Any]:
             strategy = "host_declarative_ship_slot_levels"
         elif eligible_ship_launch_gate(module, proposal) is not None:
             strategy = "host_declarative_ship_launch_gate"
+        elif eligible_resource_ship_builder(module, proposal) is not None:
+            strategy = "host_declarative_resource_ship_builder"
         elif eligible_ship_sections(module, proposal) is not None:
             strategy = "host_declarative_ship_sections"
         elif eligible_ship_hierarchy(module, proposal) is not None:
