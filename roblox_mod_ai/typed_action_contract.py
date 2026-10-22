@@ -398,7 +398,7 @@ def render_typed_client(module: RobloxModuleSpec, proposal: RobloxProposal) -> s
     return "\n".join(lines) + "\n"
 
 
-def host_owned_action_contract() -> dict[str, Any]:
+def host_owned_action_contract(choices: list[dict[str, str]] | None = None) -> dict[str, Any]:
     """Stable genre-agnostic transport ABI, not another small-model task.
 
     The two fields are *input channels*, not trusted rewards, prices, targets,
@@ -406,10 +406,16 @@ def host_owned_action_contract() -> dict[str, Any]:
     each field is interpreted against real server-owned state. Optional future
     richer UX can be layered on WITHOUT blocking planning.
     """
+    selection: dict[str, Any] = (
+        {"id": "selection", "label": "Allowed action choice",
+         "type": "choice", "options": choices}
+        if choices else
+        {"id": "selection", "label": "Item, action, or target ID",
+         "type": "text"}
+    )
     return {
         "inputs": [
-            {"id": "selection", "label": "Item, action, or target ID",
-             "type": "text"},
+            selection,
             {"id": "quantity", "label": "Requested quantity",
              "type": "integer", "min": 1, "max": 10000},
         ],
