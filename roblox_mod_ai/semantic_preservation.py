@@ -33,10 +33,10 @@ _DEPART_SPACE = re.compile(
     re.I,
 )
 _SPACE_INTENT = re.compile(
-    r"(?:launch|depart|teleport|transition|travel|fly|flight|enter|go)\b"
+    r"(?:launch\w*|depart\w*|teleport\w*|transition\w*|travel\w*|fly|flies|flight|enter\w*|go|goes)\b"
     r".{0,65}\b(?:space|orbit|planet)\b|"
     r"\b(?:space|orbit|planet)\b.{0,45}"
-    r"\b(?:launch|depart|teleport|transition|travel|fly|flight|arrival)\b|"
+    r"\b(?:launch\w*|depart\w*|teleport\w*|transition\w*|travel\w*|fly|flies|flight|arrival)\b|"
     r"우주\s*(?:진입|이동|출발|여행|비행|도달)|우주로\s*(?:나가|갈|출발|진입)|"
     r"행성\s*(?:이동|도착|진입)|발사",
     re.I,
