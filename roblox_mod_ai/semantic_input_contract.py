@@ -94,6 +94,10 @@ def bind_host_standard_transport(raw: dict[str, Any]) -> tuple[dict[str, Any], l
                 "Host-owned " + mode + " activates the requested gameplay "
                 "server action and displays its observable result."
             )
+        else:
+            # Autonomous server mechanics have no client controller. The
+            # slim production schema never supplies client_behavior.
+            row["client_behavior"] = ""
         if row != original:
             changed.append(index)
         normalized.append(row)
