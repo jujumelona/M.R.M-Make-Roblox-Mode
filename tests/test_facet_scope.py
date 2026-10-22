@@ -201,3 +201,67 @@ def test_multilingual_untranslated_facet_does_not_assume_unrelated_mechanics():
     ]}
     with pytest.raises(ValueError, match="SCOPED_SYSTEM_UNATTRIBUTED"):
         scope_semantic_systems(raw, facet=facet, all_facets=[facet])
+
+
+def test_source_ownership_handles_two_distinct_actions_with_morphological_names():
+    """Two real actions from one clause must survive despite shared nouns."""
+    facets = [
+        {"id": "gather", "search_query":
+         "Travel into space and gather rare minerals from planets"},
+        {"id": "claim", "search_query":
+         "Fight aliens and colonize planets as part of a space adventure"},
+        {"id": "trade", "search_query":
+         "Buy equipment from a trading station"},
+    ]
+    response = {"systems": [
+        {"name": "Alien Combat", "server_behavior": "Server checks alien combat"},
+        {"name": "Planet Colonization", "server_behavior": "Server checks claims"},
+        {"name": "Resource Mining", "server_behavior": "Server checks extraction"},
+    ]}
+    scoped, discarded = scope_semantic_systems(
+        response, facet=facets[1], all_facets=facets,
+    )
+    assert [s["name"] for s in scoped["systems"]] == [
+        "Alien Combat", "Planet Colonization",
+    ]
+    assert discarded == ["Resource Mining"]
+    assert len(response["systems"]) == 3
+
+
+def test_direct_action_outweighs_context_copied_into_competing_facet():
+    """Do not drop a builder because trade context also mentions building."""
+    facets = [
+        {"id": "trade", "search_query":
+         "Trade to build ship sections, upgrade weapons and expand capacity"},
+        {"id": "build", "search_query":
+         "Build ship sections part by part, then trade to upgrade weapons"},
+        {"id": "upgrade", "search_query":
+         "Upgrade ship weapons and components with the earned currency"},
+    ]
+    response = {"systems": [
+        {"name": "Ship Section Builder", "server_behavior": "Install ship parts"},
+        {"name": "Ship Upgrade Trader", "server_behavior": "Purchase upgrades"},
+    ]}
+    scoped, discarded = scope_semantic_systems(
+        response, facet=facets[1], all_facets=facets,
+    )
+    assert [s["name"] for s in scoped["systems"]] == [
+        "Ship Section Builder",
+    ]
+    assert discarded == ["Ship Upgrade Trader"]
+
+
+def test_shared_generic_word_cannot_claim_foreign_action():
+    """Unique topical evidence is necessary for a one-word name overlap."""
+    facets = [
+        {"id": "construct", "search_query":
+         "Build ship sections into a working vessel"},
+        {"id": "battle", "search_query":
+         "Fight enemy ships and control the battle area"},
+    ]
+    response = {"systems": [
+        {"name": "Ship Combat", "server_behavior": "Attack other vessels"},
+        {"name": "Enemy Ships", "server_behavior": "Spawn enemy vessels"},
+    ]}
+    with pytest.raises(ValueError, match="SCOPED_SYSTEM_UNATTRIBUTED"):
+        scope_semantic_systems(response, facet=facets[0], all_facets=facets)
