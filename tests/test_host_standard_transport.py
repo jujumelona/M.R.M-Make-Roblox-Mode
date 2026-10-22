@@ -247,10 +247,12 @@ def test_real_58_trade_server_plan_is_accepted_without_model_schema_call(
                 "input_mode": "custom",
                 "world_entities": [],
             }]}
+    # The scoped trade action must validate in exactly one model call.
+    # The FINAL whole-request validator must *still* reject this fixture,
+    # because it intentionally omits the other 8 requested systems.
     model = RecordedModel()
-    result = RobloxDynamicArchitect(model).design(
-        full_prompt, research, [])
+    with pytest.raises(Exception, match="ALIEN ENEMIES"):
+        RobloxDynamicArchitect(model).design(full_prompt, research, [])
     assert model.calls == 1
-    assert result["host_typed_actions"]
     assert research["architecture_attempts"][0]["passed"] is True
     assert research["architecture_attempts"][0]["typed_contract_attempts"] == []
