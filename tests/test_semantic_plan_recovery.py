@@ -130,6 +130,16 @@ def test_full_verified_decomposition_survives_later_plan_failure(tmp_path, monke
     assert accepted.get("decomposition_strategy") == "source_chunk_model_classification"
     assert not accepted.get("classification_unverified")
     assert (tmp_path / "semantic_decomposition_checkpoint.json").is_file()
+    # The complete-graph cache and independent chunk cache must be two files:
+    # previously a shadowed variable overwrote the chunk cache with the whole
+    # graph and no stable decomposition checkpoint was ever created.
+    chunk_doc = json.loads(cache.read_text(encoding="utf-8"))
+    graph_doc = json.loads((tmp_path / "semantic_decomposition_checkpoint.json")
+                           .read_text(encoding="utf-8"))
+    assert chunk_doc["schema"] == "rmm/semantic-chunk-cache-v1"
+    assert graph_doc["schema"] == "rmm/verified-decomposition-v1"
+    assert chunk_doc["behaviors"]
+    assert graph_doc["ledger"] == accepted
 
     class NoModel:
         def complete_json(self, *_args, **_kwargs):
