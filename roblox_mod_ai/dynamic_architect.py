@@ -21,6 +21,10 @@ from .request_semantics import request_semantic_errors
 from .semantic_preservation import source_intent_conflicts, source_outcome_conflicts
 from .host_architecture import SEMANTIC_FACET_SCHEMA, expand_semantic_facet
 from .facet_scope import scope_semantic_systems, _terms
+from .semantic_input_contract import (
+    canonicalize_interaction_fields, interaction_issues,
+    apply_interaction_patch,
+)
 
 _VALID_NAME = re.compile(r"^[A-Z][A-Za-z0-9]{2,58}$")
 _VALID_REMOTE = re.compile(r"^[A-Z][A-Za-z0-9]{2,55}$")
@@ -114,6 +118,23 @@ _SCOPED_DUAL_SEMANTIC_REPAIR_SCHEMA = {
         "outcome_addition": {"type": "string", "maxLength": 4096},
     },
     "required": ["server_addition", "outcome_addition"],
+}
+
+_SCOPED_INPUT_REPAIR_SCHEMA = {
+    "type": "object",
+    "properties": {"systems": {
+        "type": "array", "maxItems": 3,
+        "items": {"type": "object", "properties": {
+            "index": {"type": "integer"},
+            "interaction": {"type": "string", "enum": [
+                "none", "event", "request_response"]},
+            "input_mode": {"type": "string", "enum": [
+                "custom", "host_button", "world_prompt"]},
+            "client_behavior": {"type": "string", "maxLength": 4096},
+        }, "required": ["index", "interaction", "input_mode",
+                        "client_behavior"]}},
+    },
+    "required": ["systems"],
 }
 
 # Genre-independent secondary review. The reviewer must quote actual source
@@ -868,12 +889,14 @@ class RobloxDynamicArchitect:
             draft: dict[str, Any] | None = None
             semantic_repair: tuple[dict[str, Any], dict[str, list[str]]] | None = None
             semantic_replan: list[str] | None = None
+            input_repair: tuple[dict[str, Any], dict[int, list[str]]] | None = None
             successful = False
             cache_hit = False
             for attempt in range(3):
                 rejected_scope_names: list[str] = []
                 previous_repair = semantic_repair
                 previous_replan = semantic_replan
+                previous_input_repair = input_repair
                 try:
                     # A previously validated feature is reused only after the
                     # SAME current source ownership and collision checks.
@@ -890,6 +913,47 @@ class RobloxDynamicArchitect:
                     )
                     if cache_hit:
                         pass  # validation below, no model inference needed
+                    elif input_repair is not None:
+                        original, invalid = input_repair
+                        input_repair = None
+                        # Repair only interaction metadata and client input.
+                        # Preserve server behavior, results, actors and objects.
+                        patch = self.router.complete_json(
+                            "Correct ONLY the interaction protocol for the "
+                            "indicated existing system indexes. Return JSON "
+                            "{systems:[{index,interaction,input_mode,"
+                            "client_behavior}]}. interaction is one of "
+                            "none/event/request_response; input_mode is one "
+                            "of custom/host_button/world_prompt. host_button "
+                            "requires zero arguments and no world_entities "
+                            "or action_choices; custom supports targets and "
+                            "selected items. world_prompt requires event "
+                            "and exactly one world object. For player-driven "
+                            "actions, client_behavior must describe real "
+                            "input/UI, not just an animation. Preserve the "
+                            "requested gameplay, server rules, world targets, "
+                            "action choices and observable results. JSON ONLY.\n"
+                            + json.dumps({
+                                "issues": invalid,
+                                "systems": [{
+                                    "index": i,
+                                    "interaction": original["systems"][i].get(
+                                        "interaction"),
+                                    "input_mode": original["systems"][i].get(
+                                        "input_mode", "custom"),
+                                    "world_entities": original["systems"][i].get(
+                                        "world_entities", []),
+                                    "action_choices": original["systems"][i].get(
+                                        "action_choices", []),
+                                    "client_behavior": original["systems"][i].get(
+                                        "client_behavior", ""),
+                                } for i in invalid],
+                                "previous_rejection": previous_error,
+                            }, ensure_ascii=False),
+                            role="planner", temperature=0.0, max_tokens=600,
+                            json_schema=_SCOPED_INPUT_REPAIR_SCHEMA,
+                        )
+                        draft = apply_interaction_patch(original, patch)
                     elif semantic_replan is not None:
                         missing_rules = list(semantic_replan)
                         semantic_replan = None
@@ -1086,6 +1150,14 @@ class RobloxDynamicArchitect:
                         # systems; every dropped feature keeps its own facet.
                         draft, rejected_scope_names = scope_semantic_systems(
                             draft, facet=facet, all_facets=facets)
+                        # Two disjoint enum domains can be restored after a
+                        # verified exchange. Ambiguous input is never guessed.
+                        draft, swapped_indexes = canonicalize_interaction_fields(draft)
+                        invalid_input = interaction_issues(draft)
+                        if invalid_input:
+                            input_repair = (draft, invalid_input)
+                            raise DynamicDesignError(
+                                "SEMANTIC_INPUT_CONTRACT: " + str(invalid_input))
                         # Compare original user actions against the complete
                         # proposed behavior even for novel genres for which
                         # no specialized regular-expression validator exists.
@@ -1223,6 +1295,9 @@ class RobloxDynamicArchitect:
                                  or "Semantic repair returned no JSON" in previous_error
                                  or "Model JSON completion truncated" in previous_error)):
                         semantic_repair = previous_repair
+                    if previous_input_repair is not None and input_repair is None:
+                        # Invalid bounded patches remain local to this facet.
+                        input_repair = previous_input_repair
                     if previous_replan is not None:
                         # Any failed bounded replan stays bounded, including
                         # omitted fields, provider errors, semantic mismatch or
