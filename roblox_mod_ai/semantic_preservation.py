@@ -145,8 +145,38 @@ def source_intent_conflicts(
                 re.I,
             )
             sentences = re.split(r"[.!?;\n]+", text)
-            durable = any(colony_noun.search(sentence) and
-                          state_action.search(sentence)
+            def commits_new_settlement(sentence: str) -> bool:
+                if not (colony_noun.search(sentence)
+                        and state_action.search(sentence)):
+                    return False
+                # A prerequisite is not a write. Real model output said
+                # "requires an already recorded colony before settlement"
+                # and passed because "recorded" matched the write regex.
+                # Reject guard-only text while allowing a subsequent,
+                # explicit commit (e.g. "then records the new colony").
+                guard = re.search(
+                    r"\b(?:requires?|checks?|validates?|verif(?:y|ies))\b"
+                    r".{0,180}\b(?:already|existing|previously|before)\b",
+                    sentence, re.I,
+                )
+                later_commit = re.search(
+                    r"\b(?:then|and|on success)\s+"
+                    r"(?:(?:the|a)\s+)?(?:server\s+)?"
+                    r"(?:records?|persists?|saves?|establishes?|creates?|"
+                    r"founds?|claims?|constructs?|stores?|sets?)\b",
+                    sentence, re.I,
+                )
+                if guard and not later_commit:
+                    return False
+                if re.search(
+                    r"\b(?:no|not|never|without)\s+(?:\w+\s+){0,5}"
+                    r"(?:record|persist|sav|establish|creat|found|claim|construct)",
+                    sentence, re.I,
+                ):
+                    return False
+                return True
+
+            durable = any(commits_new_settlement(sentence)
                           for sentence in sentences)
             if not _INTENT_COLONY.search(text) or not durable:
                 errors.append(
