@@ -25,7 +25,10 @@ def clauses(prompt: str) -> list[str]:
     # original words and promoted noun lists into separate game mechanics.
     # Only explicit punctuation/newlines establish raw clause boundaries;
     # uncertain compound clauses go through source-ID semantic decomposition.
-    pieces = re.split(r"\s*[,;，；\n]\s*", prompt)
+    # Numeric punctuation is not a gameplay-clause separator: splitting
+    # "1,000 coins" into "1" and "000 coins" silently changes quantities.
+    # Keep separators between two digits inside the same source requirement.
+    pieces = re.split(r"\s*(?:(?<!\d),(?!\d)|[;，；\n])\s*", prompt)
     return [part for item in pieces if (part := clean(item))]
 
 
