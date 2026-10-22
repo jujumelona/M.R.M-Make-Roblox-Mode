@@ -20,7 +20,7 @@ from .request_contract import implementation_facets
 from .request_semantics import request_semantic_errors
 from .semantic_preservation import source_intent_conflicts, source_outcome_conflicts
 from .host_architecture import SEMANTIC_FACET_SCHEMA, expand_semantic_facet
-from .facet_scope import scope_semantic_systems
+from .facet_scope import scope_semantic_systems, _terms
 
 _VALID_NAME = re.compile(r"^[A-Z][A-Za-z0-9]{2,58}$")
 _VALID_REMOTE = re.compile(r"^[A-Z][A-Za-z0-9]{2,55}$")
@@ -731,8 +731,22 @@ class RobloxDynamicArchitect:
             slice_request = " ".join(str(r.get("statement", "")) for r in subset)
             slice_ledger = {"requirements": subset, "facets": [facet],
                             "original_prompt": slice_request, "request_context": prompt}
-            excerpts = [{"url": e["url"], "text": str(e.get("excerpt", ""))[:650]}
-                        for e in docs if e.get("facet") == facet_id][:2]
+            # RAG retrieval status is not evidence of relevance. The real
+            # plan-50 request for launching a ship retrieved tutorials on
+            # grouping/animating Parts; passing those snippets encouraged
+            # another upgrade editor instead of a launch action. Require
+            # distinct topical terms from the source intent in the doc's
+            # URL/title/short excerpt before adding it to a 9B prompt.
+            intent_terms = _terms(str(facet.get("search_query") or ""))
+            excerpts = [
+                {"url": e["url"], "text": str(e.get("excerpt", ""))[:650]}
+                for e in docs
+                if e.get("facet") == facet_id
+                and len(intent_terms & _terms(
+                    str(e.get("url", "")) + " " +
+                    str(e.get("excerpt", ""))[:650]
+                )) >= 2
+            ][:2]
             payload = {"feature_id": facet_id, "feature": facet,
                        "source_requirements": subset,
                        "game_context": {"scope": "only_this_source_clause",
