@@ -18,6 +18,7 @@ from .spec import ModuleKind, RobloxModuleSpec, RobloxService
 from .model_router import ModelRouter
 from .request_contract import implementation_facets
 from .request_semantics import request_semantic_errors
+from .semantic_preservation import source_intent_conflicts, source_outcome_conflicts
 from .host_architecture import SEMANTIC_FACET_SCHEMA, expand_semantic_facet
 from .facet_scope import scope_semantic_systems
 
@@ -105,6 +106,14 @@ _SCOPED_SEMANTIC_REPAIR_SCHEMA = {
     "type": "object",
     "properties": {"replacement": {"type": "string", "maxLength": 4096}},
     "required": ["replacement"],
+}
+_SCOPED_DUAL_SEMANTIC_REPAIR_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "server_addition": {"type": "string", "maxLength": 4096},
+        "outcome_addition": {"type": "string", "maxLength": 4096},
+    },
+    "required": ["server_addition", "outcome_addition"],
 }
 
 # These are inspected first-party *code templates*, not third-party libraries.
@@ -793,7 +802,7 @@ class RobloxDynamicArchitect:
             )
             previous_error = ""
             draft: dict[str, Any] | None = None
-            semantic_repair: tuple[dict[str, Any], str] | None = None
+            semantic_repair: tuple[dict[str, Any], dict[str, list[str]]] | None = None
             successful = False
             cache_hit = False
             for attempt in range(3):
@@ -815,65 +824,98 @@ class RobloxDynamicArchitect:
                     if cache_hit:
                         pass  # validation below, no model inference needed
                     elif semantic_repair is not None:
-                        previous_draft, field = semantic_repair
+                        previous_draft, field_issues = semantic_repair
                         semantic_repair = None
                         original_system = previous_draft["systems"][0]
-                        # The previous implementation REPLACED the entire
-                        # server_behavior with the one missing rule and thus
-                        # deleted previously valid mechanics. Treat the model
-                        # response as a delta, never as the new field.
+                        fields = list(field_issues)
+                        dual = len(fields) > 1
+                        # Multiple obligations in one source clause can fail
+                        # independently. Repair BOTH server state and visible
+                        # outcome in ONE inference, instead of consuming the
+                        # final retry on a second single-field patch.
+                        if dual:
+                            instruction = (
+                                "Return ONLY JSON with server_addition and "
+                                "outcome_addition strings. Each is a SHORT "
+                                "additional rule that satisfies ALL listed "
+                                "missing constraints for its corresponding "
+                                "field. Preserve EVERY existing behavior. "
+                                "A condition that something already exists "
+                                "is not a newly committed state transition. "
+                                "An outcome must name the actual target and "
+                                "observable state change, not just success "
+                                "feedback. Do not replace prior behavior or "
+                                "invent unrelated game actions. JSON ONLY.\\n"
+                            )
+                            schema = _SCOPED_DUAL_SEMANTIC_REPAIR_SCHEMA
+                            token_budget = 1000
+                        else:
+                            instruction = (
+                                "Return ONLY JSON {replacement:string} with "
+                                "the ADDITIONAL rule satisfying EVERY listed "
+                                "missing constraint for the specified field. "
+                                "Do not repeat prior statements. A prerequisite "
+                                "or a generic menu result is NOT the required "
+                                "state transition. Preserve all original actions "
+                                "and their targets. JSON ONLY.\\n"
+                            )
+                            schema = _SCOPED_SEMANTIC_REPAIR_SCHEMA
+                            token_budget = 780
                         patch = self.router.complete_json(
-                            "Return ONLY JSON {replacement:string} containing "
-                            "the ADDITIONAL missing behavioral rule. The host "
-                            "will APPEND it to the existing field, preserving "
-                            "all validated original actions. Do not repeat or "
-                            "reword existing rules and do not introduce new "
-                            "gameplay beyond the source_requirements. For a "
-                            "server field add the missing authoritative state "
-                            "transition; for a visible outcome add the actual "
-                            "state consequence observed by the player. Never "
-                            "invent Roblox code or Remote IDs.\n"
-                            + json.dumps({
-                                "field": field,
-                                "validator_error": previous_error,
+                            instruction + json.dumps({
+                                "fields": fields,
+                                "validator_issues": field_issues,
                                 "source_requirements": subset,
                                 "previous_system": original_system,
+                                **({"field": fields[0]} if not dual else {}),
                             }, ensure_ascii=False),
                             role="planner", temperature=0.0,
-                            max_tokens=780,
-                            json_schema=_SCOPED_SEMANTIC_REPAIR_SCHEMA,
+                            max_tokens=token_budget, json_schema=schema,
                         )
-                        replacement_text = (
-                            patch.get("replacement") if isinstance(patch, dict) else None
-                        )
-                        if (not isinstance(replacement_text, str)
-                                or not 24 <= len(replacement_text.strip()) <= 4096):
+                        if not isinstance(patch, dict):
                             raise DynamicDesignError(
-                                "Bounded semantic repair returned no valid replacement"
+                                "Semantic repair returned no JSON object"
                             )
-                        existing = original_system.get(field)
-                        if not isinstance(existing, str):
-                            existing = ""
-                        # If the optional outcome was absent, preserve the
-                        # independently model-authored client feedback that
-                        # the host would have used as its observable result.
-                        if field == "observable_result" and not existing:
-                            existing = original_system.get("client_behavior", "")
-                        addition = replacement_text.strip()
-                        if addition.casefold() in existing.casefold():
-                            raise DynamicDesignError(
-                                "Scoped repair repeated the previous rule "
-                                "instead of adding the missing behavior"
+                        revised: dict[str, str] = {}
+                        for field in fields:
+                            answer_key = (
+                                ("server_addition" if field == "server_behavior"
+                                 else "outcome_addition")
+                                if dual else "replacement"
                             )
-                        combined = (existing.strip().rstrip(". ") + ". " + addition
-                                    if existing.strip() else addition)
-                        if len(combined) > 4096:
-                            raise DynamicDesignError(
-                                "Scoped repair exceeds the bounded single-field contract"
+                            addition = patch.get(answer_key)
+                            if (not isinstance(addition, str)
+                                    or not 24 <= len(addition.strip()) <= 4096):
+                                raise DynamicDesignError(
+                                    "Semantic repair omitted " + field
+                                )
+                            existing = original_system.get(field)
+                            if not isinstance(existing, str):
+                                existing = ""
+                            # Keep the model-authored feedback as the basis
+                            # for a previously omitted observable_result.
+                            if field == "observable_result" and not existing:
+                                existing = original_system.get(
+                                    "client_behavior", "")
+                            addition = addition.strip()
+                            if addition.casefold() in existing.casefold():
+                                raise DynamicDesignError(
+                                    "Semantic repair repeated the previous "
+                                    "rule for " + field
+                                )
+                            combined = (
+                                existing.strip().rstrip(". ") + ". " + addition
+                                if existing.strip() else addition
                             )
+                            if len(combined) > 4096:
+                                raise DynamicDesignError(
+                                    "Semantic repair exceeds field limit: "
+                                    + field
+                                )
+                            revised[field] = combined
                         draft = dict(previous_draft)
                         draft["systems"] = [
-                            dict(original_system, **{field: combined})
+                            dict(original_system, **revised)
                         ]
                     elif missing_role:
                         patch = self.router.complete_json(
@@ -996,22 +1038,36 @@ class RobloxDynamicArchitect:
                             and len(json.dumps(draft, ensure_ascii=False)) <= 16000
                             else "unavailable_or_too_large",
                     })
-                    # When only one model-owned system failed a known
-                    # semantic contract, patch that field on the next pass.
-                    # Unknown failures and multiple systems regenerate safely.
+                    # Query ALL source contracts on the rejected model
+                    # output. The host raises the first failing layer, but
+                    # another layer may already be invalid. Repairing just
+                    # the first issue makes a compound facet fail repeatedly.
                     if (isinstance(draft, dict)
                             and isinstance(draft.get("systems"), list)
                             and len(draft["systems"]) == 1
                             and "SEMANTIC_SOURCE_CONTRACT " in previous_error):
-                        field = (
-                            "server_behavior"
-                            if "SEMANTIC_SOURCE_CONTRACT server:" in previous_error
-                            else "observable_result"
-                            if "SEMANTIC_SOURCE_CONTRACT outcome:" in previous_error
-                            else None
-                        )
-                        if field is not None:
-                            semantic_repair = (draft, field)
+                        system = draft["systems"][0]
+                        if isinstance(system, dict):
+                            server_text = str(system.get("server_behavior") or "")
+                            outcome_text = str(
+                                system.get("observable_result")
+                                or system.get("client_behavior") or ""
+                            )
+                            issues: dict[str, list[str]] = {}
+                            for source in subset:
+                                statement = source.get("statement", "")
+                                server_failures = source_intent_conflicts(
+                                    statement, server_text)
+                                outcome_failures = source_outcome_conflicts(
+                                    statement, outcome_text)
+                                if server_failures:
+                                    issues.setdefault("server_behavior", []).extend(
+                                        server_failures)
+                                if outcome_failures:
+                                    issues.setdefault("observable_result", []).extend(
+                                        outcome_failures)
+                            if issues:
+                                semantic_repair = (draft, issues)
                     if "no client Luau controller" not in previous_error:
                         draft = None
                     print("[RMM architect] feature " + facet_id +
