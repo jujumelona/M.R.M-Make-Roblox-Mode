@@ -57,7 +57,12 @@ def test_requirements_are_preserved_before_any_search():
     assert ledger["original_prompt"] == prompt
     assert "pets" in ledger["unimplemented_facets"]
     assert ledger["request_sha256"] == hashlib.sha256(prompt.encode("utf-8")).hexdigest()
-    assert len(ledger["requirements"]) >= 3
+    # Conjunctions are retained inside the original clause, rather than
+    # deleting words and minting several fake implementation owners.
+    assert len(ledger["requirements"]) == 2
+    assert " ".join(row["statement"] for row in ledger["requirements"]) == prompt.replace(", ", " ")
+    assert "그리고" in ledger["requirements"][1]["statement"]
+    assert "및" in ledger["requirements"][1]["statement"]
     assert any(f["id"] == "combat" for f in ledger["facets"])
 
 
