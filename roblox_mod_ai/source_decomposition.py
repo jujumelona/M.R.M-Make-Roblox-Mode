@@ -97,7 +97,7 @@ def recover_unseparated_actions(router: Any, source: str) -> list[dict[str, str]
         "Do not invent a new gameplay action, an API, or a quote. Use long "
         "spans when needed to preserve the original complete meaning and "
         "qualifiers. Explain each selected action in concrete English. "
-        "Do not simply echo the whole clause as one action. JSON only.\\n"
+        "Do not simply echo the whole clause as one action. JSON only.\n"
         + json.dumps({
             "original_source": source,
             "candidate_source_spans": [
