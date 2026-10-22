@@ -271,7 +271,7 @@ class RobloxPreDesignResearch:
         for EVERY span; one response cannot certify the rest of the game.
         """
         from .request_contract import validate_model_behaviors, clean, ledger_complete
-        from .source_decomposition import source_chunks, valid_chunk_classification
+        from .source_decomposition import (source_chunks, valid_chunk_classification, classification_context)
 
         pending = set(ledger.get("decomposition_pending", []))
         if not pending:
@@ -367,8 +367,8 @@ class RobloxPreDesignResearch:
             unclassified_source_chunks: list[str] = []
             # One-to-one classification in bounded groups; only missing source
             # chunks are retried, not all previously verified capabilities.
-            for offset in range(0, len(chunks), 6):
-                group = chunks[offset:offset+6]
+            for offset in range(0, len(chunks), 3):
+                group = chunks[offset:offset+3]
                 missing = group
                 for retry in range(2):
                     if not missing:
@@ -378,13 +378,16 @@ class RobloxPreDesignResearch:
                             "Describe EACH provided user-authored Roblox gameplay chunk. "
                             "Return ONLY JSON {behaviors:[{chunk_id,intent,english_query}]}. "
                             "One entry per chunk_id; NEVER merge, skip, add or rename IDs. "
-                            "Translate each exact snippet into a specific, concrete gameplay "
-                            "implementation intent and Roblox API documentation query. "
-                            "Do not invent new actions. Chunks are independently owned "
-                            "source obligations, even when two relate to the same system.\\n"
-                            + json.dumps({"chunks": missing, "original_prompt": prompt,
+                            "Use the provided previous/next/source_clause as contextual "
+                            "evidence for incomplete fragments; describe the role of each "
+                            "source_span in its clause, not an invented standalone action. "
+                            "Do not describe UI feedback as a substitute for the requested "
+                            "server-side gameplay. Limit intent to 90 characters and query "
+                            "to 90 characters; output only the requested IDs.\\n"
+                            + json.dumps({"chunks": classification_context(
+                                              chunks, missing, ledger["requirements"]),
                                           "scope": "classify_only_provided_chunks"}, ensure_ascii=False),
-                            role="planner", temperature=0.1,
+                            role="planner", temperature=0.0, max_tokens=750,
                         )
                         semantic_errors = request_semantic_errors(output, prompt)
                         if semantic_errors:
@@ -401,12 +404,15 @@ class RobloxPreDesignResearch:
                         try:
                             output = self.router.complete_json(
                                 "Return JSON {behaviors:[{chunk_id,intent,english_query}]}. "
-                                "Describe this ONE exact user-authored gameplay fragment "
-                                "as a specific Roblox action and API query; never invent "
-                                "or merge gameplay.\\n" +
-                                json.dumps({"chunks": [chunk], "original_prompt": prompt,
-                                            "scope": "classify_only_provided_chunks"}, ensure_ascii=False),
-                                role="planner", temperature=0.1,
+                                "Describe this ONE user-authored source_span in its "
+                                "original clause, using previous/next context for "
+                                "incomplete fragments. Return concise concrete gameplay "
+                                "intent and API query (max 90 characters each). Do not "
+                                "invent actions or confuse UI text with saved game state.\\n" +
+                                json.dumps({"chunks": classification_context(
+                                    chunks, [chunk], ledger["requirements"]),
+                                    "scope": "classify_only_provided_chunks"}, ensure_ascii=False),
+                                role="planner", temperature=0.0, max_tokens=360,
                             )
                             semantic_errors = request_semantic_errors(output, prompt)
                             if semantic_errors:
