@@ -64,7 +64,8 @@ def bind_host_standard_transport(raw: dict[str, Any]) -> tuple[dict[str, Any], l
         # Explicitly requested world prompts need one host-owned Part.
         # No object or multiple objects means an actionable typed selection
         # UI instead; it must NEVER attach to an arbitrary part.
-        if mode == "world_prompt" and isinstance(world, list) and len(world) == 1:
+        if (mode == "world_prompt" and isinstance(world, list)
+                and len(world) == 1 and not choices):
             mode, interaction = "world_prompt", "event"
         elif mode == "host_button" and not world and not choices:
             mode, interaction = "host_button", "request_response"
