@@ -212,6 +212,9 @@ class SemanticOnlySevenFeatureModel:
                 "Server validates colonization, records a persistent owned settlement "
                 "on the planet and updates the colony world state."
                 if "colony" in fid else
+                "Server verifies ship construction and launches the player "
+                "into space before allowing access to orbital travel."
+                if "launch" in fid else
                 "Server implements and validates " + label +
                 " player actions and authoritative gameplay state."
             ),
@@ -222,6 +225,8 @@ class SemanticOnlySevenFeatureModel:
                 "The player establishes a saved colony settlement and the "
                 "planet shows its new owner and territory."
                 if "colony" in fid else
+                "The player sees their ship launch into space and enter orbit."
+                if "launch" in fid else
                 "User performs " + label +
                 " actions and sees server-confirmed state updates."
             ),
