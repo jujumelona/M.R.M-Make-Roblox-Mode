@@ -51,10 +51,10 @@ def generation_scope(proposal: Any) -> dict[str, Any]:
             strategy = "host_declarative_mode_unlock"
         elif eligible_ship_purchase_facade(module, proposal) is not None:
             strategy = "host_ship_purchase_facade"
-        elif eligible_trade_catalog(module, proposal) is not None:
-            strategy = "host_declarative_trade_catalog"
         elif eligible_catalog_purchase(module, proposal) is not None:
             strategy = "host_declarative_catalog"
+        elif eligible_trade_catalog(module, proposal) is not None:
+            strategy = "host_declarative_trade_catalog"
         elif eligible_declarative_upgrade(module, proposal) is not None:
             strategy = "host_declarative_general_upgrades"
         elif eligible_ship_slot_configuration(module, proposal) is not None:
