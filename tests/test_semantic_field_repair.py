@@ -498,3 +498,149 @@ def test_official_doc_handoff_excludes_unrelated_space_tutorials(monkeypatch):
     result = RobloxDynamicArchitect(model).design(source, research, [])
     assert model.calls == 1
     assert result["modules"]
+
+def test_generic_replan_for_missing_settlement_action(monkeypatch):
+    """The recovery decision must not depend on a launch-specific error code."""
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    source = "Colonize a planet after exploration"
+    audit = {"ledger": {
+        "original_prompt": source,
+        "requirements": [{"id": "req-settlement", "statement": source}],
+        "facets": [{"id": "intent-settlement",
+                    "requirements": ["req-settlement"],
+                    "source_span": source,
+                    "search_query": "Roblox establish and own a planet colony"}],
+    }, "evidence": []}
+    class Model:
+        def __init__(self):
+            self.calls = []
+        def complete_json(self, prompt, **kwargs):
+            self.calls.append((prompt, kwargs))
+            if len(self.calls) == 1:
+                return {"systems": [{
+                    "name": "CreatureHunter",
+                    "server_behavior": (
+                        "The server validates the selected enemy and applies "
+                        "damage to a hostile NPC monster on the planet."
+                    ),
+                    "client_behavior": (
+                        "The client offers creature combat controls and "
+                        "shows damage caused to the monster."
+                    ),
+                    "observable_result": (
+                        "The monster loses hit points and can be defeated "
+                        "for an ordinary combat reward."
+                    ),
+                    "interaction": "request_response",
+                    "input_mode": "custom",
+                    "world_entities": [],
+                }]}
+            assert len(self.calls) == 2
+            assert "missing_obligations" in prompt
+            assert kwargs["max_tokens"] <= 1024
+            return {"systems": [{
+                "name": "ColonyEstablishment",
+                "server_behavior": (
+                    "The server validates settlement requirements and "
+                    "records a newly established planet colony owned by "
+                    "the player in persistent world state."
+                ),
+                "client_behavior": (
+                    "The client shows the settlement request and confirms "
+                    "the newly owned planet territory."
+                ),
+                "observable_result": (
+                    "The planet becomes colonized and the player sees the "
+                    "new colony ownership state."
+                ),
+                "interaction": "request_response",
+                "input_mode": "custom",
+                "world_entities": [],
+            }]}
+    model = Model()
+    result = RobloxDynamicArchitect(model).design(source, audit, [])
+    assert len(model.calls) == 2
+    assert all("damages" not in m.description
+               for m in result["modules"])
+    assert any("newly established planet colony" in m.description
+               for m in result["modules"])
+
+
+def test_generic_semantic_replan_must_allow_multiple_independent_actions(
+        monkeypatch):
+    """Source obligations, not the old 'exactly one' recovery prompt, set size."""
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    source = "Fight alien enemies and colonize planets"
+    audit = {"ledger": {
+        "original_prompt": source,
+        "requirements": [{"id": "req-both", "statement": source}],
+        "facets": [{"id": "intent-both", "requirements": ["req-both"],
+                    "source_span": source,
+                    "search_query": "Roblox fight alien enemies and colonize planets"}],
+    }, "evidence": []}
+    class Model:
+        def __init__(self):
+            self.calls = []
+        def complete_json(self, prompt, **kwargs):
+            self.calls.append((prompt, kwargs))
+            if len(self.calls) == 1:
+                return {"systems": [{
+                    "name": "DecorationCreator",
+                    "server_behavior": (
+                        "The server validates cosmetic color selection and "
+                        "saves the purchased decoration in inventory."
+                    ),
+                    "client_behavior": (
+                        "The client offers decoration buttons and "
+                        "displays the purchased decorative object."
+                    ),
+                    "observable_result": (
+                        "The player receives a decorative inventory skin."
+                    ),
+                    "interaction": "request_response",
+                    "input_mode": "custom",
+                    "world_entities": [],
+                }]}
+            assert len(self.calls) == 2
+            assert "one system per independently triggered" in prompt
+            return {"systems": [{
+                "name": "AlienCombat",
+                "server_behavior": (
+                    "The server validates weapon range and attacks a hostile "
+                    "alien NPC enemy, applies damage to its health, "
+                    "and records defeat."
+                ),
+                "client_behavior": (
+                    "The player aims and attacks a hostile alien enemy; "
+                    "the target's remaining health is displayed."
+                ),
+                "observable_result": (
+                    "The hostile alien enemy loses health and can be "
+                    "defeated by the player's weapon."
+                ),
+                "interaction": "request_response",
+                "input_mode": "custom",
+                "world_entities": [],
+            }, {
+                "name": "PlanetColonization",
+                "server_behavior": (
+                    "The server validates settlement supplies, establishes "
+                    "a new planet colony and records the settlement ownership."
+                ),
+                "client_behavior": (
+                    "The player requests colonization and receives the "
+                    "newly established settlement ownership status."
+                ),
+                "observable_result": (
+                    "The planet becomes colonized and the player can see "
+                    "its new colony state."
+                ),
+                "interaction": "request_response",
+                "input_mode": "custom",
+                "world_entities": [],
+            }]}
+    model = Model()
+    result = RobloxDynamicArchitect(model).design(source, audit, [])
+    assert len(model.calls) == 2
+    assert len(result["modules"]) >= 4
+    assert all("Decoration" not in m.name for m in result["modules"])
