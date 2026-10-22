@@ -110,3 +110,29 @@ def test_no_invented_duplicate_action_descriptions():
             {"source_quote": "Fight enemies", "action": "Attack enemies"},
             {"source_quote": "colonize planets", "action": "Attack enemies"},
         ])
+
+
+def test_initial_indexed_action_contract_never_needs_quote_repair_call():
+    class NeverGenerateAnotherAction:
+        def complete_json(self, *a, **kw):
+            raise AssertionError("Already checked source IDs require no extra model call")
+    choices = {row["quote"]: row["id"] for row in indexed_source_spans(SOURCE)}
+    original = [
+        {"source_id": choices["외게인과 싸움"],
+         "action": "Fight hostile alien NPC enemies"},
+        {"source_id": choices["식민지화등"],
+         "action": "Establish new planet colony ownership"},
+    ]
+    output = verify_or_bind_actions(NeverGenerateAnotherAction(), SOURCE, original)
+    assert output[0]["source_quote"] == "외게인과 싸움"
+    assert output[1]["source_quote"] == "식민지화등"
+
+
+def test_model_cannot_supply_unauthorized_source_id_even_with_valid_quote():
+    with pytest.raises(SourceActionBindingError, match="SOURCE_ID_NOT_IN_ORIGINAL"):
+        verify_or_bind_actions(None, SOURCE, [
+            {"source_id": "outside-list", "source_quote": "외게인과 싸움",
+             "action": "Fight hostile alien enemies"},
+            {"source_quote": "식민지화등",
+             "action": "Establish a new planet colony"},
+        ])
