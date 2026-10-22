@@ -33,7 +33,7 @@ def test_actual_scoped_planner_prompts_not_whole_game(monkeypatch):
             f["id"] for f in report["ledger"]["facets"]}
         assert len(payload["source_requirements"]) == 1
         assert meta["role"] == "planner"
-        assert meta["max_tokens"] == 2600
+        assert 800 <= meta["max_tokens"] <= 1400  # bounded small-feature JSON
         schema = meta["json_schema"]
         assert schema["type"] == "object"
         assert "systems" in schema["required"]
