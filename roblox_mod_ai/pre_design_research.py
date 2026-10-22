@@ -352,6 +352,7 @@ class RobloxPreDesignResearch:
                 "Each query must describe the actual mechanic and applicable Roblox APIs. "
                 "Use original_prompt to resolve fragments; ordinary game buying/trading "
                 "uses earned game currency, never unsolicited Robux monetization. "
+                "Do not turn unspecified trade into peer-to-peer item transfers. "
                 "Maximum 24 behaviors per clause.\\n"
                 + json.dumps({"original_prompt": prompt, "clauses": [
                     item for item in ledger["requirements"] if item["id"] in pending
@@ -478,6 +479,7 @@ class RobloxPreDesignResearch:
                             "Use the provided previous/next/source_clause as contextual "
                             "evidence for incomplete fragments; describe the role of each "
                             "source_span in its clause, not an invented standalone action. "
+                            "Unspecified trading is not player-to-player trading. "
                             "Do not describe UI feedback as a substitute for the requested "
                             "server-side gameplay. Limit intent to 90 characters and query "
                             "to 90 characters; output only the requested IDs.\\n"
@@ -505,7 +507,8 @@ class RobloxPreDesignResearch:
                                 "original clause, using previous/next context for "
                                 "incomplete fragments. Return concise concrete gameplay "
                                 "intent and API query (max 90 characters each). Do not "
-                                "invent actions or confuse UI text with saved game state.\\n" +
+                                "invent actions or confuse UI text with saved game state. "
+                                "Do not invent peer-to-peer exchange without user authorization.\\n" +
                                 json.dumps({"chunks": classification_context(
                                     chunks, [chunk], ledger["requirements"]),
                                     "scope": "classify_only_provided_chunks"}, ensure_ascii=False),
