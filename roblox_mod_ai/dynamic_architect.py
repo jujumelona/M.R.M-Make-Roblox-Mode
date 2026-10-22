@@ -792,6 +792,14 @@ class RobloxDynamicArchitect:
             slice_request = " ".join(str(r.get("statement", "")) for r in subset)
             slice_ledger = {"requirements": subset, "facets": [facet],
                             "original_prompt": slice_request, "request_context": prompt}
+            # Retrieval queries are model-authored search hints, NOT source
+            # requirements. Source classification can include neighboring
+            # actions in an English query even when this span owns only one.
+            # Only the original user span may authorize an implementation.
+            source_owned_feature = {
+                "id": facet_id, "requirements": owned_ids,
+                "source_span": slice_request,
+            }
             # RAG retrieval status is not evidence of relevance. The real
             # plan-50 request for launching a ship retrieved tutorials on
             # grouping/animating Parts; passing those snippets encouraged
@@ -808,7 +816,7 @@ class RobloxDynamicArchitect:
                     str(e.get("excerpt", ""))[:650]
                 )) >= 2
             ][:2]
-            payload = {"feature_id": facet_id, "feature": facet,
+            payload = {"feature_id": facet_id, "feature": source_owned_feature,
                        "source_requirements": subset,
                        "game_context": {"scope": "only_this_source_clause",
                                         "original_request": prompt},
@@ -878,7 +886,7 @@ class RobloxDynamicArchitect:
                 "JSON ONLY.\n"
                 + json.dumps({
                     "feature_id": facet_id,
-                    "feature": facet,
+                    "feature": source_owned_feature,
                     "source_requirements": subset,
                     "game_context": {"scope": "only_this_source_clause",
                                         "original_request": prompt},
@@ -983,7 +991,7 @@ class RobloxDynamicArchitect:
                             "mechanics. Short JSON only.\n"
                             + json.dumps({
                                 "source_requirements": subset,
-                                "source_intent": facet.get("search_query", ""),
+                                "original_request_context_only": prompt,
                                 "missing_obligations": missing_rules,
                             }, ensure_ascii=False),
                             role="planner", temperature=0.0,
@@ -1198,8 +1206,6 @@ class RobloxDynamicArchitect:
                                     "missing:string. No extra keys.\\n"
                                     + json.dumps({
                                         "source_requirement": original_source,
-                                        "translated_intent": facet.get(
-                                            "search_query", ""),
                                         "server_behavior": server_text[:2400],
                                         "observable_result": outcome_text[:1600],
                                     }, ensure_ascii=False),
