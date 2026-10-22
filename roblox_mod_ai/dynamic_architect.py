@@ -23,6 +23,7 @@ from .host_architecture import SEMANTIC_FACET_SCHEMA, expand_semantic_facet
 from .facet_scope import scope_semantic_systems, _terms
 from .semantic_input_contract import (
     canonicalize_interaction_fields, interaction_issues,
+    bind_host_standard_transport,
     apply_interaction_patch, apply_client_input_completion,
     CLIENT_INPUT_ONLY_SCHEMA,
 )
@@ -1398,6 +1399,15 @@ class RobloxDynamicArchitect:
                         # verified exchange. Ambiguous input is never guessed.
                         draft, named_world_refs = normalize_world_names(draft)
                         draft, swapped_indexes = canonicalize_interaction_fields(draft)
+                        # The host, not the 9B planner, selects Remote/LocalScript
+                        # transport. This MUST happen before input validation
+                        # and before any attempt to prompt for a protocol patch.
+                        # 'interaction: custom' is a malformed model hint, not
+                        # a reason to regenerate an otherwise valid game action.
+                        if getattr(self.router, "supports_host_standard_transport", False):
+                            draft, host_bound_indexes = bind_host_standard_transport(draft)
+                        else:
+                            host_bound_indexes = []
                         # Production models provide only a short declarative
                         # typed input/target/effect manifest. The host owns
                         # all UI, Remotes, client argument marshaling and
@@ -1460,6 +1470,13 @@ class RobloxDynamicArchitect:
                             draft = dict(draft, systems=typed_systems)
                         invalid_input = interaction_issues(draft)
                         if invalid_input:
+                            # Production UI/transport is host-owned. An input
+                            # error at this point indicates a bad or incomplete
+                            # host contract; never send it to the small model
+                            # as a gameplay/UI repair task.
+                            if getattr(self.router, "supports_host_standard_transport", False):
+                                raise DynamicDesignError(
+                                    "HOST_INPUT_CONTRACT_INVALID: " + str(invalid_input))
                             input_repair = (draft, invalid_input)
                             raise DynamicDesignError(
                                 "SEMANTIC_INPUT_CONTRACT: " + str(invalid_input))
@@ -1572,6 +1589,7 @@ class RobloxDynamicArchitect:
                         "id_binding": id_binding,
                         "out_of_scope_systems_ignored": rejected_scope_names,
                         "typed_contract_attempts": list(typed_attempts),
+                        "host_bound_transport_indexes": list(host_bound_indexes),
                     })
                     successful = True
                     break
