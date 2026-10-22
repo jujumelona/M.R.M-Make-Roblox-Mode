@@ -70,8 +70,9 @@ def test_valid_legacy_choices_are_preserved_without_forging_ids():
      "Crops visibly grow and the water balance decreases.",
      ["Water Crops"]),
     ("MerchantSale", "Sell collected goods",
-     "Server verifies item ownership and server-owned sale rate, removes "
-     "the items and increases the player's earned credits.",
+     "Server validates the player's request to sell collected goods, "
+     "verifies owned quantities and the server-owned sale price, removes "
+     "the sold goods and increases the player's earned credits.",
      "Inventory shrinks and earned credit balance visibly increases.",
      ["Sell"]),
 ])
