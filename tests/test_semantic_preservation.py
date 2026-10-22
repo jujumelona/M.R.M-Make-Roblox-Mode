@@ -162,3 +162,29 @@ def test_when_arrived_in_space_does_not_make_every_planet_miner_a_ship_launcher(
                source_intent_conflicts(
                    "그렇게해서 우주로 나갈수있고",
                    "The server buys a ship speed upgrade."))
+
+
+
+def test_resource_farming_must_not_be_only_a_currency_sale():
+    from roblox_mod_ai.semantic_preservation import source_intent_conflicts
+    source = "우주모드 인데 자원파밍 돈모으기"
+    sale = (
+        "When a player requests a resource, the server checks their current "
+        "resource balance, decrements the requested amount and increments "
+        "their currency by the catalog price."
+    )
+    issues = source_intent_conflicts(source, sale)
+    assert any("RESOURCE_FARMING_DROPPED" in x for x in issues)
+    # A classifier need only identify the intended farming mechanic.
+    assert source_intent_conflicts(
+        source, "Gather resources and trade mined ore for earned coins",
+        require_implementation=False,
+    ) == []
+    # A real authoritative miner and optional conversion to coins are valid.
+    genuine = (
+        "The server checks an in-world ore node and a mining tool, "
+        "validates the mining range and cooldown, then mines a resource "
+        "from the node, adds it to the player's saved inventory, and "
+        "credits the player a fixed earned-currency reward."
+    )
+    assert not source_intent_conflicts(source, genuine)
