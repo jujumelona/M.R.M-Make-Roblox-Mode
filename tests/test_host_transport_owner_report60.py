@@ -243,7 +243,7 @@ def test_host_semantic_schema_disallows_model_authored_transport_fields():
         "properties"]["systems"]["items"]["properties"])
     assert model_keys == {
         "name", "server_behavior", "observable_result",
-        "world_entities", "autonomous", "action_choices",
+        "world_entities", "autonomous",
     }
     legacy_keys = set(SEMANTIC_FACET_SCHEMA[
         "properties"]["systems"]["items"]["properties"])
