@@ -289,8 +289,14 @@ def expand_semantic_facet(
             raise HostArchitectureError("Server-only behavior cannot have a button")
         if interaction not in {"none", "event", "request_response"}:
             raise HostArchitectureError("Invalid semantic interaction")
+        # world_prompt and host_button are constructed and wired by the
+        # host itself. They deliberately need no model-authored LocalScript;
+        # only custom player-driven ingress needs a real client UI contract.
+        # Requiring client_behavior for a world_prompt caused a valid server
+        # resource node action to be rejected in production plan-55.
         if not isinstance(client, str) or (
-                interaction != "none" and len(client.strip()) < 24):
+                interaction != "none" and input_mode == "custom"
+                and len(client.strip()) < 24):
             raise HostArchitectureError("Client interaction needs a real UI/input behavior")
         if len(client) > 4096 or _repeats_empty_claims(client):
             raise HostArchitectureError(
