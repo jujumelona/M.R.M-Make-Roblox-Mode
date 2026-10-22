@@ -181,3 +181,31 @@ def test_tampered_decomposition_signature_cannot_be_used(tmp_path, monkeypatch):
     # The saved complete ledger was rejected, but separately signed individual
     # verified chunks may still be reused, which is safe and avoids LLM waste.
     assert json.loads(path.read_text(encoding="utf-8"))["input_sha256"] != "old-implementation"
+
+
+def test_cached_model_claims_are_revalidated_and_only_unsafe_chunks_reasked(
+        tmp_path, monkeypatch):
+    """An old model's invented peer-trade cannot survive semantic-policy updates."""
+    monkeypatch.setenv("RMM_ENABLE_MODEL_DECOMPOSITION", "1")
+    cache = tmp_path / "classified_chunks.json"
+    first = RobloxPreDesignResearch(
+        router=BoundedContextModel(fail_chunk_once=True),
+        live_enabled=False, classification_cache=cache)
+    first._decompose_compound(SOURCE, build_request_ledger(SOURCE))
+    contents = json.loads(cache.read_text(encoding="utf-8"))
+    assert contents["behaviors"]
+    corrupt = contents["behaviors"][0]
+    corrupted_id = corrupt["chunk_id"]
+    corrupt["intent"] = "Player-to-Player Trading"
+    corrupt["english_query"] = "Roblox trade between other players inventories"
+    cache.write_text(json.dumps(contents), encoding="utf-8")
+    new_model = BoundedContextModel()
+    recovered = RobloxPreDesignResearch(
+        router=new_model, live_enabled=False,
+        classification_cache=cache)._decompose_compound(
+            SOURCE, build_request_ledger(SOURCE))
+    assert recovered.get("decomposition_strategy") == "source_chunk_model_classification"
+    queried = {cid for group in new_model.calls for cid in group}
+    assert corrupted_id in queried
+    assert all(atom["intent"] != "Player-to-Player Trading"
+               for atom in recovered["atomic_intents"])
