@@ -41,7 +41,7 @@ def eligible_resource_ship_builder(module: Any, proposal: Any) -> tuple[str, str
     )
     if not all(re.search(p, desc) for p in conditions):
         return None
-    if re.search(r"\b(?:remove|replace|refund|detach|uninstall)\b", desc):
+    if re.search(r"\b(?:remov\w*|replac\w*|refund\w*|detach\w*|uninstall\w*)\b", desc):
         return None
     # The resource debit must correspond to a true server-only mineral source.
     miners = [m for m in proposal.modules
