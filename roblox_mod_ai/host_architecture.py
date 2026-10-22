@@ -80,14 +80,9 @@ HOST_OWNED_SEMANTIC_FACET_SCHEMA = {
                     "type": "array", "maxItems": 24,
                     "items": {"type": "string", "maxLength": 64},
                 },
-                "action_choices": {"type": "array", "maxItems": 8, "items": {
-                    "type": "object",
-                    "properties": {
-                        "id": {"type": "string"},
-                        "label": {"type": "string"},
-                    },
-                    "required": ["id", "label"],
-                }},
+                # UI choices are derived or validated by the host from
+                # source-controlled context, not invented by the 9B planner.
+                # Never expose this unstable optional nested JSON format.
             },
             "required": [
                 "name", "server_behavior", "observable_result",
