@@ -195,7 +195,7 @@ def complete_typed_contract(
                 )
             response = router.complete_json(
                 instruction, role="planner", temperature=0.0,
-                max_tokens=520, json_schema=SCHEMA,
+                max_tokens=500, json_schema=SCHEMA,
             )
             valid = validate_contract(
                 response, world_entities=system.get("world_entities", []))
