@@ -59,3 +59,34 @@ def has_gameplay_mutation(source: str, *, routed_action: bool = False) -> bool:
     executable = _mask_strings(_without_comments(owned))
     executable = _REGISTRY_WRITER.sub("", executable)
     return bool(_MUTATION.search(executable))
+
+
+def state_key_used_by_executable_code(body: str, key: str) -> bool:
+    """Distinguish a real state-key reference from comments and log strings.
+
+    Dotted properties are executable identifiers; key strings are meaningful
+    only when passed as the key argument of a state access/mutation call.
+    This is a necessary static source check, not proof the transition occurs.
+    """
+    if not isinstance(body, str) or not isinstance(key, str):
+        return False
+    leaf = key.split(".")[-1]
+    if not leaf:
+        return False
+    raw = _without_comments(body)
+    executable = _mask_strings(raw)
+    if re.search(r"\b" + re.escape(leaf) + r"\b", executable, flags=re.I):
+        return True
+
+    # Check literal state keys at real invocation offsets; print("key")
+    # and a string containing the text ':SetAttribute("key")' do not count.
+    selector = re.compile(
+        r"\b(?:SetAttribute|GetAttribute|GetState|SetState|UpdateState)"
+        r"\s*\(\s*(['\"])" + re.escape(leaf) + r"\1",
+        re.I,
+    )
+    for match in selector.finditer(raw):
+        if re.search(r"\b(?:SetAttribute|GetAttribute|GetState|SetState|UpdateState)"
+                     r"\s*\(", executable[match.start():match.start()+35], re.I):
+            return True
+    return False
