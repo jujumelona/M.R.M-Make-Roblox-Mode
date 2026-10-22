@@ -952,6 +952,7 @@ class RobloxDynamicArchitect:
             successful = False
             cache_hit = False
             for attempt in range(3):
+                atomic_systems_verified = False
                 rejected_scope_names: list[str] = []
                 host_bound_indexes: list[int] = []
                 discarded_ui_choices: list[dict[str, Any]] = []
@@ -1188,6 +1189,15 @@ class RobloxDynamicArchitect:
                                         "each action must return one system"
                                     )
                                 proposed_systems.append(sub[0])
+                            from .atomic_action_quotes import validate_atomic_system_ownership
+                            try:
+                                validate_atomic_system_ownership(
+                                    verified_actions, proposed_systems,
+                                    original_prompt=prompt,
+                                )
+                            except SourceActionBindingError as owned_error:
+                                raise DynamicDesignError(str(owned_error)) from owned_error
+                            atomic_systems_verified = True
                             draft = {"systems": proposed_systems}
                         else:
                             draft = self.router.complete_json(
@@ -1372,8 +1382,13 @@ class RobloxDynamicArchitect:
                         # full request. Attribute ONLY demonstrably source-owned
                         # systems; every dropped feature keeps its own facet.
                         try:
-                            draft, rejected_scope_names = scope_semantic_systems(
-                                draft, facet=facet, all_facets=facets)
+                            if not atomic_systems_verified:
+                                draft, rejected_scope_names = scope_semantic_systems(
+                                    draft, facet=facet, all_facets=facets)
+                            # When each child was independently sourced and
+                            # checked above, its immutable source-ID call is
+                            # stronger provenance than name-token matches
+                            # against an unrelated English retrieval query.
                         except ValueError as scope_error:
                             # English lexical scoring cannot unambiguously
                             # claim actions shared by adjacent original user
