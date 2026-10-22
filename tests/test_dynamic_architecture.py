@@ -263,6 +263,7 @@ def test_dynamic_doc_refs_are_bound_to_owned_facets(tmp_path, monkeypatch):
     session, _ = _session(tmp_path, monkeypatch)
     ledger = build_request_ledger("펫 부화")
     research = {
+        "schema": "rmm/pre-design-rag-v1",
         "ledger": ledger, "status": "partial", "queries": [],
         "evidence": [
             {"facet": "shop", "provider": "official_docs", "url": "https://create.roblox.com/docs/en-us/shop.md", "content_sha256": "a" * 64},
