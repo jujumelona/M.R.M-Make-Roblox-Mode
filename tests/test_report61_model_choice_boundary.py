@@ -113,6 +113,10 @@ def test_local_model_malformed_options_do_not_regenerate_gameplay(
     assert action["contract"]["state_changes"] == []
     assert research["architecture_attempts"][0]["passed"] is True
     assert not research["architecture_attempts"][0]["typed_contract_attempts"]
+    discarded = research["architecture_attempts"][0]["discarded_ui_choices"]
+    assert len(discarded) == 1
+    assert discarded[0]["fallback"] == "typed_text_selection"
+    assert discarded[0]["reason"] == "untrusted_model_choice_format"
 
 
 def test_exact_report61_harvest_option_strings_cannot_poison_host_contract():
