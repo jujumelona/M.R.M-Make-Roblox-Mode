@@ -408,3 +408,53 @@ def test_semantic_architect_rejects_pvp_when_requested_hostile_npc_and_settlemen
         reserved_remotes=set(), reserved_objects=set())
     assert len([m for m in built["modules"] if m["role"] == "server"]) == 2
     assert len(built["remotes"]) == 2
+
+
+def test_single_facet_rejects_monolithic_multisystem_response_even_if_json_parses():
+    """A model must not turn one source action into the whole game's server."""
+    from copy import deepcopy
+    full = _semantic()
+    oversized = deepcopy(full)
+    oversized["systems"][0]["server_behavior"] = (
+        "The server independently owns player actions, currency, ship building, "
+        "combat, navigation, colony founding, space travel and all other gameplay. "
+    ) * 12
+    with pytest.raises(HostArchitectureError, match="SCOPED_FEATURE_TOO_LARGE"):
+        _convert(oversized)
+    oversized = deepcopy(full)
+    oversized["systems"] = [deepcopy(full["systems"][0]) for _ in range(4)]
+    with pytest.raises(HostArchitectureError, match="SCOPED_FEATURE_TOO_LARGE"):
+        _convert(oversized)
+
+
+def test_colony_requires_server_settlement_commit_and_observable_world_result():
+    from copy import deepcopy
+    raw = _semantic()
+    raw["systems"][0]["name"] = "PlanetSettlement"
+    raw["systems"][0]["server_behavior"] = (
+        "Server saves the weapon inventory and currency. "
+        "Server validates a requested planet colonization is allowed."
+    )
+    raw["systems"][0]["observable_result"] = (
+        "The colonization menu displays a successful planet feedback message."
+    )
+    requirement = [{"id": "req-001", "statement": "Colonize another planet"}]
+    with pytest.raises(HostArchitectureError, match="SEMANTIC_SOURCE_CONTRACT"):
+        expand_semantic_facet(
+            raw, facet_id="intent-colony", requirement_ids=["req-001"],
+            source_requirements=requirement,
+            reserved_modules=set(), reserved_remotes=set(),
+            reserved_objects=set())
+    raw = deepcopy(raw)
+    raw["systems"][0]["server_behavior"] = (
+        "Server validates colonization, charges the known resource cost, "
+        "and saves an owned persistent colony settlement on the planet."
+    )
+    raw["systems"][0]["observable_result"] = (
+        "An owned colony settlement is established on the planet and saved."
+    )
+    result = expand_semantic_facet(
+        raw, facet_id="intent-colony", requirement_ids=["req-001"],
+        source_requirements=requirement,
+        reserved_modules=set(), reserved_remotes=set(), reserved_objects=set())
+    assert result["modules"]
