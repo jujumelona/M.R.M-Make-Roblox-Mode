@@ -241,7 +241,9 @@ def expand_semantic_facet(
                 raise HostArchitectureError("Typed action contract requires custom player input")
             try:
                 typed_contract = validate_contract(
-                    typed_contract, world_entities=world)
+                    typed_contract, world_entities=world,
+                    transport_only=system.get("host_standard_transport") is True,
+                )
             except TypedActionContractError as exc:
                 raise HostArchitectureError("INVALID_TYPED_ACTION_CONTRACT: " + str(exc)) from exc
         choices = system.get("action_choices", [])
@@ -406,6 +408,7 @@ def expand_semantic_facet(
                 "server": server_name, "client": client_name,
                 "world_entities": list(world),
                 "world_name": resolved_world,
+                "transport_only": system.get("host_standard_transport") is True,
             }
         if choices and assigned_remotes:
             host_action_choices[remote_name] = [
