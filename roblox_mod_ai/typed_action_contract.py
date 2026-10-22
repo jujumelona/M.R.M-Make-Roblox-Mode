@@ -55,14 +55,18 @@ def _text(value: Any, *, limit: int = 70) -> bool:
     return isinstance(value, str) and 1 <= len(value.strip()) <= limit
 
 
-def validate_contract(raw: Any, *, world_entities: list[str]) -> dict[str, Any]:
+def validate_contract(
+    raw: Any, *, world_entities: list[str],
+    transport_only: bool = False,
+) -> dict[str, Any]:
     if not isinstance(raw, dict) or set(raw) != {
         "inputs", "target", "state_changes",
     }:
         raise TypedActionContractError("Action contract needs exactly inputs, target, state_changes")
     fields, target, effects = raw["inputs"], raw["target"], raw["state_changes"]
     if (not isinstance(fields, list) or not 0 <= len(fields) <= 4
-            or not isinstance(effects, list) or not 1 <= len(effects) <= 5):
+            or not isinstance(effects, list)
+            or not (0 if transport_only else 1) <= len(effects) <= 5):
         raise TypedActionContractError("Bounded typed inputs and at least one state change required")
     seen: set[str] = set()
     clean_fields = []
@@ -289,7 +293,10 @@ def render_typed_client(module: RobloxModuleSpec, proposal: RobloxProposal) -> s
     spec = (design.get("host_typed_actions") or {}).get(remote)
     if spec is None:
         return None
-    contract = validate_contract(spec["contract"], world_entities=spec.get("world_entities", []))
+    contract = validate_contract(
+        spec["contract"], world_entities=spec.get("world_entities", []),
+        transport_only=spec.get("transport_only") is True,
+    )
     kind = (design.get("remotes") or {}).get(remote)
     if kind not in ("RemoteEvent", "RemoteFunction"):
         raise TypedActionContractError("Typed UI remote does not exist")
@@ -355,7 +362,7 @@ def render_typed_client(module: RobloxModuleSpec, proposal: RobloxProposal) -> s
             lines += [
                 '    local box = Instance.new("TextBox")',
                 '    box.Size = UDim2.new(1, 0, 0, 35)',
-                '    box.Text = ""',
+                '    box.Text = ' + ('"1"' if field["type"] == "integer" else '""'),
                 '    box.PlaceholderText = ' + label,
                 '    box.ClearTextOnFocus = false',
                 '    box.Parent = panel',
@@ -389,3 +396,23 @@ def render_typed_client(module: RobloxModuleSpec, proposal: RobloxProposal) -> s
         ]
     lines += ['    busy = false', 'end)']
     return "\n".join(lines) + "\n"
+
+
+def host_owned_action_contract() -> dict[str, Any]:
+    """Stable genre-agnostic transport ABI, not another small-model task.
+
+    The two fields are *input channels*, not trusted rewards, prices, targets,
+    or inferred game-state operations. The server author must validate how
+    each field is interpreted against real server-owned state. Optional future
+    richer UX can be layered on WITHOUT blocking planning.
+    """
+    return {
+        "inputs": [
+            {"id": "selection", "label": "Item, action, or target ID",
+             "type": "text"},
+            {"id": "quantity", "label": "Requested quantity",
+             "type": "integer", "min": 1, "max": 10000},
+        ],
+        "target": {"kind": "none"},
+        "state_changes": [],
+    }
