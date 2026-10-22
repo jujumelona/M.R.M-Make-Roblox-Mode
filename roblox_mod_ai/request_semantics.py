@@ -42,7 +42,8 @@ _EXPLICIT_PEER_TRADE = re.compile(
     r"사용자\s*(?:간|끼리)|(?:서로|상호)\s*(?:거래|교환)|"
     r"\b(?:p2p|peer[- ]to[- ]peer|player[- ]to[- ]player)\b|"
     r"\bplayers?\s+(?:can\s+)?trade\s+(?:with\s+)?(?:each\s+other|one\s+another)\b|"
-    r"\bplayers\s+(?:can\s+)?(?:trade|exchange)\b",
+    r"\bplayers\s+(?:can\s+)?(?:trade|exchange)\b|"
+    r"\bplayers?\b.{0,65}\btrade\b.{0,60}\beach\s+other\b",
     re.I,
 )
 _PEER_TRADE_OUTPUT = re.compile(
