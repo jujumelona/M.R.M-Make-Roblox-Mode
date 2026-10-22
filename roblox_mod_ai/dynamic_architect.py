@@ -813,10 +813,12 @@ class RobloxDynamicArchitect:
             previous_error = ""
             draft: dict[str, Any] | None = None
             semantic_repair: tuple[dict[str, Any], dict[str, list[str]]] | None = None
+            semantic_replan: list[str] | None = None
             successful = False
             cache_hit = False
             for attempt in range(3):
                 rejected_scope_names: list[str] = []
+                previous_repair = semantic_repair
                 try:
                     # A previously validated feature is reused only after the
                     # SAME current source ownership and collision checks.
@@ -833,9 +835,39 @@ class RobloxDynamicArchitect:
                     )
                     if cache_hit:
                         pass  # validation below, no model inference needed
+                    elif semantic_replan is not None:
+                        missing_rules = list(semantic_replan)
+                        semantic_replan = None
+                        # A completely wrong gameplay action must be replaced,
+                        # not kept as a ship-upgrade/menu preamble in a launch
+                        # handler. Minimize the output contract and context for
+                        # 9B-class models after a source-intent drift.
+                        draft = self.router.complete_json(
+                            "The prior proposal implemented the WRONG action. "
+                            "Write exactly ONE short, playable mechanic for the "
+                            "original source requirement, NOT the rejected action. "
+                            "Return JSON {systems:[{name,server_behavior,"
+                            "client_behavior,observable_result,interaction,"
+                            "input_mode,world_entities}]}. Name the concrete "
+                            "server-owned state change and the actual visible "
+                            "result. Use interaction=request_response and "
+                            "input_mode=custom for a player-requested action, "
+                            "and world_entities=[] if no physical world object "
+                            "is needed. Do not create shop, upgrade or other "
+                            "unrequested mechanics. Keep the answer under "
+                            "500 words. JSON only.\n"
+                            + json.dumps({
+                                "source_requirements": subset,
+                                "source_intent": facet.get("search_query", ""),
+                                "missing_obligations": missing_rules,
+                            }, ensure_ascii=False),
+                            role="planner", temperature=0.0,
+                            max_tokens=1024, json_schema=SEMANTIC_FACET_SCHEMA,
+                        )
                     elif semantic_repair is not None:
                         previous_draft, field_issues = semantic_repair
                         semantic_repair = None
+                        draft = previous_draft  # retain the valid base on patch error
                         original_system = previous_draft["systems"][0]
                         fields = list(field_issues)
                         dual = len(fields) > 1
@@ -894,6 +926,23 @@ class RobloxDynamicArchitect:
                                 if dual else "replacement"
                             )
                             addition = patch.get(answer_key)
+                            # Smaller local structured-output backends sometimes
+                            # use a semantic field name despite the requested
+                            # compact {replacement:string} schema. Accept only
+                            # the exact field's known aliases, then revalidate
+                            # the completed contract; never use a different
+                            # behavioral field as the missing rule.
+                            if not isinstance(addition, str):
+                                for alias in (
+                                    field,
+                                    "server_addition" if field == "server_behavior"
+                                    else "outcome_addition",
+                                    "replacement",
+                                ):
+                                    candidate = patch.get(alias)
+                                    if isinstance(candidate, str):
+                                        addition = candidate
+                                        break
                             if (not isinstance(addition, str)
                                     or not 24 <= len(addition.strip()) <= 4096):
                                 raise DynamicDesignError(
@@ -1048,10 +1097,17 @@ class RobloxDynamicArchitect:
                             and len(json.dumps(draft, ensure_ascii=False)) <= 16000
                             else "unavailable_or_too_large",
                     })
+                    # Preserve the original facet plan when the model's
+                    # bounded repair response is malformed. Retrying the SAME
+                    # small repair is preferable to regenerating 1,400+ output
+                    # tokens and losing source-scoped progress.
+                    if (previous_repair is not None
+                            and ("Semantic repair omitted " in previous_error
+                                 or "Semantic repair returned no JSON" in previous_error
+                                 or "Model JSON completion truncated" in previous_error)):
+                        semantic_repair = previous_repair
                     # Query ALL source contracts on the rejected model
-                    # output. The host raises the first failing layer, but
-                    # another layer may already be invalid. Repairing just
-                    # the first issue makes a compound facet fail repeatedly.
+                    # output. Host validators raise only the first failure.
                     if (isinstance(draft, dict)
                             and isinstance(draft.get("systems"), list)
                             and len(draft["systems"]) == 1
@@ -1077,7 +1133,18 @@ class RobloxDynamicArchitect:
                                     issues.setdefault("observable_result", []).extend(
                                         outcome_failures)
                             if issues:
-                                semantic_repair = (draft, issues)
+                                # If an entire mechanic was substituted by a
+                                # different action, APPENDING prose would
+                                # preserve the incorrect action and its UI.
+                                # Replan the one source-owned action with a
+                                # much smaller JSON prompt instead.
+                                missing = [e for values in issues.values()
+                                           for e in values]
+                                if any(e.startswith("SPACE_TRAVEL_DROPPED:")
+                                       for e in missing):
+                                    semantic_replan = missing
+                                else:
+                                    semantic_repair = (draft, issues)
                     if "no client Luau controller" not in previous_error:
                         draft = None
                     print("[RMM architect] feature " + facet_id +
