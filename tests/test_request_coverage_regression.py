@@ -515,3 +515,29 @@ def test_unseparated_source_fails_closed_when_model_invents_actions(monkeypatch)
         router=Malformed(), live_enabled=False).research(source)["ledger"]
     assert ledger["decomposition_pending"]
     assert not ledger_complete(source, ledger)
+
+
+
+def test_clause_partition_never_deletes_original_conjunctions_or_invents_actions():
+    from roblox_mod_ai.request_contract import clauses
+    for source in (
+        "Buy red and blue construction materials",
+        "외계인 및 광물을 얻는 모드",
+        "우주선 제작 그리고 우주로 이동",
+        "Build ship and travel to orbit",
+    ):
+        assert clauses(source) == [source]
+        ledger = build_request_ledger(source)
+        assert [row["statement"] for row in ledger["requirements"]] == [source]
+
+
+def test_long_english_source_is_partitioned_after_linguistic_classification_not_before():
+    from roblox_mod_ai.request_contract import clauses
+    from roblox_mod_ai.source_decomposition import source_chunks
+    source = "Fight alien enemies and colonize planets"
+    assert clauses(source) == [source]
+    assert is_composite(source)
+    groups = source_chunks(source)
+    assert " ".join(groups) == source
+    assert len(groups) == 2
+    assert all(group in source for group in groups)
