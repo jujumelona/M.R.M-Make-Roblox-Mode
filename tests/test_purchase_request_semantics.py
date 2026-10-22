@@ -90,12 +90,12 @@ def test_architect_repairs_unrequested_monetization_using_actual_diagnostic(monk
     assert [r["passed"] for r in research["architecture_attempts"]] == [False, True]
 
 
-@pytest.mark.parametrize("request", [
+@pytest.mark.parametrize("user_prompt", [
     "광물을 거래해서 돈을 모으고 우주선을 제작",
     "Trade resources for earned credits and expand a vehicle",
     "아이템 거래 등으로 모드를 진행한다",
 ])
-def test_vague_trading_does_not_authorize_new_peer_to_peer_economy(request):
+def test_vague_trading_does_not_authorize_new_peer_to_peer_economy(user_prompt):
     from roblox_mod_ai.request_semantics import request_semantic_errors
     model = {"systems": [{
         "name": "Player-to-Player Trading",
@@ -104,20 +104,20 @@ def test_vague_trading_does_not_authorize_new_peer_to_peer_economy(request):
             "Persist both players' balances after a counteroffer is accepted."
         ),
     }]}
-    errors = request_semantic_errors(model, request)
+    errors = request_semantic_errors(model, user_prompt)
     assert any("UNREQUESTED_PEER_TRADE" in error for error in errors)
 
 
-@pytest.mark.parametrize("request", [
+@pytest.mark.parametrize("user_prompt", [
     "플레이어끼리 아이템 거래하고 교환할 수 있게",
     "Allow players to trade items with each other",
     "Players trade parts and earned credits",
 ])
-def test_explicit_peer_to_peer_trades_are_still_allowed(request):
+def test_explicit_peer_to_peer_trades_are_still_allowed(user_prompt):
     from roblox_mod_ai.request_semantics import request_semantic_errors
     model = {"systems": [{
         "name": "Player-to-Player Trading",
         "server_behavior": "The server validates both players' inventories."
     }]}
     assert not any("UNREQUESTED_PEER_TRADE" in e
-                   for e in request_semantic_errors(model, request))
+                   for e in request_semantic_errors(model, user_prompt))
