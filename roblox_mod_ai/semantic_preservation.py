@@ -56,19 +56,19 @@ def source_intent_conflicts(source_span: str, described_intent: str) -> list[str
         # Require an establishment/ownership/saved-state action linked to
         # the colony IN THE SAME SENTENCE.
         colony_noun = re.compile(
-            r"coloniz\\w*|colonis\\w*|colon(?:y|ies)|settlem\\w*|"
-            r"outpost\\w*|식민\\w*|정착\\w*|개척\\w*",
+            r"coloniz\w*|colonis\w*|colon(?:y|ies)|settlem\w*|"
+            r"outpost\w*|식민\w*|정착\w*|개척\w*",
             re.I,
         )
         state_action = re.compile(
-            r"persist\\w*|sav\\w*|record\\w*|claim\\w*|"
-            r"found(?:s|ed|ing)?|establish\\w*|construct\\w*|"
-            r"creat\\w*|stor\\w*|mark\\w*|\bset\\b|"
-            r"건설\\w*|기록\\w*|저장\\w*|설립\\w*|"
-            r"소유권\\w*|점령\\w*",
+            r"persist\w*|sav\w*|record\w*|claim\w*|"
+            r"found(?:s|ed|ing)?|establish\w*|construct\w*|"
+            r"creat\w*|stor\w*|mark\w*|\bset\b|"
+            r"건설\w*|기록\w*|저장\w*|설립\w*|"
+            r"소유권\w*|점령\w*",
             re.I,
         )
-        sentences = re.split(r"[.!?;\\n]+", text)
+        sentences = re.split(r"[.!?;\n]+", text)
         durable = any(colony_noun.search(sentence) and
                       state_action.search(sentence)
                       for sentence in sentences)
