@@ -87,7 +87,7 @@ def test_ingress_world_prompt_and_autonomous_are_not_reinterpreted():
              world_entities=[]),
     ]
     result, indexes = bind_host_standard_transport({"systems": systems})
-    assert set(indexes) == {0, 1, 2, 3}
+    assert set(indexes) == {0, 1, 3}  # already-passive system is unchanged
     outputs = result["systems"]
     assert [(s["interaction"], s["input_mode"]) for s in outputs] == [
         ("event", "world_prompt"), ("request_response", "host_button"),
