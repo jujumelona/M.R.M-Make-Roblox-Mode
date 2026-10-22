@@ -218,7 +218,9 @@ local function publish(player, owned)
             and type(item.bonus) == "number"
             and item.bonus % 1 == 0 and item.bonus >= 0
             and item.bonus <= 1000 and totals[item.kind] ~= nil then
-            totals[item.kind] = math.min(LIMIT, totals[item.kind] + item.bonus)
+            totals[item.kind] = math.min(
+                LIMIT, totals[item.kind] + (1 if item.kind == "section" else item.bonus)
+            )
             count += 1
         end
     end
