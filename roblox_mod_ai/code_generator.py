@@ -20,6 +20,7 @@ from .generation_provenance import host_source_must_regenerate
 from .host_mode_navigation import eligible_mode_navigation, try_mode_navigation
 from .host_mode_unlock import eligible_mode_unlock, try_mode_unlock
 from .host_catalog_purchase import eligible_catalog_purchase, try_catalog_purchase
+from .host_trade_catalog import eligible_trade_catalog, try_trade_catalog
 from .host_upgrade_declarative import eligible_declarative_upgrade, try_declarative_upgrade
 from .host_ship_sections import eligible_ship_sections, try_ship_sections
 from .host_ship_slot_configuration import (
@@ -100,6 +101,7 @@ class LuauCodeGenerator:
             if (render_host_gameplay(module, proposal) is not None
                     or eligible_mode_navigation(module, proposal) is not None
                     or eligible_mode_unlock(module, proposal) is not None
+                    or eligible_trade_catalog(module, proposal) is not None
                     or eligible_catalog_purchase(module, proposal) is not None
                     or eligible_declarative_upgrade(module, proposal) is not None
                     or eligible_ship_sections(module, proposal) is not None
@@ -204,6 +206,9 @@ class LuauCodeGenerator:
         earned_upgrades = try_declarative_upgrade(module, proposal, self.router)
         if earned_upgrades is not None:
             return earned_upgrades
+        verified_market = try_trade_catalog(module, proposal, self.router)
+        if verified_market is not None:
+            return verified_market
         declarative_purchase = try_catalog_purchase(module, proposal, self.router)
         if declarative_purchase is not None:
             return declarative_purchase
