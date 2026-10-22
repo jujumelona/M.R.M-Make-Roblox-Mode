@@ -13,13 +13,20 @@ from typing import Any
 def generation_source_digests(package_dir: Path) -> dict[str, str]:
     """Hash every installed Python generator/validator module deterministically."""
     root = Path(package_dir)
-    modules = sorted(root.glob("*.py"), key=lambda path: path.name)
+    # Model adapter code, JSON transport, and subpackage schemas affect
+    # generated Luau just as directly as top-level authors. glob("*.py")
+    # ignored model_adapters/* and permitted a stale code checkpoint to
+    # survive an actual backend fix.
+    modules = sorted(
+        (path for path in root.rglob("*.py") if path.is_file()),
+        key=lambda path: path.relative_to(root).as_posix(),
+    )
     if not modules or not (root / "code_generator.py").is_file():
         raise ValueError("GENERATION_SOURCE_PROVENANCE_MISSING")
     return {
-        path.name: hashlib.sha256(path.read_bytes()).hexdigest()
+        path.relative_to(root).as_posix():
+            hashlib.sha256(path.read_bytes()).hexdigest()
         for path in modules
-        if path.is_file()
     }
 
 
