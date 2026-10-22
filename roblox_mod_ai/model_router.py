@@ -28,6 +28,9 @@ class ModelRouter:
         # Genre-neutral atomic source actions can be planned in bounded calls
         # instead of relying on one large multi-action JSON completion.
         self.supports_atomic_action_decomposition = True
+        # Resolve ties between source-owned actions and cross-language names
+        # without making retrieval translations the implementation authority.
+        self.supports_source_ownership_review = True
         self.adapters: dict[str, ModelAdapter] = {}
         self._init_adapters()
 
