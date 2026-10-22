@@ -28,17 +28,18 @@ SEMANTIC_FACET_SCHEMA = {
     "properties": {
         "systems": {
             "type": "array",
+            "maxItems": 3,
             "items": {
                 "type": "object",
                 "properties": {
                     "name": {"type": "string"},
-                    "server_behavior": {"type": "string"},
-                    "client_behavior": {"type": "string"},
+                    "server_behavior": {"type": "string", "maxLength": 550},
+                    "client_behavior": {"type": "string", "maxLength": 550},
                     "interaction": {"type": "string", "enum": [
                         "none", "event", "request_response"]},
                     "input_mode": {"type": "string", "enum": [
                         "custom", "host_button", "world_prompt"]},
-                    "observable_result": {"type": "string"},
+                    "observable_result": {"type": "string", "maxLength": 550},
                     "world_entities": {"type": "array", "items": {
                         "type": "string"}},
                     "action_choices": {"type": "array", "items": {
@@ -367,14 +368,21 @@ def expand_semantic_facet(
     for source in source_requirements:
         if not isinstance(source, dict):
             continue
-        issues = source_intent_conflicts(
-            source.get("statement", ""),
-            combined_server + " " + combined_outcome,
-        )
-        if issues:
-            raise HostArchitectureError(
-                "SEMANTIC_SOURCE_CONTRACT: " + "; ".join(issues)
+        # Server implementation and observable acceptance are independent
+        # contracts. A client saying "colony established" must never mask a
+        # server that only validates a menu click; likewise a genuine NPC
+        # server cannot excuse a PvP-only acceptance description.
+        for layer, owned_text in (
+            ("server", combined_server), ("outcome", combined_outcome)
+        ):
+            issues = source_intent_conflicts(
+                source.get("statement", ""), owned_text,
             )
+            if issues:
+                raise HostArchitectureError(
+                    "SEMANTIC_SOURCE_CONTRACT " + layer + ": " +
+                    "; ".join(issues)
+                )
 
     acceptance = [
         {"requirement_id": rid,
