@@ -32,6 +32,37 @@ _DEPART_SPACE = re.compile(
     r"space\s+(?:travel|launch|departure|flight|flight\s+mode)",
     re.I,
 )
+# A route/status flag alone does not move a character or a vehicle into the
+# requested playable destination. This catches "player.state = in_space"
+# plans that never launch/teleport/relocate anything. It is an early prose
+# acceptance gate, not a substitute for real Studio movement testing.
+_SPACE_WORLD_CHANGE = re.compile(
+    r"\\b(?:launch\\w*|depart\\w*|fl(?:y|ies|ew)|travel\\w*|teleport\\w*|"
+    r"transport\\w*|mov(?:e|es|ed|ing)|relocat\\w*|transfer\\w*|"
+    r"warp\\w*|enter\\w*|arriv\\w*)\\b.{0,120}"
+    r"\\b(?:space|orbit|orbital|planet|world|zone)\\b|"
+    r"\\b(?:space|orbit|orbital|planet|world|zone)\\b.{0,75}"
+    r"\\b(?:launch\\w*|depart\\w*|travel\\w*|teleport\\w*|"
+    r"mov(?:e|es|ed|ing)|relocat\\w*|warp\\w*|enter\\w*)\\b|"
+    r"\\b(?:set|sets|change|changes|update|updates)\\b.{0,65}"
+    r"\\b(?:position|location|world|zone|region|scene|destination)\\b.{0,65}"
+    r"\\b(?:space|orbit|orbital|planet)\\b|"
+    r"(?:우주|궤도|행성)(?:로|에|까지)?\\s*(?:진입|이동|출발|도착|비행|워프|발사)",
+    re.I,
+)
+# Leaving/ejecting the passenger from an unchanged vehicle is not the same
+# mechanic as a requested launch or vehicle-borne departure into space.
+_SPACE_ABANDONMENT = re.compile(
+    r"\\b(?:player|pilot|passenger|crew|avatar|character)\\b.{0,65}"
+    r"\\b(?:leav(?:e|es|ing|es?)|exit\\w*|eject\\w*|disembark\\w*)\\b"
+    r".{0,70}\\b(?:ship|spaceship|spacecraft|shuttle|vessel|rocket)\\b|"
+    r"\\b(?:eject\\w*|disembark\\w*)\\b.{0,90}"
+    r"\\b(?:player|pilot|passenger|crew|avatar|character)\\b|"
+    r"\\b(?:ship|spaceship|spacecraft|shuttle|vessel|rocket)\\b.{0,45}"
+    r"\\bno longer carrying\\b",
+    re.I,
+)
+
 _SPACE_INTENT = re.compile(
     r"(?:launch\w*|depart\w*|teleport\w*|transition\w*|travel\w*|fly|flies|flight|enter\w*|go|goes)\b"
     r".{0,65}\b(?:space|orbit|planet)\b|"
@@ -79,11 +110,22 @@ def source_intent_conflicts(
     # to implement launch as well. A standalone "can depart into space"
     # still requires a real launch/travel behavior.
     scoped_source = re.sub(r"우주로\s*나가면", "", source)
-    if _DEPART_SPACE.search(scoped_source) and not _SPACE_INTENT.search(text):
-        errors.append(
-            "SPACE_TRAVEL_DROPPED: user requested departing into space, "
-            "not another ship purchase or upgrade menu"
-        )
+    if _DEPART_SPACE.search(scoped_source):
+        if not _SPACE_INTENT.search(text):
+            errors.append(
+                "SPACE_TRAVEL_DROPPED: user requested departing into space, "
+                "not another ship purchase or upgrade menu"
+            )
+        elif require_implementation and not _SPACE_WORLD_CHANGE.search(text):
+            errors.append(
+                "SPACE_TRAVEL_STATE_MISSING: setting a player status to in-space "
+                "is not a physical launch, location transfer or world transition"
+            )
+        if _SPACE_ABANDONMENT.search(text):
+            errors.append(
+                "SPACE_TRAVEL_REVERSED: ejecting a passenger from the ship "
+                "does not fulfill departing into space aboard the ship"
+            )
     # Spending/selling EXISTING inventory for earned coins is not evidence
     # that the user can mine, harvest or gather NEW resources. This was the
     # exact gameplay inversion in proposal 48: a "farming" module only
