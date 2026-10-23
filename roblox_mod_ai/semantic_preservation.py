@@ -143,6 +143,54 @@ def source_planetary_mineral_errors(
     return []
 
 
+
+# When a source names several purchasable/upgradable subsystems, duplicating
+# one of them does not cover the others. Plan 33 implemented TWO weapon
+# changes but silently omitted crew and spacecraft performance.
+_UPGRADE_EFFECT = re.compile(
+    r"\b(?:upgrad\w*|purchas\w*|buy|buys|bought|trade\w*|"
+    r"improv\w*|enhanc\w*|increas\w*|recruit\w*|hir(?:e|es|ed)|"
+    r"assign\w*|equip\w*)\b|"
+    r"업그레이드|구매|거래|고용|영입|강화|확장|향상",
+    re.I,
+)
+_UPGRADE_OBJECTS = {
+    "weapon": re.compile(r"\b(?:weapon|gun|armament)s?\b|무기", re.I),
+    "crew": re.compile(r"\b(?:crew|crewmember|crew\s+member|recruit|sailor)s?\b|선원", re.I),
+    "ship": re.compile(r"\b(?:ship|spacecraft|spaceship|vessel|engine|thruster)s?\b|우주선", re.I),
+}
+
+
+def source_multi_upgrade_errors(
+    source_span: str, description: str, *,
+    require_implementation: bool = True,
+) -> list[str]:
+    """Preserve every explicitly enumerated upgrade/purchase category."""
+    src = str(source_span or "")
+    if not (
+        _UPGRADE_EFFECT.search(src)
+        and all(pattern.search(src) for pattern in _UPGRADE_OBJECTS.values())
+    ):
+        return []
+    text = str(description or "")
+    failures = []
+    for name, pattern in _UPGRADE_OBJECTS.items():
+        matches = [
+            sentence for sentence in re.split(r"[.!?;\n]+", text)
+            if pattern.search(sentence)
+        ]
+        if not matches or (require_implementation and not any(
+            _UPGRADE_EFFECT.search(sentence) for sentence in matches
+        )):
+            failures.append(
+                "SOURCE_PURCHASABLE_SUBSYSTEM_DROPPED: " + name +
+                " must have a separately described acquisition, upgrade "
+                "or performance effect; repeating another subsystem "
+                "does not satisfy it"
+            )
+    return failures
+
+
 def source_intent_conflicts(
     source_span: str,
     described_intent: str,
@@ -161,6 +209,9 @@ def source_intent_conflicts(
     text = str(described_intent or "").casefold()
     errors = []
     errors.extend(source_planetary_mineral_errors(source, text))
+    errors.extend(source_multi_upgrade_errors(
+        source, text, require_implementation=require_implementation,
+    ))
     # Conditional arrival ("when you go to space, gather minerals") scopes
     # its downstream gameplay; it does not require each downstream feature
     # to implement launch as well. A standalone "can depart into space"
