@@ -75,20 +75,32 @@ def motion_contract_errors(
     # The vehicle must be the thing moved, not merely a precondition that
     # authorizes a player's ejection. Keep the evidence within one sentence.
     vehicle_motion = False
+    # Syntactic proximity alone is unsafe: "checks ship, then launches
+    # player" mentions the ship close to a launch verb but moves the wrong
+    # actor. The motion must take the craft as its DIRECT object, or the
+    # craft must be the subject of its own movement.
+    vehicle_as_object = re.compile(
+        r"\b(?:launch\w*|mov(?:e|es|ed|ing)|teleport\w*|"
+        r"relocat\w*|transport\w*|warp\w*|"
+        r"travel\w*|depart\w*)\b"
+        r"\s+(?:(?:the|a|an|owned|assembled|player['’]s)\s+){0,3}"
+        r"(?:ship|spaceship|spacecraft|vessel|rocket|shuttle|vehicle)\b",
+        re.I,
+    )
+    vehicle_as_subject = re.compile(
+        r"\b(?:ship|spaceship|spacecraft|vessel|rocket|shuttle|vehicle)\b"
+        r"\s+(?:(?:itself|successfully|automatically|then|"
+        r"with\s+(?:the\s+)?players?\s+aboard)\s+){0,3}"
+        r"(?:is\s+)?(?:launch\w*|mov(?:e|es|ed|ing)|teleport\w*|"
+        r"relocat\w*|transport\w*|warp\w*|"
+        r"travel\w*|depart\w*)\b",
+        re.I,
+    )
     for sentence in re.split(r"[.;!?\n]+", server):
-        vehicle = list(_VEHICLE.finditer(sentence))
-        motion = list(_MOTION.finditer(sentence))
-        if not vehicle or not motion or not _WORLD_TARGET.search(sentence):
+        if not _WORLD_TARGET.search(sentence):
             continue
-        for action in motion:
-            if any(
-                0 <= craft.start() - action.end() <= 65
-                or 0 <= action.start() - craft.end() <= 65
-                for craft in vehicle
-            ):
-                vehicle_motion = True
-                break
-        if vehicle_motion:
+        if vehicle_as_object.search(sentence) or vehicle_as_subject.search(sentence):
+            vehicle_motion = True
             break
     errors = []
     if not vehicle_motion:
