@@ -1253,14 +1253,24 @@ class RobloxDynamicArchitect:
                             schema = _SCOPED_DUAL_SEMANTIC_REPAIR_SCHEMA
                             token_budget = 1000
                         else:
+                            # Visible source semantics that are wrong must be
+                            # replaced, not followed by a contradictory new
+                            # sentence. This is a COMPLETE field rewrite only
+                            # when its server-owned mechanics already pass.
+                            replace_outcome = fields == ["observable_result"]
                             instruction = (
                                 "Return ONLY JSON {replacement:string} with "
-                                "the ADDITIONAL rule satisfying EVERY listed "
-                                "missing constraint for the specified field. "
-                                "Do not repeat prior statements. A prerequisite "
-                                "or a generic menu result is NOT the required "
-                                "state transition. Preserve all original actions "
-                                "and their targets. JSON ONLY.\\n"
+                                + ("the COMPLETE corrected observable result. "
+                                   "Remove any wrong outcome, such as a player "
+                                   "exiting a vehicle instead of the vehicle "
+                                   "travelling. Preserve other true outcomes "
+                                   "but never repeat the rejected rule. "
+                                   if replace_outcome else
+                                   "an ADDITIONAL server rule satisfying the "
+                                   "missing constraints. Preserve all valid "
+                                   "previous mechanics and their targets. ")
+                                + "A generic success message is not a physical "
+                                "state transition. JSON ONLY.\\n"
                             )
                             schema = _SCOPED_SEMANTIC_REPAIR_SCHEMA
                             token_budget = 780
@@ -1318,13 +1328,24 @@ class RobloxDynamicArchitect:
                                 existing = original_system.get(
                                     "client_behavior", "")
                             addition = addition.strip()
-                            if addition.casefold() in existing.casefold():
+                            if addition.casefold() == existing.strip().casefold() or (
+                                    not (not dual and field == "observable_result")
+                                    and addition.casefold() in existing.casefold()):
+                                # A model repeating the rejected answer cannot
+                                # be certified or repaired by more appending.
+                                # Use a bounded source-only redesign if a
+                                # scoped attempt remains.
+                                semantic_replan = [
+                                    problem for values in field_issues.values()
+                                    for problem in values
+                                ]
                                 raise DynamicDesignError(
                                     "Semantic repair repeated the previous "
                                     "rule for " + field
                                 )
                             combined = (
-                                existing.strip().rstrip(". ") + ". " + addition
+                                addition if not dual and field == "observable_result"
+                                else existing.strip().rstrip(". ") + ". " + addition
                                 if existing.strip() else addition
                             )
                             if len(combined) > 4096:
@@ -1781,6 +1802,10 @@ class RobloxDynamicArchitect:
                             semantic_repair = None
                         elif issues and (
                             missing_source_actions or len(systems) != 1
+                            or any(
+                                str(error).split(":", 1)[0].endswith("_STATE_MISSING")
+                                for error in issues.get("server_behavior", [])
+                            )
                         ):
                             # A missing requested action is not repairable by
                             # tacking prose onto an unrelated action. Multiple
