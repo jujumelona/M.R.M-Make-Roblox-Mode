@@ -37,29 +37,29 @@ _DEPART_SPACE = re.compile(
 # plans that never launch/teleport/relocate anything. It is an early prose
 # acceptance gate, not a substitute for real Studio movement testing.
 _SPACE_WORLD_CHANGE = re.compile(
-    r"\\b(?:launch\\w*|depart\\w*|fl(?:y|ies|ew)|travel\\w*|teleport\\w*|"
-    r"transport\\w*|mov(?:e|es|ed|ing)|relocat\\w*|transfer\\w*|"
-    r"warp\\w*|enter\\w*|arriv\\w*)\\b.{0,120}"
-    r"\\b(?:space|orbit|orbital|planet|world|zone)\\b|"
-    r"\\b(?:space|orbit|orbital|planet|world|zone)\\b.{0,75}"
-    r"\\b(?:launch\\w*|depart\\w*|travel\\w*|teleport\\w*|"
-    r"mov(?:e|es|ed|ing)|relocat\\w*|warp\\w*|enter\\w*)\\b|"
-    r"\\b(?:set|sets|change|changes|update|updates)\\b.{0,65}"
-    r"\\b(?:position|location|world|zone|region|scene|destination)\\b.{0,65}"
-    r"\\b(?:space|orbit|orbital|planet)\\b|"
-    r"(?:우주|궤도|행성)(?:로|에|까지)?\\s*(?:진입|이동|출발|도착|비행|워프|발사)",
+    r"\b(?:launch\w*|depart\w*|fl(?:y|ies|ew)|travel\w*|teleport\w*|"
+    r"transport\w*|mov(?:e|es|ed|ing)|relocat\w*|transfer\w*|"
+    r"warp\w*|enter\w*|arriv\w*)\b.{0,120}"
+    r"\b(?:space|orbit|orbital|planet|world|zone)\b|"
+    r"\b(?:space|orbit|orbital|planet|world|zone)\b.{0,75}"
+    r"\b(?:launch\w*|depart\w*|travel\w*|teleport\w*|"
+    r"mov(?:e|es|ed|ing)|relocat\w*|warp\w*|enter\w*)\b|"
+    r"\b(?:set|sets|change|changes|update|updates)\b.{0,65}"
+    r"\b(?:position|location|world|zone|region|scene|destination)\b.{0,65}"
+    r"\b(?:space|orbit|orbital|planet)\b|"
+    r"(?:우주|궤도|행성)(?:로|에|까지)?\s*(?:진입|이동|출발|도착|비행|워프|발사)",
     re.I,
 )
 # Leaving/ejecting the passenger from an unchanged vehicle is not the same
 # mechanic as a requested launch or vehicle-borne departure into space.
 _SPACE_ABANDONMENT = re.compile(
-    r"\\b(?:player|pilot|passenger|crew|avatar|character)\\b.{0,65}"
-    r"\\b(?:leav(?:e|es|ing|es?)|exit\\w*|eject\\w*|disembark\\w*)\\b"
-    r".{0,70}\\b(?:ship|spaceship|spacecraft|shuttle|vessel|rocket)\\b|"
-    r"\\b(?:eject\\w*|disembark\\w*)\\b.{0,90}"
-    r"\\b(?:player|pilot|passenger|crew|avatar|character)\\b|"
-    r"\\b(?:ship|spaceship|spacecraft|shuttle|vessel|rocket)\\b.{0,45}"
-    r"\\bno longer carrying\\b",
+    r"\b(?:player|pilot|passenger|crew|avatar|character)\b.{0,65}"
+    r"\b(?:leav(?:e|es|ing|es?)|exit\w*|eject\w*|disembark\w*)\b"
+    r".{0,70}\b(?:ship|spaceship|spacecraft|shuttle|vessel|rocket)\b|"
+    r"\b(?:eject\w*|disembark\w*)\b.{0,90}"
+    r"\b(?:player|pilot|passenger|crew|avatar|character)\b|"
+    r"\b(?:ship|spaceship|spacecraft|shuttle|vessel|rocket)\b.{0,45}"
+    r"\bno longer carrying\b",
     re.I,
 )
 
