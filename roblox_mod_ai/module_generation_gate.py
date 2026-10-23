@@ -76,6 +76,18 @@ def generated_module_errors(
 
     is_server = module.file_path.startswith("src/server/")
     is_client = module.file_path.endswith(".client.luau")
+    # A previously saved model module is revalidated at every checkpoint.
+    # Do not rely exclusively on the first scaffolded body generator: it
+    # may not have run when resuming/importing the approved design. A valid
+    # generic attribute change is NOT physical spacecraft departure.
+    movement = (proposal.game_design.get("dynamic_design") or {}).get(
+        "host_world_motion") or {}
+    if is_server and module.name in movement:
+        from .world_motion_contract import vehicle_motion_code_errors
+        errors.extend(
+            "WORLD_MOTION_CONTRACT: " + error
+            for error in vehicle_motion_code_errors(code)
+        )
     if is_server and re.search(r"\bLocalPlayer\b|:FireServer\s*\(|:InvokeServer\s*\(", masked):
         errors.append("REALM: client-only API used from server")
     if is_client:
