@@ -88,6 +88,60 @@ _ONLY_PLAYER_TARGET = re.compile(
 )
 
 
+
+# A planet full of "special minerals" is a source-owned resource
+# interaction, not a second ship-arrival event. Production proposal 33
+# certified a ship relocation module as mineral-gathering gameplay.
+_PLANET_SPECIAL_MINERAL_SOURCE = re.compile(
+    r"(?:다른\s*행성|외계\s*행성).{0,85}(?:특수\s*광물|광물)|"
+    r"\b(?:other|alien|distant)\s+planets?\b.{0,85}"
+    r"\b(?:special\s+)?(?:ore|mineral|resource)s?\b",
+    re.I,
+)
+_PLANET_MINERAL = re.compile(
+    r"\b(?:ore|mineral|deposit|resource)s?\b|광물|광석|자원",
+    re.I,
+)
+_MINERAL_INTERACTION = re.compile(
+    r"\b(?:min(?:e|es|ed|ing)|harvest\w*|gather\w*|"
+    r"extract\w*|collect\w*|acquir\w*|pickup|"
+    r"pick\s+up|discover\w*)\b|채굴|수집|획득|채취|파밍",
+    re.I,
+)
+_MINERAL_RESULT = re.compile(
+    r"\b(?:inventory|cargo|resource\s+count|stored|collected|"
+    r"newly\s+mined|yield|harvest|extract|mine\w*|deplet\w*)\b|"
+    r"인벤토리|화물|채굴|획득|자원\s*(?:증가|수량)|고갈",
+    re.I,
+)
+
+def source_planetary_mineral_errors(
+    source_span: str, description: str, *,
+    outcome: bool = False,
+) -> list[str]:
+    """Require a *real* mineral mechanic for planet-ore requests.
+
+    Do not treat ship movement, a new mode flag, an inventory-only sale, or
+    access to a planet as collecting the requested planetary resource.
+    """
+    if not _PLANET_SPECIAL_MINERAL_SOURCE.search(str(source_span or "")):
+        return []
+    output = str(description or "")
+    if not (_PLANET_MINERAL.search(output)
+            and _MINERAL_INTERACTION.search(output)):
+        return [
+            "PLANETARY_MINERAL_MECHANIC_DROPPED: other-planet minerals "
+            "require extraction, harvesting or obtaining the minerals; "
+            "relocating a spacecraft alone does not implement them"
+        ]
+    if outcome and not _MINERAL_RESULT.search(output):
+        return [
+            "PLANETARY_MINERAL_RESULT_MISSING: show harvested planetary "
+            "minerals in inventory/cargo or a depleted mineral source"
+        ]
+    return []
+
+
 def source_intent_conflicts(
     source_span: str,
     described_intent: str,
@@ -105,6 +159,7 @@ def source_intent_conflicts(
     source = str(source_span or "").casefold()
     text = str(described_intent or "").casefold()
     errors = []
+    errors.extend(source_planetary_mineral_errors(source, text))
     # Conditional arrival ("when you go to space, gather minerals") scopes
     # its downstream gameplay; it does not require each downstream feature
     # to implement launch as well. A standalone "can depart into space"
@@ -296,6 +351,9 @@ def source_outcome_conflicts(source_span: str, described_result: str) -> list[st
     errors = source_intent_conflicts(
         source_span, described_result, require_implementation=False
     )
+    errors.extend(source_planetary_mineral_errors(
+        source_span, described_result, outcome=True,
+    ))
     if _COLONIZATION.search(source_span) and not (
         _COLONY_VISIBLE_CHANGE.search(described_result)
         or _PLANET_BECOMES_COLONIZED.search(described_result)
