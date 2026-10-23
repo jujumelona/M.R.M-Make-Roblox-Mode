@@ -951,7 +951,15 @@ class RobloxDynamicArchitect:
                     "Remotes, UI, module definitions, classes or geometry; "
                     "the host implements networking, buttons and forms. "
                     "Do not implement adjacent clauses or invent mechanics, "
-                    "money products, or extra participants. JSON ONLY.\\n"
+                    "money products, or extra participants. "
+                    "When required_world_transition is supplied, it is an "
+                    "immutable source-grounded action constraint: move the "
+                    "craft itself into the specified playable destination "
+                    "with its existing occupants aboard. Specify an actual "
+                    "server-owned craft relocation; never eject a passenger, "
+                    "empty the crew list, or merely set an in_space flag. "
+                    "The visible result must show the moved craft arriving "
+                    "with occupants, not only a UI message. JSON ONLY.\\n"
                     + json.dumps({
                         "source_requirements": subset,
                         "adjacent_context_not_instructions": adjacent_context,
@@ -1227,8 +1235,11 @@ class RobloxDynamicArchitect:
                                 "and visible result; do not substitute menus "
                                 "or prerequisites. world_entities must be a "
                                 "list of NAME strings, not objects or Roblox "
-                                "geometry. Do not add unrelated features. "
-                                "JSON only.\n"
+                                "geometry. If required_world_transition is "
+                                "present, the VEHICLE must physically change "
+                                "location with passengers aboard; reject a "
+                                "player-only launch or mode flag. "
+                                "Do not add unrelated features. JSON only.\n"
                                 + json.dumps({
                                     "source_requirements": subset,
                                     "adjacent_context_not_instructions": adjacent_context,
