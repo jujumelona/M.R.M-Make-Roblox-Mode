@@ -49,6 +49,19 @@ def certify_unclassified_chunks(
             "Architecture has incomplete ownership/acceptance contracts"
         )
 
+    # Do not certify an atom whose source string, requirement or facet was
+    # swapped after pre-design. Ownership must refer back to the same exact
+    # user-authored span, not merely reuse a believable server description.
+    source_requirements = {
+        row.get("id"): row.get("statement")
+        for row in ledger.get("requirements", [])
+        if isinstance(row, dict)
+    }
+    source_facets = {
+        row.get("id"): row
+        for row in ledger.get("facets", [])
+        if isinstance(row, dict)
+    }
     certified: list[str] = []
     for chunk_id in sorted(missing):
         atom = atoms[chunk_id]
@@ -61,6 +74,16 @@ def certify_unclassified_chunks(
             raise SourceArchitectureRecoveryError(
                 chunk_id + ": missing immutable source identifiers"
             )
+        if source_requirements and source_requirements.get(requirement) != source:
+            raise SourceArchitectureRecoveryError(
+                chunk_id + ": source text diverges from original requirement")
+        if source_facets:
+            original_facet = source_facets.get(facet)
+            if (not isinstance(original_facet, dict)
+                    or original_facet.get("source_span") != source
+                    or original_facet.get("requirements") != [requirement]):
+                raise SourceArchitectureRecoveryError(
+                    chunk_id + ": facet/source ownership was changed")
         owners = [
             m for m in modules
             if facet in module_facets.get(m.module_id, [])
