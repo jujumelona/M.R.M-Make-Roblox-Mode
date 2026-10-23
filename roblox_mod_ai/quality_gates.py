@@ -266,6 +266,20 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
                 on_disk if on_disk is not None else body)
             check("dynamic.api." + module.name, not api_faults,
                   "Invalid Roblox methods detected: " + "; ".join(api_faults))
+            # Recheck the FINAL on-disk source, not only the initial model
+            # body. World-movement obligations must survive formatting,
+            # source review repair, and imported generation checkpoints.
+            motion_spec = (dyn.get("host_world_motion") or {}).get(module.name)
+            if motion_spec is not None:
+                from .world_motion_contract import vehicle_motion_code_errors
+                motion_errors = (
+                    vehicle_motion_code_errors(on_disk or "")
+                    if is_server else ["Vehicle movement must be server-owned"]
+                )
+                check("dynamic.world_motion." + module.name,
+                      on_disk is not None and not motion_errors,
+                      "Physical craft relocation in final generated server Luau: " +
+                      "; ".join(motion_errors))
             # Some Roblox service names occur inside the string argument to
             # GetService, so a correctly string-masked scan cannot match them
             # directly. Accept the name only when the GetService call prefix
