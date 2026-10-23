@@ -128,9 +128,14 @@ def test_plan_failure_8_all_real_model_outputs_satisfy_vehicle_contract():
             "a player who was aboard the vehicle remains aboard it.",
         ),
     ]
+    from roblox_mod_ai.semantic_preservation import (
+        source_intent_conflicts, source_outcome_conflicts,
+    )
     for server, outcome in recorded_outputs:
         assert has_vehicle_motion_effect(server), server
         assert motion_contract_errors(required, _system(server, outcome)) == []
+        assert source_intent_conflicts("그렇게해서 우주로 나갈수있고", server) == []
+        assert source_outcome_conflicts("그렇게해서 우주로 나갈수있고", outcome) == []
 
 
 def test_vehicle_actor_is_required_beyond_nearby_ship_mentions():
@@ -145,3 +150,18 @@ def test_vehicle_actor_is_required_beyond_nearby_ship_mentions():
     ]
     for server in invalid:
         assert not has_vehicle_motion_effect(server), server
+
+
+def test_surface_relocation_does_not_count_as_departing_into_space():
+    from roblox_mod_ai.world_motion_contract import (
+        has_vehicle_motion_effect, has_vehicle_arrival_evidence,
+    )
+    assert not has_vehicle_motion_effect(
+        "The server moves the player's spacecraft along the planet surface."
+    )
+    assert not has_vehicle_arrival_evidence(
+        "The spacecraft physically moves to another planet surface position."
+    )
+    assert not has_vehicle_arrival_evidence(
+        "The spaceship is docked, the player appears in space."
+    )
