@@ -78,9 +78,10 @@ class BoundedContextModel:
                 # One unpunctuated original span can contain TWO actions.
                 # The model must retain both, not pretend a UI or PvP target
                 # fully implements a player request.
-                action = ("Player fights hostile alien NPC enemies and "
-                          "establishes a persistent owned colony settlement")
-                query = "Roblox NPC battle and colony settlement ownership"
+                action = ("Players mine and obtain special minerals on other planets, "
+                          "fight hostile alien NPC enemies, and establish a "
+                          "persistent owned planet colony settlement")
+                query = "Roblox planetary mineral mining NPC combat and colony settlement"
             elif "식민" in span:
                 action = "Establish a persistent owned colony settlement on the planet"
                 query = "Roblox DataStore persistent colony settlement ownership"
