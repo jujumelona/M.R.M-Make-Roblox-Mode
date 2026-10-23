@@ -202,6 +202,11 @@ class SemanticOnlySevenFeatureModel:
         rid, _, statement, label = match
         assert payload["source_requirements"] == [
             {"id": rid, "statement": statement, "source": "user_prompt"}]
+        if "launch" in fid:
+            assert payload["required_world_transition"]["actor"] == (
+                "owned spacecraft / vehicle"
+            )
+            assert "remain aboard" in payload["required_world_transition"]["occupant_rule"]
         assert kwargs["json_schema"] == SEMANTIC_FACET_SCHEMA
         assert "module_remotes" not in prompt
         return {"systems": [{
@@ -251,6 +256,10 @@ def test_seven_feature_semantic_model_creates_complete_host_owned_contract(monke
         fid for _, fid, _, _ in _SPACE
     }
     assert report["architecture_assembly"]["validated"]
+    assert any(
+        obligation["kind"] == "vehicle_world_transition"
+        for obligation in result["host_world_motion"].values()
+    )
     assert not report["architecture_assembly"]["gameplay_verified"]
 
 @pytest.mark.parametrize("server,client", [
