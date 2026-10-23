@@ -851,8 +851,17 @@ class RobloxDynamicArchitect:
             # to leave a planet after assembling a craft is a VEHICLE
             # world transition, not permission to eject the passenger.
             # This is a generic movement obligation, not a prefab game.
+            # "그렇게해서" / "then" can refer to a vehicle assembled
+            # several clauses earlier. Only prior source clauses may resolve
+            # its physical actor; later clauses never authorize new mechanics.
+            earlier_referents = [
+                str(row.get("statement") or "")
+                for i, row in enumerate(ordered_requirements)
+                if owned_indexes and i < min(owned_indexes)
+                and row.get("statement")
+            ][-6:]
             movement_contract = source_motion_contract(
-                slice_request, adjacent_context
+                slice_request, [*adjacent_context, *earlier_referents]
             )
             # RAG retrieval status is not evidence of relevance. The real
             # plan-50 request for launching a ship retrieved tutorials on
