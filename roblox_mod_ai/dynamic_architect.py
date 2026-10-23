@@ -1160,57 +1160,70 @@ class RobloxDynamicArchitect:
                                     "additionalProperties": False}}},
                                 "required": ["actions"], "additionalProperties": False,
                             }
-                            raw_actions = self.router.complete_json(
-                                "Identify every INDEPENDENT player/server "
-                                "gameplay action explicitly requested in this "
-                                "source clause. Return JSON "
-                                "{actions:[{source_id,action}]}; "
-                                "source_id must be one of the provided immutable "
-                                "host source-span IDs. Do NOT emit source_quote "
-                                "or translate/copy the original text. "
-                                "Select DISTINCT IDs for independent actions; "
-                                "each action is short, concrete and distinct. "
-                                "A conditional arrival clause is a PRECONDITION "
-                                "for the following player activities, not a "
-                                "new action. Do NOT turn 'when in space' into "
-                                "travel to space, unlock mode, or launch again. "
-                                "When a source requests world ore, enemy fights "
-                                "and settlements, treat those as distinct "
-                                "gameplay effects rather than mode flags. "
-                                "Do not add genre defaults, expand adjectives "
-                                "into actions, or repeat the same action with "
-                                "different names. Do not cite error labels. "
-                                "Return between 2 and 3 source-owned actions. "
-                                "JSON only.\n"
-                                + json.dumps({
-                                    "source_clause": slice_request,
-                                    "candidate_source_spans": [
-                                        {"id": row["id"], "quote": row["quote"]}
-                                        for row in source_spans],
-                                    "coverage_failures": problem_statements,
-                                }, ensure_ascii=False),
-                                role="planner", temperature=0.0,
-                                max_tokens=400,
-                                json_schema=action_schema,
-                            )
-                            actions = (
-                                raw_actions.get("actions")
-                                if isinstance(raw_actions, dict) else None
-                            )
                             from .atomic_action_quotes import (
                                 verify_or_bind_actions, SourceActionBindingError,
                             )
-                            # Keep the actual small-model response in the
-                            # failure bundle; previously all invalid source
-                            # quotations appeared as unavailable_or_too_large.
-                            repair_response = raw_actions
-                            try:
-                                verified_actions = verify_or_bind_actions(
-                                    self.router, slice_request, actions,
-                                    missing_obligations=problem_statements,
+                            rejected_atomic_actions: list[dict[str, Any]] = []
+                            for source_choice_attempt in range(2):
+                                raw_actions = self.router.complete_json(
+                                    "Identify every INDEPENDENT player/server "
+                                    "gameplay action explicitly requested in this "
+                                    "source clause. Return JSON "
+                                    "{actions:[{source_id,action}]}; "
+                                    "source_id must be one of the provided immutable "
+                                    "host source-span IDs. Do NOT emit source_quote "
+                                    "or translate/copy the original text. "
+                                    "Select DISTINCT IDs for independent actions; "
+                                    "each action is short, concrete and distinct. "
+                                    "A conditional arrival clause is a PRECONDITION "
+                                    "for the following player activities, not a "
+                                    "new action. Do NOT turn 'when in space' into "
+                                    "travel to space, unlock mode, or launch again. "
+                                    "When a source requests world ore, enemy fights "
+                                    "and settlements, treat those as distinct "
+                                    "gameplay effects rather than mode flags. "
+                                    "Do not add genre defaults, expand adjectives "
+                                    "into actions, or repeat the same action with "
+                                    "different names. Do not cite error labels. "
+                                    "If rejected_unowned_actions is nonempty, DO NOT "
+                                    "repeat them: replace the conditional-only "
+                                    "travel action with a genuine requested effect. "
+                                    "Return between 2 and 3 source-owned actions. "
+                                    "JSON only.\n"
+                                    + json.dumps({
+                                        "source_clause": slice_request,
+                                        "candidate_source_spans": [
+                                            {"id": row["id"], "quote": row["quote"]}
+                                            for row in source_spans],
+                                        "coverage_failures": problem_statements,
+                                        "rejected_unowned_actions": rejected_atomic_actions,
+                                    }, ensure_ascii=False),
+                                    role="planner", temperature=0.0,
+                                    max_tokens=400,
+                                    json_schema=action_schema,
                                 )
-                            except SourceActionBindingError as bind_error:
-                                raise DynamicDesignError(str(bind_error)) from bind_error
+                                actions = (
+                                    raw_actions.get("actions")
+                                    if isinstance(raw_actions, dict) else None
+                                )
+                                # Expose the actual response in failure logs.
+                                repair_response = raw_actions
+                                try:
+                                    verified_actions = verify_or_bind_actions(
+                                        self.router, slice_request, actions,
+                                        missing_obligations=problem_statements,
+                                    )
+                                    break
+                                except SourceActionBindingError as bind_error:
+                                    if (source_choice_attempt == 0
+                                            and "ATOMIC_CONDITIONAL_PROMOTED_TO_ACTION"
+                                            in str(bind_error)):
+                                        rejected_atomic_actions = [
+                                            dict(item) for item in (actions or [])
+                                            if isinstance(item, dict)
+                                        ]
+                                        continue
+                                    raise DynamicDesignError(str(bind_error)) from bind_error
                             proposed_systems: list[dict[str, Any]] = []
                             for owned_action in verified_actions:
                                 part = self.router.complete_json(
