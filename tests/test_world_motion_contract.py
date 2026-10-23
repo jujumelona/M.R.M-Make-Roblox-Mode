@@ -165,3 +165,54 @@ def test_surface_relocation_does_not_count_as_departing_into_space():
     assert not has_vehicle_arrival_evidence(
         "The spaceship is docked, the player appears in space."
     )
+
+
+def test_generation_checkpoint_rejects_attribute_only_spaceflight():
+    """A saved module may bypass the original scaffold, never the motion gate."""
+    from types import SimpleNamespace
+    from roblox_mod_ai.module_generation_gate import generated_module_errors
+    from roblox_mod_ai.spec import ModuleKind
+
+    class Analyzer:
+        def analyze_source(self, *_args, **_kwargs):
+            return []
+
+    module = SimpleNamespace(
+        name="SpaceLaunchService", module_id="dyn_space_launch",
+        file_path="src/server/SpaceLaunchService.luau",
+        kind=ModuleKind.SERVER_MODULE,
+    )
+    proposal = SimpleNamespace(
+        modules=[module],
+        game_design={"dynamic_design": {
+            "host_world_motion": {
+                "SpaceLaunchService": {
+                    "kind": "vehicle_world_transition",
+                    "actor": "owned spacecraft / vehicle",
+                },
+            },
+            "host_actions": {},
+            "host_world_actions": {},
+            "module_remotes": {},
+        }},
+    )
+    fake = (
+        '--!strict\nlocal Service = {}\n'
+        'function Service.start(services)\n'
+        '    Service._services = services\nend\n'
+        'function Service.handleAction(player, services, ...)\n'
+        '    player:SetAttribute("in_space", true)\n'
+        '    workspace:SetAttribute("SpaceLaunch", true)\n'
+        '    return true\nend\nreturn Service\n'
+    )
+    errors = generated_module_errors(module, proposal, fake, Analyzer())
+    assert any("VEHICLE_WORLD_MOVEMENT_CODE_MISSING" in e for e in errors), errors
+    actual = fake.replace(
+        '    workspace:SetAttribute("SpaceLaunch", true)',
+        '    local ship = workspace:FindFirstChild("OwnedSpacecraft")\n'
+        '    if not ship or not ship:IsA("Model") then return false end\n'
+        '    ship:PivotTo(CFrame.new(0, 1250, 0))'
+    )
+    fixed_errors = generated_module_errors(module, proposal, actual, Analyzer())
+    assert not any("VEHICLE_WORLD_MOVEMENT_CODE_MISSING" in e
+                   for e in fixed_errors), fixed_errors
