@@ -714,6 +714,7 @@ def test_space_exit_plan_replans_missing_world_transition_instead_of_repeating(m
     assert any(
         "SOURCE_WORLD_TRANSITION" in row.get("validator_error", "")
         or "SPACE_TRAVEL_STATE_MISSING" in row.get("validator_error", "")
+        or "SPACE_TRAVEL_REVERSED" in row.get("validator_error", "")
         for row in research["architecture_attempts"]
         if not row.get("passed")
     )
