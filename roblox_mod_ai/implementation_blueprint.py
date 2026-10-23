@@ -213,6 +213,46 @@ def build_implementation_blueprint(proposal: Any) -> dict[str, Any]:
         for m in mechanics if m["missing_owners"]
     ]
     blocked += ["unowned requirement " + r["id"] for r in requirements if r["missing"]]
+    # Imported pre-fix plans can have a source-verified spacecraft launch
+    # but lose the physical movement obligation when the architect metadata
+    # is serialized. Rebuild that obligation from the ORIGINAL requirement
+    # and other source clauses; never infer launch from a model search query.
+    if dyn and isinstance(ledger.get("requirements"), list):
+        from .world_motion_contract import source_motion_contract
+        source_reqs = [
+            (row["id"], row["statement"])
+            for row in ledger["requirements"]
+            if isinstance(row, dict)
+            and isinstance(row.get("id"), str)
+            and isinstance(row.get("statement"), str)
+        ]
+        motion_map = dyn.get("host_world_motion") or {}
+        for requirement_id, statement in source_reqs:
+            contract = source_motion_contract(
+                statement,
+                [span for other_id, span in source_reqs
+                 if other_id != requirement_id],
+            )
+            if contract is None:
+                continue
+            server_owners = [
+                module for module in proposal.modules
+                if getattr(getattr(module, "kind", None), "value", None)
+                   in ("server_module", "server_script")
+                and requirement_id in
+                   (dyn.get("module_requirements") or {}).get(module.module_id, [])
+            ]
+            if not any(
+                isinstance(motion_map, dict)
+                and motion_map.get(module.name) == contract
+                for module in server_owners
+            ):
+                blocked.append(
+                    requirement_id +
+                    ": SOURCE_WORLD_TRANSITION_CONTRACT_LOST: original request "
+                    "requires physical craft movement with players aboard, "
+                    "but the saved design has no server-owned motion obligation"
+                )
     # Architecture-based recovery must survive beyond planning: the original
     # classifier did NOT succeed, so its placeholder cannot be rechecked as
     # though it were a model classification. Conversely, merely writing
