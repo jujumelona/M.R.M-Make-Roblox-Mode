@@ -94,8 +94,13 @@ class OpenCloudRuntimeVerifier:
             pub = publisher.publish_place(universe, place, compiled, version_type="Published")
         except Exception as exc:
             return {"passed": False, "executed": False, "reason": f"Test place publish exception: {type(exc).__name__}"}
-        version = pub.get("version_number") if isinstance(pub, dict) else None
-        if not pub.get("success") or not isinstance(version, (int, str)) or not str(version).isdecimal():
+        if not isinstance(pub, dict):
+            return {
+                "passed": False, "executed": False,
+                "reason": "Test-place publisher returned a non-object response",
+            }
+        version = pub.get("version_number")
+        if pub.get("success") is not True or not isinstance(version, (int, str)) or not str(version).isdecimal():
             return {
                 "passed": False, "executed": False,
                 "reason": "Test place publish did not return a valid version",
@@ -134,7 +139,8 @@ class OpenCloudRuntimeVerifier:
                     return {"passed": False, "executed": False, "reason": "Invalid polled task response"}
                 state = task.get("state")
                 if state in ("COMPLETE", "FAILED", "CANCELLED"):
-                    results = task.get("output", {}).get("results", [])
+                    output = task.get("output")
+                    results = output.get("results") if isinstance(output, dict) else None
                     passed = state == "COMPLETE" and results == [True]
                     return {
                         "passed": passed, "executed": True,
