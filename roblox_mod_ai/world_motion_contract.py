@@ -17,7 +17,7 @@ _DEPART = re.compile(
     re.I,
 )
 _VEHICLE = re.compile(
-    r"우주선|\b(?:spacecraft|spaceship|ship|rocket|shuttle|vessel|vehicle)\b",
+    r"우주선|\b(?:spacecraft|spaceship|ship|rocket|shuttle|vessel|vehicle|craft)\b",
     re.I,
 )
 _MOTION = re.compile(
@@ -30,8 +30,8 @@ _WORLD_TARGET = re.compile(r"\b(?:space|orbit|orbital|destination|zone|planet)\b
 _LEAVES = re.compile(
     r"\b(?:player|passenger|pilot|crew|character)\b.{0,65}"
     r"\b(?:leav(?:e|es|ing)|exits?|eject\w*|disembark\w*)\b"
-    r".{0,70}\b(?:ship|spacecraft|spaceship|vehicle|vessel)\b|"
-    r"\b(?:ship|spacecraft|spaceship|vehicle|vessel)\b.{0,60}"
+    r".{0,70}\b(?:ship|spacecraft|spaceship|vehicle|vessel|craft)\b|"
+    r"\b(?:ship|spacecraft|spaceship|vehicle|vessel|craft)\b.{0,60}"
     r"\b(?:empty|no longer carrying|abandons?|without (?:the )?player)\b|"
     r"\b(?:eject\w*|disembark\w*)\b",
     re.I,
@@ -63,45 +63,84 @@ def source_motion_contract(
     }
 
 
+# A semantic movement effect is not tied to an arbitrary English word order.
+# Small models may say "relocation of the craft" or "sets spacecraft's CFrame"
+# instead of "launches the spacecraft". Both express the same plan; neither
+# proves that the generated Luau has actually moved an object.
+_CRAFT = r"(?:spacecraft|spaceship|ship|rocket|shuttle|vessel|vehicle|craft)"
+_CRAFT_ARG = (
+    r"(?:(?:the|a|an|owned|assembled|existing|player['’]s|pilot['’]s)\s+){0,5}"
+    + _CRAFT + r"\b"
+)
+_DESTINATION = re.compile(
+    r"\b(?:space|orbit|orbital|destination|zone|region|planet|world|surface)\b"
+    r"|우주|궤도|행성", re.I,
+)
+_MOVE_EFFECTS = tuple(re.compile(pattern, re.I) for pattern in (
+    r"\b(?:launch\w*|mov(?:e|es|ed|ing)|teleport\w*|relocat\w*|"
+    r"transport\w*|transfer\w*|warp\w*|transition\w*|depart\w*)\s+"
+    + _CRAFT_ARG,
+    r"\b(?:relocation|movement|teleportation|transfer|transport|transition)"
+    r"\s+of\s+" + _CRAFT_ARG,
+    r"\b(?:sets?|changes?|updates?|assigns?|appl(?:y|ies))\b"
+    r".{0,100}?" + _CRAFT_ARG +
+    r"(?:['’]s)?\s+(?:new\s+)?(?:world\s+)?(?:position|cframe|location)\b",
+    _CRAFT_ARG + r"(?:['’]s)?\s+(?:new\s+)?(?:world\s+)?"
+    r"(?:position|cframe|location)\b.{0,130}?"
+    r"\b(?:appl(?:y|ies)|sets?|updates?|changes?|relocat\w*)\b",
+    r"\b(?:applies?|sets?|updates?)\s+(?:it|the\s+(?:new\s+)?"
+    r"(?:position|cframe|location))\s+to\s+" + _CRAFT_ARG,
+    _CRAFT_ARG +
+    r"(?:\s+(?:itself|successfully|automatically|then|"
+    r"with\s+(?:the\s+)?players?\s+aboard)){0,3}\s+"
+    r"(?:(?:is|are|was|were|has\s+been|will\s+be)\s+)?"
+    r"(?:launch\w*|mov(?:e|es|ed|ing)|teleport\w*|relocat\w*|"
+    r"transport\w*|transfer\w*|warp\w*|transition\w*|depart\w*)\b",
+))
+_NEGATED_CRAFT_MOVE = re.compile(
+    r"\bwithout\s+(?:actually\s+)?"
+    r"(?:relocat\w*|mov\w*|launch\w*|transport\w*)\s+" + _CRAFT_ARG
+    + r"|\b(?:while|but)\s+(?:the\s+)?" + _CRAFT +
+    r"\s+remains?\s+(?:docked|unmoved|stationary)\b",
+    re.I,
+)
+
+
+def _moves_craft_to_destination(server_behavior: str) -> bool:
+    for sentence in re.split(r"[.;!?\n]+", server_behavior):
+        if (not _DESTINATION.search(sentence)
+                or _NEGATED_CRAFT_MOVE.search(sentence)):
+            continue
+        if any(pattern.search(sentence) for pattern in _MOVE_EFFECTS):
+            return True
+    return False
+
+
 def motion_contract_errors(
     contract: dict[str, str] | None,
     systems: list[dict[str, Any]],
 ) -> list[str]:
-    """Reject inverse actor roles before invoking costly Luau codegen."""
+    """Check a complete server/outcome pair, not a Studio execution proof.
+
+    Avoid combining a movement verb from one subsystem with a craft noun
+    from another subsystem to manufacture evidence of a launch.
+    """
     if contract is None:
         return []
-    server = " ".join(str(x.get("server_behavior", "")) for x in systems)
-    outcome = " ".join(str(x.get("observable_result", "")) for x in systems)
-    # The vehicle must be the thing moved, not merely a precondition that
-    # authorizes a player's ejection. Keep the evidence within one sentence.
-    vehicle_motion = False
-    # Syntactic proximity alone is unsafe: "checks ship, then launches
-    # player" mentions the ship close to a launch verb but moves the wrong
-    # actor. The motion must take the craft as its DIRECT object, or the
-    # craft must be the subject of its own movement.
-    vehicle_as_object = re.compile(
-        r"\b(?:launch\w*|mov(?:e|es|ed|ing)|teleport\w*|"
-        r"relocat\w*|transport\w*|warp\w*|"
-        r"travel\w*|depart\w*)\b"
-        r"\s+(?:(?:the|a|an|owned|assembled|player['’]s)\s+){0,3}"
-        r"(?:ship|spaceship|spacecraft|vessel|rocket|shuttle|vehicle)\b",
-        re.I,
+    pairs = [
+        (str(item.get("server_behavior") or ""),
+         str(item.get("observable_result") or ""))
+        for item in systems if isinstance(item, dict)
+    ]
+    vehicle_motion = any(_moves_craft_to_destination(server) for server, _ in pairs)
+    arrival = any(
+        _VEHICLE.search(outcome) and _WORLD_TARGET.search(outcome)
+        for _, outcome in pairs
     )
-    vehicle_as_subject = re.compile(
-        r"\b(?:ship|spaceship|spacecraft|vessel|rocket|shuttle|vehicle)\b"
-        r"\s+(?:(?:itself|successfully|automatically|then|"
-        r"with\s+(?:the\s+)?players?\s+aboard)\s+){0,3}"
-        r"(?:is\s+)?(?:launch\w*|mov(?:e|es|ed|ing)|teleport\w*|"
-        r"relocat\w*|transport\w*|warp\w*|"
-        r"travel\w*|depart\w*)\b",
-        re.I,
+    ejection = any(
+        _LEAVES.search(server) or _LEAVES.search(outcome)
+        for server, outcome in pairs
     )
-    for sentence in re.split(r"[.;!?\n]+", server):
-        if not _WORLD_TARGET.search(sentence):
-            continue
-        if vehicle_as_object.search(sentence) or vehicle_as_subject.search(sentence):
-            vehicle_motion = True
-            break
     errors = []
     if not vehicle_motion:
         errors.append(
@@ -109,12 +148,12 @@ def motion_contract_errors(
             "to change world location; changing the player's mode or ejecting "
             "the player is not vehicle travel"
         )
-    if _LEAVES.search(server) or _LEAVES.search(outcome):
+    if ejection:
         errors.append(
             "VEHICLE_OCCUPANCY_REVERSED: players must remain aboard the "
             "departing craft rather than be ejected into the destination"
         )
-    if not (_VEHICLE.search(outcome) and _WORLD_TARGET.search(outcome)):
+    if not arrival:
         errors.append(
             "VEHICLE_TRAVEL_RESULT_MISSING: show the craft arriving in the "
             "destination world, not only a player status flag"
