@@ -77,9 +77,14 @@ def recover_unseparated_actions(router: Any, source: str) -> list[dict[str, str]
     """
     import json
 
-    from .atomic_action_quotes import indexed_source_spans, verify_or_bind_actions
+    from .atomic_action_quotes import (
+        eligible_atomic_action_spans,
+        verify_or_bind_actions,
+    )
 
-    candidates = indexed_source_spans(source)
+    # A conditional predicate is only context for later actions. Give the
+    # decomposer actual source-owned action spans, preserving original IDs.
+    candidates = eligible_atomic_action_spans(source)
     schema = {
         "type": "object",
         "properties": {"actions": {
@@ -94,8 +99,10 @@ def recover_unseparated_actions(router: Any, source: str) -> list[dict[str, str]
         "SOURCE-SCOPED DECOMPOSITION ONLY. The original user clause has "
         "multiple gameplay actions but no safe grammatical split. Select "
         "2-3 DISTINCT original source-span IDs for the independent actions. "
-        "Do not invent a new gameplay action, an API, or a quote. Use long "
-        "spans when needed to preserve the original complete meaning and "
+        "Do not invent a new gameplay action, an API, or a quote. "
+        "Do not promote a 'when / after / once' condition into a separate "
+        "action (for example, arriving in space is not a second launch). "
+        "Use long spans when needed to preserve the original complete meaning and "
         "qualifiers. Explain each selected action in concrete English. "
         "Do not simply echo the whole clause as one action. JSON only.\n"
         + json.dumps({
