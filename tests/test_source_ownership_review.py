@@ -155,8 +155,11 @@ def test_real_architect_recovers_plan_54_on_source_grounded_tie(monkeypatch):
             assert len(self.calls) == 3
             return {"systems": [_system(
                 "EquipmentTrade",
-                "transfers the validated purchased equipment into inventory",
-                "equipment acquisition",
+                "purchases and equips the requested weapon. The server "
+                "validates crew hiring and recruits crew members. The server "
+                "validates spaceship engine upgrades and improves the "
+                "spacecraft performance",
+                "purchased weapon, hired crew, and upgraded spaceship performance",
             )]}
 
     model = Model()
