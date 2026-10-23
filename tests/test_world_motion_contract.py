@@ -46,6 +46,15 @@ def test_real_plan_failure_replays_all_three_attempts_without_fake_success():
     ]
     for systems in attempts:
         assert motion_contract_errors(required, systems)
+    near_but_wrong_actor = _system(
+        "Server verifies ship ownership, then launches the player into space "
+        "while the spaceship remains docked and unmoved.",
+        "The spaceship remains docked, player appears in space.",
+    )
+    assert any(
+        "VEHICLE_TRANSITION_MISSING" in issue
+        for issue in motion_contract_errors(required, near_but_wrong_actor)
+    )
     correct = _system(
         "Server checks the assembled spaceship and fuel, launches the "
         "spacecraft carrying players into space and teleports the ship "
