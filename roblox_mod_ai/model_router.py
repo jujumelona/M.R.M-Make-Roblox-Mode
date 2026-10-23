@@ -36,6 +36,10 @@ class ModelRouter:
         # even when the underlying gameplay action was valid. No second
         # input/effect generation call is required in the production pipeline.
         self.supports_host_standard_transport = True
+        # Short Luau action bodies use grammar-constrained JSON from the first
+        # request. Plain-text completions in production logs repeatedly
+        # leaked tool-call delimiters into the Luau source.
+        self.supports_scoped_json_body = True
         # Keep the legacy experimental type-manifest path opt-in for tests
         # and explicit research, never as the production hard gate.
         self.supports_typed_action_contract = False
