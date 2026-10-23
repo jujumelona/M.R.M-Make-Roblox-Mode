@@ -599,3 +599,49 @@ def test_numeric_comma_does_not_split_requested_amount_into_fake_features():
         "Collect 1,000 coins", "upgrade a ship"]
     assert clauses("Mine ore, trade resources") == [
         "Mine ore", "trade resources"]
+
+
+def test_report35_host_source_ledger_can_complete_after_architecture_recovery(monkeypatch):
+    """A real source ledger must cross BOTH the planner and blueprint gates.
+
+    The model's English classification never becomes true; each original
+    chunk is marked independently source-verified by an accepted architecture.
+    Simply clearing classification_unverified without that evidence is invalid.
+    """
+    from copy import deepcopy
+    from roblox_mod_ai.request_contract import ledger_complete
+
+    class UnreliableClassifier:
+        def complete_json(self, prompt, **kwargs):
+            return {"behaviors": []}
+
+    monkeypatch.setenv("RMM_ENABLE_MODEL_DECOMPOSITION", "1")
+    monkeypatch.setenv("RMM_ENABLE_MODEL_QUERY_EXPANSION", "0")
+    raw = RobloxPreDesignResearch(
+        router=UnreliableClassifier(), live_enabled=False).research(
+            SPACE_REQUEST)["ledger"]
+    assert raw["decomposition_method"] == "source_anchored_host"
+    ids = list(raw["classification_unverified"])
+    assert ids
+    recovered = deepcopy(raw)
+    recovered["unimplemented_facets"] = []
+    recovered["unmatched_requirements"] = []
+    recovered["classification_unverified"] = []
+    recovered["architecture_recovered_chunks"] = ids
+    for atom in recovered["atomic_intents"]:
+        if atom.get("chunk_id") in ids:
+            atom["classification_origin"] = "architecture_source_verified"
+    assert ledger_complete(SPACE_REQUEST, recovered)
+
+    claimed = deepcopy(recovered)
+    del claimed["architecture_recovered_chunks"]
+    assert not ledger_complete(SPACE_REQUEST, claimed)
+    claimed = deepcopy(recovered)
+    claimed["atomic_intents"][0]["classification_origin"] = "model_classified"
+    assert not ledger_complete(SPACE_REQUEST, claimed)
+    claimed = deepcopy(recovered)
+    claimed["classification_unverified"] = ids[:1]
+    assert not ledger_complete(SPACE_REQUEST, claimed)
+    claimed = deepcopy(recovered)
+    claimed["atomic_intents"][0]["english_query"] = "Roblox unrelated game"
+    assert not ledger_complete(SPACE_REQUEST, claimed)
