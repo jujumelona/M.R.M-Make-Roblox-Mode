@@ -49,6 +49,78 @@ def _clean_body(raw: str) -> str:
     return body
 
 
+
+# Reject leaked chat/tool delimiters as data corruption, not as Luau that can
+# be repaired by guessing missing 'end' tokens.
+_MODEL_PROTOCOL = re.compile(
+    r"</?(?:parameter|tool_call|function)(?:[=>\s]|>)|"
+    r"<\s*function\s*=",
+    re.I,
+)
+_SHADOW_HOST_PLAYER = re.compile(
+    r"\blocal\s+(?:player|services)\s*(?::\s*\w+)?\s*=", re.I,
+)
+_UNBOUND_DATA_MANAGER = re.compile(
+    r"(?<![\w.])PlayerDataManager\s*[.:]\s*GetState\s*\(",
+    re.I,
+)
+
+
+def normalize_verified_server_body(body: str, proposal: RobloxProposal) -> str:
+    """Make only an ABI-proven, semantics-preserving dot/colon correction.
+
+    A server method exported as '.', unlike ':', receives no implicit self.
+    Only the exact known PlayerDataManager.GetState peer is normalized;
+    arbitrary invented methods and unknown peer ABIs still fail validation.
+    """
+    if _MODEL_PROTOCOL.search(body):
+        raise ValueError(
+            "MODEL_PROTOCOL_CONTAMINATION: coder returned tool-call or chat "
+            "markup instead of isolated Luau statements"
+        )
+    executable = _mask_strings(_without_comments(body))
+    if _SHADOW_HOST_PLAYER.search(executable):
+        raise ValueError(
+            "HOST_IDENTITY_SHADOWED: use the trusted player and services "
+            "parameters, never redeclare them from client args"
+        )
+    if _UNBOUND_DATA_MANAGER.search(executable):
+        raise ValueError(
+            "DEPENDENCY_API_UNBOUND: access GetState only through "
+            "services.PlayerDataManager.GetState(player, namespace)"
+        )
+    from .luau_service_contract import exported_methods
+    peer = next(
+        (module for module in getattr(proposal, "modules", [])
+         if module.name == "PlayerDataManager"
+         and module.file_path.startswith("src/server/")
+         and module.code), None
+    )
+    if peer is None:
+        return body
+    methods = exported_methods(peer.code)[1]
+    method = methods.get("GetState")
+    if not isinstance(method, dict) or method.get("separator") != ".":
+        return body
+    # A trusted module's exported ABI, not guessed functionality, proves this
+    # repair. Mask comments/strings so literal messages are never modified.
+    wrong = re.compile(
+        r"\bservices\s*\.\s*PlayerDataManager\s*:\s*GetState\s*\("
+    )
+    masked = _mask_strings(_without_comments(body))
+    matches = [
+        match for match in wrong.finditer(body)
+        if masked[match.start():match.start()+8] == "services"
+    ]
+    for match in reversed(matches):
+        body = (
+            body[:match.start()] +
+            "services.PlayerDataManager.GetState(" +
+            body[match.end():]
+        )
+    return body
+
+
 def _shell(
     body: str, allowed_choices: list[str] | None = None,
     *, typed_contract: dict[str, Any] | None = None,
@@ -256,6 +328,12 @@ def try_scaffolded_server(
         "is services.PlayerDataManager.GetState(player, namespace) and it "
         "returns a mutable server-owned table or nil until ready. "
         "GetState is a DOT function, never call :GetState. "
+        "GetState returns an initially EMPTY state table for a new namespace; "
+        "do not reject valid users merely because a GroundMode or other "
+        "starting value was never initialized. Use the trusted player "
+        "parameter directly: args[1] is client input, NOT a Player. "
+        "Do NOT redeclare local player or local services. "
+        "Never output tool-call XML delimiters or control-plane text. "
         "PlayerDataManager has no SetState method; mutate only the loaded "
         "GetState table after server-side validation. Client-provided amounts "
         "are not earned rewards or authorized prices. "
@@ -286,9 +364,13 @@ def try_scaffolded_server(
         "changes for valid requests. Use actual Roblox APIs only."
     )
     attempts = []
+    use_json_body = bool(
+        getattr(router, "supports_scoped_json_body", False)
+        and hasattr(router, "complete_json")
+    )
     for attempt in range(3):
-        # A third SHORT JSON-body response can recover malformed plaintext
-        # without encoding an entire 6000-token ModuleScript as a JSON string.
+        # The production coder always uses constrained JSON for a bounded
+        # action body. Keep legacy plaintext only for explicit test routers.
         if attempt == 2 and not hasattr(router, "complete_json"):
             break
         body = ""
@@ -304,7 +386,7 @@ def try_scaffolded_server(
                 "Remote event wiring, explanations, or final end."
                 if previous else ""
             )
-            if attempt == 2:
+            if use_json_body or attempt == 2:
                 recovered = router.complete_json(
                     prompt + "\nOnly JSON {body:string} containing short action statements. "
                     "Do not output a whole module, function header or platform shell. "
@@ -323,6 +405,7 @@ def try_scaffolded_server(
                     system_prompt="Roblox Luau coder. Output statements inside existing function only.",
                 )
             body = _clean_body(raw)
+            body = normalize_verified_server_body(body, proposal)
             if not body or len(body) < 60:
                 raise ValueError("Empty or trivially short gameplay body")
             if body.startswith("--!strict") or _FORBIDDEN.search(body):
@@ -396,7 +479,8 @@ def try_scaffolded_server(
             attempts.append({
                 "attempt": attempt + 1,
                 "mode": ("host_scaffolded_action_json_body"
-                         if attempt == 2 else "host_scaffolded_action_body"),
+                         if use_json_body or attempt == 2
+                         else "host_scaffolded_action_body"),
                 "module": module.name,
                 "diagnostics": [type(exc).__name__ + ": " + str(exc)[:1800]],
                 "model_runtime": getattr(router, "last_generation_report", {}),
