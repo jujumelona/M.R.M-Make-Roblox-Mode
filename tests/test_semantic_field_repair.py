@@ -481,8 +481,9 @@ def test_official_doc_handoff_excludes_unrelated_space_tutorials(monkeypatch):
             return {"systems": [{
                 "name": "SpaceLaunch",
                 "server_behavior": (
-                    "The server validates that the ship can launch and "
-                    "records the ship entering the playable space region."
+                    "The server validates that the ship can launch, "
+                    "moves the spacecraft with passengers aboard into the "
+                    "playable orbital region and records its new location."
                 ),
                 "client_behavior": (
                     "The client displays the launch action and shows "
