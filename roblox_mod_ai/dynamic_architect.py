@@ -1693,12 +1693,17 @@ class RobloxDynamicArchitect:
                                 if row.get("role") == "server"
                                 and _re.search(
                                     r"(?i)\\b(?:launch\\w*|travel\\w*|mov(?:e|es|ed|ing)|"
-                                    r"teleport\\w*|depart\\w*)\\b",
+                                    r"teleport\\w*|transport\\w*|relocat\\w*|warp\\w*|depart\\w*)\\b",
                                     str(row.get("behavior", "")))
                                 and _re.search(
                                     r"(?i)\\b(?:ship|spacecraft|spaceship|vehicle|vessel|rocket)\\b",
                                     str(row.get("behavior", "")))
                             }
+                            if not draft["_host_world_motion"]:
+                                raise DynamicDesignError(
+                                    "SOURCE_WORLD_TRANSITION_UNOWNED: "
+                                    "no server action owns the required world movement"
+                                )
                     # Source IDs are host-owned, not model-generated. One
                     # scoped task equals one canonical source facet.
                     draft, id_binding = _bind_scoped_feature_ids(
