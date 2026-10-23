@@ -1224,53 +1224,20 @@ class RobloxDynamicArchitect:
                                         ]
                                         continue
                                     raise DynamicDesignError(str(bind_error)) from bind_error
-                            proposed_systems: list[dict[str, Any]] = []
-                            for owned_action in verified_actions:
-                                part = self.router.complete_json(
-                                    "Describe ONLY this ONE explicitly "
-                                    "source-owned gameplay action. Return "
-                                    "JSON {systems:[{name,server_behavior,"
-                                    "client_behavior,observable_result,"
-                                    "interaction,input_mode,world_entities}]}. "
-                                    "Exactly one system, with the server's "
-                                    "actual state transition and a distinct "
-                                    "observable outcome. A menu, prerequisite "
-                                    "or animation alone is not the action. "
-                                    "Do not describe mode enablement as resource "
-                                    "mining, enemy combat or settlement creation; "
-                                    "the server must modify the requested world "
-                                    "entity or persistent player state. "
-                                    "Use world_entities as an array of NAMES "
-                                    "(strings) only, not objects or geometry; "
-                                    "the host owns Roblox object construction. "
-                                    "Use valid interaction (none/event/"
-                                    "request_response) and input_mode "
-                                    "(custom/host_button/world_prompt). "
-                                    "JSON only.\n"
-                                    + json.dumps({
-                                        "source_clause": slice_request,
-                                        "this_action": owned_action,
-                                    }, ensure_ascii=False),
-                                    role="planner", temperature=0.0,
-                                    max_tokens=600,
+                            from .atomic_action_authoring import (
+                                author_verified_atomic_systems,
+                            )
+                            try:
+                                proposed_systems = author_verified_atomic_systems(
+                                    self.router, verified_actions,
+                                    source_clause=slice_request,
+                                    original_prompt=prompt,
                                     json_schema=model_semantic_schema,
                                 )
-                                sub = part.get("systems") if isinstance(part, dict) else None
-                                if (not isinstance(sub, list) or len(sub) != 1
-                                        or not isinstance(sub[0], dict)):
-                                    raise DynamicDesignError(
-                                        "ATOMIC_ACTION_IMPLEMENTATION_INVALID: "
-                                        "each action must return one system"
-                                    )
-                                proposed_systems.append(sub[0])
-                            from .atomic_action_quotes import validate_atomic_system_ownership
-                            try:
-                                validate_atomic_system_ownership(
-                                    verified_actions, proposed_systems,
-                                    original_prompt=prompt,
-                                )
                             except SourceActionBindingError as owned_error:
-                                raise DynamicDesignError(str(owned_error)) from owned_error
+                                raise DynamicDesignError(
+                                    str(owned_error)
+                                ) from owned_error
                             atomic_systems_verified = True
                             draft = {"systems": proposed_systems}
                         else:
@@ -1815,7 +1782,12 @@ class RobloxDynamicArchitect:
                     # A typed contract has already exhausted its own
                     # small, schema-constrained retries. NEVER regenerate
                     # the entire gameplay draft for a metadata failure.
-                    if "TYPED_ACTION_CONTRACT_EXHAUSTED:" in previous_error:
+                    if ("TYPED_ACTION_CONTRACT_EXHAUSTED:" in previous_error
+                            or "ATOMIC_LOCAL_REPAIR_EXHAUSTED:" in previous_error
+                            or "ATOMIC_LOCAL_REPAIR_NO_PROGRESS:" in previous_error):
+                        # Three small attempts on the offending action have
+                        # already failed; repeating the whole facet discards
+                        # valid sibling actions and wastes model inference.
                         break
                     # Preserve the original facet plan when the model's
                     # bounded repair response is malformed. Retrying the SAME
