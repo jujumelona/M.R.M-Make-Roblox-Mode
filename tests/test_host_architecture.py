@@ -212,7 +212,9 @@ class SemanticOnlySevenFeatureModel:
         return {"systems": [{
             "name": label,
             "server_behavior": (
-                "Server validates alien NPC enemy combat damage health and defeat."
+                "Server validates planetary special mineral extraction and awards "
+                "mined ore to the player's cargo. Server verifies hostile alien NPC "
+                "attack range, applies enemy damage and records defeat."
                 if "alien" in fid else
                 "Server validates colonization, records a persistent owned settlement "
                 "on the planet and updates the colony world state."
@@ -221,20 +223,41 @@ class SemanticOnlySevenFeatureModel:
                 "spacecraft carrying its players into space and moves the "
                 "ship and passengers to the orbital destination zone."
                 if "launch" in fid else
-                "Server implements and validates " + label +
-                " player actions and authoritative gameplay state."
+                "Server validates purchase and upgrades weapons, recording newly "
+                "equipped armaments. Server validates crew recruitment and stores "
+                "hired crew members. Server validates spaceship performance upgrades, "
+                "deducts earned credits and increases engine thrust."
+                if "crew" in fid else
+                "Server validates mining a resource deposit, awards ore to inventory, "
+                "trades gathered ore for earned in-game credits and records the balance."
+                if "mining" in fid else
+                "Server validates placement of each ship part in a construction slot "
+                "and records the installed sections of the spacecraft."
+                if "ship" in fid else
+                "Server validates spacecraft performance upgrades and expansion, "
+                "deducts earned currency and increases capacity and engine power."
             ),
             "client_behavior": "Client displays " + label +
                                " UI and sends a validated player action to the server.",
             "interaction": "event",
             "observable_result": (
+                "The player mines special minerals into planetary cargo and "
+                "sees alien NPC enemies lose health and fall when defeated."
+                if "alien" in fid else
                 "The player establishes a saved colony settlement and the "
                 "planet shows its new owner and territory."
                 if "colony" in fid else
                 "The player sees their ship launch into space and enter orbit."
                 if "launch" in fid else
-                "User performs " + label +
-                " actions and sees server-confirmed state updates."
+                "The player receives purchased weapons, hired crew members and "
+                "the spaceship's improved engine performance after upgrades."
+                if "crew" in fid else
+                "Mining yields gathered ore in inventory and trading awards "
+                "earned credits in the server-confirmed balance."
+                if "mining" in fid else
+                "Ship parts appear installed in distinct spacecraft build slots."
+                if "ship" in fid else
+                "The player's spacecraft gains upgraded engine power and expanded capacity."
             ),
             "world_entities": ["OreNode"] if "mining" in fid else [],
         }]}
