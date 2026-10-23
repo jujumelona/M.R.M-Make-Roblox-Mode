@@ -83,3 +83,70 @@ def test_classifier_unknown_without_source_atom_is_not_claimed_implemented():
     ledger["atomic_intents"] = []
     with pytest.raises(SourceArchitectureRecoveryError, match="source-owned"):
         certify_unclassified_chunks(ledger, design, modules)
+
+
+def test_blueprint_admits_only_recertified_source_architecture_not_placeholder():
+    """Report 35: planner recovery must also pass the NEXT codegen gate.
+
+    The classifier never understood weapons, crew and ship purchases. A source
+    owned design may replace its prose, but only while server effects and
+    acceptance still satisfy the literal source requirement.
+    """
+    from roblox_mod_ai.implementation_blueprint import build_implementation_blueprint
+    from roblox_mod_ai.spec import (
+        ModuleKind, RobloxModuleSpec, RobloxProposal, RobloxService,
+    )
+
+    ledger, design, owners = fixture()
+    ledger.update({
+        "original_prompt": SOURCE,
+        "requirements": [{"id": RID, "statement": SOURCE, "source": "user_prompt"}],
+        "facets": [{"id": FACET, "requirements": [RID], "source_span": SOURCE}],
+        "classification_unverified": [],
+        "architecture_recovered_chunks": [CHUNK],
+        "unimplemented_facets": [],
+        "unmatched_requirements": [],
+        "decomposition_pending": [],
+    })
+    atom = ledger["atomic_intents"][0]
+    atom.update({
+        "classification_origin": "architecture_source_verified",
+        "intent": "Unclassified source: no meaningful English gameplay intent",
+        "english_query": "Unknown unsupported generic game capability",
+    })
+    module = RobloxModuleSpec(
+        module_id="dyn_purchase", name="GameplayPurchase",
+        kind=ModuleKind.SERVER_MODULE,
+        file_path="src/server/GameplayPurchase.luau",
+        roblox_service=RobloxService.SERVER_SCRIPT_SERVICE,
+        description=owners[0].description,
+    )
+    proposal = RobloxProposal(
+        requested_prompt=SOURCE, game_title="Report35", description="source recovery",
+        modules=[module], game_design={
+            "features": {}, "dynamic_design": design,
+            "pre_design_research": {"ledger": ledger},
+        },
+    )
+    accepted = build_implementation_blueprint(proposal)
+    assert accepted["ready_for_codegen"], accepted["blocking_issues"]
+    assert not any("classifier" in issue for issue in accepted["blocking_issues"])
+
+    original = module.description
+    module.description = "Server validates weapon purchase and equips a weapon."
+    dropped = build_implementation_blueprint(proposal)
+    assert not dropped["ready_for_codegen"]
+    assert any("SOURCE_ARCHITECTURE_RECOVERY_INVALID" in item for item in
+               dropped["blocking_issues"])
+    module.description = original
+
+    design["acceptance"][RID] = "The player buys and receives a weapon only."
+    incomplete = build_implementation_blueprint(proposal)
+    assert not incomplete["ready_for_codegen"]
+    design["acceptance"][RID] = fixture()[1]["acceptance"][RID]
+
+    atom["classification_origin"] = "host_source_only"
+    forged = build_implementation_blueprint(proposal)
+    assert not forged["ready_for_codegen"]
+    assert any("SOURCE_ARCHITECTURE_RECOVERY_INVALID" in item for item in
+               forged["blocking_issues"])
