@@ -106,7 +106,7 @@ _NEGATED_CRAFT_MOVE = re.compile(
 )
 
 
-def _moves_craft_to_destination(server_behavior: str) -> bool:
+def has_vehicle_motion_effect(server_behavior: str) -> bool:
     for sentence in re.split(r"[.;!?\n]+", server_behavior):
         if (not _DESTINATION.search(sentence)
                 or _NEGATED_CRAFT_MOVE.search(sentence)):
@@ -132,7 +132,7 @@ def motion_contract_errors(
          str(item.get("observable_result") or ""))
         for item in systems if isinstance(item, dict)
     ]
-    vehicle_motion = any(_moves_craft_to_destination(server) for server, _ in pairs)
+    vehicle_motion = any(has_vehicle_motion_effect(server) for server, _ in pairs)
     arrival = any(
         _VEHICLE.search(outcome) and _WORLD_TARGET.search(outcome)
         for _, outcome in pairs
