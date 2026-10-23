@@ -404,6 +404,14 @@ def try_scaffolded_server(
                     role="coder", temperature=0.0, max_tokens=1500,
                     system_prompt="Roblox Luau coder. Output statements inside existing function only.",
                 )
+            # Reject leaked control-plane tokens in the entire response,
+            # including text outside Markdown fences that _clean_body would
+            # otherwise silently discard.
+            if _MODEL_PROTOCOL.search(str(raw or "")):
+                raise ValueError(
+                    "MODEL_PROTOCOL_CONTAMINATION: unexpected tool markup "
+                    "in the code-generation response"
+                )
             body = _clean_body(raw)
             body = normalize_verified_server_body(body, proposal)
             if not body or len(body) < 60:
