@@ -95,3 +95,21 @@ def test_plan_33_spacecraft_arrival_does_not_implement_planet_minerals():
         SOURCE,
         "The newly collected special ore is in the player's inventory.",
     ) == []
+
+
+def test_plan_33_missing_crew_and_ship_upgrades_not_ready():
+    source = "무기 선원 우주선 성능을 거래 구매 등으로"
+    weapon_only = (
+        "Server validates available currency, purchases a weapon performance "
+        "upgrade, and then increases the weapon length."
+    )
+    issues = source_intent_conflicts(source, weapon_only)
+    assert any("SUBSYSTEM_DROPPED: crew" in item for item in issues)
+    assert any("SUBSYSTEM_DROPPED: ship" in item for item in issues)
+    implemented = (
+        "Server purchases the player's weapon upgrade and increases weapon "
+        "damage. Server recruits a crew member with earned currency and "
+        "assigns the crew to the ship. Server upgrades the spacecraft "
+        "engine performance and deducts the verified purchase cost."
+    )
+    assert source_intent_conflicts(source, implemented) == []
