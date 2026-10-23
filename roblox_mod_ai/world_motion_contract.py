@@ -116,6 +116,36 @@ def has_vehicle_motion_effect(server_behavior: str) -> bool:
     return False
 
 
+
+_ARRIVAL_EFFECT = re.compile(
+    r"\b(?:mov(?:e|es|ed|ing)|appear\w*|arriv\w*|relocat\w*|"
+    r"launch\w*|warp\w*|teleport\w*)\b", re.I,
+)
+
+
+def has_vehicle_arrival_evidence(outcome: str) -> bool:
+    """Visible arrival of the craft, not a passenger's solo arrival.
+
+    Clauses are split at commas/semicolons so "ship stays docked, player
+    arrives in space" cannot combine unrelated subjects into proof.
+    """
+    for clause in re.split(r"[,;.!?\n]+", str(outcome or "")):
+        actor = _VEHICLE.search(clause)
+        arrival = _ARRIVAL_EFFECT.search(clause)
+        if not actor or not arrival or not _WORLD_TARGET.search(clause):
+            continue
+        if arrival.start() <= actor.start() or _NEGATED_CRAFT_MOVE.search(clause):
+            continue
+        if re.search(
+            r"\b(?:player|pilot|passenger|character)\s+"
+            r"(?:appears?|arrives?|mov(?:e|es|ed|ing)|teleport\w*)\b",
+            clause[actor.end():arrival.end()], re.I,
+        ):
+            continue
+        return True
+    return False
+
+
 def motion_contract_errors(
     contract: dict[str, str] | None,
     systems: list[dict[str, Any]],
@@ -134,7 +164,7 @@ def motion_contract_errors(
     ]
     vehicle_motion = any(has_vehicle_motion_effect(server) for server, _ in pairs)
     arrival = any(
-        _VEHICLE.search(outcome) and _WORLD_TARGET.search(outcome)
+        has_vehicle_arrival_evidence(outcome)
         for _, outcome in pairs
     )
     ejection = any(
