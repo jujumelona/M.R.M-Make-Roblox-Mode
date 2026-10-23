@@ -608,3 +608,76 @@ def test_colony_feedback_cannot_redeem_a_server_without_owned_state():
                 "Colonize the planet"}],
             reserved_modules=set(), reserved_remotes=set(),
             reserved_objects=set())
+
+
+def test_space_exit_plan_replans_missing_world_transition_instead_of_repeating(monkeypatch):
+    """Reproduce the actual scoped retry: an in-space flag is not a launch."""
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+
+    class LaunchModel:
+        calls = 0
+
+        def complete_json(self, prompt, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                return {"systems": [{
+                    "name": "Space Exit Transition",
+                    "server_behavior": (
+                        "Server verifies the player is aboard a valid spaceship "
+                        "then transitions the player's state to 'in space' "
+                        "without relocating the spacecraft."
+                    ),
+                    "client_behavior": (
+                        "Client requests the space exit action and reports "
+                        "the server-confirmed result."
+                    ),
+                    "interaction": "request_response",
+                    "observable_result": (
+                        "The player leaves the ship and appears in space, "
+                        "with the ship no longer carrying them."
+                    ),
+                    "world_entities": ["Spaceship"],
+                }]}
+            assert "missing" in prompt.lower() or "previous" in prompt.lower()
+            return {"systems": [{
+                "name": "Space Launch",
+                "server_behavior": (
+                    "Server validates the assembled spaceship and fuel, "
+                    "then launches the spacecraft carrying its players into "
+                    "space by teleporting the ship and its passengers to "
+                    "the orbital zone, persisting their new location and "
+                    "rejecting invalid departure requests."
+                ),
+                "client_behavior": (
+                    "The player presses the launch control and the client "
+                    "displays the server-confirmed spaceship departure."
+                ),
+                "interaction": "request_response",
+                "observable_result": (
+                    "The spaceship launches into space with the player aboard "
+                    "and enters the visible orbital destination zone."
+                ),
+                "world_entities": ["Spaceship"],
+            }]}
+
+    source = "그렇게해서 우주로 나갈수있고"
+    research = {"ledger": {
+        "requirements": [{"id": "req-003", "statement": source,
+                          "source": "user_prompt"}],
+        "facets": [{"id": "intent-launch", "requirements": ["req-003"],
+                    "source_span": source, "search_query":
+                    "Roblox spacecraft launch space travel",
+                    "implementation_key": None,
+                    "implemented_by_builtin": False}],
+    }, "evidence": []}
+    model = LaunchModel()
+    result = RobloxDynamicArchitect(model).design(source, research, [])
+    assert model.calls == 2
+    assert len(result["modules"]) == 2
+    assert all("Space Exit Transition" not in m.description
+               for m in result["modules"])
+    assert any("SPACE_TRAVEL_STATE_MISSING" in
+               row.get("validator_error", "")
+               for row in research["architecture_attempts"]
+               if not row.get("passed"))
+    assert any(row.get("passed") for row in research["architecture_attempts"])
