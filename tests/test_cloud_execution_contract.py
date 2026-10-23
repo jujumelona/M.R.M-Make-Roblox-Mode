@@ -18,7 +18,8 @@ class Publisher:
         return {"success": True, "version_number": self.version}
 
 
-def _run(monkeypatch, tmp_path, state="COMPLETE", results=None, path_override=None):
+def _run(monkeypatch, tmp_path, state="COMPLETE", results=None, path_override=None,
+         output_override=None):
     monkeypatch.setenv("ROBLOX_OPEN_CLOUD_API_KEY", "fake-in-test-only")
     monkeypatch.setenv("ROBLOX_TEST_UNIVERSE_ID", "111")
     monkeypatch.setenv("ROBLOX_TEST_PLACE_ID", "222")
@@ -41,7 +42,8 @@ def _run(monkeypatch, tmp_path, state="COMPLETE", results=None, path_override=No
             assert request.url.path.endswith("/session-1/tasks/task-2")
             return httpx.Response(200, json={
                 "path": path, "state": state,
-                "output": {"results": [True] if results is None else results},
+                "output": ({"results": [True] if results is None else results}
+                           if output_override is None else output_override),
             })
         raise AssertionError("Unexpected request")
 
@@ -92,3 +94,41 @@ def test_missing_optin_skips_publishing(monkeypatch, tmp_path):
         )
     assert not result["passed"] and not result["executed"]
     assert publisher.calls == 0
+
+
+def test_malformed_cloud_execution_output_never_becomes_success(monkeypatch, tmp_path):
+    result, _, _ = _run(
+        monkeypatch, tmp_path, state="COMPLETE", output_override=[]
+    )
+    assert result["passed"] is False
+    assert result["executed"] is True
+    assert result["results"] is None
+
+
+def test_invalid_test_place_publisher_response_is_handled_without_exception(
+        monkeypatch, tmp_path):
+    monkeypatch.setenv("ROBLOX_OPEN_CLOUD_API_KEY", "fake-in-test-only")
+    monkeypatch.setenv("ROBLOX_TEST_UNIVERSE_ID", "111")
+    monkeypatch.setenv("ROBLOX_TEST_PLACE_ID", "222")
+    monkeypatch.setenv("RMM_ALLOW_TEST_PLACE_PUBLISH", "1")
+    place = tmp_path / "test.rbxlx"
+    place.write_text("<roblox/>", encoding="utf-8")
+
+    class BrokenPublisher:
+        def publish_place(self, *args, **kwargs):
+            return ["not a valid publish receipt"]
+
+    with httpx.Client(transport=httpx.MockTransport(
+        lambda req: (_ for _ in ()).throw(
+            AssertionError("No cloud execution should be attempted")
+        )
+    )) as client:
+        result = OpenCloudRuntimeVerifier(
+            client=client, publisher=BrokenPublisher()
+        ).run(
+            RobloxProposal(requested_prompt="", game_title="X",
+                           description="", game_design={}, modules=[]),
+            place,
+        )
+    assert not result["passed"] and not result["executed"]
+    assert "non-object" in result["reason"]
