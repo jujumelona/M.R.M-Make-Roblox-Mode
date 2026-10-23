@@ -244,8 +244,9 @@ def test_failed_whole_request_recovers_every_original_source_chunk(monkeypatch):
             return {"behaviors": [
                 {"chunk_id": c["chunk_id"],
                  "intent": (
-                     "Server handles hostile alien NPC combat and "
-                     "establishes a persisted planet colony settlement"
+                     "Players mine special minerals on other planets, fight hostile "
+                     "alien NPC enemies, and establish a persisted planet "
+                     "colony settlement"
                      if "식민" in c["source_span"] and (
                          "외계인" in c["source_span"] or
                          "외게인" in c["source_span"]) else
@@ -365,8 +366,10 @@ def test_unclassified_partial_chunk_preserves_verified_classifications(monkeypat
             batch = json.loads(prompt[prompt.index('{"chunks"'):])["chunks"]
             return {"behaviors": [
                 {"chunk_id": x["chunk_id"],
-                 "intent": "Perform source-requested gathering with server validation",
-                 "english_query": "Roblox resource gathering RemoteEvent"}
+                 "intent": ("Players buy and upgrade weapons, recruit and "
+                            "upgrade crew, and purchase spacecraft performance "
+                            "upgrades using earned currency"),
+                 "english_query": "Roblox weapon crew spaceship performance purchase upgrades"}
                 for x in batch if x["chunk_id"] == "chunk-002"]}
     monkeypatch.setenv("RMM_ENABLE_MODEL_DECOMPOSITION", "1")
     monkeypatch.setenv("RMM_ENABLE_MODEL_QUERY_EXPANSION", "0")
