@@ -19,6 +19,7 @@ from .luau_api_sanity import invalid_luau_apis
 from .luau_service_contract import service_contract_checks
 from .server_interface_audit import dependency_api_errors
 from .request_semantics import request_semantic_errors
+from .world_motion_contract import vehicle_motion_code_errors
 from .spec import ModuleKind, RobloxModuleSpec, RobloxProposal
 from .typed_action_contract import (
     lua_server_guard, validate_contract, TypedActionContractError,
@@ -114,6 +115,7 @@ def try_scaffolded_server(
     if len(actions) + len(world) != 1:
         return None
     kind = "world" if world else "remote"
+    motion_spec = (design.get("host_world_motion") or {}).get(module.name)
     route = next(iter(world or actions))
     route_info = (world or actions)[route]
     choices = ((design.get("host_action_choices") or {}).get(route)
@@ -263,6 +265,14 @@ def try_scaffolded_server(
         "Validate prerequisites before deducting currency or mutating state.\n"
         + shared_economy_abi
         + shared_assembly_abi
+        + ("HOST-BOUND WORLD TRANSITION: " +
+           json.dumps(motion_spec, ensure_ascii=False) +
+           ". Move the actual owned craft Instance with Model:PivotTo or "
+           "BasePart.CFrame/MoveTo, preserving its aboard players. Do not "
+           "replace vehicle travel with a character-only teleport, mode "
+           "flag, disembarkation or crew removal. Resolve real server-side "
+           "instances and validate vehicle ownership first.\n"
+           if motion_spec else "")
         + "Module: " + module.name + "\n"
         + "Game-specific behavior: " + module.description[:950] + "\n"
         + "Route: " + route + " (" + kind + ")\n"
@@ -333,6 +343,10 @@ def try_scaffolded_server(
                     "Body lacks authoritative gameplay mutation; Remote "
                     "notifications, comments and unparented Instances are not effects")
             LiveCodeRepetitionGuard.inspect(body)
+            if motion_spec is not None:
+                motion_errors = vehicle_motion_code_errors(body)
+                if motion_errors:
+                    raise ValueError("; ".join(motion_errors))
             if typed is not None:
                 # Declarative effects must be referenced in the concrete
                 # Luau action, not merely repeated in planning metadata.
