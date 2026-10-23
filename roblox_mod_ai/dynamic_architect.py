@@ -1129,8 +1129,24 @@ class RobloxDynamicArchitect:
                             # actions. It must not reproduce Korean user text
                             # exactly. Legacy routers with source_quote output
                             # still pass through the same host admission.
-                            from .atomic_action_quotes import indexed_source_spans
-                            source_spans = indexed_source_spans(slice_request)
+                            from .atomic_action_quotes import (
+                                eligible_atomic_action_spans,
+                                action_claims_unowned_departure,
+                            )
+                            source_spans = eligible_atomic_action_spans(
+                                slice_request
+                            )
+                            # A condition such as "when in space" cannot
+                            # create a second launch. Remove contradictory
+                            # repair suggestions before model decomposition.
+                            if action_claims_unowned_departure(
+                                slice_request, "Travel to space"
+                            ):
+                                problem_statements = [
+                                    item for item in problem_statements
+                                    if "SPACE_TRAVEL_DROPPED" not in item
+                                    and "departing into space" not in item
+                                ]
                             action_schema = {
                                 "type": "object",
                                 "properties": {"actions": {
@@ -1154,6 +1170,13 @@ class RobloxDynamicArchitect:
                                 "or translate/copy the original text. "
                                 "Select DISTINCT IDs for independent actions; "
                                 "each action is short, concrete and distinct. "
+                                "A conditional arrival clause is a PRECONDITION "
+                                "for the following player activities, not a "
+                                "new action. Do NOT turn 'when in space' into "
+                                "travel to space, unlock mode, or launch again. "
+                                "When a source requests world ore, enemy fights "
+                                "and settlements, treat those as distinct "
+                                "gameplay effects rather than mode flags. "
                                 "Do not add genre defaults, expand adjectives "
                                 "into actions, or repeat the same action with "
                                 "different names. Do not cite error labels. "
@@ -1200,6 +1223,10 @@ class RobloxDynamicArchitect:
                                     "actual state transition and a distinct "
                                     "observable outcome. A menu, prerequisite "
                                     "or animation alone is not the action. "
+                                    "Do not describe mode enablement as resource "
+                                    "mining, enemy combat or settlement creation; "
+                                    "the server must modify the requested world "
+                                    "entity or persistent player state. "
                                     "Use world_entities as an array of NAMES "
                                     "(strings) only, not objects or geometry; "
                                     "the host owns Roblox object construction. "
