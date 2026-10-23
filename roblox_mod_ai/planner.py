@@ -350,25 +350,15 @@ class RobloxGameDesignPlanner:
                            research["ledger"].get("unmatched_requirements") or
                            research["ledger"].get("decomposition_pending") or
                            not any(features.values()))
-        # A model may not claim to implement an unparsed compound request.
-        # Parsing must succeed first; otherwise the plan remains explicitly blocked.
-        # A source span with only "Implement the requested gameplay..."
-        # is not a semantic contract. Previous runs still spent 15+ expensive
-        # architecture calls before blueprint rejected those unknown chunks.
-        # Retry bounded contextual classification FIRST, then require real
-        # intent for every source span before launching the architect.
+        # Failure to translate one source chunk into optional English classifier
+        # prose must not deadlock the entire planner. The architect already
+        # receives the original immutable source requirements and independently
+        # validates server-side state transitions and their observable results.
+        # Attempt that bounded recovery; certify exact owners and acceptance
+        # for EVERY missing chunk before lifting any blocking status.
         missing_semantics = research["ledger"].get("classification_unverified") or []
-        if missing_semantics:
-            research.setdefault("provider_failures", []).append({
-                "facet": "semantic_decomposition",
-                "provider": "source_classification_gate",
-                "reason": "Incomplete semantic source contracts: " +
-                          ", ".join(map(str, missing_semantics)) +
-                          "; re-run source classification before architecture",
-            })
         if (needs_novel and dynamic_design_enabled()
-                and not research["ledger"].get("decomposition_pending")
-                and not missing_semantics):
+                and not research["ledger"].get("decomposition_pending")):
             try:
                 # A fixed shop/sword/obby template cannot implement bespoke
                 # mechanics (pet shop, procedural RPG, etc.). Do not transplant
@@ -394,6 +384,25 @@ class RobloxGameDesignPlanner:
                         and e.get("facet") in owned_facets and e.get("url")
                     ))[:5]
                 modules.extend(dynamic_design["modules"])
+                if missing_semantics:
+                    from .source_architecture_recovery import (
+                        certify_unclassified_chunks, SourceArchitectureRecoveryError,
+                    )
+                    try:
+                        certified_chunks = certify_unclassified_chunks(
+                            research["ledger"], dynamic_design, modules)
+                    except SourceArchitectureRecoveryError as exc:
+                        raise DynamicDesignError(
+                            "SOURCE_ARCHITECTURE_RECOVERY_FAILED: " + str(exc)
+                        ) from exc
+                    # A missing classifier is now replaced with independently
+                    # validated original-source architecture ownership, NOT a
+                    # fabricated model classification or a runtime PASS.
+                    research["ledger"]["classification_unverified"] = []
+                    research["ledger"]["architecture_recovered_chunks"] = certified_chunks
+                    for atom in research["ledger"].get("atomic_intents", []):
+                        if atom.get("chunk_id") in certified_chunks:
+                            atom["classification_origin"] = "architecture_source_verified"
                 # Known host-owned server primitives must be requireable by
                 # later gameplay Scripts, not auto-running standalone Scripts.
                 from .economy_core import normalize_economy_ledger
