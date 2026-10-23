@@ -106,3 +106,44 @@ def test_typed_effect_key_must_appear_on_real_mutation_target():
     assert state_key_used_by_executable_code(
         "coins.Value += 1\n", "Coins",
     )
+
+
+def test_saved_typed_action_cannot_swap_requested_state_effect_for_unrelated_flag():
+    """After recovery the server must still change the exact planned state."""
+    module = SimpleNamespace(
+        name="ColonyServer", module_id="dyn_colony",
+        file_path="src/server/ColonyServer.luau", kind=ModuleKind.SERVER_MODULE,
+    )
+    proposal = SimpleNamespace(
+        modules=[module],
+        game_design={"dynamic_design": {
+            "host_actions": {"FoundColony": {"service": module.name}},
+            "host_world_actions": {},
+            "host_typed_actions": {
+                "FoundColony": {
+                    "server": module.name,
+                    "contract": {"state_changes": [
+                        {"scope": "player", "key": "ColonyOwned", "operation": "set"}
+                    ]},
+                },
+            },
+        }},
+    )
+
+    class Analyzer:
+        def analyze_source(self, *_args, **_kwargs):
+            return []
+
+    bad = SOURCE.replace(
+        '    print("player:SetAttribute(\'Colonized\', true)")',
+        '    workspace:SetAttribute("UnrelatedWorldFlag", true)',
+    )
+    rejected = generated_module_errors(module, proposal, bad, Analyzer())
+    assert any("TYPED_STATE_EFFECT_MISSING" in error for error in rejected), rejected
+    good = bad.replace(
+        '    workspace:SetAttribute("UnrelatedWorldFlag", true)',
+        '    player:SetAttribute("ColonyOwned", true)',
+    )
+    validated = generated_module_errors(module, proposal, good, Analyzer())
+    assert not any("TYPED_STATE_EFFECT_MISSING" in error
+                   for error in validated), validated
