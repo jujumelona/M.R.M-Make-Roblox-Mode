@@ -92,6 +92,16 @@ def validate_model_behaviors(clause: str, behaviors: list[dict[str, Any]]) -> bo
         if not isinstance(item, dict):
             return False
         span = clean(item.get("source_span", ""))
+        # A thematic dependent clause is context for the following
+        # gameplay, not its own server button/mode transition. Production
+        # plan 33 fabricated SpaceModeActivation from "우주모드 인데".
+        # Reject that decomposition so the host's lossless clause
+        # chunker retains the setting WITH the actual player actions.
+        if (re.fullmatch(
+                r"\\S*(?:모드|테마|세계관|배경)\\s*(?:인데|이고|이며)",
+                span, re.I,
+        ) and span != source):
+            return False
         intent = clean(item.get("intent", ""))
         query = clean(item.get("english_query", ""))
         if (len(span) < 3 or len(span) > 100 or
