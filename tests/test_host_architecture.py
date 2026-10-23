@@ -709,8 +709,12 @@ def test_space_exit_plan_replans_missing_world_transition_instead_of_repeating(m
     assert len(result["modules"]) == 2
     assert all("Space Exit Transition" not in m.description
                for m in result["modules"])
-    assert any("SPACE_TRAVEL_STATE_MISSING" in
-               row.get("validator_error", "")
-               for row in research["architecture_attempts"]
-               if not row.get("passed"))
+    # Vehicle-world transition validation is stricter than an in-space
+    # status change: moving a passenger alone must remain rejected.
+    assert any(
+        "SOURCE_WORLD_TRANSITION" in row.get("validator_error", "")
+        or "SPACE_TRAVEL_STATE_MISSING" in row.get("validator_error", "")
+        for row in research["architecture_attempts"]
+        if not row.get("passed")
+    )
     assert any(row.get("passed") for row in research["architecture_attempts"])
