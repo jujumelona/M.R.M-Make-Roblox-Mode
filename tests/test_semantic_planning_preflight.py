@@ -1,11 +1,11 @@
-"""Do not spend a full 9B architecture pass on known unclassified source."""
+"""Allow bounded source-owned architecture recovery, but never approve omissions."""
 from copy import deepcopy
 
 from roblox_mod_ai.planner import RobloxGameDesignPlanner
 from roblox_mod_ai.pre_design_research import build_request_ledger
 
 
-def test_unknown_source_chunk_blocks_architect_before_generating_all_features(monkeypatch, tmp_path):
+def test_unknown_source_chunk_recovery_must_verify_actual_server_owners(monkeypatch, tmp_path):
     import roblox_mod_ai.planner as planning
 
     prompt = "Buy spaceship upgrades, then colonize another planet"
@@ -39,18 +39,27 @@ def test_unknown_source_chunk_blocks_architect_before_generating_all_features(mo
                 "provider_failures": [],
             })
 
-    def forbid_architecture(*_args, **_kwargs):
-        raise AssertionError("Should not ask small model for 15+ modules")
+    attempts = []
+    def incomplete_architecture(*_args, **_kwargs):
+        # The scoped designer is permitted to retry from immutable original
+        # source, but empty gameplay modules must never become a runnable plan.
+        attempts.append(True)
+        return {
+            "modules": [], "module_facets": {}, "module_requirements": {},
+            "acceptance": {}, "acceptance_facets": {},
+        }
 
     monkeypatch.setattr(planning, "dynamic_design_enabled", lambda: True)
-    monkeypatch.setattr(planning.RobloxDynamicArchitect, "design", forbid_architecture)
+    monkeypatch.setattr(planning.RobloxDynamicArchitect, "design", incomplete_architecture)
     designer = RobloxGameDesignPlanner(
         pre_design_research=StaticResearch(), output_root=tmp_path)
     authored = designer.plan(prompt)
     plan = authored.proposal
     assert not plan.game_design.get("dynamic_design")
+    assert attempts == [True]
     failures = plan.game_design["pre_design_research"]["provider_failures"]
-    assert any(f["facet"] == "semantic_decomposition"
+    assert any(f["facet"] == "dynamic_game_design"
+               and "SOURCE_ARCHITECTURE_RECOVERY_FAILED" in f["reason"]
                and "chunk-007" in f["reason"] for f in failures)
     assert "chunk-007" in plan.game_design["pre_design_research"]["ledger"]["classification_unverified"]
     assert not plan.game_design["implementation_blueprint"]["ready_for_codegen"]
