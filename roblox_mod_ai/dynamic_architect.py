@@ -19,7 +19,9 @@ from .model_router import ModelRouter
 from .request_contract import implementation_facets
 from .request_semantics import request_semantic_errors
 from .semantic_preservation import source_intent_conflicts, source_outcome_conflicts
-from .world_motion_contract import source_motion_contract, motion_contract_errors
+from .world_motion_contract import (
+    source_motion_contract, motion_contract_errors, has_vehicle_motion_effect,
+)
 from .host_architecture import (
     SEMANTIC_FACET_SCHEMA, HOST_OWNED_SEMANTIC_FACET_SCHEMA,
     expand_semantic_facet,
@@ -1686,18 +1688,13 @@ class RobloxDynamicArchitect:
                         if movement_contract is not None:
                             # Only server modules whose action moves the craft
                             # own the physical-movement codegen obligation.
-                            import re as _re
                             draft["_host_world_motion"] = {
                                 row["name"]: movement_contract
                                 for row in draft.get("modules", [])
                                 if row.get("role") == "server"
-                                and _re.search(
-                                    r"(?i)\\b(?:launch\\w*|travel\\w*|mov(?:e|es|ed|ing)|"
-                                    r"teleport\\w*|transport\\w*|relocat\\w*|warp\\w*|depart\\w*)\\b",
-                                    str(row.get("behavior", "")))
-                                and _re.search(
-                                    r"(?i)\\b(?:ship|spacecraft|spaceship|vehicle|vessel|rocket)\\b",
-                                    str(row.get("behavior", "")))
+                                and has_vehicle_motion_effect(
+                                    str(row.get("behavior", ""))
+                                )
                             }
                             if not draft["_host_world_motion"]:
                                 raise DynamicDesignError(
