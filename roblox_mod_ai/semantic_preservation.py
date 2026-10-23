@@ -114,11 +114,17 @@ def source_intent_conflicts(
         # The same source-owned movement predicate is shared by architecture,
         # fidelity review and Luau ownership assignment. Do not insist on
         # exact English verb order as a condition for accepting vehicle travel.
-        from .world_motion_contract import has_vehicle_motion_effect
+        from .world_motion_contract import (
+            has_vehicle_motion_effect, has_vehicle_arrival_evidence,
+        )
         world_effect = (
             has_vehicle_motion_effect(text) if require_implementation else False
         )
-        if not (_SPACE_INTENT.search(text) or world_effect):
+        visible_arrival = (
+            has_vehicle_arrival_evidence(text)
+            if not require_implementation else False
+        )
+        if not (_SPACE_INTENT.search(text) or world_effect or visible_arrival):
             errors.append(
                 "SPACE_TRAVEL_DROPPED: user requested departing into space, "
                 "not another ship purchase or upgrade menu"
