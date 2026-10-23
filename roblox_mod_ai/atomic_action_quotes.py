@@ -211,17 +211,24 @@ def verify_or_bind_actions(router: Any, source: str, actions: Any,
             raise SourceActionBindingError("ATOMIC_ACTION_DECOMPOSITION_INVALID: action object required")
         action = row.get("action")
         supplied_id = row.get("source_id")
-        if supplied_id is not None and supplied_id not in source_ids:
-            raise SourceActionBindingError("ATOMIC_ACTION_SOURCE_ID_NOT_IN_ORIGINAL_TEXT")
-        quote = (source_ids[supplied_id] if supplied_id is not None
-                 else row.get("source_quote"))
         if not isinstance(action, str) or not 8 <= len(action.strip()) <= 220:
-            raise SourceActionBindingError("ATOMIC_ACTION_DECOMPOSITION_INVALID: action text required")
+            raise SourceActionBindingError(
+                "ATOMIC_ACTION_DECOMPOSITION_INVALID: action text required"
+            )
+        # Diagnose a conditional-only travel claim before checking candidate
+        # membership. The model can return a stale source ID (s11), and the
+        # bounded action reselector needs this specific repairable failure.
         if action_claims_unowned_departure(source, action):
             raise SourceActionBindingError(
                 "ATOMIC_CONDITIONAL_PROMOTED_TO_ACTION: a 'when in space' "
                 "precondition is not a second space travel mechanic"
             )
+        if supplied_id is not None and supplied_id not in source_ids:
+            raise SourceActionBindingError(
+                "ATOMIC_ACTION_SOURCE_ID_NOT_IN_ORIGINAL_TEXT"
+            )
+        quote = (source_ids[supplied_id] if supplied_id is not None
+                 else row.get("source_quote"))
         key = " ".join(action.casefold().split())
         if key in seen_actions:
             raise SourceActionBindingError("ATOMIC_ACTION_DECOMPOSITION_INVALID: duplicate gameplay action")
