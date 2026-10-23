@@ -1892,12 +1892,22 @@ class RobloxDynamicArchitect:
                             missing_source_actions or len(systems) != 1
                             or any(
                                 str(error).split(":", 1)[0].endswith((
-                                    "_STATE_MISSING", "_DROPPED", "_REVERSED",
-                                    "_TARGET_AMBIGUOUS",
+                                    "_REVERSED", "_TARGET_AMBIGUOUS",
                                 ))
                                 for values in issues.values() for error in values
                             )
                         ):
+                            # A missing state write or observable effect is NOT
+                            # equivalent to a missing gameplay action. When the
+                            # source intent is still present (e.g. alien combat
+                            # works but a colony is not yet persisted), keep
+                            # the accepted system and repair only the failing
+                            # semantic fields. Whole-feature replanning threw
+                            # away sound sibling actions and made 9B retries
+                            # impossible to converge. Replan only when an
+                            # entire requested action is absent, there are
+                            # multiple independently owned systems, or the
+                            # existing action reverses the intended target.
                             # A missing requested action is not repairable by
                             # tacking prose onto an unrelated action. Multiple
                             # systems cannot be safely patched at index zero.
