@@ -17,6 +17,8 @@ CHUNK = "chunk-002"
 def fixture(server_behavior=None, outcome=None):
     ledger = {
         "classification_unverified": [CHUNK],
+        "requirements": [{"id": RID, "statement": SOURCE, "source": "user_prompt"}],
+        "facets": [{"id": FACET, "requirements": [RID], "source_span": SOURCE}],
         "atomic_intents": [{
             "chunk_id": CHUNK, "facet_id": FACET,
             "requirement_id": RID, "source_span": SOURCE,
@@ -150,3 +152,15 @@ def test_blueprint_admits_only_recertified_source_architecture_not_placeholder()
     assert not forged["ready_for_codegen"]
     assert any("SOURCE_ARCHITECTURE_RECOVERY_INVALID" in item for item in
                forged["blocking_issues"])
+
+
+def test_source_recovery_rejects_tampered_requirement_and_facet_spans():
+    ledger, design, modules = fixture()
+    ledger["requirements"][0]["statement"] = "Only purchase a new weapon"
+    with pytest.raises(SourceArchitectureRecoveryError, match="source text diverges"):
+        certify_unclassified_chunks(ledger, design, modules)
+
+    ledger, design, modules = fixture()
+    ledger["facets"][0]["requirements"] = ["req-999"]
+    with pytest.raises(SourceArchitectureRecoveryError, match="facet/source ownership"):
+        certify_unclassified_chunks(ledger, design, modules)
