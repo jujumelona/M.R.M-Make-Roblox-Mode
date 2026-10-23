@@ -137,6 +137,37 @@ def generated_module_errors(
                     "mutation in the source-owned action. Service.start "
                     "registry setup, logging and comments are not effects")
 
+    # Typed state contracts were checked only during FIRST generation of a
+    # scaffolded action. A resumed checkpoint, imported plan, or post-review
+    # patch must not be allowed to substitute an unrelated mutation while
+    # retaining the old approved state-change metadata.
+    if is_server and module.kind == ModuleKind.SERVER_MODULE:
+        design = proposal.game_design.get("dynamic_design") or {}
+        typed_routes = [
+            entry for entry in (design.get("host_typed_actions") or {}).values()
+            if isinstance(entry, dict) and entry.get("server") == module.name
+        ]
+        if typed_routes:
+            from .gameplay_source_evidence import (
+                authored_action_body, state_key_used_by_executable_code,
+            )
+            body = authored_action_body(code)
+            for typed in typed_routes:
+                contract = typed.get("contract") or {}
+                changes = (contract.get("state_changes", [])
+                           if isinstance(contract, dict) else [])
+                if not isinstance(changes, list) or not changes:
+                    errors.append("TYPED_STATE_CONTRACT_MISSING: no approved state changes")
+                    continue
+                for effect in changes:
+                    key = effect.get("key") if isinstance(effect, dict) else None
+                    if (not isinstance(key, str) or not key
+                            or not state_key_used_by_executable_code(body, key)):
+                        errors.append(
+                            "TYPED_STATE_EFFECT_MISSING: declared server state "
+                            "mutation absent from action body: " + str(key)
+                        )
+
     return list(dict.fromkeys(errors))
 
 
