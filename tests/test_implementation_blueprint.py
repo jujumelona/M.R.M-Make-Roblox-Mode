@@ -302,3 +302,64 @@ def test_client_promised_launch_cannot_substitute_for_missing_server_spaceflight
     )
     good = build_implementation_blueprint(plan)
     assert good["ready_for_codegen"]
+
+
+def test_saved_spaceflight_blueprint_must_retain_source_owned_motion_contract():
+    """The planned spacecraft relocation must survive architect->planner JSON."""
+    from roblox_mod_ai.spec import ModuleKind, RobloxModuleSpec, RobloxService, RobloxProposal
+    from roblox_mod_ai.world_motion_contract import source_motion_contract
+
+    ship = "우주선을 부위마다 만들어서 만들수있고"
+    launch = "그렇게해서 우주로 나갈수있고"
+    owner = RobloxModuleSpec(
+        module_id="dyn_launch", name="LaunchService",
+        kind=ModuleKind.SERVER_MODULE,
+        roblox_service=RobloxService.SERVER_SCRIPT_SERVICE,
+        file_path="src/server/LaunchService.luau",
+        description=(
+            "Server validates assembled owned spaceship and fuel, launches "
+            "the spacecraft and moves the vehicle and passengers into orbit."
+        ),
+    )
+    ledger = {
+        "requirements": [
+            {"id": "req-001", "statement": ship},
+            {"id": "req-002", "statement": launch},
+        ],
+        "facets": [],
+        "atomic_intents": [],
+        "unimplemented_facets": [],
+        "unmatched_requirements": [],
+        "decomposition_pending": [],
+    }
+    design = {
+        "module_requirements": {"dyn_launch": ["req-001", "req-002"]},
+        "module_facets": {},
+        "acceptance": {
+            "req-001": "Players finish constructing their spacecraft sections",
+            "req-002": "Spaceship launches into orbit with passengers aboard",
+        },
+        "acceptance_facets": {},
+    }
+    plan = RobloxProposal(
+        requested_prompt=ship + " " + launch, game_title="Spaceflight",
+        description="Source-only motion verification",
+        modules=[owner],
+        game_design={
+            "features": {}, "dynamic_design": design,
+            "pre_design_research": {"ledger": ledger},
+        },
+    )
+    missing = build_implementation_blueprint(plan)
+    assert not missing["ready_for_codegen"]
+    assert any("SOURCE_WORLD_TRANSITION_CONTRACT_LOST" in e
+               for e in missing["blocking_issues"])
+
+    contract = source_motion_contract(launch, [ship])
+    assert contract
+    design["host_world_motion"] = {"LaunchService": contract}
+    valid = build_implementation_blueprint(plan)
+    assert valid["ready_for_codegen"], valid["blocking_issues"]
+    design["host_world_motion"] = {"WrongServer": contract}
+    wrong_owner = build_implementation_blueprint(plan)
+    assert not wrong_owner["ready_for_codegen"]
