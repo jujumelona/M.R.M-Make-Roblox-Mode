@@ -213,18 +213,55 @@ def build_implementation_blueprint(proposal: Any) -> dict[str, Any]:
         for m in mechanics if m["missing_owners"]
     ]
     blocked += ["unowned requirement " + r["id"] for r in requirements if r["missing"]]
-    # A fully classified source span still needs the actual corresponding
-    # gameplay in its server owner. Requiring named hostile NPCs and settlement
-    # state, when those are explicitly requested, prevents a PvE encounter
-    # from being silently rewritten as PvP or a colony into just a menu.
+    # Architecture-based recovery must survive beyond planning: the original
+    # classifier did NOT succeed, so its placeholder cannot be rechecked as
+    # though it were a model classification. Conversely, merely writing
+    # architecture_recovered_chunks into a JSON file must never bypass source
+    # fidelity. Re-certify the CURRENT server owners and acceptance contracts
+    # whenever a blueprint is built or audited after a code/plan revision.
+    recovered_chunks: set[str] = set()
+    recovered_raw = ledger.get("architecture_recovered_chunks") or []
+    if recovered_raw:
+        atoms = {
+            item.get("chunk_id"): item
+            for item in ledger.get("atomic_intents", [])
+            if isinstance(item, dict) and isinstance(item.get("chunk_id"), str)
+        }
+        if (not isinstance(recovered_raw, list)
+                or any(not isinstance(cid, str) or not cid for cid in recovered_raw)
+                or len(set(recovered_raw)) != len(recovered_raw)
+                or any(atoms.get(cid, {}).get("classification_origin")
+                       != "architecture_source_verified" for cid in recovered_raw)):
+            blocked.append("SOURCE_ARCHITECTURE_RECOVERY_INVALID: missing or forged source provenance")
+        else:
+            from .source_architecture_recovery import (
+                SourceArchitectureRecoveryError, certify_unclassified_chunks,
+            )
+            try:
+                current = certify_unclassified_chunks(
+                    dict(ledger, classification_unverified=recovered_raw),
+                    dyn, proposal.modules,
+                )
+                if set(current) != set(recovered_raw):
+                    raise SourceArchitectureRecoveryError(
+                        "Architecture did not re-certify every recovered source chunk")
+                recovered_chunks = set(current)
+            except SourceArchitectureRecoveryError as exc:
+                blocked.append("SOURCE_ARCHITECTURE_RECOVERY_INVALID: " + str(exc))
+    # Every ordinarily classified source span still needs a truthful model
+    # classification. Architecture-recovered spans instead require the
+    # stricter, independently re-certified owner/outcome evidence above.
+    # All spans, regardless of classification, need actual server behavior.
     for atom in ledger.get("atomic_intents", []):
         if not isinstance(atom, dict):
             continue
         span = atom.get("source_span", "")
         facet = atom.get("facet_id", "")
         classification = str(atom.get("intent", "")) + " " + str(atom.get("english_query", ""))
-        for mismatch in source_intent_conflicts(span, classification, require_implementation=False):
-            blocked.append(str(facet) + ": classifier " + mismatch)
+        if atom.get("chunk_id") not in recovered_chunks:
+            for mismatch in source_intent_conflicts(
+                    span, classification, require_implementation=False):
+                blocked.append(str(facet) + ": classifier " + mismatch)
         server_owners = [
             m for m in proposal.modules
             if m.kind.value in ("server_module", "server_script")
