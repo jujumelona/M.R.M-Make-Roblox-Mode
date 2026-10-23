@@ -113,3 +113,35 @@ def test_plan_33_missing_crew_and_ship_upgrades_not_ready():
         "engine performance and deducts the verified purchase cost."
     )
     assert source_intent_conflicts(source, implemented) == []
+
+
+def test_production_context_chunk_cannot_become_standalone_space_mode_button():
+    from roblox_mod_ai.request_contract import validate_model_behaviors
+    from roblox_mod_ai.source_decomposition import source_chunks
+
+    clause = (
+        "우주모드 인데 자원파밍 돈모으기 거래 등으로 "
+        "우주선을 부위마다 만들어서 만들수있고"
+    )
+    fake_standalone = [
+        {
+            "source_span": "우주모드 인데",
+            "intent": "Enable a separate SpaceMode through an F5 menu.",
+            "english_query": "Roblox F5 SpaceMode toggle",
+        },
+        {
+            "source_span": "자원파밍 돈모으기 거래 등으로",
+            "intent": "Harvest resources and earn cash by trading",
+            "english_query": "Roblox resource mining and trading",
+        },
+        {
+            "source_span": "우주선을 부위마다 만들어서 만들수있고",
+            "intent": "Build a spacecraft by attaching parts",
+            "english_query": "Roblox modular craft builder",
+        },
+    ]
+    assert validate_model_behaviors(clause, fake_standalone) is False
+    chunks = source_chunks(clause)
+    assert len(chunks) >= 1
+    assert all(piece != "우주모드 인데" for piece in chunks)
+    assert " ".join(chunks) == clause
