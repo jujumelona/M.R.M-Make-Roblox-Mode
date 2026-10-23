@@ -116,11 +116,18 @@ def source_intent_conflicts(
                 "SPACE_TRAVEL_DROPPED: user requested departing into space, "
                 "not another ship purchase or upgrade menu"
             )
-        elif require_implementation and not _SPACE_WORLD_CHANGE.search(text):
-            errors.append(
-                "SPACE_TRAVEL_STATE_MISSING: setting a player status to in-space "
-                "is not a physical launch, location transfer or world transition"
-            )
+        elif require_implementation:
+            # Preserve the same physically grounded vehicle-effect evidence
+            # used by the scoped host contract. An authoritative transition
+            # of the spacecraft from the surface into orbit is movement even
+            # when written without the narrow English verb "launches".
+            from .world_motion_contract import has_vehicle_motion_effect
+            if not (_SPACE_WORLD_CHANGE.search(text)
+                    or has_vehicle_motion_effect(text)):
+                errors.append(
+                    "SPACE_TRAVEL_STATE_MISSING: setting a player status to in-space "
+                    "is not a physical launch, location transfer or world transition"
+                )
         if _SPACE_ABANDONMENT.search(text):
             errors.append(
                 "SPACE_TRAVEL_REVERSED: ejecting a passenger from the ship "
