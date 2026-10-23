@@ -77,7 +77,11 @@ def test_missing_and_colon_called_peer_methods_retry_short_body():
     assert len(router.calls) == 2
     assert "DEPENDENCY_API" in router.calls[1]
     assert "PlayerDataManager.SetState" in router.calls[1]
-    assert "calling it with ':'" in router.calls[1]
+    # The host now safely normalizes the exported GetState dot ABI before
+    # auditing peers. Only the genuinely missing SetState method must be
+    # returned as a validator error for the retry.
+    assert "GetState is a DOT function" in router.calls[1]
+    assert "SetState is not exported" in router.calls[1]
     assert "services.PlayerDataManager.GetState(player," in code
     assert "services.PlayerDataManager:GetState(" not in code
     assert "services.PlayerDataManager:SetState(" not in code
