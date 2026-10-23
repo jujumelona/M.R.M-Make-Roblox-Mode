@@ -98,7 +98,7 @@ def validate_model_behaviors(clause: str, behaviors: list[dict[str, Any]]) -> bo
         # Reject that decomposition so the host's lossless clause
         # chunker retains the setting WITH the actual player actions.
         if (re.fullmatch(
-                r"\\S*(?:모드|테마|세계관|배경)\\s*(?:인데|이고|이며)",
+                r"\S*(?:모드|테마|세계관|배경)\s*(?:인데|이고|이며)",
                 span, re.I,
         ) and span != source):
             return False
