@@ -100,6 +100,56 @@ def indexed_source_spans(source: str, *, max_width: int = 4,
     return rows
 
 
+# The short model may promote a conditional arrival phrase to a second
+# launch action. Keep original source IDs stable while excluding such phrases
+# from executable action ownership.
+_SPACE_ARRIVAL_CONDITION = re.compile(
+    r"우주(?:로|에)\s*(?:나가면|도착하면|진입하면|이동하면)|"
+    r"\b(?:when|once|after)\s+(?:the\s+)?"
+    r"(?:player|ship|craft|vehicle|you)\s+"
+    r"(?:reach(?:es)?|enter(?:s)?|arriv(?:e|es)|travel(?:s)?|go(?:es)?)"
+    r"\s+(?:to|into|in|at)?\s*(?:space|orbit)\b",
+    re.I,
+)
+_INDEPENDENT_SPACE_DEPARTURE = re.compile(
+    r"우주(?:로|에)\s*(?:나가(?:ㄹ|는|자|기|고)|나갈|출발|진입|이동|비행|발사)|"
+    r"\b(?:launch|depart|travel|fly|enter|go)\s+(?:to|into)?\s*"
+    r"(?:space|orbit)\b", re.I,
+)
+_CLAIM_SPACE_DEPARTURE = re.compile(
+    r"\b(?:travel|launch|depart|fly|enter|go)\b.{0,65}"
+    r"\b(?:space|orbit)\b|"
+    r"\b(?:space|orbit)\b.{0,50}\b(?:launch|depart|travel)\b|"
+    r"우주(?:로|에)\s*(?:출발|발사|진입|이동|나가)",
+    re.I,
+)
+
+
+def action_claims_unowned_departure(source: str, action: str) -> bool:
+    """A WHEN-ARRIVED condition is not an independent travel command."""
+    source = str(source or "")
+    if not _SPACE_ARRIVAL_CONDITION.search(source):
+        return False
+    remainder = _SPACE_ARRIVAL_CONDITION.sub(" ", source)
+    return (not _INDEPENDENT_SPACE_DEPARTURE.search(remainder)
+            and bool(_CLAIM_SPACE_DEPARTURE.search(str(action or ""))))
+
+
+def eligible_atomic_action_spans(source: str) -> list[dict[str, str]]:
+    """Exclude standalone conditions without renumbering source anchors."""
+    spans = indexed_source_spans(source)
+    if not _SPACE_ARRIVAL_CONDITION.search(source):
+        return spans
+    if _INDEPENDENT_SPACE_DEPARTURE.search(
+        _SPACE_ARRIVAL_CONDITION.sub(" ", source)
+    ):
+        return spans
+    return [
+        row for row in spans
+        if not _SPACE_ARRIVAL_CONDITION.fullmatch(row["quote"].strip())
+    ]
+
+
 def validate_atomic_system_ownership(
     actions: list[dict[str, str]], systems: Any, *, original_prompt: str,
 ) -> None:
@@ -154,7 +204,8 @@ def verify_or_bind_actions(router: Any, source: str, actions: Any,
     seen_actions = set()
     ungrounded = False
     quotes = set()
-    source_ids = {row["id"]: row["quote"] for row in indexed_source_spans(source)}
+    eligible_spans = eligible_atomic_action_spans(source)
+    source_ids = {row["id"]: row["quote"] for row in eligible_spans}
     for row in actions:
         if not isinstance(row, dict):
             raise SourceActionBindingError("ATOMIC_ACTION_DECOMPOSITION_INVALID: action object required")
@@ -166,6 +217,11 @@ def verify_or_bind_actions(router: Any, source: str, actions: Any,
                  else row.get("source_quote"))
         if not isinstance(action, str) or not 8 <= len(action.strip()) <= 220:
             raise SourceActionBindingError("ATOMIC_ACTION_DECOMPOSITION_INVALID: action text required")
+        if action_claims_unowned_departure(source, action):
+            raise SourceActionBindingError(
+                "ATOMIC_CONDITIONAL_PROMOTED_TO_ACTION: a 'when in space' "
+                "precondition is not a second space travel mechanic"
+            )
         key = " ".join(action.casefold().split())
         if key in seen_actions:
             raise SourceActionBindingError("ATOMIC_ACTION_DECOMPOSITION_INVALID: duplicate gameplay action")
@@ -186,7 +242,7 @@ def verify_or_bind_actions(router: Any, source: str, actions: Any,
                    if not row["source_quote"]]
         occupied = {row["source_quote"] for row in normalized
                     if row["source_quote"]}
-        candidates = [row for row in indexed_source_spans(source)
+        candidates = [row for row in eligible_spans
                       if row["quote"] not in occupied]
         by_id = {row["id"]: row["quote"] for row in candidates}
         if len(by_id) < len(missing):
