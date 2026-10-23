@@ -72,10 +72,8 @@ _CRAFT_ARG = (
     r"(?:(?:the|a|an|owned|assembled|existing|player['’]s|pilot['’]s)\s+){0,5}"
     + _CRAFT + r"\b"
 )
-_DESTINATION = re.compile(
-    r"\b(?:space|orbit|orbital|destination|zone|region|planet|world|surface)\b"
-    r"|우주|궤도|행성", re.I,
-)
+# A physical change on the surface does not satisfy departure to SPACE.
+_SPACE_DESTINATION = re.compile(r"\b(?:space|orbit|orbital)\b|우주|궤도", re.I)
 _MOVE_EFFECTS = tuple(re.compile(pattern, re.I) for pattern in (
     r"\b(?:launch\w*|mov(?:e|es|ed|ing)|teleport\w*|relocat\w*|"
     r"transport\w*|transfer\w*|warp\w*|transition\w*|depart\w*)\s+"
@@ -108,7 +106,7 @@ _NEGATED_CRAFT_MOVE = re.compile(
 
 def has_vehicle_motion_effect(server_behavior: str) -> bool:
     for sentence in re.split(r"[.;!?\n]+", server_behavior):
-        if (not _DESTINATION.search(sentence)
+        if (not _SPACE_DESTINATION.search(sentence)
                 or _NEGATED_CRAFT_MOVE.search(sentence)):
             continue
         if any(pattern.search(sentence) for pattern in _MOVE_EFFECTS):
@@ -132,7 +130,7 @@ def has_vehicle_arrival_evidence(outcome: str) -> bool:
     for clause in re.split(r"[,;.!?\n]+", str(outcome or "")):
         actor = _VEHICLE.search(clause)
         arrival = _ARRIVAL_EFFECT.search(clause)
-        if not actor or not arrival or not _WORLD_TARGET.search(clause):
+        if not actor or not arrival or not _SPACE_DESTINATION.search(clause):
             continue
         if arrival.start() <= actor.start() or _NEGATED_CRAFT_MOVE.search(clause):
             continue
