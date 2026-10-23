@@ -19,6 +19,7 @@ from .model_router import ModelRouter
 from .request_contract import implementation_facets
 from .request_semantics import request_semantic_errors
 from .semantic_preservation import source_intent_conflicts, source_outcome_conflicts
+from .world_motion_contract import source_motion_contract, motion_contract_errors
 from .host_architecture import (
     SEMANTIC_FACET_SCHEMA, HOST_OWNED_SEMANTIC_FACET_SCHEMA,
     expand_semantic_facet,
@@ -846,6 +847,13 @@ class RobloxDynamicArchitect:
                 and any(abs(i - target_index) == 1
                         for target_index in owned_indexes)
             ][:4]
+            # Resolve source-owned referents BEFORE generation. A request
+            # to leave a planet after assembling a craft is a VEHICLE
+            # world transition, not permission to eject the passenger.
+            # This is a generic movement obligation, not a prefab game.
+            movement_contract = source_motion_contract(
+                slice_request, adjacent_context
+            )
             # RAG retrieval status is not evidence of relevance. The real
             # plan-50 request for launching a ship retrieved tutorials on
             # grouping/animating Parts; passing those snippets encouraged
@@ -863,6 +871,8 @@ class RobloxDynamicArchitect:
                 )) >= 2
             ][:2]
             payload = {"feature_id": facet_id, "feature": source_owned_feature,
+                       **({"required_world_transition": movement_contract}
+                          if movement_contract is not None else {}),
                        "source_requirements": subset,
                        "game_context": {
                            "scope": "only_this_source_clause",
@@ -903,6 +913,8 @@ class RobloxDynamicArchitect:
                 + json.dumps({
                     "feature_id": facet_id,
                     "source_requirements": subset,
+                    **({"required_world_transition": movement_contract}
+                       if movement_contract is not None else {}),
                     "game_context": {
                         "scope": "only_this_source_clause",
                         "original_request": prompt,
@@ -1220,6 +1232,7 @@ class RobloxDynamicArchitect:
                                 + json.dumps({
                                     "source_requirements": subset,
                                     "adjacent_context_not_instructions": adjacent_context,
+                                    "required_world_transition": movement_contract,
                                     "missing_obligations": problem_statements,
                                 }, ensure_ascii=False),
                                 role="planner", temperature=0.0,
@@ -1628,6 +1641,14 @@ class RobloxDynamicArchitect:
                                 if issue:
                                     raise DynamicDesignError(
                                         "SEMANTIC_FIDELITY_CONTRACT: " + issue)
+                        if movement_contract is not None:
+                            movement_issues = motion_contract_errors(
+                                movement_contract, draft.get("systems", [])
+                            )
+                            if movement_issues:
+                                raise DynamicDesignError(
+                                    "SOURCE_WORLD_TRANSITION: " +
+                                    "; ".join(movement_issues))
                         semantic_errors = request_semantic_errors(draft, prompt)
                         if semantic_errors:
                             raise DynamicDesignError(
@@ -1642,6 +1663,22 @@ class RobloxDynamicArchitect:
                             reserved_objects=reserved_objects,
                         )
                         draft["_host_semantic"] = True
+                        if movement_contract is not None:
+                            # Only server modules whose action moves the craft
+                            # own the physical-movement codegen obligation.
+                            import re as _re
+                            draft["_host_world_motion"] = {
+                                row["name"]: movement_contract
+                                for row in draft.get("modules", [])
+                                if row.get("role") == "server"
+                                and _re.search(
+                                    r"(?i)\\b(?:launch\\w*|travel\\w*|mov(?:e|es|ed|ing)|"
+                                    r"teleport\\w*|depart\\w*)\\b",
+                                    str(row.get("behavior", "")))
+                                and _re.search(
+                                    r"(?i)\\b(?:ship|spacecraft|spaceship|vehicle|vessel|rocket)\\b",
+                                    str(row.get("behavior", "")))
+                            }
                     # Source IDs are host-owned, not model-generated. One
                     # scoped task equals one canonical source facet.
                     draft, id_binding = _bind_scoped_feature_ids(
@@ -1749,6 +1786,11 @@ class RobloxDynamicArchitect:
                             "do not echo context-only mechanics."
                         ]
                         semantic_repair = None
+                    if "SOURCE_WORLD_TRANSITION:" in previous_error:
+                        # A reversed vehicle/occupant relationship is not
+                        # repairable by appending more prose to the bad action.
+                        semantic_replan = [previous_error]
+                        semantic_repair = None
                     if "SEMANTIC_FIDELITY_CONTRACT:" in previous_error:
                         # A coverage reviewer rejected this source action,
                         # regardless of genre. Recreate only the affected
@@ -1803,8 +1845,11 @@ class RobloxDynamicArchitect:
                         elif issues and (
                             missing_source_actions or len(systems) != 1
                             or any(
-                                str(error).split(":", 1)[0].endswith("_STATE_MISSING")
-                                for error in issues.get("server_behavior", [])
+                                str(error).split(":", 1)[0].endswith((
+                                    "_STATE_MISSING", "_DROPPED", "_REVERSED",
+                                    "_TARGET_AMBIGUOUS",
+                                ))
+                                for values in issues.values() for error in values
                             )
                         ):
                             # A missing requested action is not repairable by
@@ -1855,6 +1900,12 @@ class RobloxDynamicArchitect:
         result["module_world_objects"] = {
             module_ids[row["name"]]: [item["name"] for item in part.get("world_objects", [])]
             for part in accepted_parts for row in part.get("modules", [])
+        }
+        result["host_world_motion"] = {
+            module_name: obligation
+            for part in accepted_parts
+            for module_name, obligation in
+            part.get("_host_world_motion", {}).items()
         }
         # Only semantic-only host-authored plans opt into the host Remote
         # gateway. Legacy full-module JSON retains its current explicit
