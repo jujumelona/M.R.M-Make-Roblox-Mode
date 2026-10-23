@@ -254,18 +254,38 @@ def ledger_complete(prompt: str, ledger: dict[str, Any]) -> bool:
         # interpretation. Persisted plans must not be able to relabel an
         # unclassified requirement as independently model-certified.
         if ledger.get("decomposition_method") == "source_anchored_host":
-            fallback_ids = set(ledger.get("classification_unverified") or [])
-            if not fallback_ids:
+            # An unclassified chunk may later gain authoritative server
+            # owners and requirement/facet acceptance. The architect's
+            # source-verified recovery is NOT a newly successful classifier.
+            # Retain its honest provenance after clearing unverified chunks.
+            # The blueprint separately re-certifies actual CURRENT owners.
+            fallback_raw = ledger.get("classification_unverified") or []
+            recovered_raw = ledger.get("architecture_recovered_chunks") or []
+            if (not isinstance(fallback_raw, list)
+                    or not isinstance(recovered_raw, list)
+                    or any(not isinstance(v, str) or not v
+                           for v in fallback_raw + recovered_raw)
+                    or len(fallback_raw) != len(set(fallback_raw))
+                    or len(recovered_raw) != len(set(recovered_raw))):
+                return False
+            fallback_ids = set(fallback_raw)
+            recovered_ids = set(recovered_raw)
+            if (not fallback_ids and not recovered_ids
+                    or fallback_ids & recovered_ids):
                 return False
             fallback_intents = [x for x in intents
                                 if x.get("classification_origin") == "host_source_only"]
-            if {x.get("chunk_id") for x in fallback_intents} != fallback_ids:
+            recovered_intents = [x for x in intents
+                                 if x.get("classification_origin")
+                                 == "architecture_source_verified"]
+            if ({x.get("chunk_id") for x in fallback_intents} != fallback_ids
+                    or {x.get("chunk_id") for x in recovered_intents} != recovered_ids):
                 return False
             if any(
                 not clean(x.get("source_span", "")) or
                 clean(x.get("source_span", "")) not in str(x.get("intent", "")) or
                 not str(x.get("english_query", "")).startswith("Roblox gameplay scripting for ")
-                for x in fallback_intents
+                for x in fallback_intents + recovered_intents
             ):
                 return False
     if ledger.get("decomposition_pending"):
