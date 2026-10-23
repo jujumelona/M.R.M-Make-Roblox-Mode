@@ -418,6 +418,11 @@ class RobloxGameDesignPlanner:
                 ]
                 research["ledger"]["unmatched_requirements"] = []
             except DynamicDesignError as exc:
+                # A failed source-recovery certification must not leave behind
+                # a model-authored module graph or a truthy dynamic_design.
+                # Retain only diagnostics/infrastructure, never unverified
+                # gameplay services that can suppress incomplete-plan blocking.
+                dynamic_design = None
                 # Model-enabled design failures cannot silently return a stock
                 # shop, sword or arena and claim the user's custom game was made.
                 research["ledger"]["unimplemented_facets"] = sorted(set(
