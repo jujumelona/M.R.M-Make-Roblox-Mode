@@ -127,8 +127,9 @@ def source_planetary_mineral_errors(
     if not _PLANET_SPECIAL_MINERAL_SOURCE.search(str(source_span or "")):
         return []
     output = str(description or "")
-    if not (_PLANET_MINERAL.search(output)
-            and _MINERAL_INTERACTION.search(output)):
+    if not _PLANET_MINERAL.search(output) or (
+        not outcome and not _MINERAL_INTERACTION.search(output)
+    ):
         return [
             "PLANETARY_MINERAL_MECHANIC_DROPPED: other-planet minerals "
             "require extraction, harvesting or obtaining the minerals; "
@@ -348,9 +349,12 @@ def source_outcome_conflicts(source_span: str, described_result: str) -> list[st
     identify an actual observable consequence of the requested mechanic,
     not merely an unrelated saving operation or a generic success notification.
     """
-    errors = source_intent_conflicts(
-        source_span, described_result, require_implementation=False
-    )
+    errors = [
+        error for error in source_intent_conflicts(
+            source_span, described_result, require_implementation=False
+        )
+        if not error.startswith("PLANETARY_MINERAL_MECHANIC_DROPPED:")
+    ]
     errors.extend(source_planetary_mineral_errors(
         source_span, described_result, outcome=True,
     ))
