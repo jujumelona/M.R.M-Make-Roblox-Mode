@@ -206,3 +206,40 @@ def test_colony_precondition_is_not_an_authoritative_settlement_write():
         "colony settlement ownership after a successful colonization request."
     )
     assert source_intent_conflicts(source, commits_state) == []
+
+
+def test_space_departure_rejects_status_only_transition_and_passenger_ejection():
+    """Regression for plan_failure_logs (5)(1): this is NOT a ship launch."""
+    from roblox_mod_ai.semantic_preservation import (
+        source_intent_conflicts, source_outcome_conflicts,
+    )
+
+    source = "그렇게해서 우주로 나갈수있고"
+    status_only = (
+        "Server validates that the player is aboard a valid spaceship and "
+        "transitions the player's state to 'in space', but changes no world location."
+    )
+    errors = source_intent_conflicts(source, status_only)
+    assert any("SPACE_TRAVEL_STATE_MISSING" in item for item in errors)
+    # The classification stage only recognizes actions; it does not require
+    # their full engine implementation before gameplay codegen.
+    assert source_intent_conflicts(
+        source, "Launch a spaceship into space",
+        require_implementation=False,
+    ) == []
+
+    ejection = (
+        "The player leaves the ship and appears in space, "
+        "with the ship no longer carrying them."
+    )
+    errors = source_outcome_conflicts(source, ejection)
+    assert any("SPACE_TRAVEL_REVERSED" in item for item in errors)
+
+    real_departure = (
+        "Server validates the assembled ship and fuel, launches the spaceship "
+        "with the player into space, and teleports the ship to the orbital zone."
+    )
+    assert source_intent_conflicts(source, real_departure) == []
+    assert source_outcome_conflicts(
+        source, "The spaceship launches into space with the player aboard."
+    ) == []
