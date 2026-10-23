@@ -873,3 +873,51 @@ def test_explicit_scoped_remotes_require_both_endpoints():
     assert accepted["module_remotes"]
     assert all(names == ["BuyResource"]
                for names in accepted["module_remotes"].values())
+
+
+def test_planner_preserves_all_host_authored_metadata_for_codegen(tmp_path, monkeypatch):
+    """Regression: real planner erased three validated architecture contracts.
+
+    This is an architectural handoff test, NOT a claim that an egg game
+    requires spacecraft movement. Marker metadata is injected only to
+    exercise lossless serialization; production semantics come from source.
+    """
+    from roblox_mod_ai.dynamic_architect import RobloxDynamicArchitect
+
+    session, fake = _session(tmp_path, monkeypatch)
+    original_design = RobloxDynamicArchitect.design
+    expected = {
+        "host_action_choices": {
+            "HatchPet": [{"id": "start_hatch", "label": "Hatch egg"}],
+        },
+        "host_typed_actions": {
+            "HatchPet": {
+                "server": "CustomPetHatching",
+                "contract": {"schema": "handoff-marker-do-not-execute"},
+            },
+        },
+        "host_world_motion": {
+            "CustomPetHatching": {
+                "kind": "vehicle_world_transition",
+                "actor": "handoff-marker-do-not-execute",
+            },
+        },
+    }
+
+    def with_metadata(architect, prompt, research, existing):
+        designed = original_design(architect, prompt, research, existing)
+        for name, payload in expected.items():
+            designed[name] = copy.deepcopy(payload)
+        return designed
+
+    monkeypatch.setattr(RobloxDynamicArchitect, "design", with_metadata)
+    plan = session.plan("펫 부화")
+    dynamic = plan.authored_plan.proposal.game_design["dynamic_design"]
+    assert dynamic is not None
+    for name, payload in expected.items():
+        assert dynamic[name] == payload, name
+
+    saved = json.loads((tmp_path / "proposal.json").read_text(encoding="utf-8"))
+    saved_dynamic = saved["proposal"]["game_design"]["dynamic_design"]
+    for name, payload in expected.items():
+        assert saved_dynamic[name] == payload, name
