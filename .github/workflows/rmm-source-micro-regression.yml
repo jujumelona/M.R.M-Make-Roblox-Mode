@@ -10,6 +10,7 @@ on:
       - 'roblox_mod_ai/dynamic_architect.py'
       - 'tests/test_plan69_atomic_repair_recovery.py'
       - 'tests/test_plan70_source_complete_microplanning.py'
+      - 'tests/test_plan71_trade_repair.py'
       - '.github/workflows/rmm-source-micro-regression.yml'
   workflow_dispatch:
 jobs:
@@ -25,4 +26,7 @@ jobs:
         run: python -m pip install -e '.[dev]'
       - name: Run source-owned micro-planning regressions
         run: |
-          python -m pytest -q             tests/test_plan69_atomic_repair_recovery.py             tests/test_plan70_source_complete_microplanning.py             tests/test_plan67_compact_atomic.py             tests/test_plan67_four_action_scope.py
+          python -m pytest -q tests/test_plan69_atomic_repair_recovery.py
+          python -m pytest -q tests/test_plan70_source_complete_microplanning.py
+          python -m pytest -q tests/test_plan71_trade_repair.py
+          python -m pytest -q tests/test_plan67_compact_atomic.py tests/test_plan67_four_action_scope.py
