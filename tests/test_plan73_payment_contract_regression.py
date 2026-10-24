@@ -86,27 +86,26 @@ def test_paid_debit_does_not_overwrite_other_upgrade_targets():
 
 def test_wrong_target_is_rejected_without_dropping_siblings():
     initial = _initial()
+    # Only the weapon action is a purchase. The crew and ship actions are
+    # distinct existing upgrades; they must never be rewritten as a remedy
+    # for the broken weapon purchase.
+    initial[1]["action"] = "Server upgrades crew capacity by training owned crew."
+    initial[2]["action"] = "Server upgrades the ship engine to improve performance."
     bound = verify_or_bind_actions(Router(), SOURCE, initial,
                                    require_complete=False, max_actions=6)
     gaps = _coverage_issues(SOURCE, bound)
-    router = Router(
-        {"action": (
-            "Server purchases and installs a crew upgrade by debiting "
-            "the player's owned credits and increasing crew capacity."
-        )},
-        {"action": (
-            "Server purchases and installs a weapon upgrade by debiting "
-            "the player's owned credits and improving weapon damage."
-        )},
-    )
+    router = Router({"action": (
+        "Server purchases and installs a crew upgrade by debiting "
+        "the player's owned credits and increasing crew capacity."
+    )})
     evidence = []
     repaired = _repair_owned_purchase_effect(
         router, SOURCE, initial, gaps, 6, evidence,
     )
-    assert repaired is not None
-    assert repaired[0]["source_id"] == initial[0]["source_id"]
-    assert repaired[1:] == initial[1:]
-    assert any("TARGET_REPLACED" in item for item in evidence)
+    assert repaired is None
+    assert "TARGET_REPLACED" in evidence[0]
+    assert initial[0]["source_id"] == _sid("무기")
+    assert len(router.calls) == 1
 
 
 def test_unchanged_payment_claim_does_not_mask_semantic_failure():
