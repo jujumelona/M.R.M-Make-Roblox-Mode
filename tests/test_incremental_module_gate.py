@@ -113,7 +113,27 @@ end)
 def test_valid_existing_mining_host_code_passes_early_gate():
     from test_host_mining import make_plan
     server, client, p = make_plan()
-    p.modules = [server, client]
+    # The actual generated bootstrap always normalizes the PlayerDataManager
+    # into the same server-only services registry. A fixture without that
+    # dependency is NOT a valid host-mining program and must not be treated as
+    # the reference for the production dependency audit.
+    from roblox_mod_ai.spec import RobloxModuleSpec, RobloxService
+    profile = RobloxModuleSpec(
+        module_id="mod_player_data", name="PlayerDataManager",
+        kind=ModuleKind.SERVER_MODULE,
+        file_path="src/server/PlayerDataManager.luau",
+        roblox_service=RobloxService.SERVER_SCRIPT_SERVICE,
+        description="Host profile and saved game state API",
+        code=(
+            "local PlayerDataManager = {}\\n"
+            "function PlayerDataManager.GetState(player, namespace) "
+            "return {} end\\n"
+            "function PlayerDataManager.OnReady(callback) return nil end\\n"
+            "function PlayerDataManager.start(services) end\\n"
+            "return PlayerDataManager\\n"
+        ),
+    )
+    p.modules = [profile, server, client]
     analyzer = LuauStaticAnalyzer()
     for mod in (server, client):
         code = render_host_mining(mod, p)
