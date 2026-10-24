@@ -455,7 +455,7 @@ def source_intent_conflicts(
         r"\b(?:deduct\w*|subtract\w*|debit\w*|pay\w*|spend\w*|"
         r"charg\w*|consum\w*|decreas\w*|reduc\w*)\b.{0,110}"
         r"\b(?:coins?|credits?|currency|balance|money|funds?|"
-        r"resources?|materials?|ores?)\b|"
+        r"resources?|materials?|ores?|prices?|costs?)\b|"
         r"(?:돈|잔액|코인|화폐|자원|재료).{0,30}(?:차감|감소|소비|지불)",
         re.I,
     )
