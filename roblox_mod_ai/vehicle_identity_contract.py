@@ -75,6 +75,17 @@ def vehicle_identity_errors(proposal: Any) -> list[str]:
                     " resolved actor does not match materialized Instance class"
                 )
                 continue
+            for route in (design.get("host_typed_actions") or {}).values():
+                if not isinstance(route, dict) or route.get("server") != owner_name:
+                    continue
+                client = modules.get(route.get("client"))
+                if (client is not None and actor not in
+                        (ownership.get(client.module_id) or ())):
+                    errors.append(
+                        "VEHICLE_ACTOR_CLIENT_NOT_BOUND: " + owner_name +
+                        " launch UI and server do not reference the same "
+                        "materialized vehicle root"
+                    )
         physical_root = re.compile(
             r"(?:ship|spacecraft|craft|vehicle|vessel|rocket|shuttle|"
             r"car|train|aircraft|boat|plane|raft).{0,55}"
