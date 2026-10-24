@@ -16,6 +16,7 @@ from .host_mining import render_host_mining
 from .host_ship_attachment import eligible_ship_attachment
 from .host_capped_ship_parts import eligible_capped_ship_parts
 from .luau_api_sanity import invalid_luau_apis
+from .roblox_value_contract import roblox_value_contract_errors
 from .luau_service_contract import service_contract_checks
 from .server_interface_audit import dependency_api_errors
 from .scoped_luau_abi import (
@@ -558,6 +559,7 @@ def try_scaffolded_server(
                 candidate, routed_action=True))
             diagnostics.extend("ROBLOX_API_INVALID: " + m
                                for m in invalid_luau_apis(candidate))
+            diagnostics.extend(roblox_value_contract_errors(candidate))
             diagnostics.extend(request_semantic_errors(
                 candidate, proposal.requested_prompt))
             if diagnostics:
