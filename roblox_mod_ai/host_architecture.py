@@ -203,6 +203,7 @@ def expand_semantic_facet(
     source_requirements: list[dict[str, Any]],
     reserved_modules: set[str], reserved_remotes: set[str],
     reserved_objects: set[str],
+    max_systems: int = 3,
 ) -> dict[str, Any]:
     """Convert a semantic-only LLM output to the strict legacy contract.
 
@@ -214,10 +215,12 @@ def expand_semantic_facet(
     systems = raw["systems"]
     if not systems:
         raise HostArchitectureError("No game-specific systems proposed")
-    if len(systems) > 3:
+    if not 1 <= max_systems <= 6:
+        raise HostArchitectureError("Invalid host-owned scoped action bound")
+    if len(systems) > max_systems:
         raise HostArchitectureError(
-            "SCOPED_FEATURE_TOO_LARGE: model must describe at most 3 independent "
-            "actions for this one source requirement"
+            "SCOPED_FEATURE_TOO_LARGE: source-owned action count exceeds "
+            "the approved scoped capacity"
         )
     if not requirement_ids or any(
         not isinstance(rid, str) or not rid for rid in requirement_ids
