@@ -19,6 +19,7 @@ _HOST_PROTOCOLS = frozenset({
     "host_declarative_trade_catalog",
     "host_declarative_general_upgrades",
     "host_declarative_rank_upgrade",
+    "host_declarative_ordered_assembly",
     "host_declarative_ship_slot_configuration",
     "host_declarative_ship_slot_levels",
     "host_declarative_ship_launch_gate",
@@ -96,6 +97,8 @@ def rebase_complete_host_protocols(proposal: Any, scope: dict[str, Any]) -> list
         # the semantic inputs needed to compile a real progression effect.
         if server_strategy == "host_declarative_rank_upgrade":
             design.setdefault("host_rank_contracts", {})[remote] = dict(spec)
+        if server_strategy == "host_declarative_ordered_assembly":
+            design.setdefault("host_ordered_assembly_contracts", {})[remote] = dict(spec)
         typed.pop(remote)
         completed.append({
             "remote": remote,
