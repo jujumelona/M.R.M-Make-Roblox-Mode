@@ -1922,10 +1922,12 @@ class RobloxDynamicArchitect:
                     # the entire gameplay draft for a metadata failure.
                     if ("TYPED_ACTION_CONTRACT_EXHAUSTED:" in previous_error
                             or "ATOMIC_LOCAL_REPAIR_EXHAUSTED:" in previous_error
-                            or "ATOMIC_LOCAL_REPAIR_NO_PROGRESS:" in previous_error):
-                        # Three small attempts on the offending action have
-                        # already failed; repeating the whole facet discards
-                        # valid sibling actions and wastes model inference.
+                            or "ATOMIC_LOCAL_REPAIR_NO_PROGRESS:" in previous_error
+                            or "ATOMIC_SOURCE_MISSING_ACTION_UNRESOLVED:" in previous_error):
+                        # The bounded local action/field repair is exhausted.
+                        # The T4 model's deterministic 29-token rejection was
+                        # identical for three whole-facet retries in plan 71.
+                        # Do not rerun unchanged prompts and discard siblings.
                         break
                     # Preserve the original facet plan when the model's
                     # bounded repair response is malformed. Retrying the SAME
