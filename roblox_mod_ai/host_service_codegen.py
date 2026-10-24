@@ -569,7 +569,9 @@ def try_scaffolded_server(
             diagnostics.extend(dependency_api_errors(module, proposal, candidate))
             from .gameplay_effect_safety import game_effect_safety_errors
             diagnostics.extend(game_effect_safety_errors(
-                candidate, routed_action=True))
+                candidate, routed_action=True,
+                declared_behavior=str(module.description or ""),
+            ))
             diagnostics.extend("ROBLOX_API_INVALID: " + m
                                for m in invalid_luau_apis(candidate))
             diagnostics.extend(roblox_value_contract_errors(candidate))
