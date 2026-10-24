@@ -17,6 +17,7 @@ from .luau_service_contract import service_contract_checks
 from .server_interface_audit import dependency_api_errors
 from .gameplay_effect_safety import game_effect_safety_errors
 from .roblox_value_contract import roblox_value_contract_errors
+from .world_object_abi import world_lookup_guidance, world_lookup_errors
 from .spec import ModuleKind, RobloxProposal
 
 
@@ -56,6 +57,7 @@ def generated_module_errors(
     masked = _mask_strings(stripped)
     errors.extend("ROBLOX_API_INVALID: " + item for item in invalid_luau_apis(code))
     errors.extend(roblox_value_contract_errors(code))
+    errors.extend(world_lookup_errors(code, proposal))
     errors.extend(dependency_api_errors(module, proposal, code))
     if (module.kind == ModuleKind.SERVER_MODULE and
             "-- RMM_GAMEPLAY_BODY_BEGIN" in code):
