@@ -144,6 +144,26 @@ def render_ordered_assembly(m:Any,p:Any,router:Any)->str|None:
     return true
 end'''
     result=result[:start]+revised+result[end:]
+    # A passenger stays physically attached during Model:PivotTo, rather than
+    # being teleported separately or silently ejected. The actual occupant
+    # must be checked by the departure host before moving the assembled model.
+    seat_anchor='''    local parts = ship:FindFirstChild("AssembledSections")'''
+    seat_code='''    local seat = ship:FindFirstChild("PilotSeat")
+    if seat and not seat:IsA("VehicleSeat") then return nil end
+    if not seat then
+        seat = Instance.new("VehicleSeat")
+        seat.Name = "PilotSeat"
+        seat.Anchored = false
+        seat.Size = Vector3.new(3, 1, 3)
+        seat.CFrame = anchor.CFrame * CFrame.new(0, 2, 0)
+        seat.Parent = ship
+        local joint = Instance.new("WeldConstraint")
+        joint.Part0 = anchor
+        joint.Part1 = seat
+        joint.Parent = seat
+    end
+'''
+    result=_replace_exact(result,seat_anchor,seat_code+seat_anchor)
     result=_replace_exact(result,"function Service.start(services)\n",
         "function Service.start(services)\n    Service._services = services\n")
     original='''        for id in pairs(SECTIONS) do
