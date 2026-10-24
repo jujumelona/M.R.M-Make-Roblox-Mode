@@ -73,7 +73,10 @@ def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> st
     owner = next((peer for peer in getattr(proposal, "modules", [])
                   if peer.kind == ModuleKind.SERVER_MODULE and peer.name == server), None)
     description = (owner.description if owner else module.description).lower()
-    service_tokens = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", server)
+    service_tokens = re.sub(
+        r"(?<=[a-z])(?=[A-Z])|(?<=[A-Za-z])(?=\\d)",
+        " ", server,
+    )
     if (not re.search(r"\b(?:mining|mine|ore|gather|gathering|harvest|harvesting)\b", service_tokens, re.I)
             or not re.search(r"mining|mine|ore|gather|harvest|resource", description)
             or not re.search(r"\b(?:validat|radius|distance|proximity|range|node|deposit|deplet|cooldown|gather)\w*\b", description)):
