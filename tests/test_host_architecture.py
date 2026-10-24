@@ -223,7 +223,8 @@ class SemanticOnlySevenFeatureModel:
                 "spacecraft carrying its players into space and moves the "
                 "ship and passengers to the orbital destination zone."
                 if "launch" in fid else
-                "Server validates purchase and upgrades weapons, recording newly "
+                "Server validates weapon purchase, deducts earned credits from "
+                "the player's wallet and upgrades weapons, recording newly "
                 "equipped armaments. Server validates crew recruitment and stores "
                 "hired crew members. Server validates spaceship performance upgrades, "
                 "deducts earned credits and increases engine thrust."
