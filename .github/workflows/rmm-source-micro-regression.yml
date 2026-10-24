@@ -13,6 +13,7 @@ on:
       - 'tests/test_plan71_trade_repair.py'
       - 'roblox_mod_ai/atomic_transaction_repair.py'
       - 'tests/test_plan72_atomic_transaction.py'
+      - 'tests/test_plan73_payment_contract_regression.py'
       - '.github/workflows/rmm-source-micro-regression.yml'
   workflow_dispatch:
 jobs:
@@ -32,4 +33,5 @@ jobs:
           python -m pytest -q tests/test_plan70_source_complete_microplanning.py
           python -m pytest -q tests/test_plan71_trade_repair.py
           python -m pytest -q tests/test_plan72_atomic_transaction.py
+          python -m pytest -q tests/test_plan73_payment_contract_regression.py
           python -m pytest -q tests/test_plan67_compact_atomic.py tests/test_plan67_four_action_scope.py
