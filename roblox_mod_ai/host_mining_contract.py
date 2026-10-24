@@ -27,7 +27,10 @@ def _is_named_mining_service(name: str, description: str, prompt: str) -> bool:
     # A specific game request and module role must both support this action.
     # Split CamelCase service identifiers: CoreEconomy contains the letters
     # "ore" but is NOT a mining mechanic. ResourceMining remains eligible.
-    service_tokens = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", name)
+    service_tokens = re.sub(
+        r"(?<=[a-z])(?=[A-Z])|(?<=[A-Za-z])(?=\\d)",
+        " ", name,
+    )
     explicit_mining_source = bool(re.search(
         r"\b(?:mining|mines?|harvesting|gathering|extracting)\b"
         r".{0,65}\b(?:resource|ore|mineral)\s+(?:node|deposit)\b",
