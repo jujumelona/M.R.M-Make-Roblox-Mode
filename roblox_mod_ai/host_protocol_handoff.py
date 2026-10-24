@@ -18,6 +18,7 @@ _HOST_PROTOCOLS = frozenset({
     "host_declarative_catalog",
     "host_declarative_trade_catalog",
     "host_declarative_general_upgrades",
+    "host_declarative_rank_upgrade",
     "host_declarative_ship_slot_configuration",
     "host_declarative_ship_slot_levels",
     "host_declarative_ship_launch_gate",
