@@ -18,6 +18,10 @@ from .host_capped_ship_parts import eligible_capped_ship_parts
 from .luau_api_sanity import invalid_luau_apis
 from .luau_service_contract import service_contract_checks
 from .server_interface_audit import dependency_api_errors
+from .scoped_luau_abi import (
+    host_abi_guidance, normalize_trusted_player_aliases,
+    typed_input_abi_errors,
+)
 from .request_semantics import request_semantic_errors
 from .world_motion_contract import vehicle_motion_code_errors
 from .spec import ModuleKind, RobloxModuleSpec, RobloxProposal
@@ -73,6 +77,7 @@ def normalize_verified_server_body(body: str, proposal: RobloxProposal) -> str:
     Only the exact known PlayerDataManager.GetState peer is normalized;
     arbitrary invented methods and unknown peer ABIs still fail validation.
     """
+    body = normalize_trusted_player_aliases(body)
     if _MODEL_PROTOCOL.search(body):
         raise ValueError(
             "MODEL_PROTOCOL_CONTAMINATION: coder returned tool-call or chat "
@@ -224,8 +229,9 @@ def try_scaffolded_server(
             "The HOST validates ONE table payload and exposes local "
             "actionArgs with named, typed fields. The shell rejects "
             "missing, unknown, out-of-range or forged fields BEFORE "
-            "your body runs. Use actionArgs.fieldId for ALL required "
-            "user parameters, and still verify ownership, available "
+            "your body runs. Use ONLY the EXACT field IDs listed below "
+            "for required user parameters (never invent fieldId), and "
+            "still verify ownership, available "
             "balances and real server-side game conditions. " +
             ("This is a HOST STANDARD INPUT TRANSPORT, not a game "
              "state effect specification. Input selection is a user-provided "
@@ -313,7 +319,19 @@ def try_scaffolded_server(
         'unloaded profiles.\n'
         if resource_ship_assembly or capped_ship_assembly else ""
     )
+    from .luau_service_contract import exported_methods
+    peer_methods = {
+        peer.name: sorted(exported_methods(peer.code)[1])
+        for peer in getattr(proposal, "modules", [])
+        if peer.name != module.name and peer.file_path.startswith("src/server/")
+        and peer.code and peer.file_path.endswith(".luau")
+        and not peer.file_path.endswith(".server.luau")
+    }
+    # Exact inspected module exports and immutable input keys, not guessed
+    # service interfaces or prompt-specific cookbook snippets.
+    compiled_abi = host_abi_guidance(typed, peer_methods)
     prompt = (
+        compiled_abi +
         "Write ONLY the BODY statements of one Roblox Luau server "
         "Service.handleAction(player, services, ...). "
         "No function header, no final function end, no return Service, "
@@ -414,6 +432,9 @@ def try_scaffolded_server(
                 )
             body = _clean_body(raw)
             body = normalize_verified_server_body(body, proposal)
+            input_errors = typed_input_abi_errors(body, typed)
+            if input_errors:
+                raise ValueError("; ".join(input_errors))
             if not body or len(body) < 60:
                 raise ValueError("Empty or trivially short gameplay body")
             if body.startswith("--!strict") or _FORBIDDEN.search(body):
