@@ -44,6 +44,15 @@ def fixture():
     design = {'dynamic_design': {
         'module_remotes':links, 'host_typed_actions':typed, 'remotes':remotes,
         'world_objects':world,
+        'module_world_objects': {
+            m.module_id: [
+                'AlienTarget77D3DB11' if m.name.startswith('AlienCombat')
+                else 'PlayerOwnedPlanet77D3DB21' if m.name.startswith('MarkPlanetColonized')
+                else 'OtherPlanetMineralDepos77D3DB31'
+            ] for m in modules if m.kind == 'server_module' and
+                m.name.startswith(('AlienCombat', 'MarkPlanetColonized',
+                                   'ExtractOtherPlanetMineral'))
+        },
         'host_vehicle_identity_bindings':[{'builder':'ShipBuilderServer', 'server':'LaunchCraftServer'}],
         'host_arrival_materializations':[{'builder':'ShipBuilderServer', 'server':'LaunchCraftServer', 'arrival':'RMMOrbitArrival_7c3d1fecc9'}],
     }}
