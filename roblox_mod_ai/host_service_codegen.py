@@ -105,10 +105,22 @@ def normalize_verified_server_body(body: str, proposal: RobloxProposal) -> str:
             "parameters, never redeclare them from client args"
         )
     if _UNBOUND_DATA_MANAGER.search(executable):
-        raise ValueError(
-            "DEPENDENCY_API_UNBOUND: access GetState only through "
-            "services.PlayerDataManager.GetState(player, namespace)"
+        # A peer ABI-verified local import is a valid alias, not an invented
+        # global. Keep the same assignment/shadow constraints as the peer
+        # normalizer. Calls without this exact host injection still fail.
+        alias = re.compile(
+            r"\\blocal\\s+PlayerDataManager\\s*=\\s*"
+            r"services\\s*\\.\\s*PlayerDataManager\\b"
         )
+        bindings = list(alias.finditer(executable))
+        assignments = re.findall(
+            r"(?<![\\w.:])PlayerDataManager\\s*=(?!=)", executable
+        )
+        if len(bindings) != 1 or len(assignments) != 1:
+            raise ValueError(
+                "DEPENDENCY_API_UNBOUND: access GetState only through "
+                "services.PlayerDataManager.GetState(player, namespace)"
+            )
     from .luau_service_contract import exported_methods
     peer = next(
         (module for module in getattr(proposal, "modules", [])
