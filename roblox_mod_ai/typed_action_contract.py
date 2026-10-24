@@ -441,7 +441,13 @@ def host_owned_action_contract(
     whatever identifier is submitted. No game mechanic is inferred here.
     """
     approved = validated_host_choice_options(choices)
-    if host_selects_target or (not approved and len(world_entities or []) == 1):
+    # The number of MATERIALIZED world objects does NOT tell us whether
+    # the player must choose an item, quantity or upgrade tier. A crew
+    # performance STATE Part is not the player's chosen crew member. Plan83
+    # gave the purchase handler a zero-field payload solely because one
+    # world object existed, then rejected every legitimate item selection.
+    # Zero inputs require an explicit host-selected-target contract.
+    if host_selects_target:
         inputs: list[dict[str, Any]] = []
     elif approved:
         # A verified choice list establishes selection IDs, not whether the
