@@ -28,7 +28,7 @@ def _is_named_mining_service(name: str, description: str, prompt: str) -> bool:
     # Split CamelCase service identifiers: CoreEconomy contains the letters
     # "ore" but is NOT a mining mechanic. ResourceMining remains eligible.
     service_tokens = re.sub(
-        r"(?<=[a-z])(?=[A-Z])|(?<=[A-Za-z])(?=\\d)",
+        r"(?<=[a-z])(?=[A-Z])|(?<=[A-Za-z])(?=\d)",
         " ", name,
     )
     explicit_mining_source = bool(re.search(
