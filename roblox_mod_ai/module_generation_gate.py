@@ -57,7 +57,7 @@ def generated_module_errors(
     masked = _mask_strings(stripped)
     errors.extend("ROBLOX_API_INVALID: " + item for item in invalid_luau_apis(code))
     errors.extend(roblox_value_contract_errors(code))
-    errors.extend(world_lookup_errors(code, proposal))
+    errors.extend(world_lookup_errors(code, proposal, module))
     errors.extend(dependency_api_errors(module, proposal, code))
     if (module.kind == ModuleKind.SERVER_MODULE and
             "-- RMM_GAMEPLAY_BODY_BEGIN" in code):
