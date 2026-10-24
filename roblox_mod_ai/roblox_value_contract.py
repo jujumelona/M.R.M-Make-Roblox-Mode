@@ -20,7 +20,7 @@ _ATTRIBUTE_REMOTE_METHOD = re.compile(
     r"(?:FireServer|FireClient|FireAllClients|InvokeClient|InvokeServer|Connect|Wait)\s*\("
 )
 _ATTRIBUTE_INSTANCE_COMPARISON = re.compile(
-    r"\bGetAttribute\s*\([^()\n]*\)\s*==\s*player\b"
+    r"\bGetAttribute\s*\([^()\n]*\)\s*==\s*player\b(?!\s*(?:\.|\[|:))"
     r"|\bplayer\s*==\s*[^\n]*\bGetAttribute\s*\("
 )
 _TABLE_INSERT_ASSIGNED = re.compile(
