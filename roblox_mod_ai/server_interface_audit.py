@@ -43,6 +43,22 @@ def dependency_api_errors(module: Any, proposal: RobloxProposal, code: str) -> l
     raw = _without_comments(code)
     masked = _mask_strings(raw)
     errors = []
+    # Only actual host bootstrap server modules are injected in 'services'.
+    # World Parts are placed in workspace, NOT magically injected as named
+    # services. Previous validation ignored an unknown services.Foo entirely
+    # (plan80: OwnedSpacecraft, OwnedWeapon, CrewPerformanceState), so Luau
+    # parsed while every action errored on its first real interaction.
+    unknown = sorted({match.group(1)
+        for match in re.finditer(
+            r"(?<![\w.])(?:_?services)\s*\.\s*(" + _NAME + r")\b",
+            masked,
+        ) if match.group(1) not in peers})
+    errors.extend(
+        "DEPENDENCY_SERVICE_UNKNOWN: services." + name +
+        " is not an injected server module. Actual service registry: " +
+        ", ".join(sorted(peers))
+        for name in unknown
+    )
     for match in re.finditer(r"\bgame\s*:\s*GetService\s*\(\s*(['\"])(" + _NAME + r")\1\s*\)", raw):
         target = match.group(2)
         if target in peers and masked[match.start():match.start() + 4] == "game":
