@@ -1538,30 +1538,12 @@ class RobloxDynamicArchitect:
                             )
                             draft, rejected_scope_names = ground_source_ownership(
                                 draft, attribution, source_clause=slice_request)
-                        # Retain safely attributable candidate actions across
-                        # local-model retries. Bounded subset selection requires
-                        # full original source coverage and independently visible
-                        # outcomes, not merely a union of related descriptions.
-                        # No model-authored effects are altered or invented.
-                        from .source_action_aggregation import (
-                            collect_source_action_candidates,
-                            choose_complete_source_actions,
-                        )
-                        source_action_pool = collect_source_action_candidates(
-                            source_action_pool, draft.get("systems", []),
-                            original_request=prompt,
-                        )
-                        complete_actions = choose_complete_source_actions(
-                            subset, source_action_pool,
-                        )
-                        if complete_actions is not None:
-                            draft = dict(draft, systems=complete_actions)
-                        # Protect each original source clause before compiling
-                        # UI/Remotes. A lexical scope filter previously dropped
-                        # "Resource harvesting" and "Trade" from a craft facet,
-                        # then accepted the remaining builder as a complete game.
-                        # A missing player-requested action must never be
-                        # silently certified just because one sibling passed.
+                        # Evaluate the unmodified model reply FIRST. A generic
+                        # source may lack heuristic semantic rules; in that case
+                        # choosing a one-system subset would silently discard
+                        # other correctly authored actions. Only invoke the
+                        # bounded accumulator after concrete source-coverage
+                        # failures, never on already-complete facet output.
                         server_coverage = " ".join(
                             str(row.get("server_behavior") or "")
                             for row in draft.get("systems", [])
@@ -1573,6 +1555,32 @@ class RobloxDynamicArchitect:
                                 str(source_row.get("statement") or ""),
                                 server_coverage,
                             ))
+                        if missing_source_effects:
+                            from .source_action_aggregation import (
+                                collect_source_action_candidates,
+                                choose_complete_source_actions,
+                            )
+                            source_action_pool = collect_source_action_candidates(
+                                source_action_pool, draft.get("systems", []),
+                                original_request=prompt,
+                            )
+                            completed = choose_complete_source_actions(
+                                subset, source_action_pool,
+                            )
+                            if completed is not None:
+                                draft = dict(draft, systems=completed)
+                                server_coverage = " ".join(
+                                    str(row.get("server_behavior") or "")
+                                    for row in completed
+                                )
+                                missing_source_effects = [
+                                    issue
+                                    for source_row in subset
+                                    for issue in source_intent_conflicts(
+                                        str(source_row.get("statement") or ""),
+                                        server_coverage,
+                                    )
+                                ]
                         if missing_source_effects:
                             raise DynamicDesignError(
                                 "SOURCE_ACTION_COVERAGE: " +
