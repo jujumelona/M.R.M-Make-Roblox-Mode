@@ -17,6 +17,7 @@ from .semantic_preservation import (
     source_intent_conflicts, source_outcome_conflicts,
 )
 from .request_semantics import request_semantic_errors
+from .compact_atomic_authoring import author_compact_atomic_system
 
 
 def _field_issues(
@@ -57,6 +58,7 @@ def author_verified_atomic_systems(
     original_prompt: str,
     json_schema: dict[str, Any],
     max_attempts_per_action: int = 3,
+    retained_verified: dict[tuple[str, str], dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Author and repair just the rejected action, never successful siblings.
 
@@ -83,6 +85,16 @@ def author_verified_atomic_systems(
             raise SourceActionBindingError(
                 "ATOMIC_ACTION_SOURCE_OWNER_INVALID: " + str(index)
             )
+        owner = (action["source_quote"], action["action"])
+        # Per-facet, ephemeral memory for a successfully checked atomic child.
+        # If a later child truncates, no verified sibling is regenerated.
+        if retained_verified is not None and owner in retained_verified:
+            preserved = retained_verified[owner]
+            validate_atomic_system_ownership(
+                [action], [preserved], original_prompt=original_prompt,
+            )
+            accepted.append(dict(preserved))
+            continue
         system: dict[str, Any] | None = None
         seen: set[str] = set()
         rejected_responses: set[str] = set()
@@ -139,49 +151,62 @@ def author_verified_atomic_systems(
                     )
                 system = dict(system, **{repair_field: patched.strip()})
             else:
-                response = router.complete_json(
-                    "Describe ONLY ONE source-owned gameplay action. Return "
-                    "JSON {systems:[{name,server_behavior,client_behavior,"
-                    "observable_result,interaction,input_mode,world_entities}]}. "
-                    "Exactly one system. Implement the real requested server "
-                    "state transition and a distinct visible state change. "
-                    "A menu, mode unlock, prerequisite or animation is NOT an "
-                    "implemented world action. Never replace harvesting, "
-                    "combat, or settlement ownership with toggles. "
-                    "Keep world_entities an array of NAMES only; host owns "
-                    "input transport, construction and routing. JSON only.\n" +
-                    json.dumps({
-                        "source_clause": source_clause,
-                        "this_action": action,
-                        "previous_rejection": previous_issues,
-                        "last_invalid_system": system,
-                    }, ensure_ascii=False),
-                    role="planner", temperature=0.0,
-                    max_tokens=600, json_schema=single_action_schema,
-                )
-                systems = response.get("systems") if isinstance(response, dict) else None
-                if (not isinstance(systems, list) or len(systems) != 1
-                        or not isinstance(systems[0], dict)):
-                    # A malformed atomic JSON envelope is a *local format*
-                    # failure. Keep the other verified actions untouched and
-                    # re-prompt only this action within its bounded budget.
-                    # Never accept the first child of a multi-system response.
-                    response_hash = json.dumps(
-                        response, sort_keys=True, ensure_ascii=False,
-                        default=str,
-                    )
-                    if response_hash in rejected_responses:
-                        raise SourceActionBindingError(
-                            "ATOMIC_LOCAL_REPAIR_NO_PROGRESS: " + str(index) +
-                            ": repeated non-atomic model response"
+                if getattr(router, "supports_host_standard_transport", False):
+                    try:
+                        system = author_compact_atomic_system(
+                            router, action, previous_issues=previous_issues,
                         )
-                    rejected_responses.add(response_hash)
-                    previous_issues = {
-                        "format": ["Return exactly one system in the systems array; "
-                                   "do not return an actions list or several systems."]
-                    }
-                    continue
-                system = dict(systems[0])
+                    except (ValueError, TypeError) as exc:
+                        # Never retry the WHOLE feature because one compact
+                        # per-action JSON field reached the GGUF length cap.
+                        previous_issues = {
+                            "format": [type(exc).__name__ + ": " + str(exc)[:210]],
+                        }
+                        continue
+                else:
+                    response = router.complete_json(
+                        "Describe ONLY ONE source-owned gameplay action. Return "
+                        "JSON {systems:[{name,server_behavior,client_behavior,"
+                        "observable_result,interaction,input_mode,world_entities}]}. "
+                        "Exactly one system. Implement the real requested server "
+                        "state transition and a distinct visible state change. "
+                        "A menu, mode unlock, prerequisite or animation is NOT an "
+                        "implemented world action. Never replace harvesting, "
+                        "combat, or settlement ownership with toggles. "
+                        "Keep world_entities an array of NAMES only; host owns "
+                        "input transport, construction and routing. JSON only.\n" +
+                        json.dumps({
+                            "source_clause": source_clause,
+                            "this_action": action,
+                            "previous_rejection": previous_issues,
+                            "last_invalid_system": system,
+                        }, ensure_ascii=False),
+                        role="planner", temperature=0.0,
+                        max_tokens=600, json_schema=single_action_schema,
+                    )
+                    systems = response.get("systems") if isinstance(response, dict) else None
+                    if (not isinstance(systems, list) or len(systems) != 1
+                            or not isinstance(systems[0], dict)):
+                        # A malformed atomic JSON envelope is a *local format*
+                        # failure. Keep the other verified actions untouched and
+                        # re-prompt only this action within its bounded budget.
+                        # Never accept the first child of a multi-system response.
+                        response_hash = json.dumps(
+                            response, sort_keys=True, ensure_ascii=False,
+                            default=str,
+                        )
+                        if response_hash in rejected_responses:
+                            raise SourceActionBindingError(
+                                "ATOMIC_LOCAL_REPAIR_NO_PROGRESS: " + str(index) +
+                                ": repeated non-atomic model response"
+                            )
+                        rejected_responses.add(response_hash)
+                        previous_issues = {
+                            "format": ["Return exactly one system in the systems array; "
+                                       "do not return an actions list or several systems."]
+                        }
+                        continue
+                    system = dict(systems[0])
             signature = json.dumps(system, sort_keys=True, ensure_ascii=False)
             if signature in seen:
                 raise SourceActionBindingError(
@@ -195,6 +220,8 @@ def author_verified_atomic_systems(
                     [action], [system], original_prompt=original_prompt
                 )
                 accepted.append(system)
+                if retained_verified is not None:
+                    retained_verified[owner] = dict(system)
                 break
         else:
             raise SourceActionBindingError(
