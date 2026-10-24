@@ -69,7 +69,7 @@ def source_motion_contract(
 # proves that the generated Luau has actually moved an object.
 _CRAFT = r"(?:spacecraft|spaceship|ship|rocket|shuttle|vessel|vehicle|craft)"
 _CRAFT_ARG = (
-    r"(?:(?:the|a|an|owned|assembled|existing|player['’]s|pilot['’]s)\s+){0,5}"
+    r"(?:(?:the|a|an|owned|assembled|existing|entire|whole|player['’]s|pilot['’]s)\s+){0,5}"
     + _CRAFT + r"\b"
 )
 # A physical change on the surface does not satisfy departure to SPACE.
@@ -121,26 +121,66 @@ _ARRIVAL_EFFECT = re.compile(
 )
 
 
-def has_vehicle_arrival_evidence(outcome: str) -> bool:
-    """Visible arrival of the craft, not a passenger's solo arrival.
+# "Destination world" is a valid referent only when paired with a real
+# physical vehicle relocation in the server behavior.
+_DESTINATION_WORLD = re.compile(
+    r"\b(?:destination|target)\s+(?:world|region|zone|location)\b", re.I,
+)
+_CRAFT_LOCATION_CHANGE = re.compile(
+    r"\b(?:physically|visibly)\s+chang(?:e|es|ed|ing)\s+"
+    r"(?:its\s+)?(?:world\s+)?location\b|"
+    r"\bchang(?:e|es|ed|ing)\s+(?:its\s+)?"
+    r"(?:world\s+)?(?:position|location)\s+to\b", re.I,
+)
+_CRAFT_ARRIVED_PRESENT = re.compile(
+    r"\b(?:physically|visibly)\s+present\b", re.I,
+)
+_NEGATED_OCCUPANT_EXIT = re.compile(
+    r"\b(?:no|never|not|without|does\s+not|do\s+not|"
+    r"doesn['’]t|don['’]t|must\s+not|cannot|can['’]t)\b"
+    r".{0,70}?\b(?:eject\w*|disembark\w*|exit\w*|leav\w*)\b|"
+    r"\b(?:reject\w*|refus\w*|prevent\w*|forbid\w*)\b"
+    r".{0,70}?\b(?:eject\w*|disembark\w*)\b", re.I,
+)
 
-    Clauses are split at commas/semicolons so "ship stays docked, player
-    arrives in space" cannot combine unrelated subjects into proof.
-    """
+
+def has_vehicle_arrival_evidence(outcome: str) -> bool:
+    """Require a visible craft at a destination, not just a player/status flag."""
     for clause in re.split(r"[,;.!?\n]+", str(outcome or "")):
         actor = _VEHICLE.search(clause)
+        if not actor or _NEGATED_CRAFT_MOVE.search(clause):
+            continue
+        if not (_SPACE_DESTINATION.search(clause)
+                or _DESTINATION_WORLD.search(clause)):
+            continue
         arrival = _ARRIVAL_EFFECT.search(clause)
-        if not actor or not arrival or not _SPACE_DESTINATION.search(clause):
-            continue
-        if arrival.start() <= actor.start() or _NEGATED_CRAFT_MOVE.search(clause):
-            continue
-        if re.search(
-            r"\b(?:player|pilot|passenger|character)\s+"
-            r"(?:appears?|arrives?|mov(?:e|es|ed|ing)|teleport\w*)\b",
-            clause[actor.end():arrival.end()], re.I,
-        ):
-            continue
-        return True
+        if arrival and arrival.start() > actor.start():
+            if not re.search(
+                r"\b(?:player|pilot|passenger|character)\s+"
+                r"(?:appears?|arrives?|mov(?:e|es|ed|ing)|teleport\w*)\b",
+                clause[actor.end():arrival.end()], re.I,
+            ):
+                return True
+        location_change = _CRAFT_LOCATION_CHANGE.search(clause)
+        if location_change and location_change.start() > actor.start():
+            return True
+        visible_at_destination = _CRAFT_ARRIVED_PRESENT.search(clause)
+        if (visible_at_destination
+                and visible_at_destination.start() > actor.start()
+                and _DESTINATION_WORLD.search(clause)):
+            return True
+    return False
+
+
+def _has_actual_occupant_ejection(text: str) -> bool:
+    """Treat 'no passenger is ejected' as prevention, not actual ejection."""
+    for clause in re.split(r"[,;.!?\n]+", str(text or "")):
+        matches = list(_LEAVES.finditer(clause))
+        for match in matches:
+            # The negation must govern this match, not a different sentence.
+            window = clause[max(0, match.start() - 90):match.end()]
+            if not _NEGATED_OCCUPANT_EXIT.search(window):
+                return True
     return False
 
 
@@ -148,11 +188,7 @@ def motion_contract_errors(
     contract: dict[str, str] | None,
     systems: list[dict[str, Any]],
 ) -> list[str]:
-    """Check a complete server/outcome pair, not a Studio execution proof.
-
-    Avoid combining a movement verb from one subsystem with a craft noun
-    from another subsystem to manufacture evidence of a launch.
-    """
+    """Require a consistent server/action pair; never join unrelated systems."""
     if contract is None:
         return []
     pairs = [
@@ -160,14 +196,19 @@ def motion_contract_errors(
          str(item.get("observable_result") or ""))
         for item in systems if isinstance(item, dict)
     ]
-    vehicle_motion = any(has_vehicle_motion_effect(server) for server, _ in pairs)
+    moving = [
+        (server, result) for server, result in pairs
+        if has_vehicle_motion_effect(server)
+    ]
+    vehicle_motion = bool(moving)
     arrival = any(
-        has_vehicle_arrival_evidence(outcome)
-        for _, outcome in pairs
+        has_vehicle_arrival_evidence(result)
+        for _server, result in moving
     )
     ejection = any(
-        _LEAVES.search(server) or _LEAVES.search(outcome)
-        for server, outcome in pairs
+        _has_actual_occupant_ejection(server)
+        or _has_actual_occupant_ejection(result)
+        for server, result in pairs
     )
     errors = []
     if not vehicle_motion:
