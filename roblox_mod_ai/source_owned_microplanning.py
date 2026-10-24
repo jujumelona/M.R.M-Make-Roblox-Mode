@@ -181,6 +181,111 @@ def _focused_missing_action(
     return {"source_id": row["id"], "action": action.strip()}
 
 
+_PURCHASE_ACTION = re.compile(
+    r"\b(?:purchas\w*|buy|bought|trad(?:e|es|ing)|"
+    r"exchang\w*|hire\w*)\b|구매|거래|고용", re.I,
+)
+_TRANSACTION_TARGETS = {
+    "weapon": re.compile(r"\b(?:weapon|gun|armament)s?\b|무기", re.I),
+    "crew": re.compile(r"\b(?:crew|recruit|hire|sailor)s?\b|선원", re.I),
+    "ship": re.compile(r"\b(?:ship|spacecraft|spaceship|engine|thruster)s?\b|우주선", re.I),
+}
+
+
+def _coverage_improves(before: list[str], after: list[str]) -> bool:
+    """All old obligations except at least one stay met; no new gap appears."""
+    return set(after) < set(before)
+
+
+def _repair_owned_purchase_effect(
+    router: Any, source: str, raw: list[dict[str, str]],
+    gaps: list[str], max_actions: int, evidence: list[str],
+) -> list[dict[str, str]] | None:
+    """Modify ONLY an existing purchase whose payment is absent.
+
+    Buying an upgrade and paying for it are *one* gameplay action.
+    Treating an unpaid purchase as an entirely NEW fourth action caused
+    plan-73's duplicate-action rejection and repeated missing-payment loop.
+    """
+    if not any(error.startswith("SOURCE_PURCHASE_PAYMENT_MISSING:")
+               for error in gaps):
+        return None
+    for index, row in enumerate(raw):
+        old = row["action"]
+        if not _PURCHASE_ACTION.search(old):
+            continue
+        targets = {name for name, pattern in _TRANSACTION_TARGETS.items()
+                   if pattern.search(old)}
+        try:
+            response = router.complete_json(
+                "Correct ONE EXISTING source-owned purchase or upgrade "
+                "action. Keep the SAME target and result, but describe "
+                "real server-authoritative payment: validate the owner's "
+                "balance, debit actual money/materials at the approved "
+                "price and deliver the purchased upgrade. Do not create "
+                "another action, invent a second player or free currency, "
+                "or replace a weapon upgrade with crew/ship upgrades. "
+                "Output JSON {action:string} ONLY, 35-190 characters.\n" +
+                json.dumps({
+                    "original_source": source,
+                    "unchanged_source_quote": row["source_quote"],
+                    "existing_action_to_repair": old,
+                    "missing_contract": [
+                        error for error in gaps if error.startswith(
+                            "SOURCE_PURCHASE_PAYMENT_MISSING:"
+                        )
+                    ],
+                }, ensure_ascii=False),
+                role="planner", temperature=0.0, max_tokens=180,
+                json_schema={
+                    "type": "object",
+                    "properties": {"action": {
+                        "type": "string", "minLength": 35,
+                        "maxLength": 190,
+                    }},
+                    "required": ["action"],
+                    "additionalProperties": False,
+                },
+            )
+        except (ValueError, TypeError) as exc:
+            evidence.append(
+                "EXISTING_PURCHASE_PATCH_INVALID: " + str(exc)[:170]
+            )
+            continue
+        repaired = response.get("action") if isinstance(response, dict) else None
+        if not isinstance(repaired, str) or not 35 <= len(repaired) <= 190:
+            evidence.append("EXISTING_PURCHASE_PATCH_INVALID_FORMAT")
+            continue
+        if not _PURCHASE_ACTION.search(repaired):
+            evidence.append("EXISTING_PURCHASE_ACTION_REPLACED")
+            continue
+        if any(not _TRANSACTION_TARGETS[name].search(repaired)
+               for name in targets):
+            evidence.append("EXISTING_PURCHASE_TARGET_REPLACED")
+            continue
+        candidate = [dict(item) for item in raw]
+        candidate[index]["action"] = repaired.strip()
+        try:
+            bound = verify_or_bind_actions(
+                router, source, candidate,
+                require_complete=False, max_actions=max_actions,
+            )
+        except SourceActionBindingError as exc:
+            evidence.append(
+                "EXISTING_PURCHASE_OWNER_INVALID: " + str(exc)[:180]
+            )
+            continue
+        remaining = _coverage_issues(source, bound)
+        if not _coverage_improves(gaps, remaining):
+            evidence.append(
+                "EXISTING_PURCHASE_NO_COVERAGE_PROGRESS: " +
+                "; ".join(remaining[:2])
+            )
+            continue
+        return candidate
+    return None
+
+
 def complete_source_owned_actions(
     router: Any, source: str, *, initial_actions: Any = None,
     max_actions: int = _MAX_ACTIONS,
@@ -226,6 +331,18 @@ def complete_source_owned_actions(
             return verify_or_bind_actions(
                 router, source, raw, max_actions=max_actions,
             )
+        # Fix a missing payment on the SAME existing upgrade, not by
+        # inventing a separate payment-only action and consuming a slot.
+        patched_existing = _repair_owned_purchase_effect(
+            router, source, raw, gaps, max_actions, rejection_evidence,
+        )
+        if patched_existing is not None:
+            raw = patched_existing
+            bound = verify_or_bind_actions(
+                router, source, raw,
+                require_complete=False, max_actions=max_actions,
+            )
+            continue
         occupied = {row["source_quote"] for row in bound}
         candidates = [
             {"id": s["id"], "quote": s["quote"]}
@@ -286,7 +403,7 @@ def complete_source_owned_actions(
             after = _coverage_issues(source, checked)
             # Semantic coverage must ACTUALLY improve. Adding a duplicate
             # upgrade word or renaming an existing action is not progress.
-            if len(after) >= len(gaps) or set(after) >= set(gaps):
+            if not _coverage_improves(gaps, after):
                 failed_proposals.add(proposed_signature)
                 rejection_evidence.append("NO_COVERAGE_PROGRESS: " + "; ".join(after[:3]) + " ACTION: " + str(proposed)[:160])
                 continue
@@ -323,7 +440,7 @@ def complete_source_owned_actions(
                     )
                     continue
                 after = _coverage_issues(source, checked)
-                if len(after) >= len(gaps) or set(after) >= set(gaps):
+                if not _coverage_improves(gaps, after):
                     rejection_evidence.append(
                         "FOCUSED_NO_PROGRESS: " +
                         "; ".join(after[:2]) +
