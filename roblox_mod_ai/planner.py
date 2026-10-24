@@ -69,8 +69,15 @@ class RobloxGameDesignPlanner:
             "is_leaderboard": any(w in p for w in ["leaderboard", "leaderstats", "리더보드", "순위"]),
         }
 
-    def plan(self, prompt: str, *, project_mode: str = "new_experience") -> RobloxAuthoredPlan:
-        """Decompose prompt into functional subsystems, assets, and Luau architecture."""
+    def plan(self, prompt: str, *, project_mode: str = "new_experience",
+             compile_architecture: bool = False) -> RobloxAuthoredPlan:
+        """Capture user intent as a durable draft before implementation.
+
+        Planning MUST NOT fail because a small LLM cannot certify individual
+        Luau-level effects or server payment semantics. Only the explicitly
+        requested implementation pass compiles an executable architecture;
+        code generation and engine verification retain their strict gates.
+        """
         validate_mode(project_mode)
         # MMM request-first contract: retrieve before selecting mechanics/modules.
         research = self.researcher.research(prompt)
@@ -357,7 +364,11 @@ class RobloxGameDesignPlanner:
         # Attempt that bounded recovery; certify exact owners and acceptance
         # for EVERY missing chunk before lifting any blocking status.
         missing_semantics = research["ledger"].get("classification_unverified") or []
-        if (needs_novel and dynamic_design_enabled()
+        # The interactive plan phase captures ALL original requirements,
+        # source spans and research, but never runs expensive high-assurance
+        # implementation authoring. Doing both here made a malformed single
+        # field abort the entire plan before any Luau was generated.
+        if (compile_architecture and needs_novel and dynamic_design_enabled()
                 and not research["ledger"].get("decomposition_pending")):
             try:
                 # A fixed shop/sword/obby template cannot implement bespoke
@@ -509,6 +520,11 @@ class RobloxGameDesignPlanner:
                 "requested_counts": counts,
                 "ui_backend": ui_backend,
                 "networking": "RemoteEvents/RemoteFunctions with server authority & reach checks",
+                "planning_phase": ("implementation_contract" if compile_architecture
+                                   else "intent_draft"),
+                "planning_status": ("implementation_pending" if not compile_architecture
+                                    and needs_novel else "implementation_compiled"
+                                    if dynamic_design is not None else "source_draft"),
                 "pre_design_research": research,
                 "dynamic_design": ({
                     "schema": "rmm/dynamic-design-v1",
@@ -564,6 +580,8 @@ class RobloxGameDesignPlanner:
                 "research_queries": research["queries"],
                 "research_status": research["status"],
                 "dynamic_design": "model_proposed_unverified" if dynamic_design else "none",
+                "planning_phase": proto_proposal.game_design["planning_phase"],
+                "planning_status": proto_proposal.game_design["planning_status"],
                 "gameplay_contract": proto_proposal.game_design["gameplay_contract"],
                 "implementation_blueprint": proto_proposal.game_design["implementation_blueprint"],
                 "detailed_implementation_plan": proto_proposal.game_design["detailed_implementation_plan"],
