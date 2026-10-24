@@ -94,3 +94,43 @@ def test_cross_gameplay_handler_not_a_valid_peer_transaction_api():
         caller, Obj(modules=[caller, peer]), source,
     )
     assert any("DEPENDENCY_ACTION_DISPATCH_FORBIDDEN" in x for x in issues)
+
+
+
+def test_injected_local_dependency_alias_is_not_an_undeclared_global():
+    from types import SimpleNamespace as Obj
+    from roblox_mod_ai.host_service_codegen import normalize_verified_server_body
+    from roblox_mod_ai.spec import ModuleKind
+    peer = Obj(
+        name="PlayerDataManager", file_path="src/server/PlayerDataManager.luau",
+        module_id="mod_player_data", kind=ModuleKind.SERVER_MODULE,
+        code=(
+            "local PlayerDataManager = {}\n"
+            "function PlayerDataManager.GetState(player, namespace)\n"
+            "  return {}\n"
+            "end\n"
+            "return PlayerDataManager\n"
+        ),
+    )
+    proposal = Obj(modules=[peer])
+    body = (
+        "local PlayerDataManager = services.PlayerDataManager\n"
+        'local state = PlayerDataManager:GetState(player, "Owned")\n'
+        "if not state then return false end\n"
+        "state.level = (state.level or 0) + 1\n"
+        "return true\n"
+    )
+    normal = normalize_verified_server_body(body, proposal)
+    assert 'PlayerDataManager.GetState(player, "Owned")' in normal
+    assert "PlayerDataManager:GetState" not in normal
+
+
+def test_unbound_getstate_global_does_not_become_a_fake_alias():
+    import pytest
+    from types import SimpleNamespace as Obj
+    from roblox_mod_ai.host_service_codegen import normalize_verified_server_body
+    with pytest.raises(ValueError, match="DEPENDENCY_API_UNBOUND"):
+        normalize_verified_server_body(
+            'local state = PlayerDataManager:GetState(player, "Owned")\n',
+            Obj(modules=[]),
+        )
