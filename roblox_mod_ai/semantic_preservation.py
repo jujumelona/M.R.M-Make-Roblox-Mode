@@ -313,7 +313,8 @@ def source_intent_conflicts(
     transfer_effect = re.search(
         r"\b(?:transfers?|deducts?|subtracts?|credits?|grants?|"
         r"debits?|pays?|consumes?|removes?|adds?|deposits?|"
-        r"delivers?|awards?)\b"
+        r"delivers?|awards?|equips?|recruits?|hires?|hired|"
+        r"upgrad\w*|improv\w*|install\w*)\b"
         r"|차감|지급|이체|소비|추가|증가|감소|지불|전달|정산",
         text, re.I,
     )
