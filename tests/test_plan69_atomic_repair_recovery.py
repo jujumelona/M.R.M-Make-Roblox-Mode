@@ -148,3 +148,73 @@ def test_invalid_repair_recovers_prior_sibling_next_facet_try(monkeypatch):
     )
     assert [s["name"] for s in output] == ["HarvestOre", "GoodEarn"]
     assert len(router.calls) == 8, "Accepted sibling must not be reauthored"
+
+
+
+def test_plan69_duplicate_craft_builders_do_not_take_two_candidate_slots():
+    from roblox_mod_ai.source_action_aggregation import (
+        collect_source_action_candidates,
+    )
+    source = (
+        "우주모드 인데 자원파밍 돈모으기 거래 등으로 "
+        "우주선을 부위마다 만들어서 만들수있고"
+    )
+    a = {
+        "name": "Craft section construction",
+        "server_behavior": (
+            "Server validates the player's requested section type and required "
+            "resources before creating a new craft section; it rejects invalid "
+            "section types, missing resources, and duplicate sections, then "
+            "adds the approved section to the craft's server-owned section list "
+            "and updates the craft's state."
+        ),
+        "observable_result": (
+            "The craft visibly gains the newly constructed section in place, "
+            "with its parts grouped into the craft model."
+        ),
+        "world_entities": ["craft"],
+    }
+    b = {
+        "name": "Section-by-section craft construction",
+        "server_behavior": (
+            "Server validates each requested section against the craft's "
+            "current state and rejects invalid or incomplete construction; "
+            "on success it adds the section to the craft's server-owned section "
+            "list and updates the craft's state."
+        ),
+        "observable_result": a["observable_result"],
+        "world_entities": ["craft"],
+    }
+    retained = collect_source_action_candidates(
+        [], [a, b], original_request=source,
+    )
+    assert retained == [a], "Near-identical same-state builders are one action"
+
+
+def test_same_world_different_observable_effects_are_retained():
+    from roblox_mod_ai.source_action_aggregation import (
+        collect_source_action_candidates,
+    )
+    a = {
+        "name": "Gather Ore",
+        "server_behavior": (
+            "Server validates a resource node's availability, mines ore "
+            "from that node and credits it to the player's inventory."
+        ),
+        "observable_result": "The node visibly depletes and owned ore increases.",
+        "world_entities": ["OreNode"],
+    }
+    b = {
+        "name": "Build From Ore",
+        "server_behavior": (
+            "Server validates the player's ore inventory and owned craft, "
+            "consumes materials, and adds a built section to the craft."
+        ),
+        "observable_result": "The craft visibly gains a new physical part.",
+        "world_entities": ["OreNode"],
+    }
+    pool = collect_source_action_candidates(
+        [], [a, b],
+        original_request="자원파밍 우주선을 부위마다 만들어서 만들수있고",
+    )
+    assert pool == [a, b]
