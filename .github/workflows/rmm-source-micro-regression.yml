@@ -1,0 +1,28 @@
+name: RMM source micro-planning regression
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'roblox_mod_ai/atomic_action_quotes.py'
+      - 'roblox_mod_ai/atomic_action_authoring.py'
+      - 'roblox_mod_ai/source_owned_microplanning.py'
+      - 'roblox_mod_ai/semantic_preservation.py'
+      - 'roblox_mod_ai/dynamic_architect.py'
+      - 'tests/test_plan69_atomic_repair_recovery.py'
+      - 'tests/test_plan70_source_complete_microplanning.py'
+      - '.github/workflows/rmm-source-micro-regression.yml'
+  workflow_dispatch:
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install test dependencies
+        run: python -m pip install -e '.[dev]'
+      - name: Run source-owned micro-planning regressions
+        run: |
+          python -m pytest -q             tests/test_plan69_atomic_repair_recovery.py             tests/test_plan70_source_complete_microplanning.py             tests/test_plan67_compact_atomic.py             tests/test_plan67_four_action_scope.py
