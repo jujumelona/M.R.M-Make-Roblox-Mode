@@ -443,6 +443,31 @@ def source_intent_conflicts(
         )
         for sentence in re.split(r"[.!?\n]+", text)
     )
+    # An earned-resource market exchange can be fully specified as state
+    # transitions without repeating the word "trade" in server prose:
+    # "debits owned resource, credits earned currency". Requiring the
+    # thematic verb rather than this concrete asset transfer rejected valid
+    # actions, causing repeated small-model replanning.
+    resource_debit = re.compile(
+        r"\b(?:debit\w*|deduct\w*|consum\w*|subtract\w*|decreas\w*)\b"
+        r".{0,100}\b(?:resources?|ores?|materials?|items?|inventory)\b",
+        re.I,
+    )
+    currency_credit = re.compile(
+        r"\b(?:credit\w*|award\w*|add\w*|increas\w*|pay\w*)\b"
+        r".{0,100}\b(?:currency|coins?|credits?|money|balance)\b",
+        re.I,
+    )
+    paid_resource_exchange = any(
+        any(not negated_effect_prefix.search(
+                sentence[max(0, debit.start()-90):debit.start()])
+            for debit in resource_debit.finditer(sentence))
+        and any(not negated_effect_prefix.search(
+                sentence[max(0, credit.start()-90):credit.start()])
+            for credit in currency_credit.finditer(sentence))
+        for sentence in re.split(r"[.!?\n]+", text)
+    )
+    trade_effect_linked = trade_effect_linked or paid_resource_exchange
     # A purchasable upgrade is not an exchange without a debit. A player
     # may have a catalog and receive increased stats for free, but that does
     # not satisfy an explicitly requested purchase. Non-purchase trades
