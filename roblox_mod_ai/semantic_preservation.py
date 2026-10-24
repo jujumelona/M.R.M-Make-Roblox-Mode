@@ -330,14 +330,20 @@ def source_intent_conflicts(
         r"\b(?:earn|make|collect|farm)\s+(?:money|coins?|credits?|currency)\b",
         source, re.I,
     )
-    money_earning_effect = re.search(
+    money_earning_pattern = re.compile(
         r"\b(?:credit\w*|award\w*|grant\w*|add\w*|increas\w*|"
         r"earn\w*|pay\w*|receiv\w*|deposit\w*|transfer\w*)\b"
         r".{0,120}\b(?:currency|credits?|coins?|money|balance)\b|"
         r"\b(?:currency|credits?|coins?|money|balance)\b.{0,85}"
         r"\b(?:increas\w*|credit\w*|earn\w*|award\w*|add\w*)\b|"
         r"(?:돈|코인|화폐).{0,40}(?:획득|증가|지급|벌|적립)",
-        text, re.I,
+        re.I,
+    )
+    # One action's currency *expense* and another action's resource yield
+    # cannot be combined into a fictitious money-earning mechanic.
+    money_earning_effect = any(
+        money_earning_pattern.search(sentence)
+        for sentence in re.split(r"[.!?\n]+", text)
     )
     if (require_implementation and money_earned_requested
             and not money_earning_effect):
