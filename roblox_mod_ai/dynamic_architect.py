@@ -995,6 +995,10 @@ class RobloxDynamicArchitect:
             semantic_replan: list[str] | None = None
             input_repair: tuple[dict[str, Any], dict[int, list[str]]] | None = None
             typed_attempts: list[dict[str, Any]] = []
+            # Valid distinct actions from earlier attempts are retained in this
+            # facet only. The next 9B completion adds candidates rather than
+            # replacing a previous build/trade/harvest action.
+            source_action_pool: list[dict[str, Any]] = []
             successful = False
             cache_hit = False
             for attempt in range(3):
@@ -1534,6 +1538,24 @@ class RobloxDynamicArchitect:
                             )
                             draft, rejected_scope_names = ground_source_ownership(
                                 draft, attribution, source_clause=slice_request)
+                        # Retain safely attributable candidate actions across
+                        # local-model retries. Bounded subset selection requires
+                        # full original source coverage and independently visible
+                        # outcomes, not merely a union of related descriptions.
+                        # No model-authored effects are altered or invented.
+                        from .source_action_aggregation import (
+                            collect_source_action_candidates,
+                            choose_complete_source_actions,
+                        )
+                        source_action_pool = collect_source_action_candidates(
+                            source_action_pool, draft.get("systems", []),
+                            original_request=prompt,
+                        )
+                        complete_actions = choose_complete_source_actions(
+                            subset, source_action_pool,
+                        )
+                        if complete_actions is not None:
+                            draft = dict(draft, systems=complete_actions)
                         # Protect each original source clause before compiling
                         # UI/Remotes. A lexical scope filter previously dropped
                         # "Resource harvesting" and "Trade" from a craft facet,
