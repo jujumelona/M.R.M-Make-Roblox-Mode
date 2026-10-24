@@ -243,7 +243,10 @@ def source_intent_conflicts(
                 "SPACE_TRAVEL_STATE_MISSING: setting a player status to in-space "
                 "is not a physical launch, location transfer or world transition"
             )
-        if _SPACE_ABANDONMENT.search(text):
+        # Use the same polarity-aware ejection check as the vehicle-motion
+        # contract. "No passenger is ejected" must not trigger a reversal.
+        from .world_motion_contract import has_actual_occupant_ejection
+        if has_actual_occupant_ejection(text):
             errors.append(
                 "SPACE_TRAVEL_REVERSED: ejecting a passenger from the ship "
                 "does not fulfill departing into space aboard the ship"
