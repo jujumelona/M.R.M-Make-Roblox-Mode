@@ -1482,7 +1482,7 @@ class RobloxDynamicArchitect:
                                         "supports_source_ownership_review", False)):
                                 raise
                             candidates = draft.get("systems", [])
-                            if not isinstance(candidates, list) or not 1 <= len(candidates) <= 3:
+                            if not isinstance(candidates, list) or not 1 <= len(candidates) <= 6:
                                 raise
                             other_clauses = [
                                 str(required[rid].get("statement", ""))
@@ -1529,7 +1529,7 @@ class RobloxDynamicArchitect:
                                         if isinstance(row, dict)],
                                 }, ensure_ascii=False),
                                 role="planner", temperature=0.0,
-                                max_tokens=540,
+                                max_tokens=900,
                                 json_schema=SOURCE_OWNERSHIP_REVIEW_SCHEMA,
                             )
                             draft, rejected_scope_names = ground_source_ownership(
