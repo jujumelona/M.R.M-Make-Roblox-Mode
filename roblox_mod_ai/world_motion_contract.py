@@ -172,7 +172,7 @@ def has_vehicle_arrival_evidence(outcome: str) -> bool:
     return False
 
 
-def _has_actual_occupant_ejection(text: str) -> bool:
+def has_actual_occupant_ejection(text: str) -> bool:
     """Treat 'no passenger is ejected' as prevention, not actual ejection."""
     for clause in re.split(r"[,;.!?\n]+", str(text or "")):
         matches = list(_LEAVES.finditer(clause))
@@ -206,8 +206,8 @@ def motion_contract_errors(
         for _server, result in moving
     )
     ejection = any(
-        _has_actual_occupant_ejection(server)
-        or _has_actual_occupant_ejection(result)
+        has_actual_occupant_ejection(server)
+        or has_actual_occupant_ejection(result)
         for server, result in pairs
     )
     errors = []
