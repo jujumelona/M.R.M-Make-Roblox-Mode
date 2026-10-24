@@ -35,6 +35,35 @@ def world_names(proposal: Any, module: Any = None) -> tuple[list[str], list[str]
             ).get(getattr(module, "module_id", ""), [])
             if name in declared
         ]
+    # An arrival pad is owned/materialized by the launch module, not by the
+    # planet actions. Grant exact read-only target lookup to a VERIFIED
+    # host-owned space handler; never add it to arbitrary model code.
+    # The handler must have the same source-bound builder/launch/arrival
+    # binding and its own planet target must be in its module manifest.
+    if module is not None and getattr(module, "kind", None) == "server_module":
+        name = getattr(module, "name", "")
+        if name.startswith(("AlienCombat", "MarkPlanetColonized",
+                            "ExtractOtherPlanetMineral")):
+            from .host_space_actions import (
+                RULES, _role, render_host_space_action,
+            )
+            role = _role(module)
+            if role in RULES and render_host_space_action(module, proposal) is not None:
+                linked_prefix = RULES[role][2]
+                if any(obj_name.startswith(linked_prefix) for obj_name in authorized):
+                    bindings = design.get("host_vehicle_identity_bindings") or []
+                    arrivals = design.get("host_arrival_materializations") or []
+                    if len(bindings) == 1:
+                        binding = bindings[0]
+                        valid = [
+                            row.get("arrival") for row in arrivals
+                            if isinstance(row, dict)
+                            and row.get("server") == binding.get("server")
+                            and row.get("builder") == binding.get("builder")
+                            and row.get("arrival") in declared
+                        ]
+                        if len(valid) == 1:
+                            authorized.append(valid[0])
     return sorted(declared), sorted(set(authorized))
 
 
