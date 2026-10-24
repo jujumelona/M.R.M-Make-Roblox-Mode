@@ -39,12 +39,31 @@ _UNKNOWN_TYPED_DEPENDENCY = re.compile(
 )
 
 
+_HOST_INTERNAL_METHODS = frozenset({"start", "handleAction", "OnReady"})
+
+
+def allowed_gameplay_peer_methods(peer_methods: dict[str, list[str]]) -> dict[str, list[str]]:
+    """Never advertise Remote ingress or lifecycle callbacks as gameplay APIs.
+
+    The input is the INSPECTED exports of real generated ModuleScripts, not
+    a heuristic list of plausible methods. A missing method stays missing.
+    The model previously saw ResourceGather.handleAction in the exported
+    registry, then called it despite the compiler's deliberate prohibition.
+    """
+    return {
+        name: sorted(set(methods) - _HOST_INTERNAL_METHODS)
+        for name, methods in peer_methods.items()
+        if isinstance(name, str) and isinstance(methods, list)
+    }
+
+
 def host_abi_guidance(contract: dict[str, Any] | None,
                       peer_methods: dict[str, list[str]]) -> str:
     """Supply EXACT host-declared input keys & dependency APIs to the coder."""
     inputs = list((contract or {}).get("inputs") or [])
     fields = {f["id"]: f["type"] for f in inputs
               if isinstance(f, dict) and isinstance(f.get("id"), str)}
+    peer_methods = allowed_gameplay_peer_methods(peer_methods)
     return (
         "IMMUTABLE HOST ABI -- NOT OPTIONAL:\n"
         "- player is the authenticated Roblox Player already passed by the host. "
@@ -58,8 +77,12 @@ def host_abi_guidance(contract: dict[str, Any] | None,
         "do not create a new one, and never call SetState/SaveState.\n"
         "- Never call game:GetService for a generated game module; "
         "only real Roblox engine services are returned by GetService.\n"
-        "- Exported services API (empty lists mean no exported callable "
-        "methods): " + json.dumps(peer_methods, sort_keys=True) + ".\n"
+        "- Only explicitly listed peer methods are callable gameplay APIs. "
+        "Never call another gameplay server's handleAction, start or OnReady: "
+        "those are host-owned Remote/lifecycle entrypoints. "
+        "No peer action handler can be reused as a transaction helper.\n"
+        "- Allowed peer gameplay API (empty list = do not call it): "
+        + json.dumps(peer_methods, sort_keys=True) + ".\n"
         "- Source action rewards/prices may NOT be derived from an "
         "untrusted requested quantity or a client-provided balance.\n"
         "- Use only source-approved world objects, state keys and declared "
