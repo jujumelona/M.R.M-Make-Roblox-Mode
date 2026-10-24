@@ -1453,10 +1453,47 @@ class RobloxDynamicArchitect:
                             "\nRegenerate ONLY this feature, preserving its requested behavior."
                             if attempt else ""
                         )
-                        draft = self.router.complete_json(
-                            query, role="planner", temperature=0.1,
-                            max_tokens=1400, json_schema=model_semantic_schema,
+                        # Compound source actions go straight to SHORT,
+                        # source-ID-grounded micro-planning. A 1,400-token
+                        # multi-system JSON repeatedly truncated on T4; its
+                        # partial completion could not be repaired coherently.
+                        # Single-effect requirements retain their ordinary
+                        # route: inventing a second action would be unsafe.
+                        source_obligations = source_intent_conflicts(
+                            slice_request, "", require_implementation=True,
                         )
+                        compound_source = len({
+                            issue.split(":", 1)[0]
+                            for issue in source_obligations
+                        }) >= 2
+                        if (compound_source
+                                and getattr(self.router,
+                                            "supports_host_standard_transport", False)
+                                and getattr(self.router,
+                                            "supports_atomic_action_decomposition", False)):
+                            from .source_owned_microplanning import (
+                                complete_source_owned_actions,
+                            )
+                            from .atomic_action_authoring import (
+                                author_verified_atomic_systems,
+                            )
+                            verified_actions = complete_source_owned_actions(
+                                self.router, slice_request,
+                            )
+                            proposed_systems = author_verified_atomic_systems(
+                                self.router, verified_actions,
+                                source_clause=slice_request,
+                                original_prompt=prompt,
+                                json_schema=model_semantic_schema,
+                                retained_verified=atomic_verified_cache,
+                            )
+                            atomic_systems_verified = True
+                            draft = {"systems": proposed_systems}
+                        else:
+                            draft = self.router.complete_json(
+                                query, role="planner", temperature=0.1,
+                                max_tokens=1400, json_schema=model_semantic_schema,
+                            )
                     if not isinstance(draft, dict):
                         raise DynamicDesignError("Facet architecture must be JSON object")
                     # New default: the model chooses only gameplay semantics.
@@ -1542,7 +1579,13 @@ class RobloxDynamicArchitect:
                             )
                             draft, rejected_scope_names = ground_source_ownership(
                                 draft, attribution, source_clause=slice_request)
-                        completed = None
+                        # Only independently source-ID-verified children may
+                        # bypass the raw-model three-action cap. Untrusted raw
+                        # model output remains bounded at three systems.
+                        completed = (draft.get("systems")
+                                     if atomic_systems_verified
+                                     and len(draft.get("systems", [])) > 3
+                                     else None)
                         # Evaluate the unmodified model reply FIRST. A generic
                         # source may lack heuristic semantic rules; in that case
                         # choosing a one-system subset would silently discard
