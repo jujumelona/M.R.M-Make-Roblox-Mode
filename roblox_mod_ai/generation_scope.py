@@ -42,7 +42,16 @@ from .scaffold_policy import (
 )
 
 
-def generation_scope(proposal: Any) -> dict[str, Any]:
+def generation_scope(
+    proposal: Any, *, for_protocol_handoff: bool = False,
+) -> dict[str, Any]:
+    """Classify source ownership at either side of the atomic host handoff.
+
+    Pre-handoff discovers COMPLETE first-party server+client implementations
+    even when a transport-only typed contract is temporarily attached.
+    The final scope reflects code_generator's actual typed-first precedence.
+    Never use the provisional scope for checkpoint provenance.
+    """
     design = proposal.game_design.get("dynamic_design") or {}
     strategies = []
     for module in proposal.modules:
@@ -54,9 +63,11 @@ def generation_scope(proposal: Any) -> dict[str, Any]:
         # typed client and typed server are resolved before genre adapters.
         # A different strategy here invalidates checkpoint provenance and
         # misreports whether a small-model body will actually be generated.
-        elif render_typed_client(module, proposal) is not None:
+        elif (not for_protocol_handoff
+              and render_typed_client(module, proposal) is not None):
             strategy = "host_typed_client_ui"
-        elif (module.kind == ModuleKind.SERVER_MODULE
+        elif (not for_protocol_handoff
+              and module.kind == ModuleKind.SERVER_MODULE
               and module.module_id.startswith("dyn_")
               and any(
                   remote in (design.get("host_typed_actions") or {})
