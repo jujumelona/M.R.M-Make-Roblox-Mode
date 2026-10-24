@@ -521,6 +521,29 @@ def try_scaffolded_server(
                 for d in analyzer.analyze_source(candidate, module.file_path)
                 if d.severity == "ERROR"
             ]
+            # Luau syntax diagnostics, NOT a textual guess, authorize one
+            # deterministic cleanup of a stray terminal function 'end' in
+            # a body that the host already wraps in handleAction. Only keep
+            # the shorter candidate when the real parser becomes error-free;
+            # peer ABI, effect and security checks still run afterwards.
+            if (diagnostics and any("unexpected token `end`" in err
+                                    for err in diagnostics)
+                    and re.search(r"\\n\\s*end\\s*$", body)):
+                trimmed = re.sub(r"\\n\\s*end\\s*$", "", body)
+                alternative = _shell(
+                    trimmed,
+                    [x["id"] for x in choices] if choices else None,
+                    typed_contract=typed,
+                    world_name=(typed_spec.get("world_name")
+                                if typed_spec else None),
+                )
+                alt_errors = [
+                    d for d in analyzer.analyze_source(
+                        alternative, module.file_path)
+                    if d.severity == "ERROR"
+                ]
+                if not alt_errors:
+                    body, candidate, diagnostics = trimmed, alternative, []
             diagnostics.extend(
                 c["detail"] for c in service_contract_checks(
                     module.name, candidate, require_start=True, needs_action=True
