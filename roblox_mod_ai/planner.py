@@ -734,6 +734,16 @@ class RobloxGameDesignPlanner:
         blocked_md = "\n".join(
             "- " + issue for issue in blueprint.get("blocking_issues", [])
         ) or "- none (design readiness only, not engine verification)"
+        is_draft = proposal.game_design.get("planning_phase") == "intent_draft"
+        if is_draft:
+            # These are implementation WORK ITEMS, not failed planning.
+            requirement_acceptance_md = "\n".join(
+                f"- **{row['id']}** {row['source']} -> implementation pending "
+                "(owner/acceptance assigned during production)"
+                for row in blueprint.get("requirements", [])
+            )
+        phase_label = ("INTENT DRAFT SAVED; implementation NOT STARTED"
+                       if is_draft else "IMPLEMENTATION CONTRACT")
         units_md = "\n".join(
             f"- **{unit['id']}**: {unit['action']} → {unit['observable']} "
             f"(owner: `{unit['owner']}`)"
@@ -744,6 +754,7 @@ class RobloxGameDesignPlanner:
 > **Prompt**: {proposal.requested_prompt}
 > **Target**: Roblox Studio (Luau {proposal.target.luau_version}, Rojo {proposal.target.rojo_version})
 > **Project mode**: {proposal.game_design.get("project_mode", "new_experience")}
+> **Planning phase**: {phase_label}
 
 ## 0. Request-first RAG (before game design)
 - Research status: {pre.get("status", "not_run")} (NOT gameplay verified)
@@ -775,7 +786,7 @@ class RobloxGameDesignPlanner:
 {integrations_md}
 ### Detailed acceptance and real Studio/MCP test plan
 {scenarios_md}
-### Blocking design gaps
+### {"Pending implementation work (not planning failures)" if is_draft else "Blocking design gaps"}
 {blocked_md}
 
 ## 3. Detailed requirement implementation (before source code)
