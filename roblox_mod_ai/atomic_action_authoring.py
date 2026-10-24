@@ -99,56 +99,82 @@ def author_verified_atomic_systems(
         seen: set[str] = set()
         rejected_responses: set[str] = set()
         previous_issues: dict[str, list[str]] = {}
+        # Never spend all three attempts on an identical one-field repair.
+        # A failed repair is locally reformulated as a fresh compact action.
+        repair_attempted = False
         for attempt in range(max_attempts_per_action):
             repair_field = (
                 next(iter(previous_issues))
-                if system is not None and len(previous_issues) == 1
+                if system is not None and not repair_attempted
+                and len(previous_issues) == 1
                 and next(iter(previous_issues)) in
                 ("server_behavior", "observable_result")
                 else None
             )
             if repair_field:
+                repair_attempted = True
                 previous_text = str(system.get(repair_field) or "")
-                response = router.complete_json(
-                    "Correct ONLY the failing " + repair_field +
-                    " of ONE previously authored game action. Keep its "
-                    "meaning, actual server-side effects and source identity. "
-                    "If observable_result is failing, show the actual changed "
-                    "world or inventory/ownership state, NOT a menu, ability "
-                    "unlock, notification or unchanged prerequisite. "
-                    "The previous field was rejected; DO NOT repeat it. "
-                    "Return JSON with ONLY the corrected field.\n" +
-                    json.dumps({
-                        "source_clause": source_clause,
-                        "original_source_quote": action["source_quote"],
-                        "source_owned_action": action["action"],
-                        "verified_other_fields": {
-                            key: value for key, value in system.items()
-                            if key != repair_field
+                # 1,200 characters in a 360-token completion was an invalid
+                # output contract. Restrict repair to the same compact budget
+                # as original atomic field generation.
+                cap = 450 if repair_field == "server_behavior" else 300
+                try:
+                    response = router.complete_json(
+                        "Rewrite just ONE defective field of ONE source-owned "
+                        "action. Keep all other fields intact. Output one short "
+                        "JSON string property named " + repair_field + ". "
+                        "For server_behavior, include the REAL server mutation, "
+                        "its owner and invalid-input rejection. For "
+                        "observable_result, show the actual changed state. "
+                        "No new actions, no menus, no paraphrased errors. "
+                        "Maximum " + str(cap) + " characters. JSON only.\\n" +
+                        json.dumps({
+                            "original_source_quote": action["source_quote"],
+                            "source_owned_action": action["action"],
+                            "other_fields": {
+                                key: value for key, value in system.items()
+                                if key != repair_field
+                            },
+                            "rejected_field": previous_text[:500],
+                            "validator_errors": previous_issues[repair_field],
+                        }, ensure_ascii=False),
+                        role="planner", temperature=0.0,
+                        max_tokens=(280 if repair_field == "server_behavior" else 190),
+                        json_schema={
+                            "type": "object",
+                            "properties": {repair_field: {
+                                "type": "string", "minLength": 24 if repair_field ==
+                                "server_behavior" else 18, "maxLength": cap,
+                            }},
+                            "required": [repair_field],
+                            "additionalProperties": False,
                         },
-                        "rejected_field": previous_text,
-                        "exact_validator_errors": previous_issues[repair_field],
-                    }, ensure_ascii=False),
-                    role="planner", temperature=0.0,
-                    max_tokens=360,
-                    json_schema={
-                        "type": "object",
-                        "properties": {
-                            repair_field: {"type": "string", "maxLength": 1200}
-                        },
-                        "required": [repair_field],
-                        "additionalProperties": False,
-                    },
-                )
+                    )
+                except (ValueError, TypeError) as exc:
+                    response = None
+                    repair_error = type(exc).__name__ + ": " + str(exc)[:140]
+                else:
+                    repair_error = ""
                 patched = (
                     response.get(repair_field)
                     if isinstance(response, dict) else None
                 )
-                if not isinstance(patched, str) or not patched.strip():
-                    raise SourceActionBindingError(
-                        "ATOMIC_LOCAL_REPAIR_INVALID: " + str(index) +
-                        ": " + repair_field
-                    )
+                if (not isinstance(patched, str)
+                        or not (24 if repair_field == "server_behavior"
+                                else 18) <= len(patched.strip()) <= cap
+                        or patched.strip() == previous_text.strip()):
+                    # This is a rejected MODEL reply, not an error in the
+                    # source contract. Previously we raised immediately here,
+                    # aborting all sibling actions and the entire feature.
+                    previous_issues = {
+                        "format": [
+                            "Invalid or repeated " + repair_field + " patch; "
+                            "regenerate this source-owned action only. " +
+                            repair_error
+                        ],
+                    }
+                    system = None
+                    continue
                 system = dict(system, **{repair_field: patched.strip()})
             else:
                 if getattr(router, "supports_host_standard_transport", False):
