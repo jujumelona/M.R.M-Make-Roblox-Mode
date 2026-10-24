@@ -378,7 +378,7 @@ def source_intent_conflicts(
         source, re.I,
     )
     money_earning_pattern = re.compile(
-        r"\b(?:credit\w*|award\w*|grant\w*|add\w*|increas\w*|"
+        r"\b(?:credit\w*(?!\s+(?:from|for|at|on)\b)|award\w*|grant\w*|add\w*|increas\w*|"
         r"earn\w*|pay\w*|receiv\w*|deposit\w*|transfer\w*)\b"
         r".{0,120}\b(?:currency|credits?|coins?|money|balance)\b|"
         r"\b(?:currency|credits?|coins?|money|balance)\b.{0,85}"
