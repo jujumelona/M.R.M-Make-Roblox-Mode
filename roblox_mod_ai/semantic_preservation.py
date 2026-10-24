@@ -317,8 +317,12 @@ def source_intent_conflicts(
         r"|차감|지급|이체|소비|추가|증가|감소|지불|전달|정산",
         text, re.I,
     )
+    trade_effect_linked = any(
+        trade_action.search(sentence) and transfer_effect.search(sentence)
+        for sentence in re.split(r"[.!?;\n]+", text)
+    )
     if (require_implementation and trade_requested
-            and not (trade_action and transfer_effect)):
+            and not trade_effect_linked):
         errors.append(
             "SOURCE_TRADE_ACTION_MISSING: a requested trade, sale or "
             "purchase needs a server-owned exchange/payment state change"
