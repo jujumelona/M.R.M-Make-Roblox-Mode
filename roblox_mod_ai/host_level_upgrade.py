@@ -43,6 +43,26 @@ def eligible_rank_protocol(m:Any,p:Any)->tuple[str,str,str,bool]|None:
     if links is not None and links!=[remote]:return None
     return server,remote,targets[0],bool(_OWNED.search(owner.description))
 
+def _allows_paid_first_ownership(proposal: Any, target: str,
+                                 owner_description: str, owned: bool) -> bool:
+    """Close an explicit weapon-buy -> ownership -> upgrade progression gap.
+
+    A paid rank-only action must not silently give equipment. Enable a first
+    paid acquisition only for this canonical inventory item, an explicitly
+    requested weapon purchase, and a purchase owner that also checks price.
+    """
+    if not owned or target != "owned_weapon":
+        return False
+    source = str(getattr(proposal, "requested_prompt", "") or "").casefold()
+    source_buy = (
+        bool(re.search(r"무기.{0,95}(?:구매|살\s*수|구입)", source))
+        or bool(re.search(r"\b(?:buy|purchase|purchasing)\b.{0,100}\bweapons?\b", source))
+        or bool(re.search(r"\bweapons?\b.{0,100}\b(?:buy|purchase|purchasing)\b", source))
+    )
+    return bool(source_buy and re.search(r"\bweapon\b", owner_description, re.I)
+                and re.search(r"\bpurchas\w*\b", owner_description, re.I))
+
+
 def _check(value:Any)->dict:
     if not isinstance(value,dict) or set(value)!={"label","cost","increment","max_level"}:raise ValueError("RANK_FIELDS")
     if not isinstance(value["label"],str) or not 2<=len(value["label"].strip())<=60:raise ValueError("RANK_LABEL")
@@ -73,12 +93,15 @@ def render_rank_protocol(m:Any,p:Any,router:Any)->str|None:
     selected=eligible_rank_protocol(m,p)
     if selected is None:return None
     server,remote,target,owned=selected
+    owner_description=next(x.description for x in p.modules if x.name==server)
+    acquire=_allows_paid_first_ownership(p,target,owner_description,owned)
     data=_data(p,server,router)
     replacements={"@REMOTE@":json.dumps(remote),"@TARGET@":json.dumps(target),
         "@LABEL@":json.dumps(data["label"],ensure_ascii=False),
         "@COST@":str(data["cost"]),"@STEP@":str(data["increment"]),
         "@MAX@":str(data["max_level"]),"@OWNED@":"true" if owned else "false",
-        "@ATTR@":json.dumps("RMMRank_"+target)}
+        "@ATTR@":json.dumps("RMMRank_"+target),
+        "@ACQUIRE_FIRST@":"true" if acquire else "false"}
     result=_SERVER if m.kind==ModuleKind.SERVER_MODULE else _CLIENT
     for key,val in replacements.items():result=result.replace(key,val)
     return result
@@ -91,6 +114,7 @@ local COST=@COST@
 local STEP=@STEP@
 local MAX=@MAX@
 local OWNED=@OWNED@
+local ACQUIRE_FIRST=@ACQUIRE_FIRST@
 local ATTR=@ATTR@
 local last={}
 local function good(v)
@@ -110,22 +134,37 @@ function Service.handleAction(player,services,...)
     local ranks=services.PlayerDataManager.GetState(player,"RMMRankProgress")
     local inventory=services.PlayerDataManager.GetState(player,"RMMInventory")
     if not ranks or not inventory then return {success=false,reason="loading"} end
+    local acquired=false
     if OWNED then
-        if type(inventory.items)~="table" or not good(inventory.items[TARGET])
-            or inventory.items[TARGET]<1 then return {success=false,reason="not_owned"} end
+        if inventory.items~=nil and type(inventory.items)~="table" then
+            return {success=false,reason="inventory_invalid"} end
+        local quantity=inventory.items and inventory.items[TARGET] or 0
+        if not good(quantity) then return {success=false,reason="inventory_invalid"} end
+        acquired=quantity>=1
+        if not acquired and not ACQUIRE_FIRST then
+            return {success=false,reason="not_owned"} end
     end
+    local acquiring=OWNED and ACQUIRE_FIRST and not acquired
     local rank=ranks[TARGET] or 0
-    if not good(rank) or rank>=MAX then return {success=false,reason="max"} end
+    if not good(rank) or (not acquiring and rank>=MAX) then
+        return {success=false,reason="max"} end
     local stats=player:FindFirstChild("leaderstats")
     local coins=stats and stats:FindFirstChild("Coins")
     if not coins or not coins:IsA("IntValue") or not good(coins.Value)
         or coins.Value<COST then return {success=false,reason="funds"} end
     local nextRank=math.min(MAX,rank+STEP)
-    if nextRank<=rank then return {success=false,reason="unchanged"} end
+    if not acquiring and nextRank<=rank then
+        return {success=false,reason="unchanged"} end
     local now=os.clock()
     if last[player] and now-last[player]<0.25 then return {success=false,reason="cooldown"} end
     last[player]=now
     coins.Value-=COST
+    if acquiring then
+        if inventory.items==nil then inventory.items={} end
+        inventory.items[TARGET]=1
+        player:SetAttribute("RMMWeaponOwned",true)
+        return {success=true,acquired=true,level=rank,coins=coins.Value}
+    end
     ranks[TARGET]=nextRank
     player:SetAttribute(ATTR,nextRank)
     return {success=true,level=nextRank,coins=coins.Value}
@@ -160,7 +199,7 @@ button.Activated:Connect(function()
     busy=true
     local ok,result=pcall(function() return remote:InvokeServer(@TARGET@) end)
     if not ok or type(result)~="table" then status.Text="Network error"
-    elseif result.success then status.Text="Rank "..tostring(result.level)
+    elseif result.success then status.Text=(result.acquired and "Weapon purchased" or ("Rank "..tostring(result.level)))
     else status.Text=tostring(result.reason or "Rejected") end
     busy=false
 end)
