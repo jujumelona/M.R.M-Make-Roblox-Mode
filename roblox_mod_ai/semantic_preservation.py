@@ -313,6 +313,10 @@ def source_intent_conflicts(
         r".{0,110}\b(?:ship|spacecraft|craft|section|part|module|hull)\b|"
         r"\b(?:section|part|module)\b.{0,90}"
         r"\b(?:attach\w*|install\w*|assembl\w*|construct\w*)\b|"
+        r"\b(?:adds?|creat\w*|build\w*)\b.{0,65}"
+        r"\b(?:section|part|module)\b.{0,90}"
+        r"\b(?:to|onto|into|on)\b.{0,35}"
+        r"\b(?:craft|ship|spacecraft|hull)\b|"
         r"(?:우주선|선체).{0,65}(?:제작|조립|장착|생성|건설)",
         text, re.I,
     )
