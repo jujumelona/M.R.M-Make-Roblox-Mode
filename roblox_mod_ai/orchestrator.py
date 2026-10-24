@@ -299,6 +299,18 @@ class RobloxProductionOrchestrator:
                     "requires_replanning": True,
                     "implementation_blocker": "cross_system_physical_actor",
                 }
+
+            # Materialize the actual orbit landing Part only AFTER the host
+            # has resolved the builder->launched-vehicle identity. Without
+            # this preflight, the local coder invents an undeclared Orbit
+            # world object even when a complete host departure exists.
+            from .vehicle_identity_binding import materialize_source_linked_space_arrivals
+            arrivals = materialize_source_linked_space_arrivals(proposal)
+            if arrivals:
+                tool_results["host_arrival_materializations"] = arrivals
+                for record in arrivals:
+                    trajectory.record("preflight", "materialize_source_linked_space_arrival",
+                                      record, passed=True)
             # First-party declarative compilers own BOTH their server ABI
             # and client payload. A generic typed-only stub must not override
             # a fully matched implementation; rebase such stubs as a pair
