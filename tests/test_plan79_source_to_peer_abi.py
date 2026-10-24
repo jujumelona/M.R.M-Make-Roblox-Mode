@@ -94,3 +94,42 @@ def test_runtime_contract_still_blocks_cross_handler_execution():
     issues = dependency_api_errors(current, proposal, source)
     assert any("DEPENDENCY_ACTION_DISPATCH_FORBIDDEN" in issue
                for issue in issues), issues
+
+
+
+def test_paid_but_unchanged_state_is_not_a_successful_upgrade():
+    from roblox_mod_ai.gameplay_effect_safety import game_effect_safety_errors
+    body = (
+        'local Inventory = services.PlayerDataManager.GetState(player, "Owned")\n'
+        'local level = Inventory.level or 1\n'
+        'local cost = 100 * level\n'
+        'if Inventory.resources < cost then return false end\n'
+        'Inventory.resources = Inventory.resources - cost\n'
+        'player.leaderstats.Coins.Value = player.leaderstats.Coins.Value - cost\n'
+        'Inventory.level = level\n'
+        'return true\n'
+    )
+    errors = game_effect_safety_errors(
+        body, routed_action=False,
+        declared_behavior="Upgrade owned crew performance",
+    )
+    assert any("UPGRADE_EFFECT_MISSING" in error for error in errors), errors
+
+
+def test_progressing_an_owned_state_is_a_real_upgrade_candidate():
+    from roblox_mod_ai.gameplay_effect_safety import game_effect_safety_errors
+    body = (
+        'local state = services.PlayerDataManager.GetState(player, "Owned")\n'
+        'if not state then return false end\n'
+        'local old = state.level or 1\n'
+        'local nextLevel = old + 1\n'
+        'if player.leaderstats.Coins.Value < 20 then return false end\n'
+        'player.leaderstats.Coins.Value -= 20\n'
+        'state.level = nextLevel\n'
+        'return true\n'
+    )
+    errors = game_effect_safety_errors(
+        body, routed_action=False,
+        declared_behavior="Upgrade the owned character",
+    )
+    assert not any("UPGRADE_EFFECT_MISSING" in error for error in errors), errors
