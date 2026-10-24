@@ -236,9 +236,10 @@ def complete_source_owned_actions(
         # replaces previously bound actions or sends them back for rewriting.
         appended = False
         for _ in range(2):
-            additions = _call(
-                router,
-                "The accepted actions below remain FROZEN. Source coverage "
+            try:
+                additions = _call(
+                    router,
+                    "The accepted actions below remain FROZEN. Source coverage "
                 "is missing specific requested mechanics. Supply EXACTLY ONE "
                 "NEW source-owned action implementing the FIRST missing "
                 "mechanic. The action must explicitly name the server-owned "
@@ -256,9 +257,16 @@ def complete_source_owned_actions(
                     "available_source_spans": candidates,
                     "invalid_actions_to_avoid": list(failed_proposals)[-3:],
                 }, ensure_ascii=False),
-                candidate_ids=[s["id"] for s in candidates],
-                minimum=1, maximum=1, tokens=180,
-            )
+                    candidate_ids=[s["id"] for s in candidates],
+                    minimum=1, maximum=1, tokens=180,
+                )
+            except (ValueError, TypeError) as exc:
+                # A truncated local JSON completion is not permission to
+                # discard the accepted source actions or the entire facet.
+                rejection_evidence.append(
+                    "LOCAL_ACTION_FORMAT_INVALID: " + str(exc)[:180],
+                )
+                continue
             proposed = additions[0]
             proposed_signature = json.dumps(proposed, sort_keys=True,
                                              ensure_ascii=False)
