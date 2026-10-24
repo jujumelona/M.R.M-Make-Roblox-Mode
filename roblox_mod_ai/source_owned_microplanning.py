@@ -178,6 +178,12 @@ def complete_source_owned_actions(
                 "ATOMIC_SOURCE_MISSING_ACTION_UNRESOLVED: " +
                 "; ".join(gaps[:3]),
             )
+    remaining = _coverage_issues(source, bound)
+    if remaining:
+        raise SourceActionBindingError(
+            "ATOMIC_SOURCE_MAX_ACTIONS_INCOMPLETE: " +
+            "; ".join(remaining[:4]),
+        )
     return verify_or_bind_actions(
         router, source, raw, max_actions=max_actions,
     )
