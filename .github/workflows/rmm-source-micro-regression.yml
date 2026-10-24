@@ -6,6 +6,7 @@ on:
       - 'roblox_mod_ai/atomic_action_quotes.py'
       - 'roblox_mod_ai/atomic_action_authoring.py'
       - 'roblox_mod_ai/source_owned_microplanning.py'
+      - 'roblox_mod_ai/typed_action_contract.py'
       - 'roblox_mod_ai/semantic_preservation.py'
       - 'roblox_mod_ai/dynamic_architect.py'
       - 'roblox_mod_ai/planner.py'
@@ -38,6 +39,7 @@ on:
       - 'tests/test_plan78_roblox_runtime_value_contracts.py'
       - 'tests/test_plan79_source_to_peer_abi.py'
       - 'tests/test_plan79_world_contract.py'
+      - 'tests/test_plan80_host_service_and_input_contract.py'
       - '.github/workflows/rmm-source-micro-regression.yml'
   workflow_dispatch:
 jobs:
@@ -66,4 +68,5 @@ jobs:
           python -m pytest -q tests/test_plan78_roblox_runtime_value_contracts.py
           python -m pytest -q tests/test_plan79_source_to_peer_abi.py
           python -m pytest -q tests/test_plan79_world_contract.py
+          python -m pytest -q tests/test_plan80_host_service_and_input_contract.py
           python -m pytest -q tests/test_plan67_compact_atomic.py tests/test_plan67_four_action_scope.py
