@@ -10,7 +10,7 @@ from typing import Any
 from .spec import RobloxProposal
 
 _ASSIGN = re.compile(r'\blocal\s+([A-Za-z_]\w*)\s*(?::[^=\n]+)?=\s*([^\n]+)')
-_LOOKUP = re.compile(r'\b(?:WaitForChild|FindFirstChild)\s*\(\s*["\']([^"\']+)["\']\s*\)')
+_LOOKUP = re.compile(r'\b(?:WaitForChild|FindFirstChild)\s*\(\s*["']([^"']+)["']\s*(?:,\s*\d+(?:\.\d+)?\s*)?\)')
 _MODES = {
     "RemoteEvent": (
         ("client_to_server",
