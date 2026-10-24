@@ -100,6 +100,16 @@ LINKS = (
      ("CombatSystem", "ShopService")),
 )
 
+def _matches_source_motion(actual: Any, mandatory: dict[str, str]) -> bool:
+    """Require every source-owned movement obligation, permit extra host ABI.
+
+    Identity/materialization metadata added by the host is not a change to
+    the source promise. An absent or altered required property still fails.
+    """
+    return (isinstance(actual, dict) and
+            all(actual.get(key) == value for key, value in mandatory.items()))
+
+
 def build_implementation_blueprint(proposal: Any) -> dict[str, Any]:
     design = proposal.game_design
     selected = [name for name, enabled in design.get("features", {}).items()
@@ -244,7 +254,7 @@ def build_implementation_blueprint(proposal: Any) -> dict[str, Any]:
             ]
             if not any(
                 isinstance(motion_map, dict)
-                and motion_map.get(module.name) == contract
+                and _matches_source_motion(motion_map.get(module.name), contract)
                 for module in server_owners
             ):
                 blocked.append(
