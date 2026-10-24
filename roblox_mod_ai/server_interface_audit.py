@@ -31,8 +31,11 @@ def dependency_api_errors(module: Any, proposal: RobloxProposal, code: str) -> l
     This uses saved peer exports, not a guessed Roblox API catalogue. Bootstrap
     owns initialization, and gameplay must not replace another service's API.
     """
-    peers = {m.name: m for m in getattr(proposal, "modules", []) if m.name != module.name
-             and m.file_path.startswith("src/server/")
+    # Include the current service as well. A generated action must not refer
+    # to services.Self.catalog or services.Self.crew unless that field is
+    # actually initialized by the host/module, not merely hallucinated by 9B.
+    peers = {m.name: m for m in getattr(proposal, "modules", [])
+             if m.file_path.startswith("src/server/")
              and m.file_path.endswith(".luau")
              and not m.file_path.endswith(".server.luau")}
     if not peers:
@@ -60,8 +63,20 @@ def dependency_api_errors(module: Any, proposal: RobloxProposal, code: str) -> l
                 receivers[alias] = target
     for receiver, target in receivers.items():
         expression = r"(?<![\w.:])" + r"\s*\.\s*".join(map(re.escape, receiver.split(".")))
-        exported = exported_methods(peers[target].code)[1] if peers[target].code else None
+        # While generating, module.code is still empty. The candidate code
+        # argument is the authoritative self-service export to inspect.
+        target_code = code if target == module.name else peers[target].code
+        table, exports = exported_methods(target_code) if target_code else (None, {})
+        exported = exports if table else None
         available = set(exported) if exported is not None else None
+        declared_fields: set[str] = set()
+        if target_code and table:
+            target_source = _mask_strings(_without_comments(target_code))
+            declared_fields = set(re.findall(
+                r"\\b" + re.escape(table) +
+                r"\\s*\\.\\s*(" + _NAME + r")\\s*=(?!=)",
+                target_source,
+            ))
         for match in re.finditer(expression + r"\s*([.:])\s*(" + _NAME + r")\b", masked):
             prefix, suffix = masked[:match.start()].rstrip(), masked[match.end():]
             if prefix.endswith((".", ":")):
@@ -71,6 +86,18 @@ def dependency_api_errors(module: Any, proposal: RobloxProposal, code: str) -> l
                 errors.append("DEPENDENCY_API: gameplay must not replace methods on " + target)
                 continue
             if not re.match(r"\s*\(", suffix):
+                # Readable state and catalogs are part of the service ABI,
+                # just like callable methods. A service table exported with
+                # only handleAction does NOT magically expose .crew/.catalog.
+                # If a peer has not yet been generated, defer this check.
+                if (available is not None and method not in available
+                        and method not in declared_fields):
+                    errors.append(
+                        "DEPENDENCY_STATE_FIELD_UNDECLARED: " + target +
+                        "." + method + " has no exported method or initialized "
+                        "field; actual exports: " +
+                        (", ".join(sorted(available | declared_fields)) or "(none)")
+                    )
                 continue
             if method == "start":
                 errors.append("DEPENDENCY_API: only the host bootstrap may call " + target + ".start(services)")
