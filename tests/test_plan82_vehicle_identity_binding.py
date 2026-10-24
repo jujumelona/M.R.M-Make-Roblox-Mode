@@ -120,3 +120,22 @@ def test_nonphysical_world_name_not_selected_as_root():
     assert bind_vehicle_actors(p) == []
     assert any("VEHICLE_ACTOR_NOT_BUILT_OBJECT" in x
                for x in vehicle_identity_errors(p))
+
+
+
+def test_rebound_server_with_stale_client_is_still_rejected():
+    p = fixture()
+    assert len(bind_vehicle_actors(p)) == 1
+    d = p.game_design["dynamic_design"]
+    d["module_world_objects"]["dyn_depart_ui"] = ["CraftProxyBeta"]
+    problems = vehicle_identity_errors(p)
+    assert any("VEHICLE_ACTOR_CLIENT_NOT_BOUND" in x for x in problems), problems
+
+
+def test_root_class_mismatch_is_not_hidden_by_shared_name():
+    p = fixture()
+    assert len(bind_vehicle_actors(p)) == 1
+    p.game_design["dynamic_design"]["host_world_motion"][
+        "Departure"]["actor_world_class"] = "Model"
+    assert any("VEHICLE_ACTOR_CLASS_MISMATCH" in x
+               for x in vehicle_identity_errors(p))
