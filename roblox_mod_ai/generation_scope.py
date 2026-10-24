@@ -14,6 +14,7 @@ from .spec import ModuleKind
 
 from .host_level_upgrade import eligible_rank_protocol
 from .host_ordered_assembly import eligible_ordered_assembly
+from .host_vehicle_departure import eligible_departure
 from .host_gameplay import render_host_gameplay
 from .host_mode_navigation import eligible_mode_navigation
 from .host_mode_unlock import eligible_mode_unlock
@@ -47,6 +48,8 @@ def generation_scope(proposal: Any) -> dict[str, Any]:
             strategy = "builtin_source"
         elif render_host_gameplay(module, proposal) is not None:
             strategy = "host_verified_template"
+        elif eligible_departure(module, proposal) is not None:
+            strategy = "host_declarative_vehicle_departure"
         elif eligible_ordered_assembly(module, proposal) is not None:
             strategy = "host_declarative_ordered_assembly"
         elif eligible_rank_protocol(module, proposal) is not None:
