@@ -65,7 +65,7 @@ def generated_module_errors(
             "-- RMM_GAMEPLAY_BODY_BEGIN" in code):
         errors.extend(game_effect_safety_errors(
             code, routed_action=True,
-            declared_behavior=str(module.description or ""),
+            declared_behavior=str(getattr(module, "description", "") or ""),
         ))
     # A plan module_id is a Python-side identifier, NOT a Lua variable holding
     # a ModuleScript. Prior accepted clients emitted require(mod_network_bridge)
