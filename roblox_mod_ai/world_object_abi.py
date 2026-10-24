@@ -42,20 +42,26 @@ def world_lookup_guidance(proposal: Any, module: Any) -> str:
     declared, authorized = world_names(proposal, module)
     if not declared:
         return ""
+    # A prompt containing EVERY object in the game encouraged the 9B coder
+    # to mutate sellers, NPCs and destination planets in an unrelated action.
+    # Show only this module's independently authored and linked world targets.
     return (
-        "ACTUAL MATERIALIZED WORLD ABI: all declared workspace Part/Model "
-        "names are " + json.dumps(declared, ensure_ascii=False) + ". "
-        "Objects linked to THIS action are " +
+        "ACTUAL MATERIALIZED WORLD ABI: ONLY the following objects are "
+        "linked to this action: " +
         json.dumps(authorized, ensure_ascii=False) + ". "
-        "Use those exact names and ownership checks. Never guess "
+        "These names are Part/Model instances in workspace, NEVER entries "
+        "in the injected services table. Objects NOT listed here must not "
+        "be accessed or mutated by this action. Use their exact case. "
+        "Never guess "
         "workspace:FindFirstChild('Spaceship') or a thematic name "
         "that is NOT in the declared list; such a lookup returns nil. "
         "Do not treat Instance Attributes as objects or Lua tables.\n"
     )
 
 
-def world_lookup_errors(code: str, proposal: Any) -> list[str]:
-    declared, _ = world_names(proposal)
+def world_lookup_errors(code: str, proposal: Any,
+                        module: Any = None) -> list[str]:
+    declared, authorized = world_names(proposal, module)
     if not declared or not isinstance(code, str) or not code:
         return []
     source = _without_comments(code)
@@ -70,12 +76,15 @@ def world_lookup_errors(code: str, proposal: Any) -> list[str]:
         if masked[match.start():match.start()+9] != "workspace":
             continue
         name = match.group(2)
-        if name in declared or name in constructed or name in seen:
+        if name in constructed or name in seen:
+            continue
+        if name in declared and (module is None or name in authorized):
             continue
         seen.add(name)
         errors.append(
             "WORLD_OBJECT_NAME_UNDECLARED: workspace lookup " + repr(name) +
-            " is not present in the materialized game world; known names: " +
-            ", ".join(declared[:30])
+            " is not present in the action's authorized materialized world "
+            "targets; allowed names: " +
+            ", ".join((authorized if module is not None else declared)[:30])
         )
     return errors
