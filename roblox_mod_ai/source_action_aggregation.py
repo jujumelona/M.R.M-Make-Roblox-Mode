@@ -31,7 +31,7 @@ def _same_effect_duplicate(a: dict[str, Any], b: dict[str, Any]) -> bool:
     consumed candidate budget without adding a requested action.
     """
     def normalized(value: Any) -> str:
-        return re.sub(r"\\s+", " ", str(value or "").casefold()).strip()
+        return re.sub(r"\s+", " ", str(value or "").casefold()).strip()
 
     if (normalized(a.get("observable_result")) !=
             normalized(b.get("observable_result"))):
