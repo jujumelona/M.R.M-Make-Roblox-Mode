@@ -130,8 +130,25 @@ def render_host_peer_barter(module, proposal):
     allow_market = (_needs_earned_currency_market(proposal)
                     and (routes[0][1].get("max_args") is None
                          or routes[0][1].get("max_args") >= 2))
+    from .request_semantics import _EXPLICIT_PEER_TRADE
+    original = str(getattr(proposal, "requested_prompt", "") or "")
+    peer_authorized = bool(
+        _EXPLICIT_PEER_TRADE.search(original)
+        or re.search(r"\\bbetween\\s+players\\b", original, re.I)
+    )
+    if allow_market and not peer_authorized:
+        # A vague user trade request does NOT authorize cross-player
+        # transfers. Sell mined resources to the host market only; preserve
+        # the single real RemoteFunction, the same inventory, and earned Coins.
+        from .host_trading import _SERVER as MARKET_SERVER, _CLIENT as MARKET_CLIENT
+        return (MARKET_SERVER if module.kind == ModuleKind.SERVER_MODULE
+                else MARKET_CLIENT.replace("__REMOTE__", json.dumps(routes[0][0])))
     if allow_market:
         return _with_market(module, routes[0][0])
+    if not peer_authorized:
+        # If the planner invented P2P and there is no source-approved market
+        # replacement, fail closed instead of shipping unauthorized assets.
+        return None
     if module.kind == ModuleKind.SERVER_MODULE:
         return _SERVER if module.file_path.startswith("src/server/") else None
     return (_CLIENT.replace("__REMOTE__", json.dumps(routes[0][0]))
