@@ -190,16 +190,21 @@ def validate_atomic_system_ownership(
 
 
 def verify_or_bind_actions(router: Any, source: str, actions: Any,
-                           *, missing_obligations=()) -> list[dict[str, str]]:
+                           *, missing_obligations=(),
+                           require_complete: bool = True,
+                           max_actions: int = 3) -> list[dict[str, str]]:
     """Preserve the model's action descriptions; rebind only invalid quotes.
 
     Do not repeat game design or silently substitute the whole clause for
     unrelated or invented actions. Require a complete, unique mapping to
     immutable source spans and independently re-run semantic conflict checks.
     """
-    if not isinstance(actions, list) or not 2 <= len(actions) <= 3:
+    if not 2 <= max_actions <= 6:
+        raise SourceActionBindingError("ATOMIC_ACTION_BOUND_INVALID")
+    if not isinstance(actions, list) or not 2 <= len(actions) <= max_actions:
         raise SourceActionBindingError(
-            "ATOMIC_ACTION_DECOMPOSITION_INVALID: 2-3 actions required")
+            "ATOMIC_ACTION_DECOMPOSITION_INVALID: 2-" +
+            str(max_actions) + " actions required")
     normalized = []
     seen_actions = set()
     ungrounded = False
@@ -309,7 +314,7 @@ def verify_or_bind_actions(router: Any, source: str, actions: Any,
                                    require_implementation=False):
             raise SourceActionBindingError(
                 "ATOMIC_SOURCE_ACTION_SEMANTIC_MISMATCH: " + row["source_quote"])
-    if source_intent_conflicts(
+    if require_complete and source_intent_conflicts(
             source, " ".join(row["action"] for row in normalized),
             require_implementation=False):
         raise SourceActionBindingError(
