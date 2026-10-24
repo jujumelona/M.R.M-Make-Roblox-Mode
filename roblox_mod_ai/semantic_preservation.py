@@ -463,9 +463,9 @@ def source_intent_conflicts(
     # "purchases the item but does not debit currency" passed because the
     # negation was checked only at the sentence end, not at the effect verb.
     negated_payment_prefix = re.compile(
-        r"\\b(?:no|never|not|without|cannot|can't|doesn't|don't|didn't)\\b"
-        r"(?:\\W+\\w+){0,4}\\W*$|"
-        r"\\b(?:does|do|did|will|would|can)\\s+not\\s*$", re.I,
+        r"\b(?:no|never|not|without|cannot|can't|doesn't|don't|didn't)\b"
+        r"(?:\W+\w+){0,4}\W*$|"
+        r"\b(?:does|do|did|will|would|can)\s+not\s*$", re.I,
     )
     paid_purchase = any(
         trade_action.search(sentence)
