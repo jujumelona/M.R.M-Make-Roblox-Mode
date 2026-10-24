@@ -72,6 +72,17 @@ def _coverage_issues(source: str, bound: list[dict[str, str]]) -> list[str]:
     )
 
 
+def needs_compound_microplanning(source: str) -> bool:
+    """Use small atomic planning only when the SOURCE requires several
+    independently testable effects. Single-action sources keep their normal
+    route; we never fabricate a second action just to fill a schema.
+    """
+    issues = source_intent_conflicts(
+        source, "", require_implementation=True,
+    )
+    return len({item.split(":", 1)[0] for item in issues}) >= 2
+
+
 def complete_source_owned_actions(
     router: Any, source: str, *, initial_actions: Any = None,
     max_actions: int = _MAX_ACTIONS,
