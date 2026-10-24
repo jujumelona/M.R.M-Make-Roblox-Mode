@@ -25,6 +25,22 @@ from roblox_mod_ai.semantic_preservation import (
         "Server validates a purchase. A different module consumes fuel on takeoff.",
         True,
     ),
+    (
+        "거래 구매",
+        "Server accepts a purchase and never transfers items.",
+        True,
+    ),
+    (
+        "거래 구매",
+        "Server accepts a purchase and refuses to deliver the item.",
+        True,
+    ),
+    (
+        "거래 구매",
+        "Server does not transfer unowned items but transfers the paid "
+        "item after a verified purchase.",
+        False,
+    ),
     ("적과 전투", "Server updates an enemy's health on attack.", False),
 ])
 def test_trade_action_match_or_none_never_crashes(
