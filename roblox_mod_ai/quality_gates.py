@@ -16,6 +16,18 @@ from .implementation_blueprint import audit_implementation_blueprint
 from .detailed_plan import audit_detailed_plan
 
 
+def _contains_source_placeholder(body: str) -> bool:
+    """Inspect executable tokens, not legitimate Roblox PlaceholderText UI.
+
+    A case-insensitive substring search incorrectly rejected working TextBox
+    code and could leave the final static repair loop retrying indefinitely.
+    """
+    active = _mask_strings(_without_comments(body))
+    return bool(re.search(
+        r"\b(?:TODO|FIXME|placeholder|not\s+implemented|loadstring)\b",
+        active, flags=re.IGNORECASE))
+
+
 def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict:
     """Trace requested mechanics through module source, world, and dependencies.
 
@@ -304,8 +316,7 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
                   "Client-only/server-only Roblox APIs must not cross Luau realms")
             check("dynamic.code." + module.name,
                   bool(body.strip()) and len(body) >= 75
-                  and not any(token in body.lower() for token in
-                      ("todo", "placeholder", "not implemented", "loadstring("))
+                  and not _contains_source_placeholder(body)
                   and has(module.name, "--!strict"),
                   "Novel gameplay must contain actual saved Luau source; no placeholder or empty table")
         for name, remote_type in dyn.get("remotes", {}).items():
