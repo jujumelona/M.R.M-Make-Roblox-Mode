@@ -153,3 +153,51 @@ def typed_input_fields_used(body: str, contract: dict[str, Any] | None) -> set[s
     fields.update(m.group(2) for m in _BRACKET_FIELD.finditer(raw)
                   if re.match(r"(?:actionArgs|args)\b", masked[m.start():]))
     return fields & valid
+
+
+
+def remove_redundant_state_commit(body: str) -> str:
+    """Remove only a provably nonexistent persistence call on a LIVE state ref.
+
+    The host PlayerDataManager.GetState(player, namespace) returns a mutable
+    server-owned profile table. Calling SetState is an AI-invented API; the
+    in-place mutations already update the real state. This only removes an
+    exact standalone call when the SAME local came from the SAME namespace.
+    An unrelated service, reassigned local, differently named namespace or
+    non-standalone statement is NOT rewritten.
+    """
+    local_state = re.compile(
+        r'^\s*local\s+([A-Za-z_]\w*)\s*=\s*services\s*\.\s*'
+        r'PlayerDataManager\s*\.\s*GetState\s*\(\s*player\s*,\s*'
+        r'(["\x27])([^"\x27\n]+)\2\s*\)\s*;?\s*$'
+    )
+    wrong_commit = re.compile(
+        r'^\s*services\s*\.\s*PlayerDataManager\s*[.:]\s*'
+        r'SetState\s*\(\s*player\s*,\s*(["\x27])([^"\x27\n]+)\1'
+        r'\s*,\s*([A-Za-z_]\w*)\s*\)\s*;?\s*$'
+    )
+    lines = body.splitlines(keepends=True)
+    locals_by_name: dict[str, str] = {}
+    for line in lines:
+        match = local_state.fullmatch(line.strip())
+        if match:
+            locals_by_name[match.group(1)] = match.group(3)
+    result = []
+    for line in lines:
+        match = wrong_commit.fullmatch(line.strip())
+        if not match:
+            result.append(line)
+            continue
+        name = match.group(3)
+        namespace = match.group(2)
+        # Even a variable originally holding a live reference can be
+        # overwritten later; that requires a real proof, not silent removal.
+        original_refs = re.findall(
+            r'(?<![\w.])' + re.escape(name) + r'\s*=(?!=)', body
+        )
+        if locals_by_name.get(name) != namespace or len(original_refs) != 1:
+            result.append(line)
+            continue
+        # Preserve exact newline layout of the accepted body. Removing this
+        # call is safe only because the authoritative state is mutable.
+    return "".join(result)
