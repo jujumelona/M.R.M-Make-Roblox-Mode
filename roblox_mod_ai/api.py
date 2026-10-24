@@ -164,10 +164,16 @@ class CompleteRobloxAISession:
         # compiles that draft later. Older full-JSON clients explicitly select
         # this compatibility protocol and expect module IDs already assigned.
         eager_legacy = os.environ.get("RMM_LEGACY_ARCHITECTURE_PROTOCOL", "0") == "1"
-        plan = self.planner.plan(
-            prompt, project_mode=project_mode,
-            compile_architecture=eager_legacy,
-        )
+        if eager_legacy:
+            plan = self.planner.plan(
+                prompt, project_mode=project_mode,
+                compile_architecture=True,
+            )
+        else:
+            # Preserve the original planner API for mock connectors and
+            # downstream adapters. Only the explicitly legacy protocol
+            # needs a non-default compile_architecture keyword.
+            plan = self.planner.plan(prompt, project_mode=project_mode)
         self.authored_plan = plan
         self.save_plan()
         reply = CompleteChatReply(
