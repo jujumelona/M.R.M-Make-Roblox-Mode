@@ -85,3 +85,34 @@ def test_report45_preflight_matches_actual_typed_client_and_server_dispatch():
     assert "InvokeServer(payload)" in generated
     assert server.name in generation_scope(p)["model_action_risk_modules"]
     assert client.name not in generation_scope(p)["model_action_risk_modules"]
+
+def test_report45_two_phase_host_takeover_preserves_rank_protocol():
+    from test_plan83_rank_protocol import fixture
+    from roblox_mod_ai.host_protocol_handoff import rebase_complete_host_protocols
+
+    plan, server, client, remote = fixture()
+    # Before handoff, the original typed UI would win actual code generation.
+    before_final = {entry["name"]: entry["strategy"]
+                    for entry in generation_scope(plan)["modules"]}
+    assert before_final[client.name] == "host_typed_client_ui"
+    assert before_final[server.name] == "bounded_typed_server_action"
+
+    # Source-only preflight discovers the complete, matched host pair instead.
+    preflight = generation_scope(plan, for_protocol_handoff=True)
+    by_name = {entry["name"]: entry["strategy"] for entry in preflight["modules"]}
+    assert by_name[server.name] == "host_declarative_rank_upgrade"
+    assert by_name[client.name] == "host_declarative_rank_upgrade"
+    changed = rebase_complete_host_protocols(plan, preflight)
+    assert len(changed) == 1 and changed[0]["remote"] == remote
+    assert remote not in plan.game_design["dynamic_design"]["host_typed_actions"]
+    assert remote in plan.game_design["dynamic_design"]["host_rank_contracts"]
+
+    # Final source strategy must now match the actual codegen path and persist
+    # in the checkpoint signature. A second handoff must be idempotent.
+    final = generation_scope(plan)
+    assert next(entry["strategy"] for entry in final["modules"]
+                if entry["name"] == server.name) == "host_declarative_rank_upgrade"
+    assert next(entry["strategy"] for entry in final["modules"]
+                if entry["name"] == client.name) == "host_declarative_rank_upgrade"
+    assert rebase_complete_host_protocols(plan,
+        generation_scope(plan, for_protocol_handoff=True)) == []
