@@ -36,18 +36,18 @@ _ROLLBACK = re.compile(
 # attribute, or a properly owned item collection. Pure currency/resource
 # debits are PAYMENT, not the requested upgrade's RESULT.
 _PROGRESS_FIELD = re.compile(
-    r"\\b([A-Za-z_]\\w*)(?:\\.([A-Za-z_]\\w*))?\\s*"
-    r"(?:\\+=\\s*\\d+|=\\s*\\1(?:\\.\\2)?\\s*\\+\\s*\\d+)\\b", re.I,
+    r"\b([A-Za-z_]\w*)(?:\.([A-Za-z_]\w*))?\s*"
+    r"(?:\+=\s*\d+|=\s*\1(?:\.\2)?\s*\+\s*\d+)\b", re.I,
 )
 _PROGRESS_ATTRIBUTE = re.compile(
-    r"\\bSetAttribute\\s*\\(\\s*['\\\"][^'\\\"]+['\\\"]\\s*,\\s*"
-    r"[^\\n)]*\\+\\s*\\d+[^\\n)]*\\)", re.I,
+    r"\bSetAttribute\s*\(\s*['\\"][^'\\"]+['\\"]\s*,\s*"
+    r"[^\n)]*\+\s*\d+[^\n)]*\)", re.I,
 )
 _PROGRESS_INSERT = re.compile(
-    r"\\btable\\.insert\\s*\\(\\s*[A-Za-z_]\\w*\\s*\\.\\s*"
-    r"(?:inventory|owned|upgrades|equipment|crew|parts)\\b", re.I,
+    r"\btable\.insert\s*\(\s*[A-Za-z_]\w*\s*\.\s*"
+    r"(?:inventory|owned|upgrades|equipment|crew|parts)\b", re.I,
 )
-_ACTUAL_UPGRADE = re.compile(r"\\b(?:upgrad\\w*|improv\\w*|enhanc\\w*|performance|level\\s+up)\\b|성능\\s*강화", re.I)
+_ACTUAL_UPGRADE = re.compile(r"\b(?:upgrad\w*|improv\w*|enhanc\w*|performance|level\s+up)\b|성능\s*강화", re.I)
 
 
 def game_effect_safety_errors(source: str, *, routed_action: bool = True,
@@ -78,8 +78,8 @@ def game_effect_safety_errors(source: str, *, routed_action: bool = True,
             break
     if _ACTUAL_UPGRADE.search(declared_behavior):
         code_without_payment = re.sub(
-            r"(?im)^.*\\b(?:resources?|coins?|credits?|money|balance)\\b"
-            r".*(?:-=|=\\s*[^\\n]*\\s*-\\s*[^\\n]+).*?$",
+            r"(?im)^.*\b(?:resources?|coins?|credits?|money|balance)\b"
+            r".*(?:-=|=\s*[^\n]*\s*-\s*[^\n]+).*?$",
             "", code,
         )
         if (not _PROGRESS_FIELD.search(code_without_payment)
