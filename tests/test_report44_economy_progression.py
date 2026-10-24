@@ -2,8 +2,8 @@
 
 Real failed generation #43 mined ore into RMMInventory.resources but minted no
 Coins. All new players started at 0 and peer barter could only redistribute
-coins that did not exist. The host composes existing audited market + barter
-without inventing money, assets, prices or a second Remote.
+coins that did not exist. The host uses the approved market for vague trade requests, adding
+P2P barter only when explicitly source-owned; no invented currency or Remotes.
 """
 from test_host_peer_barter import make_plan
 from roblox_mod_ai.host_peer_barter import (
@@ -22,13 +22,13 @@ def test_resource_to_coins_mining_trade_progression_is_reachable():
     scode = render_host_peer_barter(server, plan)
     ccode = render_host_peer_barter(client, plan)
     assert scode and ccode
-    assert 'Market.handleAction(player, services, select(2, ...))' in scode
-    assert 'Barter.handleAction(player, services, ...)' in scode
+    assert 'Market.handleAction' not in scode
+    assert 'Barter.handleAction' not in scode
     assert 'coins.Value += quantity * PRICE_PER_ORE' in scode
     assert 'inventory.resources -= quantity' in scode
     assert 'coins.Value > 2147483647 - quantity * PRICE_PER_ORE' in scode
-    assert 'remote:InvokeServer("sell", 1)' in ccode
-    assert 'remote:InvokeServer(table.unpack(args, 1, args.n))' in ccode
+    assert 'remote:InvokeServer(1)' in ccode
+    assert 'remote:InvokeServer(table.unpack(args, 1, args.n))' not in ccode
     assert scode.rstrip().endswith("return Service")
     for source, path in (
         (scode, "src/server/Trader.luau"),
@@ -127,3 +127,26 @@ def test_finite_mining_nodes_restock_for_multi_section_ship_builds():
         assert 'depleted.remaining = NODE_INITIAL' in source
         assert 'part:SetAttribute("ResourceDepleted", false)' in source
     assert "coins.Value" not in _SERVER_RESOURCES_NEAREST
+
+
+def test_combined_market_and_peer_only_when_both_requested():
+    server, client, plan = make_plan()
+    plan.requested_prompt = (
+        "Mine resources, earn coins by selling ores to the market, and "
+        "trade items between players"
+    )
+    assert _needs_earned_currency_market(plan)
+    src = render_host_peer_barter(server, plan)
+    client_src = render_host_peer_barter(client, plan)
+    assert src and client_src
+    assert 'Market.handleAction(player, services, select(2, ...))' in src
+    assert 'Barter.handleAction(player, services, ...)' in src
+    assert 'remote:InvokeServer("sell", 1)' in client_src
+    assert 'remote:InvokeServer(table.unpack(args, 1, args.n))' in client_src
+
+
+def test_model_invented_peer_trade_without_market_or_authorization_fails():
+    server, client, plan = make_plan()
+    plan.requested_prompt = "Build a ship out of mined resources"
+    assert render_host_peer_barter(server, plan) is None
+    assert render_host_peer_barter(client, plan) is None
