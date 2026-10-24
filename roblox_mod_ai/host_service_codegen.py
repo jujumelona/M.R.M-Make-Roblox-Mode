@@ -21,6 +21,7 @@ from .server_interface_audit import dependency_api_errors
 from .scoped_luau_abi import (
     host_abi_guidance, normalize_trusted_player_aliases,
     typed_input_abi_errors, typed_input_fields_used,
+    remove_redundant_state_commit,
 )
 from .request_semantics import request_semantic_errors
 from .world_motion_contract import vehicle_motion_code_errors
@@ -123,6 +124,8 @@ def normalize_verified_server_body(body: str, proposal: RobloxProposal) -> str:
             "services.PlayerDataManager.GetState(" +
             body[match.end():]
         )
+    if "SetState" not in methods:
+        body = remove_redundant_state_commit(body)
     return body
 
 
@@ -520,6 +523,9 @@ def try_scaffolded_server(
             # attempt, not only after the orchestrator has already exhausted
             # the scoped unit. Retry the short body with exact exported APIs.
             diagnostics.extend(dependency_api_errors(module, proposal, candidate))
+            from .gameplay_effect_safety import game_effect_safety_errors
+            diagnostics.extend(game_effect_safety_errors(
+                candidate, routed_action=True))
             diagnostics.extend("ROBLOX_API_INVALID: " + m
                                for m in invalid_luau_apis(candidate))
             diagnostics.extend(request_semantic_errors(
