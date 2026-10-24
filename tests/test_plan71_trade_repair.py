@@ -166,3 +166,22 @@ def test_failed_trade_model_reply_is_reported_not_hidden():
         )
     assert "rejected:" in str(exc.value)
     assert "FOCUSED_NO_PROGRESS" in str(exc.value)
+
+
+
+def test_truncated_local_gap_responses_do_not_restart_entire_facet():
+    router = Router([
+        ValueError("Model JSON completion truncated (finish_reason=length)"),
+        ValueError("Model JSON completion truncated (finish_reason=length)"),
+        {"action": (
+            "Server validates a player-initiated ore trade, deducts owned "
+            "ore and credits the player's earned currency balance."
+        )},
+    ])
+    result = complete_source_owned_actions(
+        router, SOURCE, initial_actions=initial(),
+    )
+    assert len(result) == 4
+    assert result[-1]["source_quote"] == "거래"
+    assert len(router.calls) == 3
+    assert not _coverage_issues(SOURCE, result)
