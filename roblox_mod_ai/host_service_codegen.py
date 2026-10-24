@@ -18,6 +18,7 @@ from .host_capped_ship_parts import eligible_capped_ship_parts
 from .luau_api_sanity import invalid_luau_apis
 from .roblox_value_contract import roblox_value_contract_errors
 from .world_object_abi import world_lookup_guidance, world_lookup_errors
+from .world_instance_type_audit import world_instance_type_errors
 from .luau_service_contract import service_contract_checks
 from .server_interface_audit import dependency_api_errors
 from .scoped_luau_abi import (
@@ -578,6 +579,7 @@ def try_scaffolded_server(
                                for m in invalid_luau_apis(candidate))
             diagnostics.extend(roblox_value_contract_errors(candidate))
             diagnostics.extend(world_lookup_errors(candidate, proposal, module))
+            diagnostics.extend(world_instance_type_errors(candidate, proposal))
             diagnostics.extend(request_semantic_errors(
                 candidate, proposal.requested_prompt))
             if diagnostics:
