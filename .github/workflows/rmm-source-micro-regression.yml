@@ -20,6 +20,7 @@ on:
       - 'roblox_mod_ai/scoped_luau_abi.py'
       - 'roblox_mod_ai/request_semantics.py'
       - 'roblox_mod_ai/world_object_abi.py'
+      - 'roblox_mod_ai/host_protocol_handoff.py'
       - 'roblox_mod_ai/gameplay_effect_safety.py'
       - 'roblox_mod_ai/host_service_codegen.py'
       - 'roblox_mod_ai/module_generation_gate.py'
@@ -40,6 +41,7 @@ on:
       - 'tests/test_plan79_source_to_peer_abi.py'
       - 'tests/test_plan79_world_contract.py'
       - 'tests/test_plan80_host_service_and_input_contract.py'
+      - 'tests/test_plan80_host_protocol_handoff.py'
       - '.github/workflows/rmm-source-micro-regression.yml'
   workflow_dispatch:
 jobs:
@@ -69,4 +71,5 @@ jobs:
           python -m pytest -q tests/test_plan79_source_to_peer_abi.py
           python -m pytest -q tests/test_plan79_world_contract.py
           python -m pytest -q tests/test_plan80_host_service_and_input_contract.py
+          python -m pytest -q tests/test_plan80_host_protocol_handoff.py
           python -m pytest -q tests/test_plan67_compact_atomic.py tests/test_plan67_four_action_scope.py
