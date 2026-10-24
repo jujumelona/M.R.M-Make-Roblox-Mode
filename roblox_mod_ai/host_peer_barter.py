@@ -50,6 +50,58 @@ def is_bilateral_asset_exchange(description: str) -> bool:
     )
 
 
+def _needs_earned_currency_market(proposal) -> bool:
+    """Allow resource cash-out only when the original source asks to earn money.
+
+    Two-player trading transfers existing balances but cannot create the
+    currency that starts at zero for every new player.
+    """
+    source = str(getattr(proposal, "requested_prompt", "") or "").casefold()
+    resource = re.search(r"(?:자원|광물|채굴|파밍|\b(?:ore|resources?|mining|mine)\b)", source)
+    currency = re.search(r"(?:돈|화폐|코인|\b(?:money|coins?|credits?|currency)\b)", source)
+    earn = re.search(r"(?:모으|벌|얻|판매|팔|거래|\b(?:earn|sell|trade|exchange)\b)", source)
+    only_peers = (
+        re.search(r"(?:플레이어끼리|유저끼리|player.to.player|between players)", source)
+        and not re.search(r"(?:판매|팔|돈모으|earn|sell|market)", source)
+    )
+    return bool(resource and currency and earn and not only_peers)
+
+
+def _with_market(module, remote: str) -> str:
+    """Compose existing audited market and barter implementations on one ABI."""
+    from .host_trading import _SERVER as MARKET_SERVER, _CLIENT as MARKET_CLIENT
+    if module.kind == ModuleKind.CLIENT_SCRIPT:
+        market = MARKET_CLIENT.replace(
+            'remote:InvokeServer(1)', 'remote:InvokeServer("sell", 1)')
+        if market.count('remote:InvokeServer("sell", 1)') != 1:
+            raise ValueError("MARKET_CLIENT_ABI_CHANGED")
+        return ("--!strict\n"
+                "do\n" + _CLIENT.replace("--!strict", "", 1)
+                .replace("__REMOTE__", json.dumps(remote)) +
+                "\nend\n"
+                "do\n" + market.replace("--!strict", "", 1)
+                .replace("__REMOTE__", json.dumps(remote)) +
+                "\nend\n")
+    return (
+        "--!strict\n"
+        "local Barter = (function()\n" + _SERVER.replace("--!strict", "", 1)
+        + "\nend)()\n"
+        "local Market = (function()\n" + MARKET_SERVER.replace("--!strict", "", 1)
+        + "\nend)()\n"
+        "local Service = {}\n"
+        "function Service.start(services)\n"
+        "    Barter.start(services)\n"
+        "    Market.start(services)\n"
+        "end\n"
+        "function Service.handleAction(player, services, ...)\n"
+        '    if select("#", ...) == 2 and (...) == "sell" then\n'
+        '        return Market.handleAction(player, services, select(2, ...))\n'
+        '    end\n'
+        "    return Barter.handleAction(player, services, ...)\n"
+        "end\nreturn Service\n"
+    )
+
+
 def render_host_peer_barter(module, proposal):
     if not module.module_id.startswith("dyn_") or module.kind not in (
         ModuleKind.SERVER_MODULE, ModuleKind.CLIENT_SCRIPT
@@ -73,6 +125,13 @@ def render_host_peer_barter(module, proposal):
     if (len(routes) != 1 or routes[0][1].get("kind") != "RemoteFunction"
             or routes[0][1].get("max_args") == 0):
         return None
+    # Mining-backed games that request earning credits need a producer
+    # of spendable currency; P2P balance exchange alone cannot satisfy it.
+    allow_market = (_needs_earned_currency_market(proposal)
+                    and (routes[0][1].get("max_args") is None
+                         or routes[0][1].get("max_args") >= 2))
+    if allow_market:
+        return _with_market(module, routes[0][0])
     if module.kind == ModuleKind.SERVER_MODULE:
         return _SERVER if module.file_path.startswith("src/server/") else None
     return (_CLIENT.replace("__REMOTE__", json.dumps(routes[0][0]))
