@@ -204,8 +204,11 @@ def test_followup_server_contract_uses_existing_ship_profile_not_fake_sibling_ap
             )
 
     model = Capture()
-    assert try_scaffolded_server(next_module, p, model, LuauStaticAnalyzer())
-    assert len(model.prompts) == 1
+    # A launch-eligibility attribute is NOT physical vehicle movement.
+    # Preserve the exact source/ship profile ABI in prompts but fail closed
+    # on a model body that never relocates the assembled craft.
+    assert try_scaffolded_server(next_module, p, model, LuauStaticAnalyzer()) is None
+    assert len(model.prompts) >= 1
     assert '"RMMShipSections").sections' in model.prompts[0]
     assert "getAssembly" in model.prompts[0]
 
