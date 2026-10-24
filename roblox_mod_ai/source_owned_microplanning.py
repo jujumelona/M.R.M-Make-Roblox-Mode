@@ -95,6 +95,7 @@ def needs_compound_microplanning(source: str) -> bool:
 # still comes from the model and must pass the unchanged semantic validators.
 _GAP_QUOTE_PATTERNS = {
     "SOURCE_TRADE_ACTION_MISSING": r"거래|교환|판매|매매|\b(?:trade|exchange|barter|purchase|sell)\b",
+    "SOURCE_PURCHASE_PAYMENT_MISSING": r"구매|구입|매입|\b(?:purchas\w*|buy|bought)\b",
     "RESOURCE_GATHER_ACTION_MISSING": r"자원\s*파밍|자원\s*채굴|광물|채굴|\b(?:mining|gather|harvest)\b",
     "SOURCE_CURRENCY_EARNING_MISSING": r"돈\s*모으|돈\s*벌|코인|화폐|\b(?:earn|money|currency)\b",
     "SOURCE_SECTION_BUILD_MISSING": r"부위|부품|조립|제작|만들|\b(?:section|part|build|assembl)\w*\b",
