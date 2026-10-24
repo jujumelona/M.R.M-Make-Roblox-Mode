@@ -16,7 +16,9 @@ from .atomic_action_quotes import (
     SourceActionBindingError, eligible_atomic_action_spans,
     verify_or_bind_actions,
 )
-from .semantic_preservation import source_intent_conflicts
+from .semantic_preservation import (
+    source_intent_conflicts, distinct_upgrade_action_gaps,
+)
 
 _MAX_ACTIONS = 6
 
@@ -66,10 +68,13 @@ def _coverage_issues(source: str, bound: list[dict[str, str]]) -> list[str]:
     # action must CLAIM its concrete authoritative effect; accepting vague
     # labels here would drop farming, earning or trades whose absence the
     # source validator can detect only in implementation mode.
-    return source_intent_conflicts(
-        source, ". ".join(row["action"] for row in bound),
-        require_implementation=True,
-    )
+    claims = [row["action"] for row in bound]
+    return [
+        *source_intent_conflicts(
+            source, ". ".join(claims), require_implementation=True,
+        ),
+        *distinct_upgrade_action_gaps(source, claims),
+    ]
 
 
 def needs_compound_microplanning(source: str) -> bool:
