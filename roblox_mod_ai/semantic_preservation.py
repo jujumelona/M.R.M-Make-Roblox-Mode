@@ -298,6 +298,31 @@ def source_intent_conflicts(
             "server-owned gather/harvest/mine effect on a real resource "
             "source, not only using previously owned crafting materials"
         )
+    # Buying a component is not the same as constructing a sectional
+    # vehicle. When the user explicitly asks to make the craft piece by
+    # piece, require an actual assembly/install/build state transition.
+    sectional_build_requested = re.search(
+        r"우주선.{0,45}(?:부위|부품|부분).{0,60}(?:만들|조립|제작)|"
+        r"(?:build|construct|assemble).{0,70}"
+        r"(?:ship|spacecraft|craft).{0,70}(?:part|section|module)",
+        source, re.I,
+    )
+    sectional_build_effect = re.search(
+        r"\b(?:build\w*|construct\w*|assembl\w*|creat\w*|"
+        r"attach\w*|install\w*|fabricat\w*)\b"
+        r".{0,110}\b(?:ship|spacecraft|craft|section|part|module|hull)\b|"
+        r"\b(?:section|part|module)\b.{0,90}"
+        r"\b(?:attach\w*|install\w*|assembl\w*|construct\w*)\b|"
+        r"(?:우주선|선체).{0,65}(?:제작|조립|장착|생성|건설)",
+        text, re.I,
+    )
+    if (require_implementation and sectional_build_requested
+            and not sectional_build_effect):
+        errors.append(
+            "SOURCE_SECTION_BUILD_MISSING: a requested piece-by-piece craft "
+            "requires server-owned construction/attachment, not just a "
+            "purchase or catalog entry"
+        )
     # A named exchange mechanic cannot be replaced by a craft recipe or a
     # generic "trade available" label. Require an observable server-side
     # transfer/payment, while allowing purchase, sale, barter and exchange.
@@ -336,7 +361,7 @@ def source_intent_conflicts(
             )
             for effect in transfer_effect.finditer(sentence)
         )
-        for sentence in re.split(r"[.!?;\n]+", text)
+        for sentence in re.split(r"[.!?\n]+", text)
     )
     if (require_implementation and trade_requested
             and not trade_effect_linked):
