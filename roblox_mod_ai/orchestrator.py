@@ -126,6 +126,23 @@ class RobloxProductionOrchestrator:
         """
         start = time.perf_counter()
         proposal = candidate.proposal if isinstance(candidate, RobloxAuthoredPlan) else candidate
+        # Phase boundary: planning captures original user requirements and
+        # NEVER requires the 9B model to prove server code semantics. When
+        # actual production is requested, compile executable architecture
+        # using the implementation validators before any Luau generation.
+        # A failed implementation contract remains a production error, not a
+        # retroactive failure to CREATE the user's source-owned plan.
+        if proposal.game_design.get("planning_phase") == "intent_draft":
+            from .planner import RobloxGameDesignPlanner
+            compiled = RobloxGameDesignPlanner(
+                router=self.router, output_root=self.workspace_root,
+            ).plan(
+                proposal.requested_prompt,
+                project_mode=proposal.game_design.get(
+                    "project_mode", "new_experience"),
+                compile_architecture=True,
+            )
+            proposal = compiled.proposal
         normalize_economy_ledger(proposal)
         normalize_dynamic_server_modules(proposal)
         # Mining with no declared physical target is not a safe player action.
