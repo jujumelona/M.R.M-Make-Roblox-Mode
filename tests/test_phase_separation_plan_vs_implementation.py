@@ -94,9 +94,7 @@ def test_plan_captures_all_intent_even_if_impl_model_unavailable(
     ]["ready_for_codegen"]
     assert not authored.proposal.game_design[
         "pre_design_research"
-    ]["architecture_attempts"] if "architecture_attempts" in (
-        authored.proposal.game_design["pre_design_research"]
-    ) else True
+    ].get("architecture_attempts")
     reply = CompleteChatReply(
         message=authored.text, approval_hash=authored.calculate_hash(),
         authored_plan=authored,
@@ -160,3 +158,55 @@ def test_real_implementation_still_fails_closed_until_codegen_ready(tmp_path):
         audit_implementation_blueprint,
     )
     assert audit_implementation_blueprint(plan.proposal)["passed"] is False
+
+
+
+def test_unclassified_and_unmatched_source_still_creates_a_plan(
+    tmp_path, monkeypatch,
+):
+    monkeypatch.setenv("RMM_ENABLE_AI_DETAILED_PLAN", "0")
+
+    class IncompleteResearch(ResearchOnly):
+        def research(self, prompt):
+            data = super().research(prompt)
+            # The model did not decompose a nuanced request. That cannot
+            # prevent saving the ORIGINAL intent and starting production.
+            data["ledger"]["unmatched_requirements"] = ["classification-pending"]
+            data["ledger"]["decomposition_pending"] = ["chunk-pending"]
+            data["ledger"]["classification_unverified"] = ["chunk-pending"]
+            return data
+
+    p = "Create a reactive weather ecosystem"
+    authored = RobloxGameDesignPlanner(
+        router=UnavailableModel(), pre_design_research=IncompleteResearch(),
+        output_root=tmp_path,
+    ).plan(p)
+    reply = CompleteChatReply(
+        message=authored.text, approval_hash=authored.calculate_hash(),
+        authored_plan=authored,
+    )
+    assert reply.ready_to_build
+    assert authored.proposal.requested_prompt == p
+    assert authored.proposal.game_design["planning_phase"] == "intent_draft"
+    assert not authored.proposal.game_design[
+        "implementation_blueprint"
+    ]["ready_for_codegen"]
+
+
+def test_invalid_original_source_hash_is_not_a_valid_saved_draft(
+    tmp_path, monkeypatch,
+):
+    monkeypatch.setenv("RMM_ENABLE_AI_DETAILED_PLAN", "0")
+    p = "Create a botanical greenhouse"
+    authored = RobloxGameDesignPlanner(
+        router=UnavailableModel(), pre_design_research=ResearchOnly(),
+        output_root=tmp_path,
+    ).plan(p)
+    authored.proposal.game_design["pre_design_research"][
+        "ledger"
+    ]["request_sha256"] = "tampered"
+    reply = CompleteChatReply(
+        message=authored.text, approval_hash=authored.calculate_hash(),
+        authored_plan=authored,
+    )
+    assert not reply.ready_to_build
