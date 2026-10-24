@@ -475,7 +475,7 @@ def source_intent_conflicts(
             )
             for payment in payment_debit.finditer(sentence)
         )
-        for sentence in re.split(r"[.!?\\n]+", text)
+        for sentence in re.split(r"[.!?\n]+", text)
     )
     if (require_implementation and purchase_requested
             and not paid_purchase):
