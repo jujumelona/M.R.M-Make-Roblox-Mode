@@ -109,12 +109,12 @@ def normalize_verified_server_body(body: str, proposal: RobloxProposal) -> str:
         # global. Keep the same assignment/shadow constraints as the peer
         # normalizer. Calls without this exact host injection still fail.
         alias = re.compile(
-            r"\\blocal\\s+PlayerDataManager\\s*=\\s*"
-            r"services\\s*\\.\\s*PlayerDataManager\\b"
+            r"\blocal\s+PlayerDataManager\s*=\s*"
+            r"services\s*\.\s*PlayerDataManager\b"
         )
         bindings = list(alias.finditer(executable))
         assignments = re.findall(
-            r"(?<![\\w.:])PlayerDataManager\\s*=(?!=)", executable
+            r"(?<![\w.:])PlayerDataManager\s*=(?!=)", executable
         )
         if len(bindings) != 1 or len(assignments) != 1:
             raise ValueError(
