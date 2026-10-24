@@ -134,7 +134,7 @@ def render_host_peer_barter(module, proposal):
     original = str(getattr(proposal, "requested_prompt", "") or "")
     peer_authorized = bool(
         _EXPLICIT_PEER_TRADE.search(original)
-        or re.search(r"\\bbetween\\s+players\\b", original, re.I)
+        or re.search(r"\bbetween\s+players\b", original, re.I)
     )
     if allow_market and not peer_authorized:
         # A vague user trade request does NOT authorize cross-player
