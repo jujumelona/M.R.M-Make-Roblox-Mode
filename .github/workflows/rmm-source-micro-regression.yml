@@ -21,6 +21,9 @@ on:
       - 'roblox_mod_ai/request_semantics.py'
       - 'roblox_mod_ai/world_object_abi.py'
       - 'roblox_mod_ai/host_protocol_handoff.py'
+      - 'roblox_mod_ai/world_instance_type_audit.py'
+      - 'roblox_mod_ai/vehicle_identity_contract.py'
+      - 'roblox_mod_ai/world_motion_contract.py'
       - 'roblox_mod_ai/gameplay_effect_safety.py'
       - 'roblox_mod_ai/host_service_codegen.py'
       - 'roblox_mod_ai/module_generation_gate.py'
@@ -42,6 +45,8 @@ on:
       - 'tests/test_plan79_world_contract.py'
       - 'tests/test_plan80_host_service_and_input_contract.py'
       - 'tests/test_plan80_host_protocol_handoff.py'
+      - 'tests/test_plan81_world_instance_runtime_abi.py'
+      - 'tests/test_plan81_vehicle_actor_identity.py'
       - '.github/workflows/rmm-source-micro-regression.yml'
   workflow_dispatch:
 jobs:
@@ -72,4 +77,6 @@ jobs:
           python -m pytest -q tests/test_plan79_world_contract.py
           python -m pytest -q tests/test_plan80_host_service_and_input_contract.py
           python -m pytest -q tests/test_plan80_host_protocol_handoff.py
+          python -m pytest -q tests/test_plan81_world_instance_runtime_abi.py
+          python -m pytest -q tests/test_plan81_vehicle_actor_identity.py
           python -m pytest -q tests/test_plan67_compact_atomic.py tests/test_plan67_four_action_scope.py
