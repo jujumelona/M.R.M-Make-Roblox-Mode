@@ -325,7 +325,7 @@ def complete_source_owned_actions(
     )
     failed_proposals: set[str] = set()
     rejection_evidence: list[str] = []
-    while len(raw) < max_actions:
+    while True:
         gaps = _coverage_issues(source, bound)
         if not gaps:
             return verify_or_bind_actions(
@@ -343,6 +343,11 @@ def complete_source_owned_actions(
                 require_complete=False, max_actions=max_actions,
             )
             continue
+        # An existing action can be corrected even when all six action slots
+        # are occupied. New gameplay actions, unlike local field repairs,
+        # must respect the source-owned maximum.
+        if len(raw) >= max_actions:
+            break
         occupied = {row["source_quote"] for row in bound}
         candidates = [
             {"id": s["id"], "quote": s["quote"]}
