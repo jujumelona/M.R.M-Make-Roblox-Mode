@@ -15,6 +15,7 @@ from .host_lifecycle_codegen import try_scaffolded_lifecycle
 from .scaffold_policy import (single_host_action, single_client_action,
                               single_passive_service, scaffold_exhausted,
                               is_host_scaffolded_source)
+from .host_level_upgrade import render_rank_protocol
 from .host_gameplay import render_host_gameplay
 from .generation_provenance import host_source_must_regenerate
 from .host_mode_navigation import eligible_mode_navigation, try_mode_navigation
@@ -179,6 +180,12 @@ class LuauCodeGenerator:
                         module, getattr(self.router, "last_scaffold_attempts", []),
                         "typed_server_action")
                 return body
+        # A complete host-owned rank protocol replaces the empty typed
+        # transport as an atomic server/client pair in dependency preflight.
+        # Its bounded model output is numeric DESIGN DATA only.
+        rank_protocol = render_rank_protocol(module, proposal, self.router)
+        if rank_protocol is not None:
+            return rank_protocol
         # Authored novel mechanics must NEVER be dispatched to same-name
         # first-party templates whose behavior was not contract-matched.
         if module.module_id == "mod_game_objective":
