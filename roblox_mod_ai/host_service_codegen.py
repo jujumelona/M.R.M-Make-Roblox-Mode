@@ -528,8 +528,8 @@ def try_scaffolded_server(
             # peer ABI, effect and security checks still run afterwards.
             if (diagnostics and any("unexpected token `end`" in err
                                     for err in diagnostics)
-                    and re.search(r"\\n\\s*end\\s*$", body)):
-                trimmed = re.sub(r"\\n\\s*end\\s*$", "", body)
+                    and re.search(r"\n\s*end\s*$", body)):
+                trimmed = re.sub(r"\n\s*end\s*$", "", body)
                 alternative = _shell(
                     trimmed,
                     [x["id"] for x in choices] if choices else None,
