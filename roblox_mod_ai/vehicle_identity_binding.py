@@ -145,3 +145,81 @@ def bind_vehicle_actors(proposal: Any) -> list[dict[str, Any]]:
     if changes:
         design.setdefault("host_vehicle_identity_bindings", []).extend(changes)
     return changes
+
+
+def materialize_source_linked_space_arrivals(proposal: Any) -> list[dict[str, Any]]:
+    """Create a real orbit arrival only for a uniquely bound, host-owned ship.
+
+    This is a *world prerequisite*, not a claim of playtested flight. In a
+    sourced assembly->launch chain, a missing destination used to force the
+    9B coder to invent workspace.Orbit and misuse the assembly root as a Model.
+    An unrelated mover or an ambiguous ship does not qualify.
+    """
+    from hashlib import sha256
+    from .host_ordered_assembly import eligible_ordered_assembly
+
+    design = (getattr(proposal, "game_design", {}) or {}).get("dynamic_design")
+    if not isinstance(design, dict):
+        return []
+    motions = design.get("host_world_motion")
+    ownership = design.get("module_world_objects")
+    world = design.get("world_objects")
+    if not isinstance(motions, dict) or not isinstance(ownership, dict) or not isinstance(world, list):
+        return []
+    modules = {mod.name: mod for mod in getattr(proposal, "modules", [])}
+    by_id = {mod.module_id: mod for mod in getattr(proposal, "modules", [])}
+    results = []
+    for owner_name, motion in motions.items():
+        if (not isinstance(motion, dict)
+                or motion.get("kind") != "vehicle_world_transition"
+                or not re.search(r"space|orbit", str(motion.get("destination", "")), re.I)):
+            continue
+        owner = modules.get(owner_name)
+        builder = by_id.get(motion.get("builder_module_id"))
+        actor = motion.get("actor_world_name")
+        if (owner is None or builder is None or not isinstance(actor, str)
+                or eligible_ordered_assembly(builder, proposal) is None
+                or actor not in (ownership.get(owner.module_id) or [])
+                or actor not in (ownership.get(builder.module_id) or [])):
+            continue
+        # Only a complete host builder exposes the Model returned by
+        # GetOwnedActor(player), rather than the materialized Part root.
+        routes = [(remote, row) for remote, row in
+                  (design.get("host_actions") or {}).items()
+                  if isinstance(row, dict) and row.get("service") == owner_name]
+        if len(routes) != 1 or routes[0][1].get("kind") != "RemoteFunction":
+            continue
+        typed = (design.get("host_typed_actions") or {}).get(routes[0][0])
+        if not isinstance(typed, dict) or typed.get("transport_only") is not True:
+            continue
+        client = modules.get(typed.get("client"))
+        if (client is None or typed.get("server") != owner_name
+                or actor not in (ownership.get(client.module_id) or [])):
+            continue
+        names = {obj.get("name"): obj for obj in world if isinstance(obj, dict)}
+        current_refs = ownership.get(owner.module_id) or []
+        existing = [name for name in current_refs
+                    if re.search(r"arrival|landing", str(name), re.I)
+                    and names.get(name, {}).get("class") in ("Part", "MeshPart")]
+        if existing:
+            continue  # Use a real previously declared destination.
+        arrival = "RMMOrbitArrival_" + sha256(owner.module_id.encode("utf-8")).hexdigest()[:10]
+        if arrival in names:
+            # A name collision must not silently rebind another author's Part.
+            continue
+        dest_number = sum(1 for obj in world if isinstance(obj, dict)
+                          and str(obj.get("name", "")).startswith("RMMOrbitArrival_"))
+        world.append({"name": arrival, "class": "Part",
+                      "position": [0.0, 8000.0 + 300.0 * dest_number, 0.0],
+                      "size": [96.0, 4.0, 96.0]})
+        ownership[owner.module_id] = list(dict.fromkeys(current_refs + [arrival]))
+        ownership[client.module_id] = list(dict.fromkeys(
+            (ownership.get(client.module_id) or []) + [arrival]))
+        motion["arrival_world_name"] = arrival
+        motion["arrival_source"] = "host_materialized_source_linked_orbit"
+        results.append({"server": owner_name, "builder": builder.name,
+                        "client": client.name, "arrival": arrival,
+                        "studio_verified": False})
+    if results:
+        design.setdefault("host_arrival_materializations", []).extend(results)
+    return results
