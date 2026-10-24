@@ -9,13 +9,15 @@ def main():
     os.environ.update({"RMM_PREDESIGN_LIVE_SEARCH":"0",
                        "RMM_ENABLE_DYNAMIC_DESIGN":"1",
                        "RMM_ENABLE_MODEL_GENERATION":"1",
-                       "RMM_ENABLE_MODEL_QUERY_EXPANSION":"0"})
+                       "RMM_ENABLE_MODEL_QUERY_EXPANSION":"0",
+                       "RMM_LEGACY_ARCHITECTURE_PROTOCOL":"1"})
     sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"tests"))
     from test_dynamic_architecture import LocalGameModel
     root=Path(".rmm-code-e2e").resolve()
     session=CompleteRobloxAISession(output_root=root)
     mock=LocalGameModel()
     session.planner.router=mock
+    session.orchestrator.router=mock
     session.orchestrator.code_generator.router=mock
     reply=session.plan("펫 부화")
     assert reply.ready_to_build
