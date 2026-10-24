@@ -16,6 +16,7 @@ from .host_level_upgrade import eligible_rank_protocol
 from .host_ordered_assembly import eligible_ordered_assembly
 from .host_vehicle_departure import eligible_departure
 from .host_gameplay import render_host_gameplay
+from .host_space_actions import render_host_space_action
 from .host_mode_navigation import eligible_mode_navigation
 from .host_mode_unlock import eligible_mode_unlock
 from .host_catalog_purchase import eligible_catalog_purchase
@@ -46,6 +47,8 @@ def generation_scope(proposal: Any) -> dict[str, Any]:
     for module in proposal.modules:
         if not module.module_id.startswith("dyn_"):
             strategy = "builtin_source"
+        elif render_host_space_action(module, proposal) is not None:
+            strategy = "host_space_action"
         elif render_host_gameplay(module, proposal) is not None:
             strategy = "host_verified_template"
         elif eligible_departure(module, proposal) is not None:
