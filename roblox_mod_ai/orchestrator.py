@@ -276,6 +276,22 @@ class RobloxProductionOrchestrator:
                     "unrouted_modules": orphaned,
                     "requires_replanning": True,
                 }
+            # A plan that builds a vehicle in one service but launches an
+            # unrelated placeholder world Part cannot become valid through
+            # ANY Luau-body retry. Catch the cross-stage identity breach
+            # before paying for bounded-model coding. This is an IMPLEMENTATION
+            # contract error, not a failure to preserve the original plan.
+            from .vehicle_identity_contract import vehicle_identity_errors
+            actor_errors = vehicle_identity_errors(proposal)
+            if actor_errors:
+                tool_results["vehicle_identity_errors"] = actor_errors
+                return {
+                    "success": False,
+                    "error": "UNBOUND_VEHICLE_IDENTITY: " + "; ".join(actor_errors),
+                    "requires_contract_revision": True,
+                    "requires_replanning": True,
+                    "implementation_blocker": "cross_system_physical_actor",
+                }
             # First-party declarative compilers own BOTH their server ABI
             # and client payload. A generic typed-only stub must not override
             # a fully matched implementation; rebase such stubs as a pair
