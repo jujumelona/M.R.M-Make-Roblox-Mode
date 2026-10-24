@@ -115,3 +115,45 @@ def test_no_invented_or_unlinked_arrival():
     module = next(x for x in proposal.modules if x.name == 'AlienCombat77D3DB1Server')
     proposal.game_design['dynamic_design']['host_arrival_materializations'][0]['arrival'] = 'Unknown'
     assert render_host_space_action(module, proposal) is None
+
+def test_report42_attribute_owner_userid_is_numeric_not_player_instance():
+    from roblox_mod_ai.roblox_value_contract import roblox_value_contract_errors
+    assert roblox_value_contract_errors(
+        'if ship:GetAttribute("OwnerUserId")==player.UserId then return true end'
+    ) == []
+    assert roblox_value_contract_errors(
+        'if ship:GetAttribute("OwnerUserId")==player["UserId"] then return true end'
+    ) == []
+    assert any("ATTRIBUTE_NOT_INSTANCE" in item for item in
+               roblox_value_contract_errors(
+                  'if ship:GetAttribute("Owner")==player then return true end'))
+
+
+def test_report42_shared_arrival_authorized_only_for_linked_host_actions():
+    from roblox_mod_ai.world_object_abi import world_lookup_errors, world_names
+    from roblox_mod_ai.roblox_value_contract import roblox_value_contract_errors
+    proposal = fixture()
+    marker = 'RMMOrbitArrival_7c3d1fecc9'
+    for prefix in ('AlienCombat', 'MarkPlanetColonized', 'ExtractOtherPlanetMineral'):
+        module = next(m for m in proposal.modules if m.name.startswith(prefix)
+                      and m.kind == 'server_module')
+        code = render_host_space_action(module, proposal)
+        assert code is not None
+        assert marker in world_names(proposal, module)[1]
+        assert world_lookup_errors(code, proposal, module) == []
+        assert roblox_value_contract_errors(code) == []
+    weapon = next(m for m in proposal.modules
+                  if m.name.startswith('WeaponPerformanceUpgrade') and m.kind == 'server_module')
+    assert marker not in world_names(proposal, weapon)[1]
+    assert world_lookup_errors('workspace:FindFirstChild("' + marker + '")',
+                               proposal, weapon)
+
+
+def test_report42_reject_untrusted_arrival_even_if_world_declared():
+    from roblox_mod_ai.world_object_abi import world_names
+    proposal = fixture()
+    module = next(m for m in proposal.modules if m.name.startswith('AlienCombat')
+                  and m.kind == 'server_module')
+    linked = proposal.game_design['dynamic_design']['host_vehicle_identity_bindings']
+    linked.clear()
+    assert 'RMMOrbitArrival_7c3d1fecc9' not in world_names(proposal, module)[1]
