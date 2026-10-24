@@ -77,7 +77,8 @@ def test_plan66_second_attempt_combines_gather_with_build_and_purchase():
     names = {row["name"] for row in chosen}
     assert "Craft section construction" in names
     assert "source-owned-planet-resource-gather" in names
-    assert "Craft section sale" in names, "Money earning cannot be purchase-only"\n    assert "Craft section purchase" not in names
+    assert "Craft section sale" in names, "Money earning cannot be purchase-only"
+    assert "Craft section purchase" not in names
     combined_server = " ".join(row["server_behavior"] for row in chosen)
     assert source_intent_conflicts(SOURCE, combined_server) == []
 
