@@ -459,10 +459,23 @@ def source_intent_conflicts(
         r"(?:돈|잔액|코인|화폐|자원|재료).{0,30}(?:차감|감소|소비|지불)",
         re.I,
     )
+    # A payment verb under NEGATION is not a debit. Previously
+    # "purchases the item but does not debit currency" passed because the
+    # negation was checked only at the sentence end, not at the effect verb.
+    negated_payment_prefix = re.compile(
+        r"\\b(?:no|never|not|without|cannot|can't|doesn't|don't|didn't)\\b"
+        r"(?:\\W+\\w+){0,4}\\W*$|"
+        r"\\b(?:does|do|did|will|would|can)\\s+not\\s*$", re.I,
+    )
     paid_purchase = any(
-        trade_action.search(sentence) and payment_debit.search(sentence)
-        and not negated_effect_prefix.search(sentence.strip())
-        for sentence in re.split(r"[.!?\n]+", text)
+        trade_action.search(sentence)
+        and any(
+            not negated_payment_prefix.search(
+                sentence[max(0, payment.start() - 85):payment.start()]
+            )
+            for payment in payment_debit.finditer(sentence)
+        )
+        for sentence in re.split(r"[.!?\\n]+", text)
     )
     if (require_implementation and purchase_requested
             and not paid_purchase):
