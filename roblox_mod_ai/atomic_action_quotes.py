@@ -305,6 +305,17 @@ def verify_or_bind_actions(router: Any, source: str, actions: Any,
         if seen_indexes != set(missing):
             raise SourceActionBindingError("ATOMIC_SOURCE_ID_MAPPING_INCOMPLETE")
 
+    # A source-anchored action cannot silently introduce monetization or an
+    # unrequested participant. This is checked BEFORE model server authoring;
+    # previously an unrelated action label could pass source ID binding.
+    from .request_semantics import request_semantic_errors
+    for row in normalized:
+        unsolicited = request_semantic_errors(row["action"], source)
+        if unsolicited:
+            raise SourceActionBindingError(
+                "ATOMIC_SOURCE_UNREQUESTED_ACTION: " +
+                "; ".join(unsolicited),
+            )
     if len({row["source_quote"] for row in normalized}) != len(normalized):
         raise SourceActionBindingError("ATOMIC_SOURCE_QUOTES_NOT_DISTINCT")
     for row in normalized:
