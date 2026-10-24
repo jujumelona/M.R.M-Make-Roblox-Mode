@@ -191,6 +191,49 @@ def source_multi_upgrade_errors(
     return failures
 
 
+def distinct_upgrade_action_gaps(source_span: str,
+                                 action_descriptions: list[str]) -> list[str]:
+    """Require independently owned upgrade actions for enumerated targets.
+
+    A single sentence that mentions weapons, crew and ships is not proof of
+    three separately purchasable/upgradable systems. Verify that every
+    named source category can be assigned a DIFFERENT authored action via
+    bipartite matching; compound actions may cover more than one category
+    only when independent actions also exist.
+    """
+    source = str(source_span or "")
+    if not (_UPGRADE_EFFECT.search(source) and all(
+            p.search(source) for p in _UPGRADE_OBJECTS.values())):
+        return []
+    names = list(_UPGRADE_OBJECTS)
+    neighbors = {
+        name: [i for i, description in enumerate(action_descriptions)
+               if _UPGRADE_OBJECTS[name].search(str(description))
+               and _UPGRADE_EFFECT.search(str(description))]
+        for name in names
+    }
+    assigned: dict[int, str] = {}
+
+    def assign(category: str, visited: set[int]) -> bool:
+        for index in neighbors[category]:
+            if index in visited:
+                continue
+            visited.add(index)
+            if index not in assigned or assign(assigned[index], visited):
+                assigned[index] = category
+                return True
+        return False
+
+    for name in names:
+        assign(name, set())
+    covered = set(assigned.values())
+    return [
+        "SOURCE_DISTINCT_UPGRADE_ACTION_MISSING: " + category +
+        " needs its own source-owned gameplay action"
+        for category in names if category not in covered
+    ]
+
+
 def source_intent_conflicts(
     source_span: str,
     described_intent: str,
