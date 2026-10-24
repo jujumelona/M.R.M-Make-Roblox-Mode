@@ -127,7 +127,7 @@ def author_verified_atomic_systems(
                         "its owner and invalid-input rejection. For "
                         "observable_result, show the actual changed state. "
                         "No new actions, no menus, no paraphrased errors. "
-                        "Maximum " + str(cap) + " characters. JSON only.\\n" +
+                        "Maximum " + str(cap) + " characters. JSON only.\n" +
                         json.dumps({
                             "original_source_quote": action["source_quote"],
                             "source_owned_action": action["action"],
