@@ -206,3 +206,54 @@ def test_real_debit_and_owned_upgrade_are_required_together():
         "and installs the purchased weapon into the owned loadout."
     )
     assert not source_intent_conflicts("무기 구매", result)
+
+
+
+def test_payment_repair_then_visible_result_repair_without_restarting(monkeypatch):
+    # First completion is invalid in BOTH independent semantic fields.
+    # Attempt 2 fixes only the server debit; attempt 3 fixes only the outcome.
+    from roblox_mod_ai import atomic_action_authoring as atomic
+
+    original = {
+        "name": "BuyWeapon",
+        "server_behavior": (
+            "Server upgrades the player's weapon but never transfers credits."
+        ),
+        "world_entities": ["Weapon"],
+    }
+    router = Router(
+        original,
+        {"observable_result": "The menu opens but the weapon is unchanged."},
+        transaction(),
+        {"observable_result": (
+            "The player's owned weapon now visibly displays the purchased "
+            "upgrade with improved attack power."
+        )},
+    )
+
+    def errors(action, system, prompt):
+        issue = {}
+        if "deducts" not in system["server_behavior"]:
+            issue["server_behavior"] = [
+                "SOURCE_TRADE_ACTION_MISSING: purchase lacks payment",
+            ]
+        if "now visibly displays" not in system["observable_result"]:
+            issue["observable_result"] = [
+                "OBSERVABLE_PURCHASE_EFFECT_MISSING",
+            ]
+        return issue
+
+    monkeypatch.setattr(atomic, "_field_issues", errors)
+    result = atomic.author_verified_atomic_systems(
+        router, [PURCHASE], source_clause="무기 구매",
+        original_prompt="무기 구매",
+        json_schema=schema(),
+    )
+    assert len(result) == 1
+    assert result[0]["name"] == "BuyWeapon"
+    assert "deducts" in result[0]["server_behavior"]
+    assert "now visibly displays" in result[0]["observable_result"]
+    assert len(router.calls) == 4
+    assert set(router.calls[-1][1]["json_schema"]["properties"]) == {
+        "observable_result",
+    }
