@@ -90,7 +90,10 @@ def test_host_guidance_uses_actual_names_and_exported_apis():
     )
     assert '"selection": "text"' in text
     assert '"quantity": "integer"' in text
-    assert '"PlayerDataManager": ["GetState", "OnReady"]' in text
+    # Small-model gameplay bodies may use GetState only. OnReady registers
+    # lifecycle callbacks and is host-owned, not an action-scoped capability.
+    assert '"PlayerDataManager": ["GetState"]' in text
+    assert '"PlayerDataManager": ["GetState", "OnReady"]' not in text
     assert "SetState/SaveState" in text
     assert "immutable" in text.lower() or "IMMUTABLE" in text
 
