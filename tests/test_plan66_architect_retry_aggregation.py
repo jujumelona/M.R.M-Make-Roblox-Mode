@@ -102,3 +102,75 @@ def test_three_partial_actions_accumulate_instead_of_overwriting_each_other(
     assert len(output["remotes"]) == 3
     assert len(report["architecture_subplans"]) == 1
     assert report["architecture_subplans"][0]["validated"]
+
+
+
+def test_already_complete_generic_multi_action_output_is_not_trimmed(
+        monkeypatch, tmp_path):
+    """Aggregation must not turn an unconstrained two-action feature into one."""
+    monkeypatch.setenv("RMM_ENABLE_DYNAMIC_DESIGN", "1")
+    monkeypatch.setenv("RMM_DISABLE_ARCHITECTURE_CACHE", "1")
+    source = "The player uses controls to toggle a gate open or closed."
+    systems = [
+        {
+            "name": "GateToggleOpen",
+            "server_behavior": (
+                "Server checks the player's lever activation and sets "
+                "the gate to open when the open button is used."
+            ),
+            "observable_result": (
+                "The gate physically opens for the player to pass through."
+            ),
+            "client_behavior": (
+                "Player presses the open control and sees the gate open."
+            ),
+            "world_entities": ["Gate"],
+            "interaction": "request_response",
+            "input_mode": "custom",
+        },
+        {
+            "name": "GateToggleClose",
+            "server_behavior": (
+                "Server verifies the close control and sets the gate "
+                "to closed, blocking the passage until it is reopened."
+            ),
+            "observable_result": (
+                "The gate visibly closes and blocks the doorway."
+            ),
+            "client_behavior": (
+                "Player presses the close control and sees the gate close."
+            ),
+            "world_entities": ["Gate"],
+            "interaction": "request_response",
+            "input_mode": "custom",
+        },
+    ]
+
+    class OneReply:
+        calls = 0
+
+        def complete_json(self, *_args, **_kwargs):
+            self.calls += 1
+            if self.calls > 1:
+                raise AssertionError("No replan of complete generic actions")
+            return {"systems": systems}
+
+    report = {"ledger": {
+        "original_prompt": source,
+        "requirements": [{
+            "id": "req-001", "statement": source, "source": "user_prompt",
+        }],
+        "facets": [{
+            "id": "intent-gates",
+            "requirements": ["req-001"],
+            "source_span": source,
+            "search_query": "Roblox gate toggle switch control open close",
+        }],
+    }, "evidence": []}
+    model = OneReply()
+    result = RobloxDynamicArchitect(
+        model, checkpoint_dir=tmp_path,
+    ).design(source, report, [])
+    assert model.calls == 1
+    assert len(result["modules"]) == 4
+    assert len(result["remotes"]) == 2
