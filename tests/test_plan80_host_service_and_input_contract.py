@@ -88,3 +88,42 @@ def test_source_authorized_choice_remains_enforced_without_dropping_quantity():
     ])
     assert [row["id"] for row in c["inputs"]] == ["selection", "quantity"]
     assert c["inputs"][0]["type"] == "choice"
+
+
+
+def test_unrelated_world_targets_are_not_exposed_to_a_coder():
+    from roblox_mod_ai.world_object_abi import (
+        world_lookup_guidance, world_lookup_errors,
+    )
+    mod = NS(name="IndependentAction", module_id="dyn_self")
+    p = NS(modules=[mod], game_design={"dynamic_design": {
+        "world_objects": [
+            {"name": "AuthorizedMachine", "class": "Part"},
+            {"name": "OtherPlayersInventory", "class": "Part"},
+        ],
+        "module_world_objects": {mod.module_id: ["AuthorizedMachine"]},
+    }})
+    instructions = world_lookup_guidance(p, mod)
+    assert '"AuthorizedMachine"' in instructions
+    assert "OtherPlayersInventory" not in instructions
+    assert world_lookup_errors(
+        'local a = workspace:FindFirstChild("AuthorizedMachine")',
+        p, mod,
+    ) == []
+    assert any("WORLD_OBJECT_NAME_UNDECLARED" in e for e in
+               world_lookup_errors(
+                   'local a = workspace:FindFirstChild("OtherPlayersInventory")',
+                   p, mod,
+               ))
+
+
+def test_unrelated_world_target_still_exists_but_is_forbidden_for_this_action():
+    from roblox_mod_ai.world_object_abi import world_names
+    first = NS(name="A", module_id="dyn_a")
+    second = NS(name="B", module_id="dyn_b")
+    p = NS(game_design={"dynamic_design": {
+        "world_objects": [{"name": "TargetA"}, {"name": "TargetB"}],
+        "module_world_objects": {"dyn_a": ["TargetA"], "dyn_b": ["TargetB"]},
+    }})
+    assert world_names(p, first)[1] == ["TargetA"]
+    assert world_names(p, second)[1] == ["TargetB"]
