@@ -321,7 +321,13 @@ def build_implementation_blueprint(proposal: Any) -> dict[str, Any]:
     # the architect could replace an enemy encounter with PvP or omit settlement
     # state while the blueprint claimed every requirement was implemented.
     # A missing semantic classification must be resolved *before* any Luau.
-    unknown_chunks = ledger.get("classification_unverified") or []
+    # Recovered chunks were independently certified against current server
+    # owners and acceptance above. Do not keep them in the unresolved list;
+    # unverified or forged recovery stays blocked as before.
+    unknown_chunks = [
+        chunk for chunk in (ledger.get("classification_unverified") or [])
+        if chunk not in recovered_chunks
+    ]
     if unknown_chunks:
         blocked.append(
             "unclassified_gameplay_requirements: " +
