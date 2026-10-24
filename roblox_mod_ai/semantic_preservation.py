@@ -295,6 +295,31 @@ def source_intent_conflicts(
             "server-owned gather/harvest/mine effect on a real resource "
             "source, not only using previously owned crafting materials"
         )
+    # A named exchange mechanic cannot be replaced by a craft recipe or a
+    # generic "trade available" label. Require an observable server-side
+    # transfer/payment, while allowing purchase, sale, barter and exchange.
+    trade_requested = re.search(
+        r"거래|교환|\b(?:trad(?:e|es|ing)|exchang(?:e|es|ing)|barter\w*)\b",
+        source, re.I,
+    )
+    trade_action = re.search(
+        r"\b(?:trad(?:e|es|ing)|exchang(?:e|es|ing)|barter\w*|"
+        r"sell\w*|sold|buy\w*|bought|purchas\w*)\b|거래|교환|구매|판매",
+        text, re.I,
+    )
+    transfer_effect = re.search(
+        r"\b(?:transfers?|deducts?|subtracts?|credits?|grants?|"
+        r"debits?|pays?|consumes?|removes?|adds?|deposits?|"
+        r"exchanges?|trades?|sells?|buys?|purchases?)\b"
+        r"|차감|지급|이체|교환|소비|구매|판매",
+        text, re.I,
+    )
+    if (require_implementation and trade_requested
+            and not (trade_action and transfer_effect)):
+        errors.append(
+            "SOURCE_TRADE_ACTION_MISSING: a requested trade, sale or "
+            "purchase needs a server-owned exchange/payment state change"
+        )
     if _COLONIZATION.search(source):
         if not _INTENT_COLONY.search(text):
             errors.append("SETTLEMENT_DROPPED: user requested colony settlement gameplay")
