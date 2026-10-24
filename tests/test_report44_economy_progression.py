@@ -98,3 +98,18 @@ def test_first_purchase_only_for_canonical_weapon_item_and_own_price():
                                             "Purchase weapon upgrade", False)
     assert _allows_paid_first_ownership(proposal, "owned_weapon",
                                         "Validate purchase weapon upgrade", True)
+
+
+def test_server_state_exchange_is_not_rejected_for_missing_trade_keyword():
+    from roblox_mod_ai.semantic_preservation import source_intent_conflicts
+    source = "Trade mined resources for earned credits"
+    server = (
+        "The server validates the player's owned resource quantity and "
+        "the server-fixed sale price, debits the resource and credits "
+        "earned game currency to the authenticated player's wallet."
+    )
+    errors = source_intent_conflicts(source, server)
+    assert not any("SOURCE_TRADE_ACTION_MISSING" in x for x in errors), errors
+    missing = "The server validates both values but updates neither balance."
+    assert any("SOURCE_TRADE_ACTION_MISSING" in x
+               for x in source_intent_conflicts(source, missing))
