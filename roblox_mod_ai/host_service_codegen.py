@@ -577,7 +577,7 @@ def try_scaffolded_server(
             diagnostics.extend("ROBLOX_API_INVALID: " + m
                                for m in invalid_luau_apis(candidate))
             diagnostics.extend(roblox_value_contract_errors(candidate))
-            diagnostics.extend(world_lookup_errors(candidate, proposal))
+            diagnostics.extend(world_lookup_errors(candidate, proposal, module))
             diagnostics.extend(request_semantic_errors(
                 candidate, proposal.requested_prompt))
             if diagnostics:
