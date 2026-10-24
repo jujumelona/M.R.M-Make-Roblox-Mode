@@ -276,6 +276,15 @@ class RobloxProductionOrchestrator:
                     "unrouted_modules": orphaned,
                     "requires_replanning": True,
                 }
+            # First-party declarative compilers own BOTH their server ABI
+            # and client payload. A generic typed-only stub must not override
+            # a fully matched implementation; rebase such stubs as a pair
+            # before spending any tokens on model-generated Luau.
+            from .host_protocol_handoff import rebase_complete_host_protocols
+            source_scope = generation_scope(proposal)
+            handoffs = rebase_complete_host_protocols(proposal, source_scope)
+            if handoffs:
+                tool_results["host_protocol_handovers"] = handoffs
             scope = generation_scope(proposal)
             tool_results["generation_scope"] = scope
             trajectory.record("preflight", "generation scope", {
