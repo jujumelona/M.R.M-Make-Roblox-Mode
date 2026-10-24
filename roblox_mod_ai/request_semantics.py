@@ -52,6 +52,10 @@ _PEER_TRADE_OUTPUT = re.compile(
     r"\b(?:two|both|other)\s+players?'?\s*(?:inventor(?:y|ies)|trade|offers?)\b|"
     r"\b(?:trades?|exchanges?)\s+(?:with|between)\s+(?:other\s+)?players?\b|"
     r"\bother\s+player['’]s\s+inventor(?:y|ies)\b|"
+    r"\bseller['’]s\s+(?:owned\s+)?(?:inventor(?:y|ies)|resources?|items?)\b"
+    r".{0,240}\bbuyer['’]s\s+(?:currency\s+)?(?:balance|credits?|inventor(?:y|ies))\b|"
+    r"\bbuyer['’]s\s+(?:currency\s+)?(?:balance|credits?|inventor(?:y|ies))\b"
+    r".{0,240}\bseller['’]s\s+(?:owned\s+)?(?:inventor(?:y|ies)|resources?|items?)\b|"
     r"플레이어\s*(?:간|끼리)\s*(?:거래|교환)|유저\s*(?:간|끼리)\s*(?:거래|교환)",
     re.I,
 )
