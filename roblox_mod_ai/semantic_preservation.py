@@ -403,7 +403,12 @@ def source_intent_conflicts(
     # generic "trade available" label. Require an observable server-side
     # transfer/payment, while allowing purchase, sale, barter and exchange.
     trade_requested = re.search(
-        r"거래|교환|\b(?:trad(?:e|es|ing)|exchang(?:e|es|ing)|barter\w*)\b",
+        # Purchase is also an exchange. Previously '구매' and 'purchase'
+        # alone did not trigger the payment validator at all; a no-cost
+        # stat upgrade could pass as an implemented purchase.
+        r"거래|교환|구매|구입|판매|매매|"
+        r"\b(?:trad(?:e|es|ing)|exchang(?:e|es|ing)|barter\w*|"
+        r"purchas\w*|buy|buys|bought|sell\w*|sold)\b",
         source, re.I,
     )
     trade_action = re.compile(
@@ -414,8 +419,7 @@ def source_intent_conflicts(
     transfer_effect = re.compile(
         r"\b(?:transfers?|deducts?|subtracts?|credits?|grants?|"
         r"debits?|pays?|consumes?|removes?|adds?|deposits?|"
-        r"delivers?|awards?|equips?|recruits?|hires?|hired|"
-        r"upgrad\w*|improv\w*|install\w*)\b"
+        r"delivers?|awards?)\b"
         r"|차감|지급|이체|소비|추가|증가|감소|지불|전달|정산",
         re.I,
     )
@@ -439,6 +443,33 @@ def source_intent_conflicts(
         )
         for sentence in re.split(r"[.!?\n]+", text)
     )
+    # A purchasable upgrade is not an exchange without a debit. A player
+    # may have a catalog and receive increased stats for free, but that does
+    # not satisfy an explicitly requested purchase. Non-purchase trades
+    # continue to support barter, sale and direct asset exchanges.
+    purchase_requested = re.search(
+        r"구매|구입|\b(?:purchas\w*|buy|buys|bought)\b",
+        source, re.I,
+    )
+    payment_debit = re.compile(
+        r"\b(?:deduct\w*|subtract\w*|debit\w*|pay\w*|spend\w*|"
+        r"charg\w*|consum\w*|decreas\w*|reduc\w*)\b.{0,110}"
+        r"\b(?:coins?|credits?|currency|balance|money|funds?|"
+        r"resources?|materials?|ores?)\b|"
+        r"(?:돈|잔액|코인|화폐|자원|재료).{0,30}(?:차감|감소|소비|지불)",
+        re.I,
+    )
+    paid_purchase = any(
+        trade_action.search(sentence) and payment_debit.search(sentence)
+        and not negated_effect_prefix.search(sentence.strip())
+        for sentence in re.split(r"[.!?\n]+", text)
+    )
+    if (require_implementation and purchase_requested
+            and not paid_purchase):
+        errors.append(
+            "SOURCE_PURCHASE_PAYMENT_MISSING: purchase requires a real "
+            "server-owned debit of the buyer's funds or materials"
+        )
     if (require_implementation and trade_requested
             and not trade_effect_linked):
         errors.append(
