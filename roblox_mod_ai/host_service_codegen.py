@@ -22,7 +22,7 @@ from .server_interface_audit import dependency_api_errors
 from .scoped_luau_abi import (
     host_abi_guidance, normalize_trusted_player_aliases,
     typed_input_abi_errors, typed_input_fields_used,
-    remove_redundant_state_commit,
+    remove_redundant_state_commit, normalize_verified_peer_abi,
 )
 from .request_semantics import request_semantic_errors
 from .world_motion_contract import vehicle_motion_code_errors
@@ -92,6 +92,7 @@ def normalize_verified_server_body(body: str, proposal: RobloxProposal) -> str:
     arbitrary invented methods and unknown peer ABIs still fail validation.
     """
     body = normalize_trusted_player_aliases(body)
+    body = normalize_verified_peer_abi(body, proposal)
     if _MODEL_PROTOCOL.search(body):
         raise ValueError(
             "MODEL_PROTOCOL_CONTAMINATION: coder returned tool-call or chat "
