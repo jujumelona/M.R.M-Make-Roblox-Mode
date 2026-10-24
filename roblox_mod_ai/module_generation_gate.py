@@ -152,8 +152,22 @@ def generated_module_errors(
                 authored_action_body, state_key_used_by_executable_code,
             )
             body = authored_action_body(code)
+            from .scoped_luau_abi import (
+                typed_input_abi_errors, typed_input_fields_used,
+            )
             for typed in typed_routes:
                 contract = typed.get("contract") or {}
+                # The same schema must be enforced for fresh model snippets,
+                # checkpoint restores and manually imported files. A model
+                # may write 'args[2]' against a NAMED actionArgs table; Luau
+                # parses it but the value is nil at runtime.
+                if "-- RMM_GAMEPLAY_BODY_BEGIN" in code and isinstance(contract, dict):
+                    errors.extend(typed_input_abi_errors(body, contract))
+                    required_inputs = contract.get("inputs") or []
+                    if required_inputs and not typed_input_fields_used(body, contract):
+                        errors.append(
+                            "TYPED_INPUT_UNUSED: no declared named player "
+                            "input is read in the server gameplay body")
                 changes = (contract.get("state_changes", [])
                            if isinstance(contract, dict) else [])
                 # transport_only declares ONLY the input/Remote ABI. By
