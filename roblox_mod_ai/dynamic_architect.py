@@ -1697,9 +1697,9 @@ class RobloxDynamicArchitect:
                                         # Remote choice allowlist. Otherwise
                                         # the selection remains typed text and
                                         # Luau server code validates its meaning.
-                                        from .world_motion_contract import (
-                                            has_vehicle_motion_effect,
-                                        )
+                                        # The function is imported at module scope.
+                                        # A nested import shadows the enclosing closure
+                                        # and breaks earlier semantic validation.
                                         manifest = host_owned_action_contract(
                                             source_choices,
                                             world_entities=system.get(
