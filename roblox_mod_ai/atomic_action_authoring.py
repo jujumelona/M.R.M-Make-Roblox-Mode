@@ -7,6 +7,7 @@ discarding already validated siblings. Does NOT certify generated Luau.
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from typing import Any
 
 from .atomic_action_quotes import (
@@ -65,6 +66,16 @@ def author_verified_atomic_systems(
     """
     if not 1 <= max_attempts_per_action <= 3:
         raise ValueError("Invalid bounded atomic action budget")
+    # Constrain the model to the one-action contract at GENERATION time, not
+    # only after receiving its response. The shared facet schema permits up to
+    # three systems; reusing it for one atomic action induced multi-system
+    # responses and prematurely aborted otherwise valid sibling actions.
+    single_action_schema = deepcopy(json_schema)
+    systems_property = single_action_schema.get("properties", {}).get("systems")
+    if not isinstance(systems_property, dict) or systems_property.get("type") != "array":
+        raise ValueError("Atomic authoring requires a systems array schema")
+    systems_property["minItems"] = 1
+    systems_property["maxItems"] = 1
     accepted: list[dict[str, Any]] = []
     for index, action in enumerate(actions):
         if not all(isinstance(action.get(key), str)
@@ -74,6 +85,7 @@ def author_verified_atomic_systems(
             )
         system: dict[str, Any] | None = None
         seen: set[str] = set()
+        rejected_responses: set[str] = set()
         previous_issues: dict[str, list[str]] = {}
         for attempt in range(max_attempts_per_action):
             repair_field = (
@@ -145,15 +157,30 @@ def author_verified_atomic_systems(
                         "last_invalid_system": system,
                     }, ensure_ascii=False),
                     role="planner", temperature=0.0,
-                    max_tokens=600, json_schema=json_schema,
+                    max_tokens=600, json_schema=single_action_schema,
                 )
                 systems = response.get("systems") if isinstance(response, dict) else None
                 if (not isinstance(systems, list) or len(systems) != 1
                         or not isinstance(systems[0], dict)):
-                    raise SourceActionBindingError(
-                        "ATOMIC_ACTION_IMPLEMENTATION_INVALID: " + str(index) +
-                        ": exactly one system required"
+                    # A malformed atomic JSON envelope is a *local format*
+                    # failure. Keep the other verified actions untouched and
+                    # re-prompt only this action within its bounded budget.
+                    # Never accept the first child of a multi-system response.
+                    response_hash = json.dumps(
+                        response, sort_keys=True, ensure_ascii=False,
+                        default=str,
                     )
+                    if response_hash in rejected_responses:
+                        raise SourceActionBindingError(
+                            "ATOMIC_LOCAL_REPAIR_NO_PROGRESS: " + str(index) +
+                            ": repeated non-atomic model response"
+                        )
+                    rejected_responses.add(response_hash)
+                    previous_issues = {
+                        "format": ["Return exactly one system in the systems array; "
+                                   "do not return an actions list or several systems."]
+                    }
+                    continue
                 system = dict(systems[0])
             signature = json.dumps(system, sort_keys=True, ensure_ascii=False)
             if signature in seen:
