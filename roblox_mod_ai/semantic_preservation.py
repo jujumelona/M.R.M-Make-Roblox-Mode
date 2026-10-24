@@ -285,6 +285,16 @@ def source_intent_conflicts(
             "resources for currency and never acquires new resources "
             "from an authoritative gatherable source"
         )
+    if require_implementation and gathering_requested and not real_gathering:
+        # A craft recipe consuming existing inventory is NOT the resource
+        # gathering mechanic explicitly requested. Prior validations only
+        # rejected the narrower "sell stock for coins" inversion, so a
+        # craft-only plan silently passed even after mining was discarded.
+        errors.append(
+            "RESOURCE_GATHER_ACTION_MISSING: resource farming requires a "
+            "server-owned gather/harvest/mine effect on a real resource "
+            "source, not only using previously owned crafting materials"
+        )
     if _COLONIZATION.search(source):
         if not _INTENT_COLONY.search(text):
             errors.append("SETTLEMENT_DROPPED: user requested colony settlement gameplay")
