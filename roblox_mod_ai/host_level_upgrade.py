@@ -31,7 +31,8 @@ def eligible_rank_protocol(m:Any,p:Any)->tuple[str,str,str,bool]|None:
     if len(routes)!=1:return None
     remote,route=routes[0]
     if route.get("kind")!="RemoteFunction" or (d.get("remotes") or {}).get(remote)!="RemoteFunction":return None
-    spec=(d.get("host_typed_actions") or {}).get(remote)
+    spec=((d.get("host_typed_actions") or {}).get(remote)
+          or (d.get("host_rank_contracts") or {}).get(remote))
     if not isinstance(spec,dict) or spec.get("transport_only") is not True:return None
     if spec.get("server")!=server or spec.get("client")!=server.removesuffix("Server")+"Client":return None
     targets=[x for x in spec.get("world_entities",[]) if isinstance(x,str) and _NAME.fullmatch(x) and not _WALLET.search(x)]
