@@ -7,6 +7,7 @@ on:
       - 'roblox_mod_ai/atomic_action_authoring.py'
       - 'roblox_mod_ai/source_owned_microplanning.py'
       - 'roblox_mod_ai/typed_action_contract.py'
+      - 'roblox_mod_ai/host_level_upgrade.py'
       - 'roblox_mod_ai/semantic_preservation.py'
       - 'roblox_mod_ai/dynamic_architect.py'
       - 'roblox_mod_ai/planner.py'
@@ -49,6 +50,7 @@ on:
       - 'tests/test_plan81_world_instance_runtime_abi.py'
       - 'tests/test_plan81_vehicle_actor_identity.py'
       - 'tests/test_plan82_vehicle_identity_binding.py'
+      - 'tests/test_plan83_rank_protocol.py'
       - '.github/workflows/rmm-source-micro-regression.yml'
   workflow_dispatch:
 jobs:
@@ -82,4 +84,5 @@ jobs:
           python -m pytest -q tests/test_plan81_world_instance_runtime_abi.py
           python -m pytest -q tests/test_plan81_vehicle_actor_identity.py
           python -m pytest -q tests/test_plan82_vehicle_identity_binding.py
+          python -m pytest -q tests/test_plan83_rank_protocol.py
           python -m pytest -q tests/test_plan67_compact_atomic.py tests/test_plan67_four_action_scope.py
