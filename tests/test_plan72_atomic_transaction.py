@@ -75,6 +75,7 @@ def test_typed_transaction_has_explicit_payment_and_delivery():
 @pytest.mark.parametrize("bad", [
     transaction(paid="the server shows a trade menu but does not change balances"),
     transaction(paid="the server upgrades the item without a payment"),
+    transaction(paid="the server records a payment in the player's money balance"),
     transaction(received="the player sees the item in a menu and no inventory changes"),
     transaction(paid="no coins are deducted and the player pays nothing"),
     {"payment_mutation": "the server deducts owned credits",
