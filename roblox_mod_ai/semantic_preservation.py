@@ -318,8 +318,24 @@ def source_intent_conflicts(
         r"|차감|지급|이체|소비|추가|증가|감소|지불|전달|정산",
         re.I,
     )
+    # A model saying "does not transfer anything" is not proof of a
+    # completed purchase. Check each effect verb's polarity, so a denied
+    # invalid request does not hide a separate valid transaction either.
+    negated_effect_prefix = re.compile(
+        r"\b(?:no|not|never|without|cannot|can't|won't|"
+        r"doesn't|don't|didn't|fails?\s+to|refuses?\s+to|"
+        r"declines?\s+to|(?:does|do|did|will|would|can)\s+not)"
+        r"\s+(?:\w+\s+){0,3}$",
+        re.I,
+    )
     trade_effect_linked = any(
-        trade_action.search(sentence) and transfer_effect.search(sentence)
+        trade_action.search(sentence)
+        and any(
+            not negated_effect_prefix.search(
+                sentence[max(0, effect.start() - 90):effect.start()]
+            )
+            for effect in transfer_effect.finditer(sentence)
+        )
         for sentence in re.split(r"[.!?;\n]+", text)
     )
     if (require_implementation and trade_requested
