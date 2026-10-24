@@ -81,10 +81,10 @@ def test_multiple_unbound_targets_do_not_silently_claim_one():
     assert [row["id"] for row in c["inputs"]] == ["selection", "quantity"]
 
 
-def test_source_authorized_choice_is_one_server_enforced_id_not_dummy_quantity():
+def test_source_authorized_choice_remains_enforced_without_dropping_quantity():
     c = host_owned_action_contract([
         {"id": "basic", "label": "Basic"},
         {"id": "premium", "label": "Premium"},
     ])
-    assert [row["id"] for row in c["inputs"]] == ["selection"]
+    assert [row["id"] for row in c["inputs"]] == ["selection", "quantity"]
     assert c["inputs"][0]["type"] == "choice"
