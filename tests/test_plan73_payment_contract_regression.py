@@ -151,3 +151,29 @@ def test_payment_can_be_repaired_at_maximum_six_actions_without_seventh():
     assert "debits" in bound[0]["action"]
     assert not _coverage_issues(SOURCE, bound)
     assert len(router.calls) == 1
+
+
+
+def test_payment_repair_can_add_missing_purchase_verb_to_existing_upgrade():
+    items = _initial()
+    items[0]["action"] = (
+        "Server validates and upgrades the owned weapon attack damage."
+    )
+    assert any(item.startswith("SOURCE_PURCHASE_PAYMENT_MISSING:")
+               for item in _coverage_issues(
+                   SOURCE, verify_or_bind_actions(
+                       Router(), SOURCE, items,
+                       require_complete=False, max_actions=6,
+                   ),
+               ))
+    router = Router({"action": (
+        "Server validates weapon purchase, deducts the player's owned "
+        "credits and upgrades the weapon attack damage."
+    )})
+    result = complete_source_owned_actions(
+        router, SOURCE, initial_actions=items,
+    )
+    assert len(result) == 3
+    assert "deducts" in result[0]["action"]
+    assert not _coverage_issues(SOURCE, result)
+    assert len(router.calls) == 1
