@@ -40,7 +40,7 @@ _PROGRESS_FIELD = re.compile(
     r"(?:\+=\s*\d+|=\s*\1(?:\.\2)?\s*\+\s*\d+)\b", re.I,
 )
 _PROGRESS_ATTRIBUTE = re.compile(
-    r"\bSetAttribute\s*\(\s*['\\"][^'\\"]+['\\"]\s*,\s*"
+    r"""\bSetAttribute\s*\(\s*['"][^'"]+['"]\s*,\s*"""
     r"[^\n)]*\+\s*\d+[^\n)]*\)", re.I,
 )
 _PROGRESS_INSERT = re.compile(
@@ -82,8 +82,37 @@ def game_effect_safety_errors(source: str, *, routed_action: bool = True,
             r".*(?:-=|=\s*[^\n]*\s*-\s*[^\n]+).*?$",
             "", code,
         )
-        if (not _PROGRESS_FIELD.search(code_without_payment)
-                and not _PROGRESS_ATTRIBUTE.search(code_without_payment)
+        # Do not reject an arbitrary custom upgrade just because a static
+        # heuristic cannot understand its effect. Reject the proved bad form:
+        # a source state value read into a local and then assigned back to
+        # the SAME field, with no other positive advancement. Plan 79 paid
+        # twice and returned success after Inventory.level = level.
+        noop_read = re.compile(
+            r"\blocal\s+([A-Za-z_]\w*)\s*=\s*"
+            r"([A-Za-z_]\w*)\.([A-Za-z_]\w*)\b"
+        )
+        noop_reassigned = False
+        for read in noop_read.finditer(code_without_payment):
+            variable, owner, key = read.groups()
+            store = re.compile(
+                r"\b" + re.escape(owner) + r"\." + re.escape(key) +
+                r"\s*=\s*" + re.escape(variable) + r"\s*(?:;|$)",
+                re.M,
+            )
+            local_rewrites = re.findall(
+                r"(?<![\w.])" + re.escape(variable) + r"\s*=(?!=)",
+                code_without_payment,
+            )
+            if store.search(code_without_payment) and len(local_rewrites) == 1:
+                noop_reassigned = True
+                break
+        unmasked = _without_comments(raw)
+        attribute_progress = any(
+            code[m.start():m.start()+12] == "SetAttribute"
+            for m in _PROGRESS_ATTRIBUTE.finditer(unmasked)
+        )
+        if (noop_reassigned and not _PROGRESS_FIELD.search(code_without_payment)
+                and not attribute_progress
                 and not _PROGRESS_INSERT.search(code_without_payment)):
             errors.append(
                 "UPGRADE_EFFECT_MISSING: payment, inventory checks and an "
