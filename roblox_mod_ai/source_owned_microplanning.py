@@ -10,6 +10,7 @@ No heuristic genre actions or fabricated gameplay are inserted as defaults.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from .atomic_action_quotes import (
@@ -88,6 +89,97 @@ def needs_compound_microplanning(source: str) -> bool:
     return len({item.split(":", 1)[0] for item in issues}) >= 2
 
 
+# General source-language anchors for already reported semantic gaps. The
+# original source, not an error label or LLM invention, authorizes an action.
+# This lexicon merely chooses a short EXISTING source quote; gameplay behavior
+# still comes from the model and must pass the unchanged semantic validators.
+_GAP_QUOTE_PATTERNS = {
+    "SOURCE_TRADE_ACTION_MISSING": r"거래|교환|판매|매매|\b(?:trade|exchange|barter|purchase|sell)\b",
+    "RESOURCE_GATHER_ACTION_MISSING": r"자원\s*파밍|자원\s*채굴|광물|채굴|\b(?:mining|gather|harvest)\b",
+    "SOURCE_CURRENCY_EARNING_MISSING": r"돈\s*모으|돈\s*벌|코인|화폐|\b(?:earn|money|currency)\b",
+    "SOURCE_SECTION_BUILD_MISSING": r"부위|부품|조립|제작|만들|\b(?:section|part|build|assembl)\w*\b",
+    "SOURCE_PURCHASABLE_SUBSYSTEM_DROPPED": r"무기|선원|우주선|\b(?:weapon|crew|ship)\b",
+    "SOURCE_DISTINCT_UPGRADE_ACTION_MISSING": r"무기|선원|우주선|\b(?:weapon|crew|ship)\b",
+    "SETTLEMENT_DROPPED": r"식민|정착|개척|\b(?:colonize|settle|colony)\b",
+    "PLANETARY_MINERAL_MECHANIC_DROPPED": r"광물|광석|자원|\b(?:mineral|ore)\b",
+}
+
+
+def _focused_source_span(
+    source: str, missing: str, spans: list[dict[str, str]],
+    occupied: set[str],
+) -> dict[str, str] | None:
+    code = missing.split(":", 1)[0]
+    expression = _GAP_QUOTE_PATTERNS.get(code)
+    if code in {"SOURCE_PURCHASABLE_SUBSYSTEM_DROPPED",
+                "SOURCE_DISTINCT_UPGRADE_ACTION_MISSING"}:
+        category = re.search(r"\b(weapon|crew|ship)\b", missing, re.I)
+        if category:
+            expression = {
+                "weapon": r"무기|\bweapon(?:s)?\b",
+                "crew": r"선원|\bcrew\b",
+                "ship": r"우주선|\bship\b",
+            }[category.group(1).lower()]
+    if not expression:
+        return None
+    pattern = re.compile(expression, re.I)
+    # Require the claimed concept to exist in the user's ORIGINAL words.
+    if not pattern.search(source):
+        return None
+    matching = [row for row in spans
+                if row["quote"] not in occupied
+                and pattern.search(row["quote"])]
+    return min(matching, key=lambda row: (
+        len(row["quote"]), row.get("start", 0)
+    )) if matching else None
+
+
+def _focused_missing_action(
+    router: Any, source: str, missing: str,
+    spans: list[dict[str, str]], occupied: set[str],
+    prior_rejections: list[str],
+) -> dict[str, str] | None:
+    """Host selects exact source ownership; model supplies ONE effect string.
+
+    Plan 71 retried a ~923-token 48-source-ID prompt three times and got the
+    same 29-token short answer, never satisfying SOURCE_TRADE_ACTION_MISSING.
+    An action author does not need to classify 48 indices to explain ONE
+    explicitly requested mechanic.
+    """
+    row = _focused_source_span(source, missing, spans, occupied)
+    if row is None:
+        return None
+    response = router.complete_json(
+        "Write ONE concrete server gameplay action for this exact ORIGINAL "
+        "source phrase. Reply JSON {action:string} only. In one short "
+        "sentence specify the server-side input validation, the real "
+        "owned state change and what is transferred/earned/built. "
+        "A shop menu or an unchanged status is NOT gameplay. "
+        "Do not include ANY other action. No Roblox code, no source IDs. "
+        "Return the action in English, 35-160 characters. JSON only.\n" +
+        json.dumps({
+            "source_quote": row["quote"],
+            "required_effect": missing,
+            "rejected_previous": prior_rejections[-2:],
+        }, ensure_ascii=False),
+        role="planner", temperature=0.0, max_tokens=160,
+        json_schema={
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "minLength": 35, "maxLength": 160},
+            },
+            "required": ["action"], "additionalProperties": False,
+        },
+    )
+    action = response.get("action") if isinstance(response, dict) else None
+    if not isinstance(action, str) or not 35 <= len(action.strip()) <= 160:
+        raise SourceActionBindingError(
+            "ATOMIC_FOCUSED_ACTION_FORMAT_INVALID: " +
+            row["quote"][:50],
+        )
+    return {"source_id": row["id"], "action": action.strip()}
+
+
 def complete_source_owned_actions(
     router: Any, source: str, *, initial_actions: Any = None,
     max_actions: int = _MAX_ACTIONS,
@@ -126,6 +218,7 @@ def complete_source_owned_actions(
         router, source, raw, require_complete=False, max_actions=max_actions,
     )
     failed_proposals: set[str] = set()
+    rejection_evidence: list[str] = []
     while len(raw) < max_actions:
         gaps = _coverage_issues(source, bound)
         if not gaps:
@@ -170,29 +263,74 @@ def complete_source_owned_actions(
             proposed_signature = json.dumps(proposed, sort_keys=True,
                                              ensure_ascii=False)
             if proposed_signature in failed_proposals:
+                rejection_evidence.append("REPEATED_ACTION: " + str(proposed)[:200])
                 continue
             try:
                 checked = verify_or_bind_actions(
                     router, source, [*raw, proposed],
                     require_complete=False, max_actions=max_actions,
                 )
-            except SourceActionBindingError:
+            except SourceActionBindingError as exc:
                 failed_proposals.add(proposed_signature)
+                rejection_evidence.append(str(exc)[:250] + " ACTION: " + str(proposed)[:180])
                 continue
             after = _coverage_issues(source, checked)
             # Semantic coverage must ACTUALLY improve. Adding a duplicate
             # upgrade word or renaming an existing action is not progress.
             if len(after) >= len(gaps) or set(after) >= set(gaps):
                 failed_proposals.add(proposed_signature)
+                rejection_evidence.append("NO_COVERAGE_PROGRESS: " + "; ".join(after[:3]) + " ACTION: " + str(proposed)[:160])
                 continue
             raw.append(proposed)
             bound = checked
             appended = True
             break
         if not appended:
+            # Last-resort repair is narrower in INFORMATION, not a silent
+            # policy relaxation: choose an exact source-owned word in host
+            # code, ask the model for one effect ONLY, and validate with the
+            # very same complete source + individual attribution checks.
+            for _ in range(2):
+                try:
+                    replacement = _focused_missing_action(
+                        router, source, gaps[0], spans, occupied,
+                        rejection_evidence,
+                    )
+                except (ValueError, TypeError) as exc:
+                    rejection_evidence.append(
+                        "FOCUSED_REPLY_INVALID: " + str(exc)[:160],
+                    )
+                    continue
+                if replacement is None:
+                    break
+                try:
+                    checked = verify_or_bind_actions(
+                        router, source, [*raw, replacement],
+                        require_complete=False, max_actions=max_actions,
+                    )
+                except SourceActionBindingError as exc:
+                    rejection_evidence.append(
+                        "FOCUSED_OWNER_INVALID: " + str(exc)[:200],
+                    )
+                    continue
+                after = _coverage_issues(source, checked)
+                if len(after) >= len(gaps) or set(after) >= set(gaps):
+                    rejection_evidence.append(
+                        "FOCUSED_NO_PROGRESS: " +
+                        "; ".join(after[:2]) +
+                        " ACTION: " + replacement["action"][:160],
+                    )
+                    continue
+                raw.append(replacement)
+                bound = checked
+                appended = True
+                break
+        if not appended:
             raise SourceActionBindingError(
                 "ATOMIC_SOURCE_MISSING_ACTION_UNRESOLVED: " +
-                "; ".join(gaps[:3]),
+                "; ".join(gaps[:3]) +
+                " | rejected: " +
+                json.dumps(rejection_evidence[-4:], ensure_ascii=False)[:850],
             )
     remaining = _coverage_issues(source, bound)
     if remaining:
