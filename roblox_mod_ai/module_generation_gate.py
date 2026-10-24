@@ -15,6 +15,7 @@ from .dynamic_wiring import _mask_strings, _without_comments
 from .luau_api_sanity import invalid_luau_apis
 from .luau_service_contract import service_contract_checks
 from .server_interface_audit import dependency_api_errors
+from .gameplay_effect_safety import game_effect_safety_errors
 from .spec import ModuleKind, RobloxProposal
 
 
@@ -54,6 +55,9 @@ def generated_module_errors(
     masked = _mask_strings(stripped)
     errors.extend("ROBLOX_API_INVALID: " + item for item in invalid_luau_apis(code))
     errors.extend(dependency_api_errors(module, proposal, code))
+    if (module.kind == ModuleKind.SERVER_MODULE and
+            "-- RMM_GAMEPLAY_BODY_BEGIN" in code):
+        errors.extend(game_effect_safety_errors(code, routed_action=True))
     # A plan module_id is a Python-side identifier, NOT a Lua variable holding
     # a ModuleScript. Prior accepted clients emitted require(mod_network_bridge)
     # without declaring that name; the code parses but fails at runtime.
