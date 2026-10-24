@@ -397,6 +397,17 @@ def try_scaffolded_server(
         body = ""
         try:
             previous = attempts[-1] if attempts else None
+            overlength = bool(previous and (
+                (previous.get("model_runtime") or {}).get("finish_reason") == "length"
+                or any("finish_reason=length" in str(error)
+                       for error in previous.get("diagnostics", []))
+            ))
+            # Actual plan 77 returned 1200/1200 tokens three times and no
+            # candidate bytes. Escalate the bounded BODY budget only after an
+            # observed truncation; do not ask the same 9B model to repeat the
+            # same impossible maximum length on every attempt.
+            body_budget = (1200 if not overlength else
+                           (1800 if attempt == 1 else 2600))
             feedback = (
                 "\nLAST REJECTED BODY (NOT VALID CODE; DO NOT COPY):\n"
                 + previous["candidate"][:1300]
@@ -411,8 +422,13 @@ def try_scaffolded_server(
                 recovered = router.complete_json(
                     prompt + "\nOnly JSON {body:string} containing short action statements. "
                     "Do not output a whole module, function header or platform shell. "
-                    + feedback[-800:],
-                    role="coder", temperature=0.0, max_tokens=1200,
+                    "Use compact executable statements, ideally 20-60 lines, "
+                    "not a 200-line tutorial or repeated prose. "
+                    + ("The previous response ended before JSON closed; "
+                       "finish the JSON response in the new output budget. "
+                       if overlength else "")
+                    + feedback[-650:],
+                    role="coder", temperature=0.0, max_tokens=body_budget,
                     json_schema={
                         "type": "object", "properties": {"body": {"type": "string"}},
                         "required": ["body"],
