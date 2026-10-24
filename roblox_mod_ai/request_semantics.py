@@ -40,6 +40,7 @@ def _positive_monetization(text: str) -> bool:
 _EXPLICIT_PEER_TRADE = re.compile(
     r"플레이어\s*(?:간|끼리|들\s*끼리)|유저\s*(?:간|끼리)|"
     r"사용자\s*(?:간|끼리)|(?:서로|상호)\s*(?:거래|교환)|"
+    r"\bpeer\s+trades?\b|"
     r"\b(?:p2p|peer[- ]to[- ]peer|player[- ]to[- ]player)\b|"
     r"\bplayers?\s+(?:can\s+)?trade\s+(?:with\s+)?(?:each\s+other|one\s+another)\b|"
     r"\bplayers\s+(?:can\s+)?(?:trade|exchange)\b|"
