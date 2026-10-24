@@ -281,7 +281,14 @@ class RobloxProductionOrchestrator:
             # ANY Luau-body retry. Catch the cross-stage identity breach
             # before paying for bounded-model coding. This is an IMPLEMENTATION
             # contract error, not a failure to preserve the original plan.
+            from .vehicle_identity_binding import bind_vehicle_actors
             from .vehicle_identity_contract import vehicle_identity_errors
+            actor_bindings = bind_vehicle_actors(proposal)
+            if actor_bindings:
+                tool_results["vehicle_identity_bindings"] = actor_bindings
+                for record in actor_bindings:
+                    trajectory.record("preflight", "bind_existing_vehicle_root",
+                                      record, passed=True)
             actor_errors = vehicle_identity_errors(proposal)
             if actor_errors:
                 tool_results["vehicle_identity_errors"] = actor_errors
@@ -364,6 +371,8 @@ class RobloxProductionOrchestrator:
                 "module_facets": design.get("module_facets", {}),
                 "module_remotes": design.get("module_remotes", {}),
                 "module_world_objects": design.get("module_world_objects", {}),
+                "host_world_motion": design.get("host_world_motion", {}),
+                "host_vehicle_identity_bindings": design.get("host_vehicle_identity_bindings", []),
                 "host_actions": design.get("host_actions", {}),
                 "host_action_choices": design.get("host_action_choices", {}),
                 "host_client_actions": design.get("host_client_actions", {}),
