@@ -1534,6 +1534,28 @@ class RobloxDynamicArchitect:
                             )
                             draft, rejected_scope_names = ground_source_ownership(
                                 draft, attribution, source_clause=slice_request)
+                        # Protect each original source clause before compiling
+                        # UI/Remotes. A lexical scope filter previously dropped
+                        # "Resource harvesting" and "Trade" from a craft facet,
+                        # then accepted the remaining builder as a complete game.
+                        # A missing player-requested action must never be
+                        # silently certified just because one sibling passed.
+                        server_coverage = " ".join(
+                            str(row.get("server_behavior") or "")
+                            for row in draft.get("systems", [])
+                            if isinstance(row, dict)
+                        )
+                        missing_source_effects: list[str] = []
+                        for source_row in subset:
+                            missing_source_effects.extend(source_intent_conflicts(
+                                str(source_row.get("statement") or ""),
+                                server_coverage,
+                            ))
+                        if missing_source_effects:
+                            raise DynamicDesignError(
+                                "SOURCE_ACTION_COVERAGE: " +
+                                "; ".join(dict.fromkeys(missing_source_effects))
+                            )
                         # Two disjoint enum domains can be restored after a
                         # verified exchange. Ambiguous input is never guessed.
                         draft, named_world_refs = normalize_world_names(draft)
@@ -1830,6 +1852,19 @@ class RobloxDynamicArchitect:
                             "Implement an actual server state transition "
                             "for each action in the original source clause; "
                             "do not echo context-only mechanics."
+                        ]
+                        semantic_repair = None
+                    if "SOURCE_ACTION_COVERAGE:" in previous_error:
+                        # Missing actions are separate source-owned obligations,
+                        # not an opportunity to polish an unrelated accepted
+                        # mechanic. The next scoped pass can decompose each
+                        # missing action independently when the router supports
+                        # atomic decomposition.
+                        semantic_replan = [
+                            item.strip()
+                            for item in previous_error.split(
+                                "SOURCE_ACTION_COVERAGE:", 1)[1].split(";")
+                            if item.strip()
                         ]
                         semantic_repair = None
                     if "SOURCE_WORLD_TRANSITION:" in previous_error:
