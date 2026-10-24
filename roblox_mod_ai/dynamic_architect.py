@@ -1002,6 +1002,10 @@ class RobloxDynamicArchitect:
             # Preserve only locally source-verified atomic children when a
             # later GGUF completion truncates. Scoped to this facet and run.
             atomic_verified_cache: dict[tuple[str, str], dict[str, Any]] = {}
+            # The immutable, source-complete action plan is retained if a
+            # later atomic server/outcome body fails on this facet. Do not
+            # spend GGUF tokens reselecting the same action IDs.
+            source_verified_action_plan: list[dict[str, str]] | None = None
             successful = False
             cache_hit = False
             for attempt in range(3):
@@ -1479,7 +1483,9 @@ class RobloxDynamicArchitect:
                             )
                             verified_actions = complete_source_owned_actions(
                                 self.router, slice_request,
+                                initial_actions=source_verified_action_plan,
                             )
+                            source_verified_action_plan = verified_actions
                             proposed_systems = author_verified_atomic_systems(
                                 self.router, verified_actions,
                                 source_clause=slice_request,
