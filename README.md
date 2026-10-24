@@ -38,14 +38,14 @@
 | `MODEL_PROFILE` | `t4_local`(Colab 로컬 모델), `openai-compatible`(호환 서버 사용), `fast_test`(테스트용) |
 | `REMOTE_BASE_URL` | 외부 또는 이미 실행 중인 OpenAI 호환 모델 서버 주소 |
 | `REMOTE_API_KEY` | 해당 서버에 필요한 API 키. 필요하지 않으면 비워 둠 |
-| `SEARCH_CREATOR_STORE` | Roblox Creator Store 검색 사용 여부 설정 |
-| `SAVE_TO_GOOGLE_DRIVE` | Google Drive 저장 관련 설정 |
+| `SEARCH_CREATOR_STORE` | UI에 표시되는 설정값. 현재 노트북에서는 다른 셀로 전달되지 않아 토글만으로 검색 동작이 바뀌지 않음 |
+| `SAVE_TO_GOOGLE_DRIVE` | UI에 표시되는 설정값. 현재 노트북에서는 별도 Drive 저장 처리에 연결되지 않음 |
 
 `fast_test`는 모델 추론 및 최종 게임 품질을 검증하는 용도가 아닙니다. 실제 게임 생성에는 준비된 추론 서버 또는 `t4_local`을 권장합니다.
 
 ## 2. 로컬 PC에서 CLI 사용하기
 
-Python **3.9 이상** 및 Git이 필요합니다. 프로젝트 루트에서 설치합니다.
+Python **3.10 이상** 및 Git이 필요합니다. (현재 코드에서 Python 3.10 이상의 타입 표기법을 사용합니다.) 프로젝트 루트에서 설치합니다.
 
 ```bash
 git clone https://github.com/jujumelona/M.R.M-Make-Roblox-Mode.git
