@@ -513,6 +513,15 @@ def _clean_model_json(response: dict[str, Any], ledger: dict[str, Any],
             accepted_facets[item["facet_id"]] = observable
     if required_facets and set(accepted_facets) != required_facets:
         raise DynamicDesignError("Capability-level acceptance cases incomplete")
+    # Legacy full-JSON models did not carry per-module world ABI metadata.
+    # When exactly ONE server owns exactly ONE materialized world object, the
+    # ownership is unambiguous and can be bound without asking a small model
+    # to guess an Instance name. Multi-owner/multi-object scenes still require
+    # explicit source ownership; never give every module blanket access.
+    world_owners: dict[str, list[str]] = {}
+    server_modules = [m for m in modules if m.kind == ModuleKind.SERVER_SCRIPT]
+    if len(objects) == 1 and len(server_modules) == 1:
+        world_owners[server_modules[0].module_id] = [objects[0]["name"]]
     return {
         "schema": "rmm/dynamic-design-v1",
         "modules": modules,
@@ -523,6 +532,7 @@ def _clean_model_json(response: dict[str, Any], ledger: dict[str, Any],
         "acceptance_facets": accepted_facets,
         "remotes": remotes,
         "world_objects": objects,
+        "module_world_objects": world_owners,
         "acceptance": accepted,
         "design_verified": False,
         "source_reuse": "none_unless_validated",
