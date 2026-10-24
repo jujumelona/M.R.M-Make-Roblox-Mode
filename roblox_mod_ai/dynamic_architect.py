@@ -1607,6 +1607,14 @@ class RobloxDynamicArchitect:
                                      if atomic_systems_verified
                                      and len(draft.get("systems", [])) > 3
                                      else None)
+                        # Reject unsolicited external mechanics before source-coverage
+                        # repair. Otherwise the model never sees the real peer-trade
+                        # violation and repeats an irrelevant payment repair.
+                        early_semantic_errors = request_semantic_errors(draft, prompt)
+                        if early_semantic_errors:
+                            raise DynamicDesignError(
+                                "SEMANTIC_REQUEST_CONTRACT: " + "; ".join(early_semantic_errors)
+                            )
                         # Evaluate the unmodified model reply FIRST. A generic
                         # source may lack heuristic semantic rules; in that case
                         # choosing a one-system subset would silently discard

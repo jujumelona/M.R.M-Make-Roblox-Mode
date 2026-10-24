@@ -276,7 +276,8 @@ def _repair_owned_purchase_effect(
         if any(not _TRANSACTION_TARGETS[name].search(repaired)
                for name in targets):
             evidence.append("EXISTING_PURCHASE_TARGET_REPLACED")
-            continue
+            # One scoped response must never be reused to patch a sibling.
+            return None
         candidate = [dict(item) for item in raw]
         candidate[index]["action"] = repaired.strip()
         try:

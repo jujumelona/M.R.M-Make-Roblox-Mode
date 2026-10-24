@@ -59,7 +59,7 @@ def test_scoped_design_retains_full_request_to_resolve_fragment_meaning(monkeypa
             payloads.append(json.loads(prompt.split("\n")[-1]))
             return {"systems": [{
                 "name": "UpgradeShip", "server_behavior":
-                    "Validate the earned credit balance and apply the requested spaceship upgrade on the server.",
+                    "Validate the earned credit balance, debit the approved purchase price, and apply the requested spaceship upgrade on the server.",
                 "client_behavior": "Player selects a spaceship upgrade and confirms the purchase, then sees the server-confirmed result.",
                 "interaction": "request_response", "input_mode": "custom",
                 "observable_result": "Server applies the purchased ship upgrade.",

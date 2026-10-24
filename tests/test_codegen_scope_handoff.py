@@ -34,7 +34,7 @@ class Recorder:
 
 def test_planner_keeps_world_ownership_in_saved_plan_and_actual_coder(tmp_path, monkeypatch):
     session, _ = _session(tmp_path, monkeypatch)
-    monkeypatch.setenv("RMM_LEGACY_ARCHITECTURE_PROTOCOL", "0")
+    # This fixture uses the legacy full-JSON model; keep that protocol selected.
     session.plan("펫 부화")
     saved = json.loads((tmp_path / "proposal.json").read_text(encoding="utf-8"))
     proposal = RobloxProposal.from_dict(saved["proposal"])
