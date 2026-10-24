@@ -11,6 +11,8 @@ on:
       - 'tests/test_plan69_atomic_repair_recovery.py'
       - 'tests/test_plan70_source_complete_microplanning.py'
       - 'tests/test_plan71_trade_repair.py'
+      - 'roblox_mod_ai/atomic_transaction_repair.py'
+      - 'tests/test_plan72_atomic_transaction.py'
       - '.github/workflows/rmm-source-micro-regression.yml'
   workflow_dispatch:
 jobs:
@@ -29,4 +31,5 @@ jobs:
           python -m pytest -q tests/test_plan69_atomic_repair_recovery.py
           python -m pytest -q tests/test_plan70_source_complete_microplanning.py
           python -m pytest -q tests/test_plan71_trade_repair.py
+          python -m pytest -q tests/test_plan72_atomic_transaction.py
           python -m pytest -q tests/test_plan67_compact_atomic.py tests/test_plan67_four_action_scope.py
