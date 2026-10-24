@@ -185,6 +185,10 @@ _PURCHASE_ACTION = re.compile(
     r"\b(?:purchas\w*|buy|bought|trad(?:e|es|ing)|"
     r"exchang\w*|hire\w*)\b|구매|거래|고용", re.I,
 )
+_OWNED_UPGRADE_ACTION = re.compile(
+    r"\b(?:upgrad\w*|improv\w*|enhanc\w*|equip\w*|recruit\w*|"
+    r"install\w*|acquir\w*)\b|업그레이드|강화|확장|영입|장착", re.I,
+)
 _TRANSACTION_TARGETS = {
     "weapon": re.compile(r"\b(?:weapon|gun|armament)s?\b|무기", re.I),
     "crew": re.compile(r"\b(?:crew|recruit|hire|sailor)s?\b|선원", re.I),
@@ -212,10 +216,11 @@ def _repair_owned_purchase_effect(
         return None
     for index, row in enumerate(raw):
         old = row["action"]
-        if not _PURCHASE_ACTION.search(old):
-            continue
         targets = {name for name, pattern in _TRANSACTION_TARGETS.items()
                    if pattern.search(old)}
+        if not (_PURCHASE_ACTION.search(old) or
+                (_OWNED_UPGRADE_ACTION.search(old) and targets)):
+            continue
         try:
             response = router.complete_json(
                 "Correct ONE EXISTING source-owned purchase or upgrade "
