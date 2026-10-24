@@ -126,3 +126,28 @@ def test_unchanged_payment_claim_does_not_mask_semantic_failure():
         ["SOURCE_PURCHASE_PAYMENT_MISSING: needed", "SOURCE_TRADE_ACTION_MISSING: needed"],
         ["SOURCE_TRADE_ACTION_MISSING: needed"],
     )
+
+
+
+def test_payment_can_be_repaired_at_maximum_six_actions_without_seventh():
+    items = _initial()
+    items.extend([
+        {"source_id": _sid("성능을"), "action":
+            "Server validates the requested ship performance upgrade."},
+        {"source_id": _sid("거래"), "action":
+            "Server shows available trading offers to the player."},
+        {"source_id": _sid("구매"), "action":
+            "Server reviews the selected purchase item and owned catalog."},
+    ])
+    assert len(items) == 6
+    router = Router({"action": (
+        "Server validates the weapon purchase, debits the player's owned "
+        "credits, and installs the upgraded weapon in the owned loadout."
+    )})
+    bound = complete_source_owned_actions(
+        router, SOURCE, initial_actions=items, max_actions=6,
+    )
+    assert len(bound) == 6
+    assert "debits" in bound[0]["action"]
+    assert not _coverage_issues(SOURCE, bound)
+    assert len(router.calls) == 1
