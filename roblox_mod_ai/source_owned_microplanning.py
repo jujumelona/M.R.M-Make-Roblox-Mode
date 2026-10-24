@@ -61,6 +61,17 @@ def _call(router: Any, prompt: str, *, candidate_ids: list[str],
     return rows
 
 
+def _coverage_issues(source: str, bound: list[dict[str, str]]) -> list[str]:
+    # At action-plan stage there is no Luau yet. Nevertheless every planned
+    # action must CLAIM its concrete authoritative effect; accepting vague
+    # labels here would drop farming, earning or trades whose absence the
+    # source validator can detect only in implementation mode.
+    return source_intent_conflicts(
+        source, ". ".join(row["action"] for row in bound),
+        require_implementation=True,
+    )
+
+
 def complete_source_owned_actions(
     router: Any, source: str, *, initial_actions: Any = None,
     max_actions: int = _MAX_ACTIONS,
@@ -81,8 +92,9 @@ def complete_source_owned_actions(
             router,
             "From the ORIGINAL source clause choose 2-3 DISTINCT requested "
             "player/server actions. Return ONLY JSON {actions:[{source_id,action}]}. "
-            "Each action is a SHORT concrete mechanic, and source_id selects "
-            "a matching exact source-text anchor. Do not write server code, "
+            "Each action is a SHORT sentence stating its own authoritative "
+            "server-side state change and target, and source_id selects "
+            "a matching exact source-text anchor. Do not write Luau code, "
             "invent genre mechanics, or treat a condition as an action. "
             "Preserve different requested upgrade targets separately. JSON only.\n"
             + json.dumps({
@@ -99,10 +111,7 @@ def complete_source_owned_actions(
     )
     failed_proposals: set[str] = set()
     while len(raw) < max_actions:
-        gaps = source_intent_conflicts(
-            source, " ".join(a["action"] for a in bound),
-            require_implementation=False,
-        )
+        gaps = _coverage_issues(source, bound)
         if not gaps:
             return verify_or_bind_actions(
                 router, source, raw, max_actions=max_actions,
@@ -123,9 +132,12 @@ def complete_source_owned_actions(
                 "The accepted actions below remain FROZEN. Source coverage "
                 "is missing specific requested mechanics. Supply EXACTLY ONE "
                 "NEW source-owned action implementing the FIRST missing "
-                "mechanic. Choose an unused source_id that actually supports "
-                "it. Do not repeat a ship/weapon/crew upgrade to cover a "
-                "different named subsystem. Do not include accepted actions "
+                "mechanic. The action must explicitly name the server-owned "
+                "state it changes (such as an owned inventory, currency, "
+                "component or target world object). Choose an unused "
+                "source_id that actually supports it. Do not repeat an "
+                "existing subsystem as another requested subsystem. "
+                "Do not include accepted actions "
                 "in the reply. Return ONLY JSON {actions:[{source_id,action}]}. "
                 "No server code or invented game systems. JSON only.\n"
                 + json.dumps({
@@ -151,10 +163,7 @@ def complete_source_owned_actions(
             except SourceActionBindingError:
                 failed_proposals.add(proposed_signature)
                 continue
-            after = source_intent_conflicts(
-                source, " ".join(a["action"] for a in checked),
-                require_implementation=False,
-            )
+            after = _coverage_issues(source, checked)
             # Semantic coverage must ACTUALLY improve. Adding a duplicate
             # upgrade word or renaming an existing action is not progress.
             if len(after) >= len(gaps) or set(after) >= set(gaps):
