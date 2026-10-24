@@ -8,6 +8,11 @@ on:
       - 'roblox_mod_ai/source_owned_microplanning.py'
       - 'roblox_mod_ai/typed_action_contract.py'
       - 'roblox_mod_ai/host_level_upgrade.py'
+      - 'roblox_mod_ai/host_ordered_assembly.py'
+      - 'roblox_mod_ai/host_vehicle_departure.py'
+      - 'roblox_mod_ai/generation_scope.py'
+      - 'roblox_mod_ai/host_protocol_handoff.py'
+      - 'roblox_mod_ai/code_generator.py'
       - 'roblox_mod_ai/semantic_preservation.py'
       - 'roblox_mod_ai/dynamic_architect.py'
       - 'roblox_mod_ai/planner.py'
@@ -51,6 +56,7 @@ on:
       - 'tests/test_plan81_vehicle_actor_identity.py'
       - 'tests/test_plan82_vehicle_identity_binding.py'
       - 'tests/test_plan83_rank_protocol.py'
+      - 'tests/test_plan83_ordered_assembly_launch.py'
       - '.github/workflows/rmm-source-micro-regression.yml'
   workflow_dispatch:
 jobs:
@@ -85,4 +91,5 @@ jobs:
           python -m pytest -q tests/test_plan81_vehicle_actor_identity.py
           python -m pytest -q tests/test_plan82_vehicle_identity_binding.py
           python -m pytest -q tests/test_plan83_rank_protocol.py
+          python -m pytest -q tests/test_plan83_ordered_assembly_launch.py
           python -m pytest -q tests/test_plan67_compact_atomic.py tests/test_plan67_four_action_scope.py
