@@ -156,8 +156,20 @@ def generated_module_errors(
                 contract = typed.get("contract") or {}
                 changes = (contract.get("state_changes", [])
                            if isinstance(contract, dict) else [])
-                if not isinstance(changes, list) or not changes:
-                    errors.append("TYPED_STATE_CONTRACT_MISSING: no approved state changes")
+                # transport_only declares ONLY the input/Remote ABI. By
+                # design it has no model-approved state key; codegen must
+                # still prove a real source mutation via the mandatory
+                # ACTION_EFFECT_UNIMPLEMENTED gate above. Treating an empty
+                # transport declaration as a missing state-change contract
+                # contradicted validate_contract(transport_only=True) and
+                # caused every scaffolded module to fail at checkpoint.
+                transport_only = typed.get("transport_only") is True
+                if not isinstance(changes, list):
+                    errors.append("TYPED_STATE_CONTRACT_INVALID: state_changes must be a list")
+                    continue
+                if not changes:
+                    if not transport_only:
+                        errors.append("TYPED_STATE_CONTRACT_MISSING: no approved state changes")
                     continue
                 for effect in changes:
                     key = effect.get("key") if isinstance(effect, dict) else None
