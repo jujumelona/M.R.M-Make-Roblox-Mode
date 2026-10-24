@@ -201,3 +201,70 @@ def remove_redundant_state_commit(body: str) -> str:
         # Preserve exact newline layout of the accepted body. Removing this
         # call is safe only because the authoritative state is mutable.
     return "".join(result)
+
+
+
+def normalize_verified_peer_abi(body: str, proposal: Any) -> str:
+    """Normalize only known colon/dot mismatches on actual exported methods.
+
+    A local alias is accepted only when bound to an injected peer service,
+    assigned exactly once, and not shadowed as a function parameter.
+    Unknown methods are never invented or rewritten.
+    """
+    from .luau_service_contract import exported_methods
+    peers = {
+        entry.name: entry for entry in getattr(proposal, "modules", [])
+        if entry.file_path.startswith("src/server/")
+        and entry.file_path.endswith(".luau")
+        and not entry.file_path.endswith(".server.luau")
+        and entry.code
+    }
+    if not peers:
+        return body
+    masked = _mask_strings(_without_comments(body))
+    aliases: dict[str, str] = {}
+    for match in re.finditer(
+        r"\blocal\s+([A-Za-z_]\w*)\s*=\s*"
+        r"services\s*\.\s*([A-Za-z_]\w*)\s*(?=$|[\n;])",
+        masked,
+    ):
+        alias, target = match.group(1), match.group(2)
+        if target not in peers:
+            continue
+        assignments = re.findall(
+            r"(?<![\w.:])" + re.escape(alias) + r"\s*=(?!=)",
+            masked,
+        )
+        shadowed = any(re.search(
+            r"(?:^|,)\s*" + re.escape(alias) + r"\s*(?=,|$)",
+            parameters,
+        ) for parameters in re.findall(
+            r"\bfunction[^()]*\(([^)]*)\)", masked,
+        ))
+        if len(assignments) == 1 and not shadowed:
+            aliases[alias] = target
+    receivers = {
+        "services." + name: name for name in peers
+    }
+    receivers.update(aliases)
+    changes: list[tuple[int, int]] = []
+    for receiver, target in receivers.items():
+        _, methods = exported_methods(peers[target].code)
+        for method_name, contract in methods.items():
+            if (contract.get("separator") != "." or
+                    re.match(r"self\b", contract.get("params", ""))):
+                continue
+            wrong = re.compile(
+                r"(?<![\w.:])" + re.escape(receiver) +
+                r"\s*:\s*" + re.escape(method_name) +
+                r"(?=\s*\()"
+            )
+            for match in wrong.finditer(masked):
+                old_text = body[match.start():match.end()]
+                colon = old_text.rfind(":")
+                if colon >= 0:
+                    changes.append((match.start() + colon,
+                                    match.start() + colon + 1))
+    for start, end in sorted(set(changes), reverse=True):
+        body = body[:start] + "." + body[end:]
+    return body
