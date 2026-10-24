@@ -16,6 +16,7 @@ from .scaffold_policy import (single_host_action, single_client_action,
                               single_passive_service, scaffold_exhausted,
                               is_host_scaffolded_source)
 from .host_level_upgrade import render_rank_protocol
+from .host_ordered_assembly import render_ordered_assembly
 from .host_gameplay import render_host_gameplay
 from .generation_provenance import host_source_must_regenerate
 from .host_mode_navigation import eligible_mode_navigation, try_mode_navigation
@@ -183,6 +184,9 @@ class LuauCodeGenerator:
         # A complete host-owned rank protocol replaces the empty typed
         # transport as an atomic server/client pair in dependency preflight.
         # Its bounded model output is numeric DESIGN DATA only.
+        ordered_assembly = render_ordered_assembly(module, proposal, self.router)
+        if ordered_assembly is not None:
+            return ordered_assembly
         rank_protocol = render_rank_protocol(module, proposal, self.router)
         if rank_protocol is not None:
             return rank_protocol
