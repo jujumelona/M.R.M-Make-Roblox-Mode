@@ -141,17 +141,43 @@ def test_one_broken_atomic_purchase_does_not_regenerate_sibling(monkeypatch):
 
 
 def test_p2p_and_robux_do_not_bypass_source_semantics():
+    with pytest.raises(ValueError, match="ATOMIC_TRANSACTION_UNREQUESTED_EFFECT"):
+        author_transaction_repair(
+            Router(transaction(
+                paid="the buyer deducts coins from their owned currency balance",
+                received=(
+                    "the seller transfers the weapon upgrade to the buyer's "
+                    "inventory through a peer-to-peer trade"
+                ),
+            )), PURCHASE, "Server upgrade",
+        )
     from roblox_mod_ai.request_semantics import request_semantic_errors
-    p2p = author_transaction_repair(
-        Router(transaction(
-            paid="the seller deducts coins from the buyer's owned balance",
-            received="the seller transfers the traded weapon to the buyer's inventory",
-        )), PURCHASE, "Server upgrade",
-    )
-    assert any("UNREQUESTED_PEER_TRADE" in x for x in
-               request_semantic_errors(p2p, "무기 구매"))
     assert any("UNREQUESTED_MONETIZATION" in x for x in
                request_semantic_errors(
                    "Purchase ship upgrades using Robux via MarketplaceService",
                    "우주선 업그레이드 구매",
+               ))
+
+
+def test_wrong_upgrade_target_cannot_be_delivered():
+    with pytest.raises(ValueError, match="DELIVERY_TARGET_MISMATCH"):
+        author_transaction_repair(
+            Router(transaction(
+                received=(
+                    "the server recruits a crew member and adds them to "
+                    "the player's owned crew roster"
+                ),
+            )), PURCHASE, "Server upgrades weapon damage.",
+        )
+
+
+def test_free_upgrade_no_longer_qualifies_as_purchase():
+    from roblox_mod_ai.semantic_preservation import source_intent_conflicts
+    assert any("SOURCE_PURCHASE_PAYMENT_MISSING" in issue for issue in
+               source_intent_conflicts(
+                   "무기 구매", "Server purchases a weapon and upgrades its stats.",
+               ))
+    assert any("SOURCE_TRADE_ACTION_MISSING" in issue for issue in
+               source_intent_conflicts(
+                   "무기 구매", "Server purchases a weapon and upgrades its stats.",
                ))
