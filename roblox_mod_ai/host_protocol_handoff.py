@@ -91,6 +91,11 @@ def rebase_complete_host_protocols(proposal: Any, scope: dict[str, Any]) -> list
         if spec.get("server") != server.name or spec.get("client") != client.name:
             continue
         # Both sides of the Remote must be taken over atomically.
+        # Retain the SOURCE-OWNED target IDs and ownership contract for
+        # the host rank compiler. Deleting transport-only UI must not erase
+        # the semantic inputs needed to compile a real progression effect.
+        if server_strategy == "host_declarative_rank_upgrade":
+            design.setdefault("host_rank_contracts", {})[remote] = dict(spec)
         typed.pop(remote)
         completed.append({
             "remote": remote,
