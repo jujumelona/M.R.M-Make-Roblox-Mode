@@ -17,6 +17,7 @@ from .host_ordered_assembly import eligible_ordered_assembly
 from .host_vehicle_departure import eligible_departure
 from .host_gameplay import render_host_gameplay
 from .host_space_actions import render_host_space_action
+from .typed_action_contract import render_typed_client
 from .host_mode_navigation import eligible_mode_navigation
 from .host_mode_unlock import eligible_mode_unlock
 from .host_catalog_purchase import eligible_catalog_purchase
@@ -49,6 +50,26 @@ def generation_scope(proposal: Any) -> dict[str, Any]:
             strategy = "builtin_source"
         elif render_host_space_action(module, proposal) is not None:
             strategy = "host_space_action"
+        # Routing precedence MUST match code_generator.generate_module_code:
+        # typed client and typed server are resolved before genre adapters.
+        # A different strategy here invalidates checkpoint provenance and
+        # misreports whether a small-model body will actually be generated.
+        elif render_typed_client(module, proposal) is not None:
+            strategy = "host_typed_client_ui"
+        elif (module.kind == ModuleKind.SERVER_MODULE
+              and module.module_id.startswith("dyn_")
+              and any(
+                  remote in (design.get("host_typed_actions") or {})
+                  for remote in (design.get("module_remotes") or {}).get(
+                      module.module_id, []))):
+            linked = [
+                remote for remote in
+                (design.get("module_remotes") or {}).get(module.module_id, [])
+                if remote in (design.get("host_typed_actions") or {})
+            ]
+            strategy = ("bounded_typed_server_action"
+                        if len(linked) == 1 and single_host_action(proposal, module)
+                        else "invalid_typed_server_action")
         elif render_host_gameplay(module, proposal) is not None:
             strategy = "host_verified_template"
         elif eligible_departure(module, proposal) is not None:
@@ -257,7 +278,8 @@ def generation_scope(proposal: Any) -> dict[str, Any]:
     model_action_risks = [
         row["name"] for row in strategies
         if row["strategy"] in (
-            "bounded_server_action", "bounded_passive_start",
+            "bounded_server_action", "bounded_typed_server_action",
+            "invalid_typed_server_action", "bounded_passive_start",
             "whole_file_model_legacy",
         )
     ]
