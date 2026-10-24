@@ -53,6 +53,12 @@ class CompleteChatReply:
         if proposal.game_design.get("project_mode", "new_experience") not in (
                 "new_experience", "existing_experience_addon"):
             return False
+        # A saved intent draft is a valid PLAN, not executable Luau. Build
+        # will first compile it into strict module/Remote/acceptance contracts.
+        # Requiring implementation ownership at plan approval previously
+        # produced plan_failure_logs for perfectly valid user requests.
+        if proposal.game_design.get("planning_phase") == "intent_draft":
+            return bool(ledger_complete(proposal.requested_prompt, ledger))
         return bool(is_complete
                     and audit_implementation_blueprint(proposal)["passed"]
                     and audit_detailed_plan(proposal)["passed"])
@@ -123,7 +129,10 @@ class CompleteRobloxAISession:
                         approval_hash=candidate.calculate_hash(),
                         authored_plan=candidate,
                     )
-                    if previous.ready_to_build:
+                    if (previous.ready_to_build and
+                            previous.authored_plan.proposal.game_design.get(
+                                "planning_phase") in
+                            ("intent_draft", "implementation_contract", None)):
                         self.reset()
                         self.brief = prompt
                         self.authored_plan = candidate
