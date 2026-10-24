@@ -199,6 +199,12 @@ def test_real_failure_15_mining_and_bilateral_barter_are_composed_not_conflicted
         "asset quantities are checked to reject stale and duplicate trades. "
         "Both sides receive a server-confirmed exchange result."
     )
+    # This regression verifies bilateral exchange, which must be explicitly
+    # source-owned. A generic "거래" request never authorizes peer inventory.
+    p.requested_prompt = (
+        "우주모드 자원파밍 돈모으기 거래 우주선 제작, "
+        "플레이어 간 아이템과 화폐 거래도 허용"
+    )
     ensure_mining_world_contract(p)
     for mod in (server,client):
         mine=render_host_mining(mod,p)
