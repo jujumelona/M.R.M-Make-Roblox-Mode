@@ -32,16 +32,17 @@ def test_three_partial_actions_accumulate_instead_of_overwriting_each_other(
         {
             "name": "MarketPurchaseTrade",
             "server_behavior": (
-                "Server validates a catalog purchase against currency balance "
-                "and item availability; on success deducts the required credits "
-                "and transfers the purchased item into player inventory."
+                "Server validates priced market sales and purchases. When "
+                "the player sells gathered ore, it credits currency to the "
+                "player balance; when purchasing a listed part it deducts "
+                "the required credits and delivers the owned item."
             ),
             "client_behavior": (
                 "Player selects a catalog item and the client shows "
                 "the confirmed delivery and the balance change."
             ),
             "observable_result": (
-                "The purchased item enters player inventory and credits decrease."
+                "Selling ore increases credits; purchases deliver owned items."
             ),
             "world_entities": ["MarketTerminal"],
             "interaction": "request_response",
