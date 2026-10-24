@@ -221,3 +221,28 @@ def test_exact_default_bindings_remain_strict():
     ]
     with pytest.raises(SourceActionBindingError, match="COLLECTIVE"):
         verify_or_bind_actions(Router([]), SOURCE, only_ship)
+
+
+
+def test_single_generic_upgrade_claim_is_not_three_independent_actions():
+    from roblox_mod_ai.semantic_preservation import distinct_upgrade_action_gaps
+    generic = [
+        "Server purchases upgrades for weapons, crew and ship performance "
+        "and deducts coins from the owner."
+    ]
+    missing = distinct_upgrade_action_gaps(SOURCE, generic)
+    assert len(missing) == 2, missing
+    separate = [
+        "Server purchases a weapon upgrade and deducts coins.",
+        "Server hires a crew member and deducts credits.",
+        "Server purchases a ship performance upgrade and deducts currency.",
+    ]
+    assert distinct_upgrade_action_gaps(SOURCE, separate) == []
+
+
+def test_upgrades_for_unmentioned_targets_never_become_required():
+    from roblox_mod_ai.semantic_preservation import distinct_upgrade_action_gaps
+    assert distinct_upgrade_action_gaps(
+        "우주선 성능 업그레이드",
+        ["Server purchases a ship upgrade and deducts coins"],
+    ) == []
