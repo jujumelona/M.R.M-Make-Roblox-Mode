@@ -99,7 +99,7 @@ def test_matched_pair_handoff_and_compiled_server_client_share_same_target():
     scode = render_rank_protocol(server, p, coder)
     ccode = render_rank_protocol(client, p, coder)
     assert coder.calls == 1
-    assert 'TARGET="crew_performance_state"' not in scode.replace(" ", "")
+    assert 'local TARGET="crew_performance_state"' in scode
     assert '"crew_performance_state"' in scode
     assert 'remote:InvokeServer("crew_performance_state")' in ccode
     assert 'coins.Value-=COST' in scode
