@@ -20,9 +20,17 @@ _HOST_ALIAS = re.compile(
     r"[ \t]*(?:args[ \t]*\[[ \t]*(?P<index>[12])[ \t]*\])"
     r"[ \t]*;?[ \t]*$", re.I,
 )
-_DOT_FIELD = re.compile(r"\bactionArgs[ \t]*\.[ \t]*([A-Za-z_][A-Za-z_0-9]*)")
+# The host's lua_server_guard explicitly declares 'local args = actionArgs'.
+# They are the SAME validated dictionary, not separate positional arrays.
+_DOT_FIELD = re.compile(
+    r"\b(?:actionArgs|args)[ \t]*\.[ \t]*([A-Za-z_][A-Za-z_0-9]*)"
+)
 _BRACKET_FIELD = re.compile(
-    r"\bactionArgs[ \t]*\[[ \t]*(['\"])([A-Za-z_][A-Za-z_0-9]*)\1[ \t]*\]"
+    r"\b(?:actionArgs|args)[ \t]*\[[ \t]*(['\"])([A-Za-z_][A-Za-z_0-9]*)\1[ \t]*\]"
+)
+_POSITIONAL_INDEX = re.compile(r"\b(?:actionArgs|args)[ \t]*\[[ \t]*\d+[ \t]*\]")
+_SHADOW_VALIDATED_ARGS = re.compile(
+    r"\blocal[ \t]+(?:args|actionArgs)[ \t]*=", re.I,
 )
 _UNKNOWN_TYPED_DEPENDENCY = re.compile(
     r"\b(?:services|_services)[ \t]*\.[ \t]*"
@@ -112,12 +120,36 @@ def typed_input_abi_errors(body: str,
     masked = _mask_strings(raw)
     accessed = {m.group(1) for m in _DOT_FIELD.finditer(masked)}
     accessed.update(m.group(2) for m in _BRACKET_FIELD.finditer(raw)
-                    if masked[m.start():m.start()+10] == "actionArgs")
+                    if re.match(r"(?:actionArgs|args)\\b", masked[m.start():]))
+    problems = []
     wrong = sorted(accessed - valid)
-    if not wrong:
-        return []
-    return [
-        "TYPED_INPUT_ABI: undeclared actionArgs fields " +
-        ", ".join(wrong) + "; exact validated inputs: " +
-        ", ".join(sorted(valid))
-    ]
+    if wrong:
+        problems.append(
+            "TYPED_INPUT_ABI: undeclared validated input fields " +
+            ", ".join(wrong) + "; exact allowed inputs: " +
+            ", ".join(sorted(valid))
+        )
+    if _POSITIONAL_INDEX.search(masked):
+        problems.append(
+            "TYPED_INPUT_ABI: numeric positional index used on named "
+            "validated actionArgs/args table"
+        )
+    if _SHADOW_VALIDATED_ARGS.search(masked):
+        problems.append(
+            "TYPED_INPUT_ABI: body redefines host-owned validated args"
+        )
+    return problems
+
+
+def typed_input_fields_used(body: str, contract: dict[str, Any] | None) -> set[str]:
+    """Real field reads through either host alias, ignoring comments/strings."""
+    if not isinstance(contract, dict):
+        return set()
+    valid = {field["id"] for field in contract.get("inputs", [])
+             if isinstance(field, dict) and isinstance(field.get("id"), str)}
+    raw = _without_comments(body)
+    masked = _mask_strings(raw)
+    fields = {m.group(1) for m in _DOT_FIELD.finditer(masked)}
+    fields.update(m.group(2) for m in _BRACKET_FIELD.finditer(raw)
+                  if re.match(r"(?:actionArgs|args)\\b", masked[m.start():]))
+    return fields & valid
