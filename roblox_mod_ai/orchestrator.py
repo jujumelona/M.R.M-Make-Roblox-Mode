@@ -316,7 +316,7 @@ class RobloxProductionOrchestrator:
             # a fully matched implementation; rebase such stubs as a pair
             # before spending any tokens on model-generated Luau.
             from .host_protocol_handoff import rebase_complete_host_protocols
-            source_scope = generation_scope(proposal)
+            source_scope = generation_scope(proposal, for_protocol_handoff=True)
             handoffs = rebase_complete_host_protocols(proposal, source_scope)
             if handoffs:
                 tool_results["host_protocol_handovers"] = handoffs
