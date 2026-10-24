@@ -999,6 +999,9 @@ class RobloxDynamicArchitect:
             # facet only. The next 9B completion adds candidates rather than
             # replacing a previous build/trade/harvest action.
             source_action_pool: list[dict[str, Any]] = []
+            # Preserve only locally source-verified atomic children when a
+            # later GGUF completion truncates. Scoped to this facet and run.
+            atomic_verified_cache: dict[tuple[str, str], dict[str, Any]] = {}
             successful = False
             cache_hit = False
             for attempt in range(3):
@@ -1249,6 +1252,7 @@ class RobloxDynamicArchitect:
                                     source_clause=slice_request,
                                     original_prompt=prompt,
                                     json_schema=model_semantic_schema,
+                                    retained_verified=atomic_verified_cache,
                                 )
                             except SourceActionBindingError as owned_error:
                                 raise DynamicDesignError(
@@ -1538,6 +1542,7 @@ class RobloxDynamicArchitect:
                             )
                             draft, rejected_scope_names = ground_source_ownership(
                                 draft, attribution, source_clause=slice_request)
+                        completed = None
                         # Evaluate the unmodified model reply FIRST. A generic
                         # source may lack heuristic semantic rules; in that case
                         # choosing a one-system subset would silently discard
@@ -1565,7 +1570,7 @@ class RobloxDynamicArchitect:
                                 original_request=prompt,
                             )
                             completed = choose_complete_source_actions(
-                                subset, source_action_pool,
+                                subset, source_action_pool, max_actions=6,
                             )
                             if completed is not None:
                                 draft = dict(draft, systems=completed)
@@ -1754,6 +1759,11 @@ class RobloxDynamicArchitect:
                             reserved_modules=reserved_modules,
                             reserved_remotes=reserved_remotes,
                             reserved_objects=reserved_objects,
+                            # Model output is still capped at three systems.
+                            # Only host-selected, source-complete accumulated
+                            # actions can exceed that default safely.
+                            max_systems=(6 if len(draft.get("systems", [])) > 3
+                                         and completed is not None else 3),
                         )
                         draft["_host_semantic"] = True
                         if movement_contract is not None:
