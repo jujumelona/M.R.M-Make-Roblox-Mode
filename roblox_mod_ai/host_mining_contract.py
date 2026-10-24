@@ -41,7 +41,10 @@ def _is_named_mining_service(name: str, description: str, prompt: str) -> bool:
         (_SERVICE_MINE.search(service_tokens) or explicit_mining_source)
         and _MINE.search(prompt)
         and (_RESOURCE.search(description) or _MINE.search(description))
-        and _REWARD.search(description)
+        # Resource-only harvesting is legitimate without minting coins.
+        # The generic host miner already has an inventory-only implementation;
+        # previously this reward clause incorrectly excluded it and forced
+        # the tiny coder to guess an entire Luau runtime.
         and _RESOURCE.search(prompt)
     )
 
@@ -70,24 +73,59 @@ def ensure_mining_world_contract(proposal: RobloxProposal) -> list[dict[str, Any
         for obj in objects if isinstance(obj, dict)
     }
     mutations: list[dict[str, Any]] = []
+    # The local model may supply only a *transport* form, not a gameplay
+    # contract. Host-owned nearest-node mining has a stricter input ABI:
+    # a server-selected world Part and ZERO client claims about yield/cost.
+    # Do not rewrite a genuine typed gameplay specification.
+    def host_transport_only(route: str) -> bool:
+        spec = (design.get("host_typed_actions") or {}).get(route)
+        if not isinstance(spec, dict) or spec.get("transport_only") is not True:
+            return False
+        contract = spec.get("contract")
+        return bool(isinstance(contract, dict)
+                    and contract.get("target") == {"kind": "none"}
+                    and contract.get("state_changes") == []
+                    and {f.get("id") for f in contract.get("inputs", [])
+                         if isinstance(f, dict)} == {"selection", "quantity"})
+
     for module in proposal.modules:
         if module.kind != ModuleKind.SERVER_MODULE or not module.module_id.startswith("dyn_"):
             continue
         if not _is_named_mining_service(module.name, module.description, proposal.requested_prompt):
             continue
-        routes = [row for row in actions.values()
+        routed = [(name, row) for name, row in actions.items()
                   if isinstance(row, dict) and row.get("service") == module.name]
+        routes = [row for _, row in routed]
         worlds = [key for key, row in
                   (design.get("host_world_actions") or {}).items()
                   if isinstance(row, dict) and row.get("service") == module.name]
         if len(routes) != 1 or worlds or routes[0].get("kind") != "RemoteFunction":
             continue
+        remote, route = routed[0]
+        rebased = host_transport_only(remote)
+        # Preserve source-requested batch/multi-item mining semantics; only
+        # replace an ungrounded generic host transport shell.
+        if rebased and re.search(
+                r"\b(?:batch|bulk|quantity|multiple\s+at\s+once)\b|"
+                r"대량|수량|한\s*번에",
+                module.description, re.I):
+            rebased = False
         # A zero-argument mining request can be secure when the HOST selects
         # the closest planned Part by server-measured player distance.
         planned = mining_world_nodes(proposal, module)
         if planned:
-            # A named source-owned Part already exists; a duplicate generated
-            # ResourceNode would obscure the accepted map instead of fixing it.
+            # Preserve an existing source-owned world target. Normalize ONLY
+            # unsupported transport-only input when an actual server node can
+            # safely satisfy the requested one-action mining effect.
+            if rebased:
+                route["max_args"] = 0
+                design["host_typed_actions"].pop(remote, None)
+                mutations.append({
+                    "service": module.name, "resource_node": planned[0],
+                    "input": "host_verified_nearest_resource",
+                    "transport_rebased": True,
+                    "basis": "server_authoritative_resource_interaction",
+                })
             continue
         stem = re.findall(r"\d{5,}", module.name)
         suffix = (stem[0] if stem else
@@ -119,8 +157,14 @@ def ensure_mining_world_contract(proposal: RobloxProposal) -> list[dict[str, Any
                     raise ValueError("module_world_objects rows must be lists")
                 if node not in linked:
                     linked.append(node)
+        if rebased:
+            # Both the UI and gateway read the SAME mutable design route.
+            # They now call a deterministic host template, not 9B Luau.
+            route["max_args"] = 0
+            design["host_typed_actions"].pop(remote, None)
         mutations.append({
             "service": module.name, "resource_node": node,
+            "transport_rebased": rebased,
             "input": ("RemoteFunction_server_selected_nearest_Part"
                       if routes[0].get("max_args") == 0
                       else "RemoteFunction_with_server_verified_Part"),
