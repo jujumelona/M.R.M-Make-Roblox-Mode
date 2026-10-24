@@ -46,6 +46,18 @@ _EFFECT = re.compile(
 )
 
 
+def scoped_body_completion_budget(attempt: int, previous: dict[str, Any] | None) -> int:
+    """Escalate ONLY after a recorded truncated completion, never by genre."""
+    if not previous:
+        return 1200
+    runtime = previous.get("model_runtime") or {}
+    truncated = bool(runtime.get("finish_reason") == "length" or any(
+        "finish_reason=length" in str(error)
+        for error in previous.get("diagnostics", [])
+    ))
+    return (1800 if attempt == 1 else 2600) if truncated else 1200
+
+
 def _clean_body(raw: str) -> str:
     body = (raw or "").strip()
     fenced = re.search(r"```(?:luau|lua)?\s*([\s\S]*?)\s*```", body, re.I)
@@ -400,17 +412,12 @@ def try_scaffolded_server(
         body = ""
         try:
             previous = attempts[-1] if attempts else None
-            overlength = bool(previous and (
-                (previous.get("model_runtime") or {}).get("finish_reason") == "length"
-                or any("finish_reason=length" in str(error)
-                       for error in previous.get("diagnostics", []))
-            ))
+            overlength = scoped_body_completion_budget(attempt, previous) > 1200
             # Actual plan 77 returned 1200/1200 tokens three times and no
             # candidate bytes. Escalate the bounded BODY budget only after an
             # observed truncation; do not ask the same 9B model to repeat the
             # same impossible maximum length on every attempt.
-            body_budget = (1200 if not overlength else
-                           (1800 if attempt == 1 else 2600))
+            body_budget = scoped_body_completion_budget(attempt, previous)
             feedback = (
                 "\nLAST REJECTED BODY (NOT VALID CODE; DO NOT COPY):\n"
                 + previous["candidate"][:1300]
