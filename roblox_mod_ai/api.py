@@ -58,7 +58,12 @@ class CompleteChatReply:
         # Requiring implementation ownership at plan approval previously
         # produced plan_failure_logs for perfectly valid user requests.
         if proposal.game_design.get("planning_phase") == "intent_draft":
-            return bool(ledger_complete(proposal.requested_prompt, ledger))
+            # Preserve ledger_complete's strict exact-source, integrity and
+            # provenance checks, but do not require implementation to be
+            # finished just to allow the build worker to START implementing.
+            # No complete/verified gameplay is asserted by this admission.
+            captured = dict(ledger, unimplemented_facets=[])
+            return bool(ledger_complete(proposal.requested_prompt, captured))
         return bool(is_complete
                     and audit_implementation_blueprint(proposal)["passed"]
                     and audit_detailed_plan(proposal)["passed"])
