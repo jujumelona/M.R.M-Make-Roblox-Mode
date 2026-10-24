@@ -113,3 +113,17 @@ def test_server_state_exchange_is_not_rejected_for_missing_trade_keyword():
     missing = "The server validates both values but updates neither balance."
     assert any("SOURCE_TRADE_ACTION_MISSING" in x
                for x in source_intent_conflicts(source, missing))
+
+
+def test_finite_mining_nodes_restock_for_multi_section_ship_builds():
+    from roblox_mod_ai.host_mining import _SERVER_RESOURCES_NEAREST, _SERVER_NEAREST
+    for source in (_SERVER_RESOURCES_NEAREST, _SERVER_NEAREST):
+        assert 'local NODE_INITIAL = 100' in source
+        assert 'local RESPAWN_SECONDS = 25' in source
+        assert 'node.remaining -= 1' in source
+        assert 'if node.remaining == 0 then' in source
+        assert 'task.delay(RESPAWN_SECONDS, function()' in source
+        assert 'nodes[part] ~= depleted' in source
+        assert 'depleted.remaining = NODE_INITIAL' in source
+        assert 'part:SetAttribute("ResourceDepleted", false)' in source
+    assert "coins.Value" not in _SERVER_RESOURCES_NEAREST
