@@ -73,8 +73,8 @@ def dependency_api_errors(module: Any, proposal: RobloxProposal, code: str) -> l
         if target_code and table:
             target_source = _mask_strings(_without_comments(target_code))
             declared_fields = set(re.findall(
-                r"\\b" + re.escape(table) +
-                r"\\s*\\.\\s*(" + _NAME + r")\\s*=(?!=)",
+                r"\b" + re.escape(table) +
+                r"\s*\.\s*(" + _NAME + r")\s*=(?!=)",
                 target_source,
             ))
         for match in re.finditer(expression + r"\s*([.:])\s*(" + _NAME + r")\b", masked):
