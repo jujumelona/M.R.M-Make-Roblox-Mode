@@ -120,7 +120,7 @@ def typed_input_abi_errors(body: str,
     masked = _mask_strings(raw)
     accessed = {m.group(1) for m in _DOT_FIELD.finditer(masked)}
     accessed.update(m.group(2) for m in _BRACKET_FIELD.finditer(raw)
-                    if re.match(r"(?:actionArgs|args)\\b", masked[m.start():]))
+                    if re.match(r"(?:actionArgs|args)\b", masked[m.start():]))
     problems = []
     wrong = sorted(accessed - valid)
     if wrong:
@@ -151,5 +151,5 @@ def typed_input_fields_used(body: str, contract: dict[str, Any] | None) -> set[s
     masked = _mask_strings(raw)
     fields = {m.group(1) for m in _DOT_FIELD.finditer(masked)}
     fields.update(m.group(2) for m in _BRACKET_FIELD.finditer(raw)
-                  if re.match(r"(?:actionArgs|args)\\b", masked[m.start():]))
+                  if re.match(r"(?:actionArgs|args)\b", masked[m.start():]))
     return fields & valid
