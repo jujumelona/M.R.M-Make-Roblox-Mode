@@ -238,7 +238,11 @@ def vehicle_motion_code_errors(code: str) -> list[str]:
     # Accept Model:PivotTo, part.CFrame, and character/vehicle MoveTo;
     # require an actual movement statement involving a craft variable.
     movement = re.compile(
-        r"\b(?:ship|spaceship|spacecraft|vehicle|vessel|rocket|shuttle)\w*"
+        # An owned vehicle may be called craft, raft or a generated name;
+        # do not reject an actual craft:PivotTo just because the identifier
+        # omits the English token 'ship'. Object identity is checked by the
+        # independent materialized world/ownership contract.
+        r"\b(?:ship|spaceship|spacecraft|vehicle|vessel|rocket|shuttle|craft)\w*"
         r"(?:(?:\.|:)\w+|\[[^]]+\]){0,3}"
         r"(?:\s*:\s*(?:PivotTo|MoveTo|SetPrimaryPartCFrame)\s*\("
         r"|\s*\.\s*CFrame\s*=)|"
