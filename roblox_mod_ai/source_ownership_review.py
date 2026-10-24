@@ -98,7 +98,15 @@ def ground_source_ownership(
         raise SourceOwnershipReviewError(
             "SOURCE_OWNER_REVIEW_REJECTED: no candidate implements "
             "the current source clause")
-    # The facet contract permits at most three independently owned actions.\n    # A 4+ item model response may contain context-only extras; accept only\n    # after the source reviewer has explicitly rejected those extras.\n    if len(accepted) > 3:\n        raise SourceOwnershipReviewError(\n            "SOURCE_OWNER_REVIEW_INVALID: more than 3 source-owned systems; "\n            "split the original source clause before authoring"\n        )\n    accepted_set = set(accepted)
+    # The facet contract permits at most three independently owned actions.
+    # A 4+ item model response may contain context-only extras; accept only
+    # after the source reviewer has explicitly rejected those extras.
+    if len(accepted) > 3:
+        raise SourceOwnershipReviewError(
+            "SOURCE_OWNER_REVIEW_INVALID: more than 3 source-owned systems; "
+            "split the original source clause before authoring"
+        )
+    accepted_set = set(accepted)
     kept = [system for idx, system in enumerate(systems) if idx in accepted_set]
     # The full source intent / outcome / security contracts run after this.
     return dict(draft, systems=kept), rejected
