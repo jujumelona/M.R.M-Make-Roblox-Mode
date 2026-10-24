@@ -18,7 +18,7 @@ SOURCE_OWNERSHIP_REVIEW_SCHEMA = {
     "properties": {
         "bindings": {
             "type": "array",
-            "maxItems": 3,
+            "maxItems": 6,
             "items": {
                 "type": "object",
                 "properties": {
@@ -48,9 +48,9 @@ def ground_source_ownership(
     Systems are never rewritten, and rejection fails closed.
     """
     systems = draft.get("systems")
-    if not isinstance(systems, list) or not 1 <= len(systems) <= 3:
+    if not isinstance(systems, list) or not 1 <= len(systems) <= 6:
         raise SourceOwnershipReviewError(
-            "SOURCE_OWNER_REVIEW_INVALID: expected 1-3 candidate systems")
+            "SOURCE_OWNER_REVIEW_INVALID: expected 1-6 candidate systems")
     if not isinstance(verdict, dict) or not isinstance(verdict.get("bindings"), list):
         raise SourceOwnershipReviewError(
             "SOURCE_OWNER_REVIEW_INVALID: model omitted bindings")
@@ -98,7 +98,7 @@ def ground_source_ownership(
         raise SourceOwnershipReviewError(
             "SOURCE_OWNER_REVIEW_REJECTED: no candidate implements "
             "the current source clause")
-    accepted_set = set(accepted)
+    # The facet contract permits at most three independently owned actions.\n    # A 4+ item model response may contain context-only extras; accept only\n    # after the source reviewer has explicitly rejected those extras.\n    if len(accepted) > 3:\n        raise SourceOwnershipReviewError(\n            "SOURCE_OWNER_REVIEW_INVALID: more than 3 source-owned systems; "\n            "split the original source clause before authoring"\n        )\n    accepted_set = set(accepted)
     kept = [system for idx, system in enumerate(systems) if idx in accepted_set]
     # The full source intent / outcome / security contracts run after this.
     return dict(draft, systems=kept), rejected
