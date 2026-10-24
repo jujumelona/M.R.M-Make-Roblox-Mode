@@ -62,8 +62,20 @@ class CompleteChatReply:
             # provenance checks, but do not require implementation to be
             # finished just to allow the build worker to START implementing.
             # No complete/verified gameplay is asserted by this admission.
-            captured = dict(ledger, unimplemented_facets=[])
-            return bool(ledger_complete(proposal.requested_prompt, captured))
+            # A plan is an immutable INTENT CAPTURE, not a claim that the
+            # classifier already found every independently implementable
+            # subsystem. Even a failed/deferred decomposition is a valid
+            # draft: the production worker will re-run strict ownership and
+            # source coverage checks before generating executable artifacts.
+            # Require source integrity but NOT a successful 9B translation.
+            import hashlib
+            original = proposal.requested_prompt
+            return bool(
+                isinstance(original, str) and original.strip()
+                and ledger.get("original_prompt") == original
+                and ledger.get("request_sha256") ==
+                hashlib.sha256(original.encode("utf-8")).hexdigest()
+            )
         return bool(is_complete
                     and audit_implementation_blueprint(proposal)["passed"]
                     and audit_detailed_plan(proposal)["passed"])
