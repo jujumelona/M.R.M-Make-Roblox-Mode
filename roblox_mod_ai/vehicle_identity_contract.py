@@ -53,9 +53,41 @@ def vehicle_identity_errors(proposal: Any) -> list[str]:
         relevant = [b for b in builders if b.name != owner_name]
         if not relevant:
             continue  # Standalone vehicles do not require a separate builder.
+        # A launch actor must be the actual builder-owned root, not ANY
+        # world object incidentally shared with the builder (e.g. a shop
+        # terminal or a resource deposit). Prefer a host-verified explicit
+        # actor identity; otherwise require structural root evidence.
+        actor = spec.get("actor_world_name")
+        if actor is not None:
+            if not isinstance(actor, str) or actor not in consumer_refs:
+                errors.append(
+                    "VEHICLE_ACTOR_IDENTITY_INVALID: " + owner_name +
+                    " names an actor not linked to its server world targets"
+                )
+                continue
+            declared_class = next((obj.get("class") for obj in
+                design.get("world_objects", ()) if isinstance(obj, dict)
+                and obj.get("name") == actor), None)
+            if (spec.get("actor_world_class") is not None and
+                    spec["actor_world_class"] != declared_class):
+                errors.append(
+                    "VEHICLE_ACTOR_CLASS_MISMATCH: " + owner_name +
+                    " resolved actor does not match materialized Instance class"
+                )
+                continue
+        physical_root = re.compile(
+            r"(?:ship|spacecraft|craft|vehicle|vessel|rocket|shuttle|"
+            r"car|train|aircraft|boat|plane|raft).{0,55}"
+            r"(?:root|chassis|frame|hull|body)|"
+            r"(?:root|chassis|frame|hull|body).{0,55}"
+            r"(?:ship|spacecraft|craft|vehicle|vessel|rocket|shuttle|"
+            r"car|train|aircraft|boat|plane|raft)", re.I
+        )
         shared = [
-            (b.name, sorted(consumer_refs &
-                            (set(ownership.get(b.module_id) or ()) & declared)))
+            (b.name, sorted(name for name in consumer_refs &
+                            (set(ownership.get(b.module_id) or ()) & declared)
+                            if (name == actor if actor is not None
+                                else physical_root.search(name))))
             for b in relevant
         ]
         if all(not refs for _, refs in shared):
