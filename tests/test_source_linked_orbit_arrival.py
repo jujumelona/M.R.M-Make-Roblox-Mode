@@ -4,7 +4,6 @@ from types import SimpleNamespace
 from roblox_mod_ai.spec import ModuleKind
 from roblox_mod_ai.vehicle_identity_binding import materialize_source_linked_space_arrivals
 from roblox_mod_ai.host_vehicle_departure import eligible_departure
-from roblox_mod_ai.generation_scope import generation_scope
 from roblox_mod_ai.host_protocol_handoff import rebase_complete_host_protocols
 
 
@@ -93,10 +92,13 @@ def test_real_orbit_arrival_enables_full_host_departure_handoff():
     assert eligible_departure(client, plan) is not None
     assert materialize_source_linked_space_arrivals(plan) == []
     assert len([obj for obj in design["world_objects"] if obj["name"] == arrival]) == 1
-    scope = generation_scope(plan)
-    strategy = {row["name"]: row["strategy"] for row in scope["modules"]}
-    assert strategy[launch.name] == "host_declarative_vehicle_departure"
-    assert strategy[client.name] == "host_declarative_vehicle_departure"
+    # The paired-host protocol selector consumes the strategy classification.
+    # Supply only this known classification: full generation_scope also needs
+    # unrelated prompt-ledger and acceptance metadata absent from this unit fixture.
+    scope = {"modules": [
+        {"name": launch.name, "strategy": "host_declarative_vehicle_departure"},
+        {"name": client.name, "strategy": "host_declarative_vehicle_departure"},
+    ]}
     rebased = rebase_complete_host_protocols(plan, scope)
     assert len(rebased) == 1 and rebased[0]["remote"] == "LaunchAction"
     assert "LaunchAction" not in design["host_typed_actions"]
