@@ -51,6 +51,16 @@ _PEER_TRADE_OUTPUT = re.compile(
     r"\b(?:p2p|peer[- ]to[- ]peer)\s+(?:trade|trading|exchange)\b|"
     r"\b(?:two|both|other)\s+players?'?\s*(?:inventor(?:y|ies)|trade|offers?)\b|"
     r"\b(?:trades?|exchanges?)\s+(?:with|between)\s+(?:other\s+)?players?\b|"
+    # A P2P offer may avoid the words 'player' and 'inventory' entirely.
+    # The generated plan 79 said 'seller's owned currency to the buyer' and
+    # slipped past the old pattern. A buyer/seller TRANSFER is still two-party
+    # gameplay, not the server market the user asked for.
+    r"\b(?:seller['’]s?|buyer['’]s?)\b.{0,230}"
+    r"\b(?:transfer\w*|trad\w*|exchang\w*|owned\s+by)\b.{0,230}"
+    r"\b(?:buyer['’]s?|seller['’]s?)\b|"
+    r"\b(?:seller['’]s?|buyer['’]s?)\b.{0,230}"
+    r"\b(?:buyer['’]s?|seller['’]s?)\b.{0,230}"
+    r"\b(?:transfer\w*|mark\w*\s+the\s+item\s+as\s+owned)\b|"
     r"\bother\s+player['’]s\s+inventor(?:y|ies)\b|"
     r"\bseller['’]s\s+(?:owned\s+)?(?:inventor(?:y|ies)|resources?|items?)\b"
     r".{0,240}\bbuyer['’]s\s+(?:currency\s+)?(?:balance|credits?|inventor(?:y|ies))\b|"
