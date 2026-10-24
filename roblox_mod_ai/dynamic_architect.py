@@ -783,6 +783,22 @@ class RobloxDynamicArchitect:
             "request_semantics_sha256": hashlib.sha256(
                 (Path(__file__).parent / "request_semantics.py").read_bytes()
             ).hexdigest(),
+            # Cached semantics must be invalidated when ANY of their
+            # selection, validation or field-authoring policies change.
+            # Previously only older modules were hashed, allowing stale
+            # first-facet checks to survive newly patched code.
+            "microplanning_sha256": hashlib.sha256(
+                (Path(__file__).parent / "source_owned_microplanning.py").read_bytes()
+            ).hexdigest(),
+            "action_aggregation_sha256": hashlib.sha256(
+                (Path(__file__).parent / "source_action_aggregation.py").read_bytes()
+            ).hexdigest(),
+            "atomic_authoring_sha256": hashlib.sha256(
+                (Path(__file__).parent / "atomic_action_authoring.py").read_bytes()
+            ).hexdigest(),
+            "compact_authoring_sha256": hashlib.sha256(
+                (Path(__file__).parent / "compact_atomic_authoring.py").read_bytes()
+            ).hexdigest(),
             "original_prompt": prompt, "ledger": ledger,
             "reserved_modules": sorted(reserved_modules),
         }, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")).hexdigest()
