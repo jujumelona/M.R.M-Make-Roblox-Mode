@@ -136,3 +136,21 @@ def test_second_preflight_is_idempotent():
     assert len(first) == 1
     assert second == []
     assert len(p.game_design["dynamic_design"]["world_objects"]) == 2
+
+
+
+def test_source_requested_batch_quantity_is_never_discarded():
+    p, server, client, route = proposal()
+    p.requested_prompt = "Players mine resources in batches of 5 at once"
+    ensure_mining_world_contract(p)
+    design = p.game_design["dynamic_design"]
+    assert design["host_actions"][route]["max_args"] == 1
+    assert route in design["host_typed_actions"]
+
+
+def test_malformed_model_transport_never_rebases_to_host_action():
+    p, server, client, route = proposal()
+    p.game_design["dynamic_design"]["host_typed_actions"][route]["contract"]["inputs"] = None
+    ensure_mining_world_contract(p)
+    assert route in p.game_design["dynamic_design"]["host_typed_actions"]
+    assert p.game_design["dynamic_design"]["host_actions"][route]["max_args"] == 1
