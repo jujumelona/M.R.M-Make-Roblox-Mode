@@ -126,3 +126,20 @@ def test_accepted_set_defined_after_review_of_four_candidates():
     )
     assert len(scoped["systems"]) == 3
     assert rejected == ["System0"]
+
+
+def test_semantic_source_validator_agrees_that_no_ejection_is_correct():
+    from roblox_mod_ai.semantic_preservation import (
+        source_intent_conflicts, source_outcome_conflicts,
+    )
+    original = "그렇게해서 우주로 나갈수있고"
+    server = (
+        "Server verifies fuel and physically moves the entire craft "
+        "into orbit with crew aboard; no passenger is ejected."
+    )
+    outcome = (
+        "The craft visibly arrives in space with crew still aboard; "
+        "no passenger is ejected."
+    )
+    assert source_intent_conflicts(original, server) == []
+    assert source_outcome_conflicts(original, outcome) == []
