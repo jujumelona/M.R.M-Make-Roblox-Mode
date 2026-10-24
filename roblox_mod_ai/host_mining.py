@@ -74,7 +74,7 @@ def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> st
                   if peer.kind == ModuleKind.SERVER_MODULE and peer.name == server), None)
     description = (owner.description if owner else module.description).lower()
     service_tokens = re.sub(
-        r"(?<=[a-z])(?=[A-Z])|(?<=[A-Za-z])(?=\\d)",
+        r"(?<=[a-z])(?=[A-Z])|(?<=[A-Za-z])(?=\d)",
         " ", server,
     )
     if (not re.search(r"\b(?:mining|mine|ore|gather|gathering|harvest|harvesting)\b", service_tokens, re.I)
