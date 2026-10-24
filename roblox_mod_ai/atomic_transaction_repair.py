@@ -38,6 +38,11 @@ _NEGATIVE = re.compile(
     r"\b(?:balance|inventory|state)\b.{0,35}"
     r"\b(?:unchanged|unmodified)\b", re.I,
 )
+_OWNED_TARGETS = {
+    "weapon": re.compile(r"\b(?:weapon|gun|armament)s?\b|무기", re.I),
+    "crew": re.compile(r"\b(?:crew|crewmember|sailor)s?\b|선원", re.I),
+    "ship": re.compile(r"\b(?:ship|spacecraft|spaceship|vessel|engine|thruster)s?\b|우주선", re.I),
+}
 _PURCHASE_INTENT = re.compile(
     r"\b(?:trad(?:e|es|ing)|exchang(?:e|es|ing)|barter\w*|"
     r"sell\w*|sold|buy\w*|bought|purchas\w*|hire\w*)\b|"
@@ -110,9 +115,17 @@ def author_transaction_repair(
         raise ValueError("ATOMIC_TRANSACTION_NO_DELIVERED_EFFECT")
     if _NEGATIVE.search(paid) or _NEGATIVE.search(gained):
         raise ValueError("ATOMIC_TRANSACTION_NEGATED_EFFECT")
+    # A valid debit for a SHIP must not authorize an unrelated CREW receipt.
+    # Verify each target named in the owned original source action, not the
+    # host's genre guess or an unrelated sibling action.
+    for name, pattern in _OWNED_TARGETS.items():
+        if pattern.search(owned) and not pattern.search(gained):
+            raise ValueError(
+                "ATOMIC_TRANSACTION_DELIVERY_TARGET_MISMATCH: " + name
+            )
     # The host owns the common Remote/validation obligations. The model must
     # still supply BOTH mutable effects and the owning gameplay target.
-    return (
+    candidate = (
         "For the requested purchase or trade, the server validates the "
         "authenticated player's chosen item, the server-owned catalog cost "
         "and available owned balance; it rejects invalid, insufficient or "
@@ -120,3 +133,11 @@ def author_transaction_repair(
         + paid.strip().rstrip(".; ") + "; then "
         + gained.strip().rstrip(".; ") + "."
     )
+    from .request_semantics import request_semantic_errors
+    issues = request_semantic_errors(candidate, source + " " + owned)
+    if issues:
+        raise ValueError(
+            "ATOMIC_TRANSACTION_UNREQUESTED_EFFECT: " +
+            "; ".join(issues)[:500]
+        )
+    return candidate
