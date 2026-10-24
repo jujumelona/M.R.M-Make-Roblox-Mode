@@ -104,22 +104,28 @@ def author_verified_atomic_systems(
         previous_issues: dict[str, list[str]] = {}
         # Never spend all three attempts on an identical one-field repair.
         # A failed repair is locally reformulated as a fresh compact action.
-        repair_attempted = False
+        repaired_fields: set[str] = set()
         transaction_repair_attempted = False
         for attempt in range(max_attempts_per_action):
+            # Repair the two independently failing fields in order, without
+            # discarding an accepted payment just because the old visible
+            # outcome was defective too. A global repair_attempted boolean
+            # forced whole-action regeneration on the third attempt.
+            reparable = {"server_behavior", "observable_result"}
+            pending = [
+                field for field in ("server_behavior", "observable_result")
+                if field in previous_issues and field not in repaired_fields
+            ]
             repair_field = (
-                next(iter(previous_issues))
-                if system is not None and not repair_attempted
-                and len(previous_issues) == 1
-                and next(iter(previous_issues)) in
-                ("server_behavior", "observable_result")
+                pending[0] if system is not None
+                and set(previous_issues) <= reparable and pending
                 else None
             )
             if (repair_field == "server_behavior"
                     and not transaction_repair_attempted
                     and require_transaction_repair(previous_issues)):
                 transaction_repair_attempted = True
-                repair_attempted = True
+                repaired_fields.add(repair_field)
                 try:
                     transaction_server = author_transaction_repair(
                         router, action,
@@ -135,7 +141,7 @@ def author_verified_atomic_systems(
                     continue
                 system = dict(system, server_behavior=transaction_server)
             elif repair_field:
-                repair_attempted = True
+                repaired_fields.add(repair_field)
                 previous_text = str(system.get(repair_field) or "")
                 # 1,200 characters in a 360-token completion was an invalid
                 # output contract. Restrict repair to the same compact budget
