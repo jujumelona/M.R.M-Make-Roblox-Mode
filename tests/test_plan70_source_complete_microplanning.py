@@ -98,8 +98,8 @@ def test_incremental_missing_targets_are_requested_one_at_a_time():
     assert [call[1]["max_tokens"] for call in router.requests] == [
         340, 180, 180,
     ]
-    assert all(len(call[1]["json_schema"]["properties"]["actions"]["items"]
-                   ["properties"]["action"]["maxLength"].__str__()) > 0
+    assert all(call[1]["json_schema"]["properties"]["actions"]["items"]
+                   ["properties"]["action"]["maxLength"] == 150
                for call in router.requests)
     assert [call[1]["json_schema"]["properties"]["actions"]["maxItems"]
             for call in router.requests] == [3, 1, 1]
@@ -167,3 +167,57 @@ def test_never_silently_accept_uncovered_6_action_source():
         complete_source_owned_actions(
             router, SOURCE, initial_actions=invalid,
         )
+
+
+
+def test_four_source_facets_choose_correct_planning_mode():
+    from roblox_mod_ai.source_owned_microplanning import (
+        needs_compound_microplanning,
+    )
+    assert needs_compound_microplanning(
+        "우주모드 인데 자원파밍 돈모으기 거래 등으로 "
+        "우주선을 부위마다 만들어서 만들수있고"
+    )
+    assert needs_compound_microplanning(SOURCE)
+    assert needs_compound_microplanning(
+        "우주로 나가면 다른행성의 특수 광물 외게인과 싸움 "
+        "식민지화등 여러가지가 가능한 모드"
+    )
+    assert not needs_compound_microplanning(
+        "그렇게해서 우주로 나갈수있고"
+    )
+
+
+def test_source_action_count_cap_cannot_hide_missing_mechanics():
+    # Without this guard a six-item plan could be certified even though
+    # require_implementation=False misses money earning and actual resource
+    # harvesting requirements from the original language.
+    from roblox_mod_ai.source_owned_microplanning import (
+        _coverage_issues,
+    )
+    source = (
+        "자원파밍 돈모으기 거래 등으로 우주선을 "
+        "부위마다 만들어서 만들수있고"
+    )
+    planned = [
+        {"action": "Server purchases a craft section and deducts credits."},
+        {"action": "Server validates craft section costs and updates inventory."},
+        {"action": "Server constructs a new craft section using owned material."},
+        {"action": "Server installs a finished craft section into the ship."},
+    ]
+    errors = _coverage_issues(source, planned)
+    assert any("RESOURCE_GATHER_ACTION_MISSING" in error for error in errors)
+    assert any("SOURCE_CURRENCY_EARNING_MISSING" in error for error in errors)
+
+
+def test_exact_default_bindings_remain_strict():
+    # Old callers must still reject missing source activities; the optional
+    # partial admission cannot silently change the established API contract.
+    only_ship = [
+        {"source_id": sid("우주선"),
+         "action": "Server purchases a ship performance upgrade and deducts currency."},
+        {"source_id": sid("성능을", exclude={sid("우주선")}),
+         "action": "Server upgrades ship engines and increases their speed."},
+    ]
+    with pytest.raises(SourceActionBindingError, match="COLLECTIVE"):
+        verify_or_bind_actions(Router([]), SOURCE, only_ship)
