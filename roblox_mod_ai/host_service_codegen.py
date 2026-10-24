@@ -20,7 +20,7 @@ from .luau_service_contract import service_contract_checks
 from .server_interface_audit import dependency_api_errors
 from .scoped_luau_abi import (
     host_abi_guidance, normalize_trusted_player_aliases,
-    typed_input_abi_errors,
+    typed_input_abi_errors, typed_input_fields_used,
 )
 from .request_semantics import request_semantic_errors
 from .world_motion_contract import vehicle_motion_code_errors
@@ -227,7 +227,10 @@ def try_scaffolded_server(
     if typed is not None:
         input_contract = (
             "The HOST validates ONE table payload and exposes local "
-            "actionArgs with named, typed fields. The shell rejects "
+            "actionArgs with named, typed fields; the host also defines "
+            "local args = actionArgs as an exact ALIAS, so use args.selection "
+            "or actionArgs.selection, NEVER args[1]/args[2]. "
+            "The shell rejects "
             "missing, unknown, out-of-range or forged fields BEFORE "
             "your body runs. Use ONLY the EXACT field IDs listed below "
             "for required user parameters (never invent fieldId), and "
@@ -472,10 +475,15 @@ def try_scaffolded_server(
                     raise ValueError(
                         "Server code does not reference declared state keys: " +
                         ", ".join(missing_effect_keys))
-                if typed["inputs"] and not (
-                        "actionArgs" in body or "args[" in body):
+                # lua_server_guard aliases 'local args = actionArgs'. Both
+                # args.quantity and actionArgs["quantity"] are the SAME
+                # validated named input; a string substring check wrongly
+                # rejected correct Luau three times in production (plan 76).
+                if typed["inputs"] and not typed_input_fields_used(body, typed):
                     raise ValueError(
-                        "Typed server implementation ignores validated player inputs")
+                        "Typed server implementation ignores validated named "
+                        "player inputs: " + ", ".join(
+                            field["id"] for field in typed["inputs"]))
             candidate = _shell(
                 body, [x["id"] for x in choices] if choices else None,
                 typed_contract=typed,
