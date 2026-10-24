@@ -304,7 +304,7 @@ def complete_source_owned_actions(
                         router, source, gaps[0], spans, occupied,
                         rejection_evidence,
                     )
-                except (ValueError, TypeError) as exc:
+                except (ValueError, TypeError, StopIteration) as exc:
                     rejection_evidence.append(
                         "FOCUSED_REPLY_INVALID: " + str(exc)[:160],
                     )
