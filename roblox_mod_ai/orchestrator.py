@@ -611,6 +611,9 @@ class RobloxProductionOrchestrator:
                     "failed_modules": failures,
                     "blocked_modules": blocked,
                     "failure_budget": failure_budget,
+                    "host_owned": failures[0].get("host_owned", False),
+                    "scoped_unit_exhausted": failures[0].get(
+                        "scoped_unit_exhausted", False),
                     "requires_contract_revision": any(
                         row.get("requires_contract_revision") for row in failures),
                 }
