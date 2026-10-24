@@ -133,6 +133,7 @@ local Players = game:GetService("Players")
 local Service = {}
 local NODE_NAMES = __NODES__
 local NODE_INITIAL = 100
+local RESPAWN_SECONDS = 25
 local COOLDOWN = 0.7
 local MAX_RANGE = 18
 local nodes = {}
@@ -194,6 +195,21 @@ function Service.handleAction(player, services, ...)
     progress.resources = balance + 1
     part:SetAttribute("RemainingResources", node.remaining)
     part:SetAttribute("ResourceDepleted", node.remaining == 0)
+    if node.remaining == 0 then
+        -- This node yields at most NODE_INITIAL per depletion cycle.
+        -- A finite one-shot stock smaller than the approved first hull
+        -- price permanently blocked the entire mining -> ship-build loop.
+        -- The next batch is server-issued after the cooldown, never by
+        -- a client-supplied timer, quantity, or inventory mutation.
+        local depleted = node
+        task.delay(RESPAWN_SECONDS, function()
+            if nodes[part] ~= depleted or not validNode(part) then return end
+            if depleted.remaining ~= 0 then return end
+            depleted.remaining = NODE_INITIAL
+            part:SetAttribute("RemainingResources", NODE_INITIAL)
+            part:SetAttribute("ResourceDepleted", false)
+        end)
+    end
     return {success = true, remaining = node.remaining,
             credits = coins.Value, resources = progress.resources}
 end
