@@ -444,10 +444,15 @@ def host_owned_action_contract(
     if host_selects_target or (not approved and len(world_entities or []) == 1):
         inputs: list[dict[str, Any]] = []
     elif approved:
-        inputs = [{
-            "id": "selection", "label": "Allowed action choice",
-            "type": "choice", "options": approved,
-        }]
+        # A verified choice list establishes selection IDs, not whether the
+        # operation accepts quantities. Preserve the prior quantity contract
+        # until an explicit typed cardinality is authored and validated.
+        inputs = [
+            {"id": "selection", "label": "Allowed action choice",
+             "type": "choice", "options": approved},
+            {"id": "quantity", "label": "Requested quantity",
+             "type": "integer", "min": 1, "max": 10000},
+        ]
     else:
         inputs = [
             {"id": "selection", "label": "Item, action, or target ID",
