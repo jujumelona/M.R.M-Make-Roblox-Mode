@@ -54,15 +54,23 @@ def test_valid_injected_real_service_and_runtime_world_are_not_rejected():
                    for e in dependency_api_errors(user, p, code))
 
 
-def test_source_grounded_single_entity_gets_button_not_two_dummy_inputs():
+def test_source_grounded_single_world_state_does_not_erase_user_choices():
     c = host_owned_action_contract(world_entities=["single_authored_target"])
-    assert c["inputs"] == []
+    assert [field["id"] for field in c["inputs"]] == ["selection", "quantity"]
     validate_contract(c, world_entities=["single_authored_target"],
                       transport_only=True)
     guard = lua_server_guard(c)
     assert "local actionArgs = ..." in guard
-    assert '__rmmAllowedFields["selection"]' not in guard
-    assert '__rmmAllowedFields["quantity"]' not in guard
+    assert '__rmmAllowedFields["selection"]' in guard
+    assert '__rmmAllowedFields["quantity"]' in guard
+
+
+def test_explicit_one_target_button_is_zero_input_only_when_host_selects():
+    c = host_owned_action_contract(
+        world_entities=["single_authored_target"], host_selects_target=True,
+    )
+    assert c["inputs"] == []
+    assert '__rmmAllowedFields["selection"]' not in lua_server_guard(c)
 
 
 def test_host_world_transition_is_zero_input_when_target_is_server_selected():
