@@ -18,6 +18,9 @@ from .semantic_preservation import (
 )
 from .request_semantics import request_semantic_errors
 from .compact_atomic_authoring import author_compact_atomic_system
+from .atomic_transaction_repair import (
+    require_transaction_repair, author_transaction_repair,
+)
 
 
 def _field_issues(
@@ -102,6 +105,7 @@ def author_verified_atomic_systems(
         # Never spend all three attempts on an identical one-field repair.
         # A failed repair is locally reformulated as a fresh compact action.
         repair_attempted = False
+        transaction_repair_attempted = False
         for attempt in range(max_attempts_per_action):
             repair_field = (
                 next(iter(previous_issues))
@@ -111,7 +115,26 @@ def author_verified_atomic_systems(
                 ("server_behavior", "observable_result")
                 else None
             )
-            if repair_field:
+            if (repair_field == "server_behavior"
+                    and not transaction_repair_attempted
+                    and require_transaction_repair(previous_issues)):
+                transaction_repair_attempted = True
+                repair_attempted = True
+                try:
+                    transaction_server = author_transaction_repair(
+                        router, action,
+                        str(system.get("server_behavior") or ""),
+                    )
+                except (ValueError, TypeError) as exc:
+                    # Keep previously verified siblings and try one ordinary
+                    # compact server generation for this action only.
+                    previous_issues = {"format": [
+                        "ATOMIC_TYPED_TRANSACTION_REJECTED: " + str(exc)[:250],
+                    ]}
+                    system = None
+                    continue
+                system = dict(system, server_behavior=transaction_server)
+            elif repair_field:
                 repair_attempted = True
                 previous_text = str(system.get(repair_field) or "")
                 # 1,200 characters in a 360-token completion was an invalid
