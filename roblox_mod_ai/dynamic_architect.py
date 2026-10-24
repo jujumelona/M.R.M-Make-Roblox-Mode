@@ -1529,7 +1529,7 @@ class RobloxDynamicArchitect:
                                         if isinstance(row, dict)],
                                 }, ensure_ascii=False),
                                 role="planner", temperature=0.0,
-                                max_tokens=900,
+                                max_tokens=(540 if len(candidates) <= 3 else 900),
                                 json_schema=SOURCE_OWNERSHIP_REVIEW_SCHEMA,
                             )
                             draft, rejected_scope_names = ground_source_ownership(
