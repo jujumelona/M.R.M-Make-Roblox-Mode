@@ -23,6 +23,30 @@ def _candidate_identity(row: dict[str, Any]) -> str:
     return re.sub(r"\s+", " ", str(row["server_behavior"]).casefold()).strip()
 
 
+def _same_effect_duplicate(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    """Collapse paraphrases of one action, not distinct gameplay effects.
+
+    In plan 69 the model emitted two differently named craft builders with
+    identical observed outcomes and the same craft target. Keeping both
+    consumed candidate budget without adding a requested action.
+    """
+    def normalized(value: Any) -> str:
+        return re.sub(r"\\s+", " ", str(value or "").casefold()).strip()
+
+    if (normalized(a.get("observable_result")) !=
+            normalized(b.get("observable_result"))):
+        return False
+    if (not normalized(a.get("observable_result"))
+            or sorted(map(normalized, a.get("world_entities") or [])) !=
+               sorted(map(normalized, b.get("world_entities") or []))):
+        return False
+    words = lambda row: set(re.findall(
+        r"[a-z]{3,}", normalized(row.get("server_behavior")),
+    ))
+    left, right = words(a), words(b)
+    return bool(left and right and len(left & right) / len(left | right) >= .40)
+
+
 def collect_source_action_candidates(
     previous: list[dict[str, Any]],
     incoming: list[dict[str, Any]],
@@ -48,7 +72,9 @@ def collect_source_action_candidates(
             # transactions even when a model says they are 'trade'.
             continue
         identity = _candidate_identity(item)
-        if identity in identities:
+        if identity in identities or any(
+            _same_effect_duplicate(item, retained) for retained in result
+        ):
             continue
         identities.add(identity)
         result.append(item)
