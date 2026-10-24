@@ -1,0 +1,123 @@
+"""Generic host ABI contract for *all* bounded model-written Luau actions.
+
+A small coder may describe game logic, but cannot redefine authenticated
+identity, invent argument names, or manufacture methods on host modules.
+Repairs here are limited to a single obviously incorrect wire-identity
+alias. Other violations remain hard failures with exact schema diagnostics.
+This is NOT a gameplay implementation or a claim of Roblox runtime success.
+"""
+from __future__ import annotations
+
+import json
+import re
+from typing import Any
+
+from .dynamic_wiring import _mask_strings, _without_comments
+
+_HOST_ALIAS = re.compile(
+    r"^(?P<indent>[ \t]*)local[ \t]+"
+    r"(?P<name>player|services|Player|Services)[ \t]*="
+    r"[ \t]*(?:args[ \t]*\[[ \t]*(?P<index>[12])[ \t]*\])"
+    r"[ \t]*;?[ \t]*$", re.I,
+)
+_DOT_FIELD = re.compile(r"\bactionArgs[ \t]*\.[ \t]*([A-Za-z_][A-Za-z_0-9]*)")
+_BRACKET_FIELD = re.compile(
+    r"\bactionArgs[ \t]*\[[ \t]*(['\"])([A-Za-z_][A-Za-z_0-9]*)\1[ \t]*\]"
+)
+_UNKNOWN_TYPED_DEPENDENCY = re.compile(
+    r"\b(?:services|_services)[ \t]*\.[ \t]*"
+    r"([A-Za-z_][A-Za-z_0-9]*)[ \t]*[:.]"
+    r"([A-Za-z_][A-Za-z_0-9]*)[ \t]*\("
+)
+
+
+def host_abi_guidance(contract: dict[str, Any] | None,
+                      peer_methods: dict[str, list[str]]) -> str:
+    """Supply EXACT host-declared input keys & dependency APIs to the coder."""
+    inputs = list((contract or {}).get("inputs") or [])
+    fields = {f["id"]: f["type"] for f in inputs
+              if isinstance(f, dict) and isinstance(f.get("id"), str)}
+    return (
+        "IMMUTABLE HOST ABI -- NOT OPTIONAL:\n"
+        "- player is the authenticated Roblox Player already passed by the host. "
+        "services is the injected server service registry. Never create local "
+        "player/services or read them from client args.\n"
+        "- actionArgs is a host-validated table. EXACT permitted field names "
+        "(other names are invalid): " + json.dumps(fields, sort_keys=True) + ".\n"
+        "- For a stored player namespace, only call "
+        "services.PlayerDataManager.GetState(player, namespace) with DOT "
+        "syntax. It returns the SAME mutable server-owned table or nil; "
+        "do not create a new one, and never call SetState/SaveState.\n"
+        "- Never call game:GetService for a generated game module; "
+        "only real Roblox engine services are returned by GetService.\n"
+        "- Exported services API (empty lists mean no exported callable "
+        "methods): " + json.dumps(peer_methods, sort_keys=True) + ".\n"
+        "- Source action rewards/prices may NOT be derived from an "
+        "untrusted requested quantity or a client-provided balance.\n"
+        "- Use only source-approved world objects, state keys and declared "
+        "inputs. If the contract omits a required server-side target or "
+        "effect, it is incomplete, not permission to invent it.\n"
+    )
+
+
+def normalize_trusted_player_aliases(body: str) -> str:
+    """Correct only a proved spoofed-identity alias, never domain logic.
+
+    The host already checks the real caller and passes player/registry. A line
+    'local player = args[1]' is not useful state: it shadows trusted identity
+    with untrusted input. Removing that exact assignment retains the already
+    scoped trusted variable. Upper-case aliases must bind to the real host
+    parameter instead. Any other redefining pattern is intentionally rejected
+    by normalize_verified_server_body.
+    """
+    result: list[str] = []
+    for original in body.splitlines(keepends=True):
+        line = original.rstrip("\r\n")
+        match = _HOST_ALIAS.fullmatch(line)
+        if not match:
+            result.append(original)
+            continue
+        name = match.group("name")
+        index = int(match.group("index"))
+        identity = "player" if name.lower() == "player" else "services"
+        expected = 1 if identity == "player" else 2
+        if index != expected:
+            result.append(original)
+            continue
+        if name in ("player", "services"):
+            # Exact erroneous declaration only: the existing trusted host
+            # function parameter becomes visible after removing it.
+            continue
+        ending = original[len(line):]
+        result.append(match.group("indent") +
+                      "local " + name + " = " + identity + ending)
+    return "".join(result)
+
+
+def typed_input_abi_errors(body: str,
+                           contract: dict[str, Any] | None) -> list[str]:
+    """Reject fields not present in the actual compiled transport schema.
+
+    Spellings such as actionArgs.fieldId in a selection/quantity payload
+    cannot work at runtime even when the Luau parser accepts them.
+    """
+    if contract is None:
+        return []
+    inputs = contract.get("inputs") or []
+    valid = {field["id"] for field in inputs
+             if isinstance(field, dict) and isinstance(field.get("id"), str)}
+    # Strip comments for code-only inspection; keep strings to inspect
+    # constant bracket indices after normalizing code comments.
+    raw = _without_comments(body)
+    masked = _mask_strings(raw)
+    accessed = {m.group(1) for m in _DOT_FIELD.finditer(masked)}
+    accessed.update(m.group(2) for m in _BRACKET_FIELD.finditer(raw)
+                    if masked[m.start():m.start()+10] == "actionArgs")
+    wrong = sorted(accessed - valid)
+    if not wrong:
+        return []
+    return [
+        "TYPED_INPUT_ABI: undeclared actionArgs fields " +
+        ", ".join(wrong) + "; exact validated inputs: " +
+        ", ".join(sorted(valid))
+    ]
