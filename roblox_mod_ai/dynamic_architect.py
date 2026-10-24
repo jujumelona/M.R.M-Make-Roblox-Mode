@@ -1463,13 +1463,12 @@ class RobloxDynamicArchitect:
                         # partial completion could not be repaired coherently.
                         # Single-effect requirements retain their ordinary
                         # route: inventing a second action would be unsafe.
-                        source_obligations = source_intent_conflicts(
-                            slice_request, "", require_implementation=True,
+                        from .source_owned_microplanning import (
+                            needs_compound_microplanning,
                         )
-                        compound_source = len({
-                            issue.split(":", 1)[0]
-                            for issue in source_obligations
-                        }) >= 2
+                        compound_source = needs_compound_microplanning(
+                            slice_request,
+                        )
                         if (compound_source
                                 and getattr(self.router,
                                             "supports_host_standard_transport", False)
