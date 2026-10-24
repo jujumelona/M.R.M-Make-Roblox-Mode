@@ -264,6 +264,10 @@ jobs:
       - name: Compile novel gameplay generated through validated dynamic architect
         shell: bash
         env:
+          # The deterministic LocalGameModel below emits the explicitly
+          # supported *legacy* full-JSON schema. The default interactive
+          # plan is an intent draft and must not be sent to that legacy mock.
+          RMM_LEGACY_ARCHITECTURE_PROTOCOL: "1"
           RMM_ENABLE_MODEL_QUERY_EXPANSION: "0"
           RMM_ENABLE_DYNAMIC_DESIGN: "1"
           RMM_ENABLE_MODEL_GENERATION: "1"
@@ -280,6 +284,7 @@ jobs:
           sess=CompleteRobloxAISession(output_root=Path(".rmm-dynamic-smoke"))
           model=LocalGameModel()
           sess.planner.router=model
+          sess.orchestrator.router=model
           sess.orchestrator.code_generator.router=model
           plan=sess.plan("펫 부화")
           assert plan.ready_to_build
