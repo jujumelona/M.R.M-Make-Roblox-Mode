@@ -1697,8 +1697,20 @@ class RobloxDynamicArchitect:
                                         # Remote choice allowlist. Otherwise
                                         # the selection remains typed text and
                                         # Luau server code validates its meaning.
+                                        from .world_motion_contract import (
+                                            has_vehicle_motion_effect,
+                                        )
                                         manifest = host_owned_action_contract(
-                                            source_choices)
+                                            source_choices,
+                                            world_entities=system.get(
+                                                "world_entities", []),
+                                            host_selects_target=bool(
+                                                movement_contract is not None
+                                                and has_vehicle_motion_effect(
+                                                    str(system.get("server_behavior") or "")
+                                                )
+                                            ),
+                                        )
                                         if source_choices and not validated_host_choice_options(
                                                 source_choices):
                                             discarded_ui_choices.append({
