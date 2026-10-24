@@ -99,7 +99,19 @@ def dependency_api_errors(module: Any, proposal: RobloxProposal, code: str) -> l
                         (", ".join(sorted(available | declared_fields)) or "(none)")
                     )
                 continue
-            if method == "start":
+            if method == "handleAction" and target != module.name:
+                # The gateway owns authenticated Remote dispatch. Calling a
+                # peer's handler is NOT a reusable transaction API: it may
+                # double-spend resources, bypass that peer's validated typed
+                # args or spoof a client action. A model must implement its
+                # own effect against approved state, not forward to a random
+                # sibling action handler.
+                errors.append(
+                    "DEPENDENCY_ACTION_DISPATCH_FORBIDDEN: " + target +
+                    ".handleAction is a host-routed ingress, not a callable "
+                    "cross-gameplay service API"
+                )
+            elif method == "start":
                 errors.append("DEPENDENCY_API: only the host bootstrap may call " + target + ".start(services)")
             elif available is not None and method not in available:
                 errors.append("DEPENDENCY_API: " + target + "." + method +
