@@ -362,6 +362,19 @@ class RobloxProductionOrchestrator:
 
         def generate():
             completed = 0
+            # An exhausted bounded coder is a failure of THAT module, not
+            # proof that every other independent module is impossible. Gather
+            # a bounded sample of independent failures while preserving all
+            # valid source checkpoints. Never publish a partial game as PASS.
+            try:
+                failure_budget = int(os.environ.get(
+                    "RMM_MAX_CODEGEN_FAILURE_DIAGNOSTICS", "3"))
+            except ValueError:
+                failure_budget = 3
+            failure_budget = max(1, min(failure_budget, 12))
+            failures: list[dict[str, Any]] = []
+            blocked: list[dict[str, str]] = []
+            failed_ids: set[str] = set()
             from .generation_provenance import (
                 host_source_must_regenerate, trusted_checkpoint_source,
             )
@@ -397,6 +410,18 @@ class RobloxProductionOrchestrator:
                 staging.replace(checkpoint_file)
 
             for module in proposal.modules:
+                dependencies_failed = [dep for dep in module.depends_on
+                                       if dep in failed_ids]
+                if dependencies_failed:
+                    blocked.append({"module": module.name,
+                                    "reason": "failed_dependencies: " +
+                                    ", ".join(dependencies_failed)})
+                    failed_ids.add(module.module_id)
+                    continue
+                if failures and len(failures) >= failure_budget:
+                    blocked.append({"module": module.name,
+                                    "reason": "bounded_independent_failure_budget"})
+                    continue
                 is_host_generated = False
                 try:
                     # Host-owned source is regenerated from the authoritative
@@ -502,15 +527,19 @@ class RobloxProductionOrchestrator:
                             and is_host_scaffolded_source(failed_code or ""))
                     )
                     if is_host_generated or bounded_failure or not module.module_id.startswith("dyn_"):
-                        # When a bounded model task fails, keep its ACTUAL
-                        # candidate/history and terminate this unit. The old
-                        # generic 6000-token full-file repair repeated the
-                        # same failure without preserving host ABI constraints.
-                        return {"success": False, "generated_count": completed,
-                                "failed_module": module.name, "error": message,
-                                "host_owned": is_host_generated,
-                                "scoped_unit_exhausted": bounded_failure,
-                                "requires_contract_revision": bounded_failure}
+                        # One scoped module is exhausted; never re-run its
+                        # failed body as a 6000-token whole ModuleScript.
+                        # Diagnose a few independent modules before leaving
+                        # the pipeline in a truthful FAILED state.
+                        failures.append({
+                            "module": module.name, "error": message,
+                            "host_owned": is_host_generated,
+                            "scoped_unit_exhausted": bounded_failure,
+                            "requires_contract_revision": bounded_failure,
+                        })
+                        failed_ids.add(module.module_id)
+                        module.code = ""
+                        continue
                     try:
                         replacement = RobloxCodeRepairAgent(router=self.router).repair(
                             module, proposal,
@@ -558,11 +587,33 @@ class RobloxProductionOrchestrator:
                                            "repair_error": str(repair_error),
                                            "traceback": traceback.format_exc()},
                                           passed=False)
-                        return {"success": False, "generated_count": completed,
-                                "failed_module": module.name,
-                                "error": "Initial generation: " + message + "; Recovery failed: " +
-                                         type(repair_error).__name__ + ": " + str(repair_error),
-                                "initial_error": message, "repair_error": str(repair_error)}
+                        failures.append({
+                            "module": module.name,
+                            "error": "Initial generation: " + message +
+                                     "; Recovery failed: " +
+                                     type(repair_error).__name__ + ": " +
+                                     str(repair_error),
+                            "initial_error": message,
+                            "repair_error": str(repair_error),
+                        })
+                        failed_ids.add(module.module_id)
+                        module.code = ""
+                        continue
+            if failures:
+                return {
+                    "success": False,
+                    "generated_count": completed,
+                    "failed_module": failures[0]["module"],
+                    "error": ("INDEPENDENT_CODEGEN_FAILURES: " +
+                              "; ".join(str(row["module"]) + ": " +
+                                        str(row["error"])[:350]
+                                        for row in failures)),
+                    "failed_modules": failures,
+                    "blocked_modules": blocked,
+                    "failure_budget": failure_budget,
+                    "requires_contract_revision": any(
+                        row.get("requires_contract_revision") for row in failures),
+                }
             return {"generated_count": completed, "success": True}
 
         def materialize():
