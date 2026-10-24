@@ -120,3 +120,18 @@ def test_no_pretend_completion_for_only_gather_plus_trade():
         [], [GATHER, PURCHASE], original_request=SOURCE,
     )
     assert choose_complete_source_actions(OWNED, pool) is None
+
+
+
+def test_money_earning_is_not_satisfied_by_purchase_and_resource_reward():
+    from roblox_mod_ai.semantic_preservation import source_intent_conflicts
+    spends_only = " ".join(
+        row["server_behavior"] for row in [BUILD, PURCHASE, GATHER]
+    )
+    problems = source_intent_conflicts(SOURCE, spends_only)
+    assert any("SOURCE_CURRENCY_EARNING_MISSING" in x for x in problems)
+    sells_materials = " ".join(
+        row["server_behavior"] for row in [BUILD, SALE, GATHER]
+    )
+    assert not any("SOURCE_CURRENCY_EARNING_MISSING" in x
+                   for x in source_intent_conflicts(SOURCE, sells_materials))
