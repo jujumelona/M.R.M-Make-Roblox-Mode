@@ -305,18 +305,18 @@ def source_intent_conflicts(
         r"거래|교환|\b(?:trad(?:e|es|ing)|exchang(?:e|es|ing)|barter\w*)\b",
         source, re.I,
     )
-    trade_action = re.search(
+    trade_action = re.compile(
         r"\b(?:trad(?:e|es|ing)|exchang(?:e|es|ing)|barter\w*|"
         r"sell\w*|sold|buy\w*|bought|purchas\w*)\b|거래|교환|구매|판매",
-        text, re.I,
+        re.I,
     )
-    transfer_effect = re.search(
+    transfer_effect = re.compile(
         r"\b(?:transfers?|deducts?|subtracts?|credits?|grants?|"
         r"debits?|pays?|consumes?|removes?|adds?|deposits?|"
         r"delivers?|awards?|equips?|recruits?|hires?|hired|"
         r"upgrad\w*|improv\w*|install\w*)\b"
         r"|차감|지급|이체|소비|추가|증가|감소|지불|전달|정산",
-        text, re.I,
+        re.I,
     )
     trade_effect_linked = any(
         trade_action.search(sentence) and transfer_effect.search(sentence)
