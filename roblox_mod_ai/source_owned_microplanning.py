@@ -214,6 +214,12 @@ def _repair_owned_purchase_effect(
     if not any(error.startswith("SOURCE_PURCHASE_PAYMENT_MISSING:")
                for error in gaps):
         return None
+    # Raw router actions carry source_id, while the authoritative source_quote
+    # is filled in ONLY by verify_or_bind_actions. Never index the raw action
+    # by source_quote (plan-74 KeyError retried three times).
+    source_quotes = {
+        item["id"]: item["quote"] for item in eligible_atomic_action_spans(source)
+    }
     for index, row in enumerate(raw):
         old = row["action"]
         targets = {name for name, pattern in _TRANSACTION_TARGETS.items()
@@ -233,7 +239,10 @@ def _repair_owned_purchase_effect(
                 "Output JSON {action:string} ONLY, 35-190 characters.\n" +
                 json.dumps({
                     "original_source": source,
-                    "unchanged_source_quote": row["source_quote"],
+                    "unchanged_source_quote": (
+                        row.get("source_quote") or
+                        source_quotes.get(row.get("source_id"), "")
+                    ),
                     "existing_action_to_repair": old,
                     "missing_contract": [
                         error for error in gaps if error.startswith(
