@@ -427,27 +427,36 @@ def validated_host_choice_options(raw: Any) -> list[dict[str, str]]:
     return clean
 
 
-def host_owned_action_contract(choices: Any = None) -> dict[str, Any]:
-    """Host-owned typed ingress independent of the small-model output shape.
+def host_owned_action_contract(
+    choices: Any = None, *,
+    world_entities: list[str] | None = None,
+    host_selects_target: bool = False,
+) -> dict[str, Any]:
+    """Compile a transport schema from known action requirements, not defaults.
 
-    A wrong optional UI selection declaration must NEVER invalidate actual
-    gameplay semantics or trigger full-scoped regeneration. Known-safe option
-    tables are maintained as allowlists; everything else is untrusted text.
+    A one-target action already bound to a concrete world entity, or a host-
+    selected world transition, has no reason to ask the user for a free-text
+    ID or quantity. For a missing choice catalog, retain the legacy generic
+    form for multi-target interactive actions so the server must authorize
+    whatever identifier is submitted. No game mechanic is inferred here.
     """
     approved = validated_host_choice_options(choices)
-    selection: dict[str, Any] = (
-        {"id": "selection", "label": "Allowed action choice",
-         "type": "choice", "options": approved}
-        if approved else
-        {"id": "selection", "label": "Item, action, or target ID",
-         "type": "text"}
-    )
-    return {
-        "inputs": [
-            selection,
+    if host_selects_target or (not approved and len(world_entities or []) == 1):
+        inputs: list[dict[str, Any]] = []
+    elif approved:
+        inputs = [{
+            "id": "selection", "label": "Allowed action choice",
+            "type": "choice", "options": approved,
+        }]
+    else:
+        inputs = [
+            {"id": "selection", "label": "Item, action, or target ID",
+             "type": "text"},
             {"id": "quantity", "label": "Requested quantity",
              "type": "integer", "min": 1, "max": 10000},
-        ],
+        ]
+    return {
+        "inputs": inputs,
         "target": {"kind": "none"},
         "state_changes": [],
     }
