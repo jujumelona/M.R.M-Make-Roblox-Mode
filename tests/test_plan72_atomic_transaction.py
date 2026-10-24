@@ -181,3 +181,27 @@ def test_free_upgrade_no_longer_qualifies_as_purchase():
                source_intent_conflicts(
                    "무기 구매", "Server purchases a weapon and upgrades its stats.",
                ))
+
+
+
+@pytest.mark.parametrize("server_behavior", [
+    "Server approves a weapon purchase but does not deduct any credits.",
+    "Server purchases a weapon without debiting the buyer's currency balance.",
+    "Server executes a purchase; no funds are deducted.",
+])
+def test_negated_money_movement_is_not_accepted_as_payment(server_behavior):
+    from roblox_mod_ai.semantic_preservation import source_intent_conflicts
+    assert any("SOURCE_PURCHASE_PAYMENT_MISSING" in issue
+               for issue in source_intent_conflicts(
+                   "무기 구매", server_behavior,
+               ))
+
+
+def test_real_debit_and_owned_upgrade_are_required_together():
+    from roblox_mod_ai.semantic_preservation import source_intent_conflicts
+    result = (
+        "Server validates the player's approved purchase and deducts "
+        "the official price in credits from the player's owned balance "
+        "and installs the purchased weapon into the owned loadout."
+    )
+    assert not source_intent_conflicts("무기 구매", result)
