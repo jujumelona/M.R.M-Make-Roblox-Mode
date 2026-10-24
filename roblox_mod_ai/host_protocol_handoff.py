@@ -47,7 +47,7 @@ def rebase_complete_host_protocols(proposal: Any, scope: dict[str, Any]) -> list
         return []
     strategies = {
         row["name"]: row["strategy"]
-        for row in scope.get("strategies", [])
+        for row in scope.get("modules", [])
         if isinstance(row, dict) and isinstance(row.get("name"), str)
         and isinstance(row.get("strategy"), str)
     }
