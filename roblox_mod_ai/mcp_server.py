@@ -297,7 +297,23 @@ class RobloxMCPServer:
             elif tool_name == "roblox_plan_audit":
                 if not self.session.authored_plan:
                     return {"passed": False, "error": "No active proposal loaded"}
-                return audit_implementation_blueprint(self.session.authored_plan.proposal)
+                proposal = self.session.authored_plan.proposal
+                if proposal.game_design.get("planning_phase") == "intent_draft":
+                    from .api import CompleteChatReply
+                    captured = CompleteChatReply(
+                        message=self.session.authored_plan.text,
+                        approval_hash=self.session.authored_plan.calculate_hash(),
+                        authored_plan=self.session.authored_plan,
+                    ).ready_to_build
+                    return {
+                        "passed": bool(captured),
+                        "phase": "intent_draft",
+                        "source_capture_complete": bool(captured),
+                        "implementation_ready": False,
+                        "engine_verified": False,
+                        "next_stage": "compile_implementation_contracts",
+                    }
+                return audit_implementation_blueprint(proposal)
 
             elif tool_name == "roblox_studio_inspect":
                 requested = str(arguments.get("tool", ""))
