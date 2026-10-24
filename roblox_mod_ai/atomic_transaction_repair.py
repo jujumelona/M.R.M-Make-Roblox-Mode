@@ -15,7 +15,7 @@ from typing import Any
 # "purchases the crew and upgrades the ship" is NOT payment.
 _DEBIT = re.compile(
     r"\b(?:deduct\w*|debit\w*|subtract\w*|spend\w*|"
-    r"consum\w*|charg\w*|pay\w*|transfer\w*|"
+    r"consum\w*|charg\w*|pay(?:s|ing)?|paid|"
     r"reduc\w*|decreas\w*)\b|차감|지불|소비|감소|공제", re.I,
 )
 _PAYMENT_ASSET = re.compile(
@@ -109,7 +109,12 @@ def author_transaction_repair(
             or not isinstance(gained, str)
             or not 24 <= len(gained.strip()) <= 180):
         raise ValueError("ATOMIC_TRANSACTION_EFFECT_FIELDS_INVALID")
-    if not _DEBIT.search(paid) or not _PAYMENT_ASSET.search(paid):
+    # A word like "payment" is not a debit. Require an affirmative debit
+    # verb tied to a currency/material within the SAME short effect field;
+    # neither "record payment" nor UI transfer counts as spending.
+    debit = _DEBIT.search(paid)
+    if (debit is None or not _PAYMENT_ASSET.search(
+            paid[debit.start():debit.end() + 100])):
         raise ValueError("ATOMIC_TRANSACTION_NO_AUTHORIZED_PAYMENT")
     if not _DELIVERY.search(gained):
         raise ValueError("ATOMIC_TRANSACTION_NO_DELIVERED_EFFECT")
