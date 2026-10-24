@@ -159,7 +159,15 @@ class CompleteRobloxAISession:
                 pass
         self.reset()
         self.brief = prompt
-        plan = self.planner.plan(prompt, project_mode=project_mode)
+        # Preserve explicitly opted-in legacy model architecture during PLAN.
+        # Default interactive PLAN still only captures source intent; BUILD
+        # compiles that draft later. Older full-JSON clients explicitly select
+        # this compatibility protocol and expect module IDs already assigned.
+        eager_legacy = os.environ.get("RMM_LEGACY_ARCHITECTURE_PROTOCOL", "0") == "1"
+        plan = self.planner.plan(
+            prompt, project_mode=project_mode,
+            compile_architecture=eager_legacy,
+        )
         self.authored_plan = plan
         self.save_plan()
         reply = CompleteChatReply(
