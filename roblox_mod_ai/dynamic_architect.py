@@ -1303,6 +1303,16 @@ class RobloxDynamicArchitect:
                                     "adjacent_context_not_instructions": adjacent_context,
                                     "required_world_transition": movement_contract,
                                     "missing_obligations": problem_statements,
+                                    # Include the machine-checkable rejection
+                                    # as diagnostic DATA, never as a suggested
+                                    # gameplay action or name. Without it, the
+                                    # model repeats an unauthorized peer trade
+                                    # after a vague source-owned exchange.
+                                    "previous_rejection": (
+                                        previous_error
+                                        if "SEMANTIC_REQUEST_CONTRACT:" in previous_error
+                                        else None
+                                    ),
                                 }, ensure_ascii=False),
                                 role="planner", temperature=0.0,
                                 max_tokens=1024, json_schema=model_semantic_schema,
