@@ -85,10 +85,13 @@ def ensure_mining_world_contract(proposal: RobloxProposal) -> list[dict[str, Any
         if not isinstance(spec, dict) or spec.get("transport_only") is not True:
             return False
         contract = spec.get("contract")
+        fields = contract.get("inputs") if isinstance(contract, dict) else None
         return bool(isinstance(contract, dict)
+                    and isinstance(fields, list)
+                    and len(fields) == 2
                     and contract.get("target") == {"kind": "none"}
                     and contract.get("state_changes") == []
-                    and {f.get("id") for f in contract.get("inputs", [])
+                    and {f.get("id") for f in fields
                          if isinstance(f, dict)} == {"selection", "quantity"})
 
     for module in proposal.modules:
@@ -111,7 +114,7 @@ def ensure_mining_world_contract(proposal: RobloxProposal) -> list[dict[str, Any
         if rebased and re.search(
                 r"\b(?:batch|bulk|quantity|multiple\s+at\s+once)\b|"
                 r"대량|수량|한\s*번에",
-                module.description, re.I):
+                module.description + " " + proposal.requested_prompt, re.I):
             rebased = False
         # A zero-argument mining request can be secure when the HOST selects
         # the closest planned Part by server-measured player distance.
