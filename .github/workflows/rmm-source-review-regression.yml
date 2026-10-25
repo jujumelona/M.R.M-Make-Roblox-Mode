@@ -10,6 +10,7 @@ on:
       - 'roblox_mod_ai/dynamic_repair.py'
       - 'tests/test_plan40_source_review_recovery.py'
       - 'tests/test_plan41_ai_review_evidence.py'
+      - 'tests/test_plan42_review_provenance.py'
       - 'tests/test_detailed_plan_and_source_review.py'
       - 'tests/test_source_repair_cycle.py'
       - '.github/workflows/rmm-source-review-regression.yml'
@@ -31,5 +32,6 @@ jobs:
         run: |
           python -m pytest -q tests/test_plan40_source_review_recovery.py
           python -m pytest -q tests/test_plan41_ai_review_evidence.py
+          python -m pytest -q tests/test_plan42_review_provenance.py
           python -m pytest -q tests/test_detailed_plan_and_source_review.py
           python -m pytest -q tests/test_source_repair_cycle.py
