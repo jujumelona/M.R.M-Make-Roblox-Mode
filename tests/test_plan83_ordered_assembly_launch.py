@@ -154,7 +154,8 @@ def test_both_server_and_client_use_verified_host_protocol():
     assert "seat.Occupant~=humanoid" in departure
     assert "vehicle:PivotTo" in departure
     assert '"VehicleArrivalZone"' in departure
-    assert 'InvokeServer("launch")' in departure_ui
+    assert 'InvokeServer(action)' in departure_ui
+    assert 'Return to ground' in departure_ui
 
 
 def test_invalid_parent_graph_fails_without_writing_luau():
