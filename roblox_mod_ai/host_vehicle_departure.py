@@ -60,6 +60,25 @@ local destinationName=@DESTINATION@
 local recent={}
 local inFlight={}
 local homeDock={}
+local function recoverFlight(player,services)
+    -- An ephemeral space voyage cannot orphan a persisted assembled ship.
+    -- Cancel its exact flight before restoring the authoritative launch dock.
+    local dock=homeDock[player]
+    inFlight[player]=nil
+    homeDock[player]=nil
+    recent[player]=nil
+    if typeof(dock)=="CFrame" then
+        local ship=services.@BUILDER@.GetOwnedActor(player)
+        if ship and ship:IsA("Model") and ship.Parent~=nil
+            and ship:GetAttribute("OwnerUserId")==player.UserId then
+            ship:PivotTo(dock)
+        end
+    end
+    if player.Parent==Players then
+        player:SetAttribute("RMMFlightState","landed")
+        player:SetAttribute("RMMShipFlightSeconds",nil)
+    end
+end
 local function validTier(value)
     return type(value)=="number" and value==value
         and value%1==0 and value>=0 and value<=10
@@ -70,6 +89,24 @@ function Service.start(services)
         and type(services.PlayerDataManager)=="table"
         and type(services.PlayerDataManager.GetState)=="function",
         "Departure requires both a real ship actor and authoritative upgrade profile")
+    local function watchPlayer(player)
+        -- Watch both the current character and later respawns. Died fires
+        -- before the next CharacterAdded, so we also repair on respawn.
+        local function watchCharacter(character)
+            if homeDock[player] then recoverFlight(player,services) end
+            local humanoid=character:FindFirstChildOfClass("Humanoid")
+                or character:WaitForChild("Humanoid",10)
+            if humanoid and humanoid:IsA("Humanoid") then
+                humanoid.Died:Connect(function()
+                    if homeDock[player] then recoverFlight(player,services) end
+                end)
+            end
+        end
+        player.CharacterAdded:Connect(watchCharacter)
+        if player.Character then task.spawn(watchCharacter,player.Character) end
+    end
+    Players.PlayerAdded:Connect(watchPlayer)
+    for _,player in Players:GetPlayers() do watchPlayer(player) end
     Players.PlayerRemoving:Connect(function(player)
         recent[player]=nil
         inFlight[player]=nil
@@ -119,7 +156,8 @@ function Service.handleAction(player,services,...)
         return {success=false,reason="cooldown"} end
     recent[player]=now
     if action=="launch" then homeDock[player]=start end
-    inFlight[player]=true
+    local flightToken={}
+    inFlight[player]=flightToken
     player:SetAttribute("RMMFlightState",action=="return" and "returning" or "launching")
     player:SetAttribute("RMMShipFlightSeconds",duration)
     -- Staged server-authoritative ascent of the SAME assembled model.
@@ -127,18 +165,32 @@ function Service.handleAction(player,services,...)
     task.spawn(function()
         local begin=os.clock()
         local completed=false
-        while inFlight[player] and player.Parent==Players
-            and vehicle.Parent~=nil and vehicle:GetAttribute("OwnerUserId")==player.UserId do
+        while inFlight[player]==flightToken and player.Parent==Players
+            and vehicle.Parent~=nil and vehicle:GetAttribute("OwnerUserId")==player.UserId
+            and humanoid.Health>0 and humanoid.Parent~=nil
+            and seat.Parent==vehicle and seat.Occupant==humanoid do
             local alpha=math.clamp((os.clock()-begin)/duration,0,1)
             vehicle:PivotTo(start:Lerp(target,alpha))
             if alpha>=1 then completed=true;break end
             RunService.Heartbeat:Wait()
         end
+        -- Respawn may already have restored the ship: an old coroutine
+        -- must never overwrite the new Player attribute or restored pivot.
+        if inFlight[player]~=flightToken then return end
         inFlight[player]=nil
-        if completed and action=="return" then homeDock[player]=nil end
+        if not completed then
+            local dock=homeDock[player]
+            if typeof(dock)=="CFrame" and vehicle.Parent~=nil then
+                vehicle:PivotTo(dock)
+            end
+            homeDock[player]=nil
+        elseif action=="return" then
+            homeDock[player]=nil
+        end
         if player.Parent==Players then
             local finalState=completed and (action=="return" and "landed" or "arrived") or "interrupted"
             player:SetAttribute("RMMFlightState",finalState)
+            if finalState~="arrived" then player:SetAttribute("RMMShipFlightSeconds",nil) end
         end
     end)
     return {success=true,status=action=="return" and "returning" or "launching",flightSeconds=duration,
