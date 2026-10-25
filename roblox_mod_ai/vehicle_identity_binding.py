@@ -293,7 +293,8 @@ def materialize_source_linked_space_arrivals(proposal: Any) -> list[dict[str, An
             continue
         client = modules.get(typed.get("client"))
         if (client is None or typed.get("server") != owner_name
-                or actor not in (ownership.get(client.module_id) or [])):
+                or (not provider_link and actor not in
+                    (ownership.get(client.module_id) or []))):
             continue
         names = {obj.get("name"): obj for obj in world if isinstance(obj, dict)}
         current_refs = ownership.get(owner.module_id) or []
