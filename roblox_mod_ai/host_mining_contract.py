@@ -16,7 +16,7 @@ from typing import Any
 from .spec import ModuleKind, RobloxProposal
 from .host_mining_nodes import mining_world_nodes
 
-_MINE = re.compile(r"\\b(?:mining|mines?|ores?|harvest(?:ing)?|gather(?:ing)?)\\b|채굴|자원파밍", re.I)
+_MINE = re.compile(r"\b(?:mining|mines?|ores?|harvest(?:ing)?|gather(?:ing)?)\b|채굴|자원파밍", re.I)
 _SERVICE_MINE = re.compile(r"\b(?:mining|mine|ore|gather|gathering|harvest|harvesting)\b", re.I)
 _RESOURCE = re.compile(r"resource|ore|mineral|자원|광물", re.I)
 _REWARD = re.compile(r"currency|coins?|credits?|earn|돈|화폐", re.I)
