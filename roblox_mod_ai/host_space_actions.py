@@ -59,6 +59,16 @@ def render_host_space_action(module, proposal):
     role = _role(server)
     if role is None:
         return None
+    # The flexible colony wording path is still anchored to the ORIGINAL
+    # user's request, never a fabricated planner description alone.
+    description = server.description.casefold()
+    if (role == "MarkPlanetColonized"
+            and not ("planet owned" in description and "colonized state" in description)):
+        request = str(proposal.requested_prompt or "").casefold()
+        if not (("식민지" in request or "coloniz" in request)
+                and ("우주" in request or "행성" in request
+                     or "space" in request or "planet" in request)):
+            return None
     if module.kind == ModuleKind.SERVER_MODULE and module.name != server.name:
         return None
     if module.kind == ModuleKind.CLIENT_SCRIPT and module.name != spec.get("client"):
