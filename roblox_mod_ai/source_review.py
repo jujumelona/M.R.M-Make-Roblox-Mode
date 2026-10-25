@@ -247,4 +247,8 @@ def review_generated_sources(
         report["status"] = "failed"
         report["fully_covered"] = False
         report["reason"] = type(exc).__name__ + ": " + str(exc)[:500]
+    if report["fully_covered"] and report["status"] in (
+            "issues_found", "reviewed_no_blockers"):
+        from .source_finding_adjudication import adjudicate_source_findings
+        return adjudicate_source_findings(proposal, report)
     return report
