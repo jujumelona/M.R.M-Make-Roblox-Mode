@@ -59,3 +59,24 @@ def test_57_existing_different_hud_is_not_silently_overwritten(tmp_path):
     with pytest.raises(ValueError,match="HUD source conflicts"):
         install_host_hud(tmp_path)
     assert "my original code" in path.read_text()
+
+
+def test_safe_regeneration_adds_new_action_without_overwriting_manual_edits(tmp_path):
+    import json
+    import pytest
+    _client(tmp_path,"Trader","MerchantPanel")
+    _client(tmp_path,"Builder","WorkshopPanel")
+    assert install_host_hud(tmp_path)
+    target=tmp_path/"src"/"client"/HUD_FILE
+    receipt=tmp_path/".rmm_hud_source_receipt.json"
+    assert "MerchantPanel" in target.read_text()
+    sealed=json.loads(receipt.read_text())
+    assert sealed["file"]==HUD_FILE
+    _client(tmp_path,"Runner","RacePanel")
+    assert install_host_hud(tmp_path)
+    assert "RacePanel" in target.read_text()
+    # Once edited by a human, even in an auto-managed file, never overwrite.
+    target.write_text(target.read_text()+"\\n-- hand edited\\n")
+    _client(tmp_path,"Gallery","GalleryPanel")
+    with pytest.raises(ValueError,match="HUD source conflicts"):
+        install_host_hud(tmp_path)
