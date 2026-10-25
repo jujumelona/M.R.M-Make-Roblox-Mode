@@ -101,7 +101,10 @@ end
 __WORLD_HELPERS__
 function Service.start(services)
     assert(services.PlayerDataManager and type(services.PlayerDataManager.GetState)=="function", "Space action requires PlayerDataManager.GetState")
-    Players.PlayerRemoving:Connect(function(p) recent[p]=nil end)
+    Players.PlayerRemoving:Connect(function(p)
+        recent[p]=nil
+        __COLONY_CLEANUP__
+    end)
     __PLACE_TARGET__
     services.PlayerDataManager.OnReady(function(p)
         local saved=services.PlayerDataManager.GetState(p,__NAMESPACE__)
@@ -162,6 +165,92 @@ local function placePlanetActionTarget()
 end
 '''
 
+
+# A colonization action must materialize a player-owned, observable base.
+# Visual instances are ephemeral; authoritative ownership remains persisted in
+# RMMPlanetProgress, and OnReady reconstructs a settlement after reconnecting.
+COLONY_WORLD_HELPERS = '''local function settlementFolder()
+    local folder=workspace:FindFirstChild("RMMPlayerSettlements")
+    if folder and not folder:IsA("Folder") then return nil end
+    if not folder then
+        folder=Instance.new("Folder")
+        folder.Name="RMMPlayerSettlements"
+        folder.Parent=workspace
+    end
+    return folder
+end
+local function spawnColony(player,markerName)
+    local marker=workspace:FindFirstChild(markerName,true)
+    if not marker or not marker:IsA("BasePart") then return false end
+    local folder=settlementFolder()
+    if not folder then return false end
+    local name="RMMColony_"..tostring(player.UserId)
+    local previous=folder:FindFirstChild(name)
+    if previous then
+        return previous:IsA("Model") and previous:GetAttribute("OwnerUserId")==player.UserId
+    end
+    -- Stable, bounded on-platform placement that never requires client input.
+    local slot=player.UserId%20
+    local x=-31+(slot%5)*15
+    local z=16+math.floor(slot/5)*9
+    local colony=Instance.new("Model")
+    colony.Name=name
+    colony:SetAttribute("OwnerUserId",player.UserId)
+    colony:SetAttribute("RMMColonyEstablished",true)
+    local base=Instance.new("Part")
+    base.Name="Foundation"
+    base.Size=Vector3.new(9,1,9)
+    base.Anchored=true
+    base.Material=Enum.Material.Metal
+    base.Color=Color3.fromRGB(47,125,152)
+    base.CFrame=marker.CFrame*CFrame.new(x,3,z)
+    base.Parent=colony
+    local tower=Instance.new("Part")
+    tower.Name="Habitat"
+    tower.Size=Vector3.new(5,7,5)
+    tower.Anchored=true
+    tower.Material=Enum.Material.SmoothPlastic
+    tower.Color=Color3.fromRGB(178,211,232)
+    tower.CFrame=base.CFrame*CFrame.new(0,4,0)
+    tower.Parent=colony
+    local mast=Instance.new("Part")
+    mast.Name="SignalBeacon"
+    mast.Shape=Enum.PartType.Ball
+    mast.Size=Vector3.new(2,2,2)
+    mast.Material=Enum.Material.Neon
+    mast.Color=Color3.fromRGB(61,221,201)
+    mast.Anchored=true
+    mast.CanCollide=false
+    mast.CFrame=tower.CFrame*CFrame.new(0,4.5,0)
+    mast.Parent=colony
+    local nameplate=Instance.new("BillboardGui")
+    nameplate.Name="ColonyLabel"
+    nameplate.AlwaysOnTop=true
+    nameplate.Size=UDim2.fromOffset(180,36)
+    nameplate.StudsOffset=Vector3.new(0,3,0)
+    nameplate.Parent=mast
+    local label=Instance.new("TextLabel")
+    label.Size=UDim2.fromScale(1,1)
+    label.BackgroundTransparency=0.2
+    label.TextScaled=true
+    label.TextColor3=Color3.new(1,1,1)
+    label.Text="Colony: "..player.DisplayName
+    label.Parent=nameplate
+    colony.PrimaryPart=base
+    colony.Parent=folder
+    return true
+end
+local function removeColony(player)
+    local folder=workspace:FindFirstChild("RMMPlayerSettlements")
+    if not folder or not folder:IsA("Folder") then return end
+    local colony=folder:FindFirstChild("RMMColony_"..tostring(player.UserId))
+    if colony and colony:IsA("Model")
+        and colony:GetAttribute("OwnerUserId")==player.UserId then
+        colony:Destroy()
+    end
+end
+'''
+
 EFFECTS = {
     "AlienCombat": '''    if not arrived(player,services,__ARRIVAL__) or not near(player,__TARGET__) then
         return {success=false,reason="not_on_planet"} end
@@ -204,11 +293,15 @@ EFFECTS = {
         return {success=false,reason="not_on_planet"} end
     if state.planetOwned~=true then return {success=false,reason="not_owned"} end
     if state.colonized==true then return {success=false,reason="already_colonized"} end
+    -- An explicit world artifact is part of successful colonization.
+    -- Never commit a saved colony state when materialization failed.
+    if not spawnColony(player,__ARRIVAL__) then
+        return {success=false,reason="settlement_unavailable"} end
     recent[player]=now
     state.colonized=true
     state.colonizedAt=os.time()
     player:SetAttribute("RMMPlanetColonized",true)
-    return {success=true,colonized=true}''',
+    return {success=true,colonized=true,settlement="built"}''',
     "ExtractOtherPlanetMineral": '''    if not arrived(player,services,__ARRIVAL__) or not near(player,__TARGET__) then
         return {success=false,reason="not_on_planet"} end
     if state.colonized~=true then return {success=false,reason="not_colonized"} end
@@ -258,7 +351,14 @@ def _server(role, world, builder):
                "MarkPlanetColonized": (14, 5),
                "ExtractOtherPlanetMineral": (-10, 5)}
     x, z = offsets.get(role, (0, 0))
-    return (LUA.replace("__WORLD_HELPERS__", PLANET_WORLD_HELPERS if is_planet else "")
+    restoration = RESTORE[role]
+    if role == "MarkPlanetColonized":
+        restoration += ('\n        if saved.colonized==true then spawnColony(p,'
+                        + json.dumps(world["arrival"]) + ') end')
+    helpers = (PLANET_WORLD_HELPERS if is_planet else "")
+    if role == "MarkPlanetColonized":
+        helpers += COLONY_WORLD_HELPERS
+    return (LUA.replace("__WORLD_HELPERS__", helpers)
             .replace("__BUILDER__", json.dumps(builder))
             .replace("__PLACE_TARGET__", "placePlanetActionTarget()" if is_planet else "-- No world action target")
             .replace("__ENSURE_TARGET__", 'if not placePlanetActionTarget() then return {success=false,reason="target_not_ready"} end' if is_planet else '-- No planet target')
@@ -268,7 +368,8 @@ def _server(role, world, builder):
             .replace("__ACTION__", json.dumps(action))
             .replace("__MAX_Q__", "10" if role == "ExtractOtherPlanetMineral" else "1")
             .replace("__NAMESPACE__", json.dumps(namespace))
-            .replace("__RESTORE__", RESTORE[role])
+            .replace("__RESTORE__", restoration)
+            .replace("__COLONY_CLEANUP__", "removeColony(p)" if role == "MarkPlanetColonized" else "-- No settlement owned by this action")
             .replace("__EFFECT__", effect))
 
 
