@@ -34,7 +34,11 @@ def test_prompt_has_exact_real_world_objects_not_inferred_names():
     assert authorized == ["WorldMachineOne"]
     guidance = world_lookup_guidance(proposal, module)
     assert '"WorldMachineOne"' in guidance
-    assert '"WorldMachineTwo"' in guidance
+    # The model must see ONLY the world objects this action owns. Emitting
+    # unrelated Parts in guidance caused invalid access to other systems'
+    # objects and hallucinated services like BuyerCurrency from failure 15.
+    assert '"WorldMachineTwo"' not in guidance
+    assert "Objects NOT listed here must not be accessed" in guidance
 
 
 def test_invented_world_name_from_model_is_rejected():
