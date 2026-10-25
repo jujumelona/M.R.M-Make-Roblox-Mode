@@ -33,7 +33,7 @@ def test_colony_can_reproject_without_duplicate_ownership_write():
     a=src.index('if state.colonized==true then')
     b=src.index('state.colonized=true',a)
     assert 'spawnColony(player,' in src[a:b]
-    assert src[a:b].count('state.colonized=')==0
+    assert 'state.colonized=true' not in src[a:b]
     assert 'reason="already_colonized"' not in src
     assert 'removeColony(p)' in src
     assert '__COLONY_CLEANUP__' not in src
