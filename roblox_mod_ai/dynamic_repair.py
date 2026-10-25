@@ -11,6 +11,8 @@ import json
 
 from .agent_loop import RobloxCodeRepairAgent
 from .spec import RobloxProposal
+from .generation_scope import generation_scope
+from .generation_provenance import host_source_must_regenerate
 
 def affected_dynamic_modules(proposal: RobloxProposal, diagnostics: str) -> list:
     # Exact path or basename required. Avoid "all files" retries.
@@ -95,6 +97,34 @@ def repair_tool_diagnostics(proposal: RobloxProposal, output_dir: Path,
         if not selected:
             return {"passed": False, "tool": tool_name, "history": history,
                     "reason": "Model could not attribute tool error to a real generated source",
+                    "last_tool": result}
+        # The deterministic host authored these modules. Rewriting a whole
+        # file with the small AI corrupts the source-owned contract and cannot
+        # repair the template used on the next run. Fail with actionable
+        # provenance and leave the source and checkpoint untouched.
+        try:
+            strategies = {
+                row["module_id"]: row["strategy"]
+                for row in generation_scope(proposal)["modules"]
+            }
+        except Exception as exc:
+            return {"passed": False, "tool": tool_name, "history": history,
+                    "reason": "SOURCE_OWNERSHIP_UNRESOLVED: " + str(exc)[:240],
+                    "last_tool": result}
+        host_defects = [
+            {"path": mod.file_path, "strategy": strategies.get(mod.module_id, "")}
+            for mod in selected
+            if host_source_must_regenerate(
+                mod, strategies.get(mod.module_id, ""))
+        ]
+        if host_defects:
+            history.append({"attempt": attempt, "decision": "fix_host_generator",
+                            "host_source_defects": host_defects})
+            return {"passed": False, "tool": tool_name, "history": history,
+                    "reason": "HOST_GENERATOR_SOURCE_DEFECT: fix deterministic "
+                              "template(s) and rerun generation, not model "
+                              "whole-file repair",
+                    "host_source_defects": host_defects,
                     "last_tool": result}
         if attempt > 1 and diagnostics == previous_diagnostic:
             history.append({"attempt": attempt,
