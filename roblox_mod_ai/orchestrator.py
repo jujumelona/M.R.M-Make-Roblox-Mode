@@ -281,9 +281,15 @@ class RobloxProductionOrchestrator:
             # ANY Luau-body retry. Catch the cross-stage identity breach
             # before paying for bounded-model coding. This is an IMPLEMENTATION
             # contract error, not a failure to preserve the original plan.
-            from .vehicle_identity_binding import bind_vehicle_actors
+            from .vehicle_identity_binding import (
+                bind_verified_vehicle_providers, bind_vehicle_actors,
+            )
             from .vehicle_identity_contract import vehicle_identity_errors
-            actor_bindings = bind_vehicle_actors(proposal)
+            # Prefer the verified runtime Model provider over a guessed static
+            # Craft Part; fall back to unique scene-root binding only when a
+            # first-party provider cannot be proven.
+            actor_bindings = bind_verified_vehicle_providers(proposal)
+            actor_bindings.extend(bind_vehicle_actors(proposal))
             if actor_bindings:
                 tool_results["vehicle_identity_bindings"] = actor_bindings
                 for record in actor_bindings:
