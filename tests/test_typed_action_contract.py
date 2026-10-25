@@ -535,3 +535,34 @@ def test_shared_grammar_normalization_applies_to_non_trade_actions(monkeypatch):
     assert typed["inputs"][0] == {
         "id": "treeName", "label": "Apple tree", "type": "text"}
     assert "options" not in typed["inputs"][1]
+
+
+def test_typed_ui_refuses_implicit_success_for_server_failure_objects():
+    """A failed RemoteFunction returning {success=false} is not a successful purchase."""
+    from types import SimpleNamespace
+    from roblox_mod_ai.spec import ModuleKind
+
+    module = SimpleNamespace(
+        module_id="dyn_trade_client",
+        name="TradeClient",
+        kind=ModuleKind.CLIENT_SCRIPT,
+    )
+    design = {
+        "module_remotes": {"dyn_trade_client": ["TradeAction"]},
+        "remotes": {"TradeAction": "RemoteFunction"},
+        "host_typed_actions": {
+            "TradeAction": {
+                "server": "TradeServer",
+                "client": "TradeClient",
+                "world_entities": [],
+                "contract": _contract(),
+            },
+        },
+    }
+    proposal = SimpleNamespace(game_design={"dynamic_design": design})
+    source = render_typed_client(module, proposal)
+    assert source is not None
+    assert 'result ~= false' not in source
+    assert 'result == true' in source
+    assert 'type(result) == "table" and result.success == true' in source
+    assert '"Action rejected"' in source
