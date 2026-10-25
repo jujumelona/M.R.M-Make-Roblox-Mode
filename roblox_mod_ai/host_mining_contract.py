@@ -112,7 +112,7 @@ def ensure_mining_world_contract(proposal: RobloxProposal) -> list[dict[str, Any
         # Preserve source-requested batch/multi-item mining semantics; only
         # replace an ungrounded generic host transport shell.
         if rebased and re.search(
-                r"\b(?:batch|bulk|quantity|multiple\s+at\s+once)\b|"
+                r"\b(?:batch(?:es)?|bulk|quantity|multiple\s+at\s+once)\b|"
                 r"대량|수량|한\s*번에",
                 module.description + " " + proposal.requested_prompt, re.I):
             rebased = False
