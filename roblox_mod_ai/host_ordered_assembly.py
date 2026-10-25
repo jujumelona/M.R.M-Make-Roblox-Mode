@@ -13,7 +13,8 @@ from .spec import ModuleKind
 from .host_ship_attachment import _SERVER, _CLIENT, _validated_sections
 
 _ID=re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,59}$")
-_PARENT=re.compile(r"\bparent\s+part\b|\bparent\s+attachment\b",re.I)
+_PARENT=re.compile(r"\bparent\s+part\b|\bparent\s+attachment\b|"
+                   r"\brequired\s+parent\s*,\s*attachment\s+point\b",re.I)
 _ATTACH=re.compile(r"\battach\w*|\bassembl\w*|\bconstruct\w*",re.I)
 _ORDER=re.compile(r"\bbuild\s+order\b|\border\w*\s+of\s+construction\b",re.I)
 _SAVE=re.compile(r"\b(?:persist\w*|sav\w*|record\w*)\b",re.I)
@@ -30,7 +31,21 @@ def eligible_ordered_assembly(m:Any,p:Any)->tuple[str,str,str,list[str]]|None:
     if not m.module_id.startswith("dyn_") or m.kind not in (ModuleKind.SERVER_MODULE,ModuleKind.CLIENT_SCRIPT):return None
     server=m.name if m.kind==ModuleKind.SERVER_MODULE else m.name.removesuffix("Client")+"Server"
     owner=next((x for x in p.modules if x.name==server and x.kind==ModuleKind.SERVER_MODULE),None)
-    if owner is None or not all(rx.search(owner.description) for rx in (_PARENT,_ATTACH,_ORDER,_SAVE)):return None
+    if owner is None:return None
+    # A source-owned, PartAdded-driven assembly state machine is already a
+    # server-owned lifecycle contract. Persist its authoritative state in the
+    # host player profile; do not ask a small coder to invent a second table.
+    host_state_machine = bool(
+        re.search(r"\bship\s+assembly\s+state\s+machine\b",
+                  owner.description, re.I)
+        and re.search(r"\bPartAdded\b", owner.description, re.I)
+        and re.search(r"\bserver[- ]owned\b", owner.description, re.I)
+        and re.search(r"\bassembly\s+table\b", owner.description, re.I)
+    )
+    if (not all(rx.search(owner.description)
+                for rx in (_PARENT, _ATTACH, _ORDER))
+            or not (_SAVE.search(owner.description) or host_state_machine)):
+        return None
     d=p.game_design.get("dynamic_design") or {}
     rows=[(k,v) for k,v in (d.get("host_actions") or {}).items()
           if isinstance(v,dict) and v.get("service")==server]
@@ -45,12 +60,32 @@ def eligible_ordered_assembly(m:Any,p:Any)->tuple[str,str,str,list[str]]|None:
     if any(not isinstance(x,str) or not _ID.fullmatch(x) for x in ids):return None
     roots=[x for x in ids if re.search("root|anchor",x,re.I)]
     parts=[x for x in ids if x not in roots]
-    if len(roots)!=1 or not 2<=len(parts)<=8:return None
+    if len(roots)==1 and 2<=len(parts)<=8:
+        root=roots[0]
+    elif not roots and host_state_machine and 2<=len(ids)<=8:
+        # The server creates AssemblyAnchor INSIDE the owned Model.
+        # Model-authored world entity lists often contain only the buildable
+        # hull/engine/cabin Parts. A source-independent, immutable internal
+        # anchor keeps every real section buildable, including the hull.
+        # Require that every logical ID is uniquely backed by a real world
+        # Part assigned to this builder; reject guessed/ambiguous scene names.
+        refs=(d.get("module_world_objects") or {}).get(owner.module_id) or []
+        classes={w.get("name"):w.get("class") for w in
+                 (d.get("world_objects") or []) if isinstance(w,dict)}
+        names=[name for name in refs if classes.get(name) in ("Part","MeshPart")]
+        if any(sum(
+                name==ident or re.fullmatch(re.escape(ident)+r"\\d+",name)
+                is not None for name in names) != 1 for ident in ids):
+            return None
+        root="RMMAssemblyAnchor"
+        parts=list(ids)
+    else:
+        return None
     if m.kind==ModuleKind.CLIENT_SCRIPT and not m.file_path.endswith(".client.luau"):return None
     if m.kind==ModuleKind.SERVER_MODULE and not m.file_path.startswith("src/server/"):return None
     linked=(d.get("module_remotes") or {}).get(m.module_id)
     if linked is not None and linked!=[remote]:return None
-    return server,remote,roots[0],parts
+    return server,remote,root,parts
 
 
 def _catalog(p:Any,server:str,root:str,parts:list[str],router:Any)->list[dict]:
