@@ -86,6 +86,32 @@ def vehicle_identity_errors(proposal: Any) -> list[str]:
                         " launch UI and server do not reference the same "
                         "materialized vehicle root"
                     )
+        # A physical Part shared by builder and launcher is only an identity
+        # link, NOT proof of an assembled driveable Model. If the approved
+        # launch must keep passengers aboard, the host must own a builder
+        # that exposes GetOwnedActor(player) and constructs the vehicle/seat.
+        # Otherwise the tiny coder spends minutes trying to move a dummy
+        # Part while inventing missing services and a destination.
+        if (spec.get("actor_identity_source") ==
+                    "unique_host_materialized_builder_root"
+                and re.search(r"occupant|aboard|passenger|crew",
+                              str(spec.get("occupant_rule") or ""), re.I)):
+            from .host_ordered_assembly import eligible_ordered_assembly
+            source_builder = next(
+                (b for b in relevant
+                 if b.module_id == spec.get("builder_module_id")), None
+            )
+            if (source_builder is None
+                    or eligible_ordered_assembly(source_builder, proposal) is None):
+                errors.append(
+                    "VEHICLE_PASSENGER_MODEL_UNPROVEN: " + owner_name +
+                    " requires the actual assembled, passenger-carrying Model "
+                    "from a verified builder GetOwnedActor(player). Linking "
+                    "a scene Part named " + str(actor) +
+                    " is not a valid movable ship. Re-author the builder "
+                    "and launcher world/Remote contracts before Luau coding."
+                )
+                continue
         physical_root = re.compile(
             r"(?:ship|spacecraft|craft|vehicle|vessel|rocket|shuttle|"
             r"car|train|aircraft|boat|plane|raft).{0,55}"
