@@ -27,7 +27,8 @@ def executable_spec(module:Any,proposal:Any)->tuple[str,dict,dict]|None:
     if len(routes)!=1:
         return None
     remote,route=routes[0]
-    if route.get("kind")!="RemoteFunction" or (design.get("remotes") or {}).get(remote)!="RemoteFunction":
+    if (route.get("kind")!="RemoteFunction" or route.get("max_args")==0
+            or (design.get("remotes") or {}).get(remote)!="RemoteFunction"):
         return None
     if (design.get("module_remotes") or {}).get(module.module_id)!=[remote]:
         return None
@@ -37,10 +38,25 @@ def executable_spec(module:Any,proposal:Any)->tuple[str,dict,dict]|None:
         return None
     if typed.get("server")!=module.name or typed.get("transport_only") is True:
         return None
+    clients=[m for m in proposal.modules if m.kind==ModuleKind.CLIENT_SCRIPT
+             and m.name==typed.get("client")
+             and (design.get("module_remotes") or {}).get(m.module_id)==[remote]
+             and m.file_path.startswith("src/client/")
+             and m.file_path.endswith(".client.luau")]
+    if len(clients)!=1:
+        return None
     if not module.file_path.startswith("src/server/") or not module.file_path.endswith(".luau"):
         return None
     contract=validate_contract(typed.get("contract"),
         world_entities=typed.get("world_entities") or [])
+    if contract["target"]["kind"]=="world_entity":
+        target=contract["target"]["name"]
+        world=[w for w in design.get("world_objects",[])
+               if isinstance(w,dict) and w.get("name")==target
+               and w.get("class") in ("Part","MeshPart")]
+        owned=(design.get("module_world_objects") or {}).get(module.module_id) or []
+        if len(world)!=1 or owned.count(target)!=1:
+            raise ValueError("EXECUTABLE_ACTION_UNBOUND_WORLD_TARGET")
     changes=contract["state_changes"]
     if len(changes)!=1 or changes[0]["scope"]!="player":
         return None
@@ -82,6 +98,9 @@ def executable_spec(module:Any,proposal:Any)->tuple[str,dict,dict]|None:
         raise ValueError("EXECUTABLE_ACTION_INVALID_AMOUNT")
     if not any(m.name=="PlayerDataManager" and m.kind in
                (ModuleKind.DATA_STORE,ModuleKind.SERVER_MODULE)
+               and m.file_path.startswith("src/server/")
+               and m.file_path.endswith(".luau")
+               and not m.file_path.endswith(".server.luau")
                for m in proposal.modules):
         raise ValueError("EXECUTABLE_ACTION_MISSING_PERSISTENCE_SERVICE")
     return remote,contract,{**effect,"amount_code":amount_code}
