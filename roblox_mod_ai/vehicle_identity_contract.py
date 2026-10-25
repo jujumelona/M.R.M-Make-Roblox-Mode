@@ -17,6 +17,17 @@ _VEHICLE = re.compile(
 )
 
 
+def relevant_candidates(modules: dict[str, Any], launch_name: str) -> list[Any]:
+    return [
+        m for m in modules.values()
+        if m.name != launch_name
+        and getattr(m, "module_id", "").startswith("dyn_")
+        and getattr(m, "file_path", "").startswith("src/server/")
+        and _BUILD.search(str(getattr(m, "description", "")))
+        and _VEHICLE.search(str(getattr(m, "description", "")))
+    ]
+
+
 def vehicle_identity_errors(proposal: Any) -> list[str]:
     design = (getattr(proposal, "game_design", {}) or {}).get("dynamic_design") or {}
     motions = design.get("host_world_motion") or {}
@@ -42,6 +53,48 @@ def vehicle_identity_errors(proposal: Any) -> list[str]:
         consumer = modules.get(owner_name)
         if consumer is None:
             errors.append("VEHICLE_ACTOR_OWNER_MISSING: " + str(owner_name))
+            continue
+        # Provider-bound transitions move the player's runtime Model returned
+        # by the verified first-party builder, not any static Craft proxy.
+        if spec.get("actor_identity_source") == "verified_owned_actor_provider":
+            from .host_ordered_assembly import eligible_ordered_assembly
+            from .spec import ModuleKind
+            builder = next(
+                (m for m in relevant_candidates(modules, owner_name)
+                 if m.module_id == spec.get("builder_module_id")), None)
+            provider_valid = (
+                spec.get("actor_provider") == "GetOwnedActor"
+                and builder is not None
+                and getattr(builder, "kind", None) == ModuleKind.SERVER_MODULE
+                and eligible_ordered_assembly(builder, proposal) is not None)
+            actions = design.get("host_actions") or {}
+            typed = design.get("host_typed_actions") or {}
+            routes = [
+                (remote, binding) for remote, binding in actions.items()
+                if isinstance(binding, dict)
+                and binding.get("service") == owner_name
+                and binding.get("kind") == "RemoteFunction"
+                and (design.get("remotes") or {}).get(remote) == "RemoteFunction"
+                and isinstance(typed.get(remote), dict)
+                and typed[remote].get("transport_only") is True
+                and typed[remote].get("server") == owner_name
+            ]
+            if len(routes) != 1:
+                provider_valid = False
+            else:
+                client = modules.get(typed[routes[0][0]].get("client"))
+                module_routes = design.get("module_remotes") or {}
+                if (client is None
+                        or getattr(client, "kind", None) != ModuleKind.CLIENT_SCRIPT
+                        or client.name != owner_name.removesuffix("Server") + "Client"
+                        or module_routes.get(consumer.module_id) not in (None, [routes[0][0]])
+                        or module_routes.get(client.module_id) not in (None, [routes[0][0]])):
+                    provider_valid = False
+            if not provider_valid:
+                errors.append(
+                    "VEHICLE_ACTOR_PROVIDER_INVALID: " + owner_name +
+                    " lacks a unique source-linked first-party builder "
+                    "with GetOwnedActor(player) and matching Remote pair")
             continue
         consumer_refs = set(ownership.get(consumer.module_id) or ()) & declared
         if not consumer_refs:
