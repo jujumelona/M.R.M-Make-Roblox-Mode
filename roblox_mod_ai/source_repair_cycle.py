@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .agent_loop import RobloxCodeRepairAgent
+from .generation_provenance import host_source_must_regenerate
+from .generation_scope import generation_scope
 
 SCHEMA = "rmm/source-repair-cycle-v1"
 HOST_OWNED_IDS = {
@@ -109,6 +111,17 @@ def run_source_repair_cycle(
         report["reason"] = "No confirmed blocking findings eligible for repair"
         return report
     modules = {m.file_path: m for m in proposal.modules}
+    # Ownership comes from the real codegen routing, not the dyn_ prefix.
+    # Host-generated gameplay also uses dyn_* identifiers.
+    try:
+        strategy_by_id = {
+            row["module_id"]: row["strategy"]
+            for row in generation_scope(proposal)["modules"]
+        }
+    except (AttributeError, KeyError, TypeError):
+        # Lightweight source-repair unit fixtures omit planning metadata.
+        # Production plans provide the full routing graph.
+        strategy_by_id = {}
     attempted_patches: set[tuple[str, str]] = set()
     changed: set[str] = set()
     current = initial_review
@@ -136,7 +149,10 @@ def run_source_repair_cycle(
                 break
             # An AI patch to a first-party template would be regenerated at
             # the next build and can bypass security. Require generator fix.
-            if not module.module_id.startswith("dyn_") or module.module_id in HOST_OWNED_IDS:
+            if (not module.module_id.startswith("dyn_")
+                    or module.module_id in HOST_OWNED_IDS
+                    or host_source_must_regenerate(
+                        module, strategy_by_id.get(module.module_id, ""))):
                 step["status"] = "blocked"
                 report["reason"] = (
                     "First-party host template needs generator-level repair: " + file_path)
