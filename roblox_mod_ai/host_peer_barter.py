@@ -127,23 +127,28 @@ def render_host_peer_barter(module, proposal):
         return None
     # Mining-backed games that request earning credits need a producer
     # of spendable currency; P2P balance exchange alone cannot satisfy it.
-    allow_market = (_needs_earned_currency_market(proposal)
-                    and (routes[0][1].get("max_args") is None
-                         or routes[0][1].get("max_args") >= 2))
+    # A server-market sale accepts one server-validated quantity argument.
+    # The combined market + peer ledger needs an additional command tag.
+    requested_market = _needs_earned_currency_market(proposal)
+    arity = routes[0][1].get("max_args")
+    market_single_arg = (arity is None or
+                         (type(arity) is int and arity >= 1))
+    market_tagged_peer = (arity is None or
+                          (type(arity) is int and arity >= 2))
     from .request_semantics import _EXPLICIT_PEER_TRADE
     original = str(getattr(proposal, "requested_prompt", "") or "")
     peer_authorized = bool(
         _EXPLICIT_PEER_TRADE.search(original)
         or re.search(r"\bbetween\s+players\b", original, re.I)
     )
-    if allow_market and not peer_authorized:
+    if requested_market and not peer_authorized and market_single_arg:
         # A vague user trade request does NOT authorize cross-player
         # transfers. Sell mined resources to the host market only; preserve
         # the single real RemoteFunction, the same inventory, and earned Coins.
         from .host_trading import _SERVER as MARKET_SERVER, _CLIENT as MARKET_CLIENT
         return (MARKET_SERVER if module.kind == ModuleKind.SERVER_MODULE
                 else MARKET_CLIENT.replace("__REMOTE__", json.dumps(routes[0][0])))
-    if allow_market:
+    if requested_market and peer_authorized and market_tagged_peer:
         return _with_market(module, routes[0][0])
     if not peer_authorized:
         # If the planner invented P2P and there is no source-approved market
