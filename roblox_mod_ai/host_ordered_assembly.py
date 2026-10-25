@@ -168,8 +168,22 @@ def render_ordered_assembly(m:Any,p:Any,router:Any)->str|None:
     local part = Instance.new("Part")
     part.Name = id
     part.Anchored = false
-    part.Size = Vector3.new(5, 2, 6)
-    part.CFrame = parent.CFrame * CFrame.new(0, 3, 6)
+    -- Each ordinal has its own local attachment transform. The old
+    -- one-offset template stacked every sibling part at the same CFrame.
+    local layout = {
+        [1] = {Vector3.new(10, 2, 12), CFrame.new(0, 3, 1)},
+        [2] = {Vector3.new(5, 3, 5), CFrame.new(0, 1, 7)},
+        [3] = {Vector3.new(7, 3, 5), CFrame.new(0, 3, -2)},
+        [4] = {Vector3.new(2, 2, 7), CFrame.new(5, 1, 0)},
+        [5] = {Vector3.new(3, 3, 5), CFrame.new(-5, 1, 0)},
+        [6] = {Vector3.new(10, 1, 8), CFrame.new(0, -2, -1)},
+        [7] = {Vector3.new(5, 2, 4), CFrame.new(0, 3, -2)},
+        [8] = {Vector3.new(5, 2, 4), CFrame.new(0, 0, 6)},
+    }
+    local position = layout[definition.ordinal]
+    if not position then return false end
+    part.Size = position[1]
+    part.CFrame = parent.CFrame * position[2]
     part:SetAttribute("RMMAssemblySection", id)
     part.Parent = parts
     local weld = Instance.new("WeldConstraint")
