@@ -154,6 +154,10 @@ def render_host_peer_barter(module, proposal):
         # If the planner invented P2P and there is no source-approved market
         # replacement, fail closed instead of shipping unauthorized assets.
         return None
+    # Peer offer commands use multiple arguments (action + offer payload).
+    # A one-argument RemoteFunction cannot route them, even if source-owned.
+    if arity is not None and (type(arity) is not int or arity < 2):
+        return None
     if module.kind == ModuleKind.SERVER_MODULE:
         return _SERVER if module.file_path.startswith("src/server/") else None
     return (_CLIENT.replace("__REMOTE__", json.dumps(routes[0][0]))
