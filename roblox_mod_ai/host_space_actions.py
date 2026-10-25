@@ -168,13 +168,38 @@ EFFECTS = {
     local hp=state.alienHp
     if hp==nil then hp=3 end
     if not integer(hp,3) or hp==0 then return {success=false,reason="defeated"} end
+    -- The weapon, purchased weapon tier and crew ranks come from the SAME
+    -- server-authoritative player profile as the economy, never the client.
+    -- An unowned weapon gives no bonus, even if old rank data remains.
+    local inv=services.PlayerDataManager.GetState(player,"RMMInventory")
+    local weapon=services.PlayerDataManager.GetState(player,"RMMWeaponProgress")
+    local ranks=services.PlayerDataManager.GetState(player,"RMMRankProgress")
+    if not inv or not weapon or not ranks then
+        return {success=false,reason="progress_loading"} end
+    local items=inv.items
+    local owned=type(items)=="table" and items.owned_weapon or 0
+    local tier=weapon.tier or 0
+    local crew=ranks.crew_performance_state or 0
+    local weaponRank=ranks.owned_weapon or 0
+    if not integer(owned,2147483600) or not integer(tier,1)
+        or not integer(crew,10) or not integer(weaponRank,10) then
+        return {success=false,reason="invalid_upgrade_state"} end
+    local damage=1
+    if owned>=1 then
+        if tier>=1 then damage+=1 end
+        if weaponRank>=3 then damage+=1 end
+    end
+    -- Trained crew also contribute to combat even without a weapon upgrade.
+    if crew>=3 then damage+=1 end
+    damage=math.min(3,damage)
     recent[player]=now
-    hp-=1
+    hp=math.max(0,hp-damage)
     state.alienHp=hp
     if hp==0 then state.planetOwned=true end
     player:SetAttribute("RMMPlanetOwned",state.planetOwned==true)
     player:SetAttribute("RMMAlienCombatState",hp==0 and "won" or "attacking")
-    return {success=true,hp=hp,planetOwned=state.planetOwned==true}''',
+    player:SetAttribute("RMMAlienHP",hp)
+    return {success=true,hp=hp,damage=damage,planetOwned=state.planetOwned==true}''',
     "MarkPlanetColonized": '''    if not arrived(player,services,__ARRIVAL__) or not near(player,__TARGET__) then
         return {success=false,reason="not_on_planet"} end
     if state.planetOwned~=true then return {success=false,reason="not_owned"} end
