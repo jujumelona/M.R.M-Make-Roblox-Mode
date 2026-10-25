@@ -1,0 +1,31 @@
+name: RMM AI source review recovery
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'roblox_mod_ai/source_review.py'
+      - 'roblox_mod_ai/source_repair_cycle.py'
+      - 'roblox_mod_ai/dynamic_repair.py'
+      - 'tests/test_plan40_source_review_recovery.py'
+      - 'tests/test_detailed_plan_and_source_review.py'
+      - 'tests/test_source_repair_cycle.py'
+      - '.github/workflows/rmm-source-review-regression.yml'
+  workflow_dispatch:
+jobs:
+  bounded-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install regression dependencies
+        run: python -m pip install -e '.[dev]'
+      - name: Check syntax
+        run: python -m compileall -q roblox_mod_ai tests
+      - name: Source review and repair regressions
+        run: |
+          python -m pytest -q tests/test_plan40_source_review_recovery.py
+          python -m pytest -q tests/test_detailed_plan_and_source_review.py
+          python -m pytest -q tests/test_source_repair_cycle.py
