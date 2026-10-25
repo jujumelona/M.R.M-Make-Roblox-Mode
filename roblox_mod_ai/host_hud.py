@@ -59,18 +59,12 @@ end)
 
 local nextSection=0
 local sections=setmetatable({},{__mode="k"})
+-- Names are derived from actual generated Remote-bound UI sources, never
+-- from a genre, hand-picked action name, or an assumed prefix.
+local actionGuis=__ACTION_GUI_ALLOWLIST__
 local function isActionGui(candidate)
-    if not candidate:IsA("ScreenGui") or candidate==gui then return false end
-    if candidate.Name=="RMMOnboarding" or candidate.Name=="RMMUnifiedHUD" then return false end
-    return candidate.Name=="RMMRankUpgrade"
-        or candidate.Name=="RMMShipAssembly"
-        or candidate.Name=="RMMResourceMarket"
-        or candidate.Name=="RMMVehicleDeparture"
-        or candidate.Name=="RMMMiningPanel"
-        or candidate.Name=="RMMPlayerTrading"
-        or candidate.Name=="RMMCurrencyExchange"
-        or candidate.Name=="RMMColonyAlias"
-        or string.sub(candidate.Name,1,4)=="RMM_"
+    return candidate:IsA("ScreenGui") and candidate~=gui
+        and actionGuis[candidate.Name]==true
 end
 
 local function sectionFor(candidate)
@@ -131,28 +125,64 @@ for _,child in playerGui:GetChildren() do register(child) end
 '''
 
 
-def install_host_hud(project_dir: Path) -> bool:
-    """Include a real LocalScript whenever multiple generated action UIs exist.
+# Require a declared ScreenGui produced by a client actually calling a server
+# Remote. Only this attested subset is docked; unrelated inventory/menu/chat
+# screens and non-Roblox overlays are never reparented.
+_GUI_NEW=re.compile(
+    r'\b(?:local\s+)?([A-Za-z_]\w*)\s*=\s*Instance\.new\(\s*'
+    r'["\x27]ScreenGui["\x27]\s*\)')
+_REMOTE_CALL=re.compile(r':(?:InvokeServer|FireServer)\s*\(')
+_GUI_NAME_TEMPLATE=r'\b%s\s*\.\s*Name\s*=\s*["\x27]([A-Za-z_][A-Za-z0-9_]{0,79})["\x27]'
 
-    No source-string substitution and no boilerplate appends inside player
-    model code; Rojo discovers the file from src/client. Idempotent on retries.
+
+def action_gui_names(project_dir: Path) -> list[str]:
+    """Discover action screens from actual executable client source.
+
+    A ScreenGui name/prefix is NOT evidence that the screen is an action.
+    A client Remote call plus a locally created, literal-named ScreenGui
+    is required; that is sufficient to preserve unrelated UI verbatim.
     """
     client=Path(project_dir)/"src"/"client"
     if not client.is_dir():
-        return False
-    eligible=0
+        return []
+    names=set()
     for path in client.glob("*.client.luau"):
         if path.name==HUD_FILE:
             continue
         source=path.read_text(encoding="utf-8")
-        if (re.search(r'Instance\.new\(\s*["\x27]ScreenGui["\x27]\s*\)', source)
-                and re.search(r'gui\.Name\s*=\s*["\x27]RMM', source)
-                and 'RMMOnboarding' not in source):
-            eligible+=1
-    if eligible<2:
+        if not _REMOTE_CALL.search(source):
+            continue
+        for matched in _GUI_NEW.finditer(source):
+            pat=re.compile(_GUI_NAME_TEMPLATE % re.escape(matched.group(1)))
+            name=pat.search(source,matched.end())
+            if name:
+                names.add(name.group(1))
+    return sorted(names)
+
+
+def render_host_hud(names: list[str]) -> str:
+    if not isinstance(names,list) or len(names)<2 or len(set(names))!=len(names):
+        raise ValueError("HUD requires two or more distinct source-backed action GUIs")
+    if any(not isinstance(n,str) or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,79}',n)
+           for n in names):
+        raise ValueError("HUD names must be bounded literal identifiers")
+    mapping="{" + ", ".join("["+repr(n)+"]=true" for n in sorted(names)) + "}"
+    return HUD_SOURCE.replace("__ACTION_GUI_ALLOWLIST__",mapping)
+
+
+def install_host_hud(project_dir: Path) -> bool:
+    """Install a generic Remote-bound UI dock before Rojo packaging.
+
+    This code never guesses a game genre, screen prefix or UI coordinate.
+    In case of an existing user-authored script, fail without overwriting it.
+    """
+    client=Path(project_dir)/"src"/"client"
+    names=action_gui_names(project_dir)
+    if len(names)<2:
         return False
+    source=render_host_hud(names)
     target=client/HUD_FILE
-    if target.exists() and target.read_text(encoding="utf-8")!=HUD_SOURCE:
-        raise ValueError("RMM HUD source conflicts with a preexisting project file")
-    target.write_text(HUD_SOURCE,encoding="utf-8")
+    if target.exists() and target.read_text(encoding="utf-8")!=source:
+        raise ValueError("HUD source conflicts with a preexisting project file")
+    target.write_text(source,encoding="utf-8")
     return True
