@@ -10,6 +10,7 @@ from pathlib import Path
 import hashlib
 import json
 import re
+from .dynamic_wiring import _without_comments
 
 HUD_FILE="RMMHUDLayout.client.luau"
 
@@ -151,12 +152,14 @@ def action_gui_names(project_dir: Path) -> list[str]:
     for path in client.glob("*.client.luau"):
         if path.name==HUD_FILE:
             continue
-        source=path.read_text(encoding="utf-8")
+        source=_without_comments(path.read_text(encoding="utf-8"))
         if not _REMOTE_CALL.search(source):
             continue
-        for matched in _GUI_NEW.finditer(source):
+        created=list(_GUI_NEW.finditer(source))
+        for index,matched in enumerate(created):
             pat=re.compile(_GUI_NAME_TEMPLATE % re.escape(matched.group(1)))
-            name=pat.search(source,matched.end())
+            stop=created[index+1].start() if index+1<len(created) else len(source)
+            name=pat.search(source,matched.end(),stop)
             if name:
                 names.add(name.group(1))
     return sorted(names)
