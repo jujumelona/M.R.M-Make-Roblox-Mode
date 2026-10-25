@@ -177,3 +177,71 @@ def test_no_real_builder_contract_never_launches_dummy():
     p, b, bc, move, _ = sample()
     b.description = "Unrelated decorative component"
     assert eligible_departure(move, p) is None
+
+
+def test_report15_partadded_ship_builds_host_model_before_passenger_launch():
+    """Regression from the real failure-15 partial world and action transport."""
+    from roblox_mod_ai.vehicle_identity_binding import materialize_source_linked_space_arrivals
+    from roblox_mod_ai.vehicle_identity_contract import vehicle_identity_errors
+    p, builder, ui, launch, launch_ui = sample()
+    builder.description = (
+        "Server owns the ship assembly state machine: each part is a "
+        "server-authoritative Part with a PartAdded signal that validates "
+        "the part's required parent, attachment point, and build order; "
+        "on success the server adds the part to the ship's assembly table, "
+        "emits a PartAdded event, and applies the performance record."
+    )
+    ids = [
+        "ShipHull", "ShipEngine", "ShipCabin", "ShipCannon",
+        "ShipFuelTank", "ShipArmorPlate", "ShipBridge", "ShipThruster",
+    ]
+    design = p.game_design["dynamic_design"]
+    actual = [name + "4533283" + str(i+1) for i, name in enumerate(ids)]
+    design["host_typed_actions"]["ConstructionRoute"]["world_entities"] = ids
+    design["world_objects"] = [
+        {"name": name, "class": "Part",
+         "position": [float(24+i*12), 2.0, 24.0],
+         "size": [4.0, 4.0, 4.0]}
+        for i, name in enumerate(actual)
+    ]
+    for mod in (builder, ui):
+        design["module_world_objects"][mod.module_id] = list(actual)
+    for mod in (launch, launch_ui):
+        design["module_world_objects"][mod.module_id] = [actual[0]]
+    motion = design["host_world_motion"][launch.name]
+    motion.update(
+        actor_world_name=actual[0], actor_world_class="Part",
+        actor_identity_source="unique_host_materialized_builder_root",
+        occupant_rule="players remain aboard the vehicle",
+        destination="playable space / orbit",
+    )
+    assert eligible_ordered_assembly(builder, p) == (
+        builder.name, "ConstructionRoute", "RMMAssemblyAnchor", ids,
+    )
+    assert eligible_ordered_assembly(ui, p)
+    assert vehicle_identity_errors(p) == []
+    arrivals = materialize_source_linked_space_arrivals(p)
+    assert len(arrivals) == 1 and arrivals[0]["builder"] == builder.name
+    assert "RMMOrbitArrival_" in arrivals[0]["arrival"]
+    assert eligible_departure(launch, p)
+    assert eligible_departure(launch_ui, p)
+
+    class RealShipData:
+        def complete_json(self, *_args, **_kwargs):
+            return {"sections": [
+                {"id": name,
+                 "parent": ids[i-1] if i else "RMMAssemblyAnchor",
+                 "label": name, "cost": 10+i, "performance": 1+i}
+                for i, name in enumerate(ids)
+            ]}
+
+    host = RealShipData()
+    builder_code = render_ordered_assembly(builder, p, host)
+    launcher_code = render_departure(launch, p)
+    assert "function Service.GetOwnedActor(player)" in builder_code
+    assert "Instance.new(\"VehicleSeat\")" in builder_code
+    assert '["ShipHull"]' in builder_code
+    assert '["ShipThruster"]' in builder_code
+    assert "services.ConstructionServer.GetOwnedActor(player)" in launcher_code
+    assert "vehicle:PivotTo" in launcher_code
+    assert arrivals[0]["arrival"] in launcher_code
