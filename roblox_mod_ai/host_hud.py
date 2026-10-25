@@ -135,7 +135,7 @@ _GUI_NEW=re.compile(
     r'\b(?:local\s+)?([A-Za-z_]\w*)\s*=\s*Instance\.new\(\s*'
     r'["\x27]ScreenGui["\x27]\s*\)')
 _REMOTE_CALL=re.compile(r':(?:InvokeServer|FireServer)\s*\(')
-_GUI_NAME_TEMPLATE=r'\b%s\s*\.\s*Name\s*=\s*["\x27]([A-Za-z_][A-Za-z0-9_]{0,79})["\x27]'
+_GUI_NAME_TEMPLATE=r"\b%s\s*\.\s*Name\s*=\s*(['\"])([^'\"\\\r\n]{1,80})\1"
 
 
 def action_gui_names(project_dir: Path) -> list[str]:
@@ -161,17 +161,19 @@ def action_gui_names(project_dir: Path) -> list[str]:
             stop=created[index+1].start() if index+1<len(created) else len(source)
             name=pat.search(source,matched.end(),stop)
             if name:
-                names.add(name.group(1))
+                names.add(name.group(2))
     return sorted(names)
 
 
 def render_host_hud(names: list[str]) -> str:
     if not isinstance(names,list) or len(names)<2 or len(set(names))!=len(names):
         raise ValueError("HUD requires two or more distinct source-backed action GUIs")
-    if any(not isinstance(n,str) or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,79}',n)
+    if any(not isinstance(n,str) or not 1<=len(n)<=80
+           or n.strip()!=n or any(ord(c)<32 for c in n)
            for n in names):
-        raise ValueError("HUD names must be bounded literal identifiers")
-    mapping="{" + ", ".join("["+repr(n)+"]=true" for n in sorted(names)) + "}"
+        raise ValueError("HUD names must be bounded literal UI labels")
+    mapping="{" + ", ".join("["+json.dumps(n,ensure_ascii=False)+"]=true"
+                             for n in sorted(names)) + "}"
     return HUD_SOURCE.replace("__ACTION_GUI_ALLOWLIST__",mapping)
 
 
