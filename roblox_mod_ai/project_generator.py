@@ -305,6 +305,38 @@ JestGlobals = "roblox/jest-globals@=3.20.0"
             dest.write_text(module.code, encoding="utf-8")
             paths_created[module.name] = dest
 
+        # The independently generated RMM actions used to stack several
+        # purchase, launch, alien, and ship-building GUIs on the same screen
+        # coordinates. Install a single host-owned tabbed dock once at least
+        # three actual first-party action panels have been generated. Preserve
+        # each module's button and event handlers; the dock changes layout only.
+        action_panels = (
+            "RMMMiningPanel", "RMMResourceMarket", "RMMShipAssembly",
+            "RMMRankUpgrade", "RMM_WeaponPerformanceUpgrade",
+            "RMMVehicleDeparture", "RMM_AlienCombat",
+            "RMM_MarkPlanetColonized", "RMM_ExtractOtherPlanetMineral",
+        )
+        panel_owners = [
+            m for m in proposal.modules
+            if m.file_path.startswith("src/client/")
+            and any(('gui.Name = "' + name + '"') in (m.code or "")
+                    for name in action_panels)
+        ]
+        if len(panel_owners) >= 3:
+            dock_path = safe_project_file(
+                target_dir, "src/client/RMMHUDLayout.client.luau",
+                prefixes=("src",),
+            )
+            if dock_path.exists():
+                raise ValueError(
+                    "RMM_HUD_LAYOUT_CONFLICT: first-party docking source "
+                    "would overwrite an authored client"
+                )
+            source = Path(__file__).with_name("rmm_action_dock.client.luau")
+            dock_path.parent.mkdir(parents=True, exist_ok=True)
+            dock_path.write_bytes(source.read_bytes())
+            paths_created["RMMHUDLayout"] = dock_path
+
         if proposal.game_design.get("features", {}).get("is_shop"):
             economy_source = Path(__file__).with_name("economy_rules.luau")
             dest = target_dir / "src" / "shared" / "EconomyRules.luau"
