@@ -18,7 +18,7 @@ def make_verification_report(
 
     def put(name: str, status: str, scope: str, reason: str = "") -> None:
         checks[name] = {
-            "status": status, "executed": status in ("passed", "failed"),
+            "status": status, "executed": status in ("passed", "failed", "unverified"),
             "scope": scope, "reason": reason,
         }
 
@@ -50,6 +50,11 @@ def make_verification_report(
     elif source_review.get("status") == "reviewed_no_blockers":
         put("ai_source_review", "passed",
             "AI reviewed actual source with line citations; NOT engine execution")
+    elif source_review.get("status") == "reviewed_unverified_host_claims":
+        put("ai_source_review", "unverified",
+            "Model inspection completed, but host-source accusations lack "
+            "independent generator/engine evidence",
+            source_review.get("reason", ""))
     else:
         put("ai_source_review", "failed",
             "AI source inspection failed or found quoted blocking problems",
@@ -102,7 +107,7 @@ def make_verification_report(
         "selection_policy": "execute only applicable available tools; report skipped as NOT RUN",
         "checks": checks,
         "summary": {name: statuses.count(name) for name in (
-            "passed", "failed", "not_run", "not_applicable")},
+            "passed", "failed", "unverified", "not_run", "not_applicable")},
         "gameplay_verified": False,
         "studio_executed": False,
     }
