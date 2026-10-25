@@ -19,6 +19,7 @@ from .host_gameplay import render_host_gameplay
 from .host_space_actions import render_host_space_action
 from .host_space_colonization import render_colony_alias
 from .typed_action_contract import render_typed_client
+from .host_atomic_effect import render_atomic_server
 from .host_mode_navigation import eligible_mode_navigation
 from .host_mode_unlock import eligible_mode_unlock
 from .host_catalog_purchase import eligible_catalog_purchase
@@ -58,6 +59,8 @@ def generation_scope(
     for module in proposal.modules:
         if not module.module_id.startswith("dyn_"):
             strategy = "builtin_source"
+        elif render_atomic_server(module, proposal) is not None:
+            strategy = "host_atomic_effect"
         elif render_colony_alias(module, proposal) is not None:
             strategy = "host_space_colony_alias"
         elif render_host_space_action(module, proposal) is not None:
