@@ -264,9 +264,11 @@ function Service.start(services)
         publish(player, profile)
     end)
     Players.PlayerRemoving:Connect(function(player)
+        -- Destroy the complete per-session actor, not just its sections.
+        -- Keeping the old anchor and pilot seat leaves an orphaned model,
+        -- while its build-lot lease is released for a different player.
         local ship = shipModels[player]
-        local parts = ship and ship:FindFirstChild("AssembledSections")
-        if parts then parts:Destroy() end
+        if ship then ship:Destroy() end
         shipModels[player] = nil
         if lots[player] ~= nil then
             occupied[lots[player]] = nil
