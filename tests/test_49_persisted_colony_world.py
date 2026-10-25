@@ -50,5 +50,6 @@ def test_colony_still_requires_real_owned_ship_arrival():
     code=render_host_space_action(server,proposal)
     assert 'not arrived(player,services,' in code
     assert 'state.planetOwned~=true' in code
-    assert 'already_colonized' in code
+    assert 'if state.colonized==true then' in code
+    assert 'settlement="restored",already=true' in code
     assert 'if not placePlanetActionTarget()' in code
