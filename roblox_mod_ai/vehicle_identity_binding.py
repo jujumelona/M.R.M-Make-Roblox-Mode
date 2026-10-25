@@ -273,7 +273,8 @@ def materialize_source_linked_space_arrivals(proposal: Any) -> list[dict[str, An
         provider_link = (motion.get("actor_identity_source") ==
                          "verified_owned_actor_provider"
                          and motion.get("actor_provider") == "GetOwnedActor")
-        world_link = (isinstance(actor, str)
+        world_link = (owner is not None and builder is not None
+                      and isinstance(actor, str)
                       and actor in (ownership.get(owner.module_id) or [])
                       and actor in (ownership.get(builder.module_id) or []))
         if (owner is None or builder is None
