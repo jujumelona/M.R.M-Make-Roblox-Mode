@@ -134,6 +134,10 @@ def test_both_server_and_client_use_verified_host_protocol():
     assert model.calls == 1  # one compact JSON, no AI Luau calls
     assert "local function placePart" in builder
     assert "WeldConstraint" in builder
+    assert 'if ship then ship:Destroy() end' in builder
+    assert 'local position = layout[definition.ordinal]' in builder
+    for ordinal in range(1, 9):
+        assert f'[{ordinal}] = {{Vector3.new(' in builder
     assert "local ROOT_ID = " in builder
     assert '["Vehicle_PART_ENGINE"]' in builder
     assert 'parent = "Vehicle_PART_HULL"' in builder
