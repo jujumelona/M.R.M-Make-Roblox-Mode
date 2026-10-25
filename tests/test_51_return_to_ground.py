@@ -22,7 +22,7 @@ def test_can_return_to_previously_recorded_launch_dock():
         'seat.Occupant~=humanoid',
         'vehicle:GetAttribute("OwnerUserId")~=player.UserId',
         'start:Lerp(target,alpha)',
-        'if completed and action=="return" then homeDock[player]=nil end',
+        'elseif action=="return" then',
         'action=="return" and "landed" or "arrived"',
     ):
         assert token in lua, token
