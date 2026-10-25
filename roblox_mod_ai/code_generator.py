@@ -44,6 +44,7 @@ from .server_modules import render_dynamic_server_bootstrap
 from .host_client import render_host_client
 from .typed_action_contract import render_typed_client
 from .host_space_actions import render_host_space_action
+from .host_space_colonization import render_colony_alias
 from .host_player_data import render_callable_player_data
 from .gameplay_round import render_arena_round_service, render_arena_round_controller
 from .implementation_blueprint import audit_implementation_blueprint
@@ -104,7 +105,8 @@ class LuauCodeGenerator:
                 f"{d.file_path}:{d.line_number} [{d.rule}] {d.message}"
                 for d in errors
             )
-            if (render_host_space_action(module, proposal) is not None
+            if (render_colony_alias(module, proposal) is not None
+                    or render_host_space_action(module, proposal) is not None
                     or render_host_gameplay(module, proposal) is not None
                     or eligible_mode_navigation(module, proposal) is not None
                     or eligible_mode_unlock(module, proposal) is not None
@@ -159,6 +161,9 @@ class LuauCodeGenerator:
         # For a typed action, the host deterministically builds all form
         # controls and its Remote payload. Do not call the smaller coder for
         # a duplicate client UI or let a genre template bypass this ABI.
+        verified_colony_alias = render_colony_alias(module, proposal)
+        if verified_colony_alias is not None:
+            return verified_colony_alias
         host_space_action = render_host_space_action(module, proposal)
         if host_space_action is not None:
             return host_space_action
