@@ -204,7 +204,13 @@ end'''
         seat.Name = "PilotSeat"
         seat.Anchored = false
         seat.Size = Vector3.new(3, 1, 3)
-        seat.CFrame = anchor.CFrame * CFrame.new(0, 2, 0)
+        -- The hull spans anchor-local Y=2..4 and Z=-5..7, while
+        -- the cabin occupies Y=4.5..7.5, Z=-3.5..1.5.
+        -- The former (0,2,0) seat was INSIDE the solid hull; an
+        -- assembled craft could be unboardable and never launch.
+        -- Set the pilot seat flush with the hull roof at Y=4.5 and
+        -- between the cabin (Z<=1.5) and engine (Z>=5.5).
+        seat.CFrame = anchor.CFrame * CFrame.new(0, 4.5, 3.5)
         seat.Parent = ship
         local joint = Instance.new("WeldConstraint")
         joint.Part0 = anchor
