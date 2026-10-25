@@ -17,6 +17,7 @@ from .host_ordered_assembly import eligible_ordered_assembly
 from .host_vehicle_departure import eligible_departure
 from .host_gameplay import render_host_gameplay
 from .host_space_actions import render_host_space_action
+from .host_space_colonization import render_colony_alias
 from .typed_action_contract import render_typed_client
 from .host_mode_navigation import eligible_mode_navigation
 from .host_mode_unlock import eligible_mode_unlock
@@ -57,6 +58,8 @@ def generation_scope(
     for module in proposal.modules:
         if not module.module_id.startswith("dyn_"):
             strategy = "builtin_source"
+        elif render_colony_alias(module, proposal) is not None:
+            strategy = "host_space_colony_alias"
         elif render_host_space_action(module, proposal) is not None:
             strategy = "host_space_action"
         # Routing precedence MUST match code_generator.generate_module_code:
