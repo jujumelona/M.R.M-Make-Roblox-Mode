@@ -154,12 +154,20 @@ info.Position=UDim2.new(1,-270,0,415)
 info.Text=""
 info.Parent=gui
 local busy=false
+player:GetAttributeChangedSignal("RMMFlightState"):Connect(function()
+    local state=player:GetAttribute("RMMFlightState")
+    if state=="arrived" then info.Text="Arrived in orbit"
+    elseif state=="interrupted" then info.Text="Flight interrupted"
+    elseif state=="launching" then info.Text="Ascending to orbit..." end
+end)
 button.Activated:Connect(function()
     if busy then return end
     busy=true
     local ok,result=pcall(function() return remote:InvokeServer("launch") end)
     if not ok or type(result)~="table" then info.Text="Network error"
-    elseif result.success then info.Text="Vehicle arrived"
+    elseif result.success and result.status=="launching" then
+        info.Text="Launching ("..tostring(result.flightSeconds).."s)"
+    elseif result.success then info.Text="Launch accepted"
     else info.Text=tostring(result.reason or "Rejected") end
     busy=false
 end)
