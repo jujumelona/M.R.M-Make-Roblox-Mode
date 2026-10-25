@@ -7,6 +7,8 @@ without changing their gameplay code or server action contracts.
 """
 from __future__ import annotations
 from pathlib import Path
+import hashlib
+import json
 import re
 
 HUD_FILE="RMMHUDLayout.client.luau"
@@ -182,7 +184,23 @@ def install_host_hud(project_dir: Path) -> bool:
         return False
     source=render_host_hud(names)
     target=client/HUD_FILE
+    receipt=Path(project_dir)/".rmm_hud_source_receipt.json"
     if target.exists() and target.read_text(encoding="utf-8")!=source:
-        raise ValueError("HUD source conflicts with a preexisting project file")
+        # A project rerun can legitimately add or remove action modules.
+        # Regenerate a PRIOR host-owned script only when its byte hash was
+        # sealed by our earlier receipt; never overwrite user-authored Lua.
+        try:
+            saved=json.loads(receipt.read_text(encoding="utf-8"))
+        except (OSError,ValueError):
+            saved={}
+        observed=hashlib.sha256(target.read_bytes()).hexdigest()
+        if saved.get("source_sha256")!=observed or saved.get("file")!=HUD_FILE:
+            raise ValueError("HUD source conflicts with a preexisting project file")
     target.write_text(source,encoding="utf-8")
+    receipt.write_text(json.dumps({
+        "schema":"rmm/generated-source-receipt-v1",
+        "file":HUD_FILE,
+        "action_guis":names,
+        "source_sha256":hashlib.sha256(source.encode("utf-8")).hexdigest(),
+    },sort_keys=True,indent=2),encoding="utf-8")
     return True
