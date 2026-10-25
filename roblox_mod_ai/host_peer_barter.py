@@ -145,9 +145,10 @@ def render_host_peer_barter(module, proposal):
         # A vague user trade request does NOT authorize cross-player
         # transfers. Sell mined resources to the host market only; preserve
         # the single real RemoteFunction, the same inventory, and earned Coins.
-        from .host_trading import _SERVER as MARKET_SERVER, _CLIENT as MARKET_CLIENT
-        return (MARKET_SERVER if module.kind == ModuleKind.SERVER_MODULE
-                else MARKET_CLIENT.replace("__REMOTE__", json.dumps(routes[0][0])))
+        from .host_trading import market_templates_for_plan
+        market_server, market_client = market_templates_for_plan(proposal)
+        return (market_server if module.kind == ModuleKind.SERVER_MODULE
+                else market_client.replace("__REMOTE__", json.dumps(routes[0][0])))
     if requested_market and peer_authorized and market_tagged_peer:
         return _with_market(module, routes[0][0])
     if not peer_authorized:
