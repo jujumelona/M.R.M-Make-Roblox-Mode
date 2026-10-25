@@ -189,13 +189,29 @@ local function spawnColony(player,markerName)
     if previous then
         return previous:IsA("Model") and previous:GetAttribute("OwnerUserId")==player.UserId
     end
-    -- Stable, bounded on-platform placement that never requires client input.
-    local slot=player.UserId%20
+    -- Prefer a repeatable slot, but resolve collisions from OTHER players
+    -- before creating world parts. Every generated base stays on the 96x96 pad.
+    local used={}
+    for _,other in folder:GetChildren() do
+        if other:IsA("Model") then
+            local ownedSlot=other:GetAttribute("RMMColonySlot")
+            if type(ownedSlot)=="number" and ownedSlot%1==0
+                and ownedSlot>=0 and ownedSlot<20 then used[ownedSlot]=true end
+        end
+    end
+    local preferred=player.UserId%20
+    local slot=nil
+    for offset=0,19 do
+        local candidate=(preferred+offset)%20
+        if not used[candidate] then slot=candidate;break end
+    end
+    if slot==nil then return false end -- Never overlap a different owner's base.
     local x=-31+(slot%5)*15
     local z=16+math.floor(slot/5)*9
     local colony=Instance.new("Model")
     colony.Name=name
     colony:SetAttribute("OwnerUserId",player.UserId)
+    colony:SetAttribute("RMMColonySlot",slot)
     colony:SetAttribute("RMMColonyEstablished",true)
     local base=Instance.new("Part")
     base.Name="Foundation"
@@ -292,7 +308,14 @@ EFFECTS = {
     "MarkPlanetColonized": '''    if not arrived(player,services,__ARRIVAL__) or not near(player,__TARGET__) then
         return {success=false,reason="not_on_planet"} end
     if state.planetOwned~=true then return {success=false,reason="not_owned"} end
-    if state.colonized==true then return {success=false,reason="already_colonized"} end
+    if state.colonized==true then
+        -- Restore a missing visual colony without repeating the transaction
+        -- or changing saved ownership, even after external map cleanup.
+        if not spawnColony(player,__ARRIVAL__) then
+            return {success=false,reason="settlement_unavailable"} end
+        recent[player]=now
+        return {success=true,colonized=true,settlement="restored",already=true}
+    end
     -- An explicit world artifact is part of successful colonization.
     -- Never commit a saved colony state when materialization failed.
     if not spawnColony(player,__ARRIVAL__) then
