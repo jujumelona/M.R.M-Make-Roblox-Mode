@@ -28,7 +28,15 @@ def reproduce():
         file_path="src/client/SpaceColonization52E67D2Client.client.luau",
         roblox_service="StarterPlayer.StarterPlayerScripts",
         description="Generic typed colony form")
-    p.modules.extend([server,client])
+    # The production checkpoint includes a persisted PlayerDataManager.
+    # A minimal synthetic plan without this server module falsely trips the
+    # independent dependency ABI gate before the alias contract is checked.
+    persistence = RobloxModuleSpec(module_id="mod_player_data",
+        name="PlayerDataManager",kind=ModuleKind.DATA_STORE,
+        file_path="src/server/PlayerDataManager.luau",
+        roblox_service="ServerScriptService",
+        description="Server profile persistence injected in startup registry")
+    p.modules.extend([persistence,server,client])
     d=p.game_design["dynamic_design"]
     remote="SpaceColonization52E67D2Action"
     d.setdefault("host_actions",{})[remote]={"service":server.name,"kind":"RemoteFunction","max_args":1}
