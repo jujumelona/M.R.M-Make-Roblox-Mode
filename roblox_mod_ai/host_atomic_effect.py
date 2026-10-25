@@ -1,0 +1,162 @@
+"""Generic, explicit state-transition compiler for bounded typed actions.
+
+This is an opt-in mechanism keyed by the existing authenticated Remote
+contract, NOT by genre, module name, natural-language keywords, or templates.
+A small planner supplies data only. Any unsupported effect is rejected rather
+than being replaced with a pretend success or a 6K-token model-generated
+ModuleScript.
+"""
+from __future__ import annotations
+
+import json
+import re
+from typing import Any
+
+from .spec import ModuleKind
+from .typed_action_contract import validate_contract, lua_server_guard
+
+_ID=re.compile(r"[A-Za-z][A-Za-z0-9_]{0,31}\Z")
+
+
+def executable_spec(module:Any,proposal:Any)->tuple[str,dict,dict]|None:
+    if module.kind != ModuleKind.SERVER_MODULE or not module.module_id.startswith("dyn_"):
+        return None
+    design=(proposal.game_design or {}).get("dynamic_design") or {}
+    routes=[(remote,v) for remote,v in (design.get("host_actions") or {}).items()
+            if isinstance(v,dict) and v.get("service")==module.name]
+    if len(routes)!=1:
+        return None
+    remote,route=routes[0]
+    if route.get("kind")!="RemoteFunction" or (design.get("remotes") or {}).get(remote)!="RemoteFunction":
+        return None
+    if (design.get("module_remotes") or {}).get(module.module_id)!=[remote]:
+        return None
+    typed=(design.get("host_typed_actions") or {}).get(remote)
+    effect=(design.get("host_executable_actions") or {}).get(remote)
+    if not isinstance(typed,dict) or not isinstance(effect,dict):
+        return None
+    if typed.get("server")!=module.name or typed.get("transport_only") is True:
+        return None
+    if not module.file_path.startswith("src/server/") or not module.file_path.endswith(".luau"):
+        return None
+    contract=validate_contract(typed.get("contract"),
+        world_entities=typed.get("world_entities") or [])
+    changes=contract["state_changes"]
+    if len(changes)!=1 or changes[0]["scope"]!="player":
+        return None
+    if set(effect)!={"schema","namespace","field","operation","amount","limit"}:
+        raise ValueError("EXECUTABLE_ACTION_UNSUPPORTED_SCHEMA")
+    if effect["schema"]!="rmm/atomic-effect-v1":
+        raise ValueError("EXECUTABLE_ACTION_UNSUPPORTED_VERSION")
+    namespace,field=effect["namespace"],effect["field"]
+    op=effect["operation"]
+    if (not isinstance(namespace,str) or not _ID.fullmatch(namespace)
+            or not isinstance(field,str) or not _ID.fullmatch(field)
+            or op not in ("increment","decrement","set")):
+        raise ValueError("EXECUTABLE_ACTION_UNSUPPORTED_OPERATION_OR_STATE")
+    declared=changes[0]
+    if declared["key"]!=namespace+"."+field or declared["operation"]!=op:
+        raise ValueError("EXECUTABLE_ACTION_UNDECLARED_STATE_EFFECT")
+    limit=effect["limit"]
+    if type(limit) is not int or not 1<=limit<=1000000000:
+        raise ValueError("EXECUTABLE_ACTION_UNSAFE_STATE_BOUND")
+    amount=effect["amount"]
+    if not isinstance(amount,dict):
+        raise ValueError("EXECUTABLE_ACTION_INVALID_AMOUNT")
+    if set(amount)=={"constant"}:
+        val=amount["constant"]
+        if type(val) is not int or not 0<=val<=limit:
+            raise ValueError("EXECUTABLE_ACTION_INVALID_CONSTANT")
+        amount_code=str(val)
+    elif set(amount)=={"input"}:
+        field_id=amount["input"]
+        if not isinstance(field_id,str) or not _ID.fullmatch(field_id):
+            raise ValueError("EXECUTABLE_ACTION_INVALID_INPUT")
+        matches=[x for x in contract["inputs"]
+                 if x["id"]==field_id and x["type"]=="integer"
+                 and x["min"]>=0 and x["max"]<=limit]
+        if len(matches)!=1:
+            raise ValueError("EXECUTABLE_ACTION_INPUT_NOT_VALIDATED")
+        amount_code="args."+field_id
+    else:
+        raise ValueError("EXECUTABLE_ACTION_INVALID_AMOUNT")
+    if not any(m.name=="PlayerDataManager" and m.kind in
+               (ModuleKind.DATA_STORE,ModuleKind.SERVER_MODULE)
+               for m in proposal.modules):
+        raise ValueError("EXECUTABLE_ACTION_MISSING_PERSISTENCE_SERVICE")
+    return remote,contract,{**effect,"amount_code":amount_code}
+
+
+def render_atomic_server(module:Any,proposal:Any)->str|None:
+    chosen=executable_spec(module,proposal)
+    if chosen is None:
+        return None
+    remote,contract,effect=chosen
+    namespace=effect["namespace"]
+    field=effect["field"]
+    amount=effect["amount_code"]
+    operation=effect["operation"]
+    limit=effect["limit"]
+    guard=lua_server_guard(contract,
+        world_name=contract["target"].get("name"))
+    # lua_server_guard returns false on malformed payload; inside a named
+    # validator this remains a fail-closed server boundary.
+    if operation=="increment":
+        next_value="current + amount"
+        bound="current > MAXIMUM - amount"
+    elif operation=="decrement":
+        next_value="current - amount"
+        bound="current < amount"
+    else:
+        next_value="amount"
+        bound="false"
+    source=r'''--!strict
+-- Generic host-compiled atomic state transition. No model-authored Luau.
+local Players=game:GetService("Players")
+local Service={}
+local MAXIMUM=__LIMIT__
+local function validInput(player,...)
+__GUARD__
+    return true,args
+end
+function Service.start(services)
+    assert(type(services.PlayerDataManager)=="table"
+        and type(services.PlayerDataManager.GetState)=="function",
+        "Atomic action requires player persistence")
+end
+function Service.handleAction(player,services,...)
+    if typeof(player)~="Instance" or not player:IsA("Player")
+        or player.Parent~=Players then
+        return {success=false,reason="invalid_player"}
+    end
+    local ok,args=validInput(player,...)
+    if not ok then return {success=false,reason="invalid_input"} end
+    local state=services.PlayerDataManager.GetState(player,__NAMESPACE__)
+    if type(state)~="table" then
+        return {success=false,reason="profile_not_loaded"}
+    end
+    local current=state.__FIELD__
+    if current==nil then current=0 end
+    if type(current)~="number" or current~=current or current%1~=0
+        or current<0 or current>MAXIMUM then
+        return {success=false,reason="invalid_state"}
+    end
+    local amount=__AMOUNT__
+    if type(amount)~="number" or amount%1~=0 or amount<0
+        or amount>MAXIMUM or (__BOUND__) then
+        return {success=false,reason="insufficient_or_exceeds_limit"}
+    end
+    local updated=__NEXT__
+    -- No yield, Remote call or DataStore call between checking and writing.
+    state.__FIELD__=updated
+    return {success=true,value=updated}
+end
+return Service
+'''
+    return (source.replace("__LIMIT__",str(limit))
+            .replace("__GUARD__",guard.rstrip())
+            .replace("__NAMESPACE__",json.dumps(namespace))
+            .replace("__FIELD__",field)
+            .replace("__AMOUNT__",amount)
+            .replace("__BOUND__",bound)
+            .replace("__NEXT__",next_value))
