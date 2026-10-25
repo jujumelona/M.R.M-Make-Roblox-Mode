@@ -46,20 +46,28 @@ def render_host_trading(module: RobloxModuleSpec, proposal: RobloxProposal) -> s
         return None
     if route[0][1].get("max_args") == 0:
         return None
-    # Only expose extraterrestrial trading when a VERIFIED authored planet
-    # mining service exists in this same proposal. Other genres stay unchanged.
+    server_luau, client_luau = market_templates_for_plan(proposal)
+    if module.kind == ModuleKind.SERVER_MODULE:
+        return server_luau
+    if not module.file_path.startswith("src/client/"):
+        return None
+    return client_luau.replace("__REMOTE__", json.dumps(route[0][0]))
+
+
+def market_templates_for_plan(proposal: RobloxProposal) -> tuple[str, str]:
+    """One server-owned broker ABI for either direct trading or planner-authored
+    peer wording that the ORIGINAL user never authorized.
+
+    Never classify this from an AI-written service description alone: require
+    the source-bound, independently renderable planet-mining producer.
+    """
     space_ready = any(
         m.kind == ModuleKind.SERVER_MODULE
         and m.name.startswith("ExtractOtherPlanetMineral")
         and render_host_space_action(m, proposal) is not None
         for m in proposal.modules
     )
-    if module.kind == ModuleKind.SERVER_MODULE:
-        return _SPACE_SERVER if space_ready else _SERVER
-    if not module.file_path.startswith("src/client/"):
-        return None
-    client = _SPACE_CLIENT if space_ready else _CLIENT
-    return client.replace("__REMOTE__", json.dumps(route[0][0]))
+    return (_SPACE_SERVER, _SPACE_CLIENT) if space_ready else (_SERVER, _CLIENT)
 
 
 _SERVER = r'''--!strict
