@@ -136,8 +136,11 @@ def test_both_server_and_client_use_verified_host_protocol():
     assert "WeldConstraint" in builder
     assert 'if ship then ship:Destroy() end' in builder
     assert 'local position = layout[definition.ordinal]' in builder
-    for ordinal in range(1, 9):
+    # The compiler must emit one spatial cell per ACTUAL declared section;
+    # padding every model to the old fixed eight-piece ship layout is wrong.
+    for ordinal in range(1, 3):
         assert f'[{ordinal}] = {{Vector3.new(' in builder
+    assert '[3] = {Vector3.new(' not in builder
     assert "local ROOT_ID = " in builder
     assert '["Vehicle_PART_ENGINE"]' in builder
     assert 'parent = "Vehicle_PART_HULL"' in builder
