@@ -249,3 +249,71 @@ def test_report15_partadded_ship_builds_host_model_before_passenger_launch():
     assert "services.ConstructionServer.GetOwnedActor(player)" in launcher_code
     assert "vehicle:PivotTo" in launcher_code
     assert arrivals[0]["arrival"] in launcher_code
+
+
+def test_multiple_craft_proxies_use_verified_owned_model_provider():
+    """Failure 20: two Craft Parts must never be arbitrarily chosen as the ship."""
+    from roblox_mod_ai.vehicle_identity_binding import (
+        bind_verified_vehicle_providers, bind_vehicle_actors,
+        materialize_source_linked_space_arrivals,
+    )
+    from roblox_mod_ai.vehicle_identity_contract import vehicle_identity_errors
+
+    p, builder, _ui, launch, launch_ui = sample()
+    builder.description = "Ship construction. " + builder.description
+    d = p.game_design["dynamic_design"]
+    d["world_objects"].extend([
+        {"name": "CraftProxyOne", "class": "Part"},
+        {"name": "CraftProxyTwo", "class": "Part"},
+        {"name": "OccupantsProxy", "class": "Part"},
+    ])
+    d["module_world_objects"][launch.module_id] = [
+        "CraftProxyOne", "CraftProxyTwo", "OccupantsProxy"]
+    d["module_world_objects"][launch_ui.module_id] = [
+        "CraftProxyOne", "CraftProxyTwo", "OccupantsProxy"]
+    motion = d["host_world_motion"][launch.name]
+    motion["destination"] = "playable space / orbit"
+    motion["occupant_rule"] = "passengers remain aboard"
+    motion["actor_world_name"] = "CraftProxyOne"
+    assert any("VEHICLE_ACTOR_NOT_BUILT_OBJECT" in error
+               for error in vehicle_identity_errors(p))
+    changes = bind_verified_vehicle_providers(p)
+    assert len(changes) == 1
+    assert changes[0]["builder"] == builder.name
+    assert changes[0]["actor_provider"] == "GetOwnedActor"
+    assert changes[0]["physical_assembly_verified"] is False
+    assert bind_vehicle_actors(p) == []
+    assert motion["actor_identity_source"] == "verified_owned_actor_provider"
+    assert motion["builder_module_id"] == builder.module_id
+    assert "actor_world_name" not in motion
+    # Preserve decorative proxies, never claim one is the physical craft.
+    assert d["module_world_objects"][launch.module_id] == [
+        "CraftProxyOne", "CraftProxyTwo", "OccupantsProxy"]
+    assert vehicle_identity_errors(p) == []
+    arrivals = materialize_source_linked_space_arrivals(p)
+    assert len(arrivals) == 1
+    assert arrivals[0]["builder"] == builder.name
+    assert eligible_departure(launch, p) is not None
+    assert eligible_departure(launch_ui, p) is not None
+    assert "GetOwnedActor(player)" in render_departure(launch, p)
+    # Running preflight twice must neither create a second actor nor landing.
+    assert bind_verified_vehicle_providers(p) == []
+    assert materialize_source_linked_space_arrivals(p) == []
+    motion["actor_provider"] = "unverified_placeholder"
+    assert any("VEHICLE_ACTOR_PROVIDER_INVALID" in error
+               for error in vehicle_identity_errors(p))
+
+
+def test_multiple_proxies_are_not_connected_without_a_verified_builder():
+    from roblox_mod_ai.vehicle_identity_binding import bind_verified_vehicle_providers
+    p, builder, _ui, launch, launch_ui = sample()
+    builder.description = "Decorative starship icon without assembled state"
+    d = p.game_design["dynamic_design"]
+    d["world_objects"].extend([
+        {"name": "CraftProxyOne", "class": "Part"},
+        {"name": "CraftProxyTwo", "class": "Part"},
+    ])
+    for mod in (launch, launch_ui):
+        d["module_world_objects"][mod.module_id] = ["CraftProxyOne", "CraftProxyTwo"]
+    assert bind_verified_vehicle_providers(p) == []
+    assert eligible_departure(launch, p) is None
