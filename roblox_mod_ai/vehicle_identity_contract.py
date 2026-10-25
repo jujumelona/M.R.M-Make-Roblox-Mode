@@ -97,11 +97,13 @@ def vehicle_identity_errors(proposal: Any) -> list[str]:
                 and re.search(r"occupant|aboard|passenger|crew",
                               str(spec.get("occupant_rule") or ""), re.I)):
             from .host_ordered_assembly import eligible_ordered_assembly
+            from .spec import ModuleKind
             source_builder = next(
                 (b for b in relevant
                  if b.module_id == spec.get("builder_module_id")), None
             )
             if (source_builder is None
+                    or getattr(source_builder, "kind", None) != ModuleKind.SERVER_MODULE
                     or eligible_ordered_assembly(source_builder, proposal) is None):
                 errors.append(
                     "VEHICLE_PASSENGER_MODEL_UNPROVEN: " + owner_name +
