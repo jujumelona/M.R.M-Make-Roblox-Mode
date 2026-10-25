@@ -150,3 +150,38 @@ def test_model_invented_peer_trade_without_market_or_authorization_fails():
     plan.requested_prompt = "Build a ship out of mined resources"
     assert render_host_peer_barter(server, plan) is None
     assert render_host_peer_barter(client, plan) is None
+
+
+def test_report15_market_only_uses_one_argument_and_no_fake_world_services():
+    # Replays actual failed ServerPriceTrade4533282Server transport:
+    # source asked for mined-resource earnings, while the model invented
+    # seller/buyer parties and treated world Parts as injectable services.
+    server, client, plan = make_plan()
+    server.description = (
+        "Validate the trade request against the server-owned catalog and "
+        "seller-owned inventory, then transfer the seller's owned currency "
+        "to the buyer and mark the item as owned by the buyer. Reject "
+        "malformed unauthenticated requests."
+    )
+    plan.requested_prompt = (
+        "우주모드 인데 자원파밍 돈모으기 거래 등으로 우주선을 부위마다 만든다"
+    )
+    route = plan.game_design["dynamic_design"]["host_actions"]["PlayerAssetExchangeAction"]
+    route["max_args"] = 1
+    scode = render_host_peer_barter(server, plan)
+    ccode = render_host_peer_barter(client, plan)
+    assert scode is not None and ccode is not None
+    assert 'inventory.resources -= quantity' in scode
+    assert 'coins.Value += quantity * PRICE_PER_ORE' in scode
+    assert 'remote:InvokeServer(1)' in ccode
+    assert 'services.SellerCurrency' not in scode
+    assert 'Barter.handleAction' not in scode
+    assert 'trade_in_progress' not in scode
+
+
+def test_one_argument_peer_offer_fails_closed_instead_of_unreachable_ui():
+    server, client, plan = make_plan()
+    route = plan.game_design["dynamic_design"]["host_actions"]["PlayerAssetExchangeAction"]
+    route["max_args"] = 1
+    assert render_host_peer_barter(server, plan) is None
+    assert render_host_peer_barter(client, plan) is None
