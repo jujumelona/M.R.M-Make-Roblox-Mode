@@ -121,7 +121,7 @@ local function good(v)
     return type(v)=="number" and v==v and v%1==0 and v>=0 and v<=2147483647
 end
 function Service.start(services)
-    assert(type(services.PlayerDataManager.GetState)=="function")
+    assert(services.PlayerDataManager and type(services.PlayerDataManager.GetState)=="function", "Rank upgrade requires PlayerDataManager.GetState")
     services.PlayerDataManager.OnReady(function(player)
         local saved=services.PlayerDataManager.GetState(player,"RMMRankProgress")
         if saved and good(saved[TARGET] or 0) then player:SetAttribute(ATTR,saved[TARGET] or 0) end
