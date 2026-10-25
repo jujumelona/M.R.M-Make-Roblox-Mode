@@ -98,7 +98,37 @@ local recent = setmetatable({}, {__mode="k"})
 local function integer(n, hi)
     return type(n)=="number" and n==n and n%1==0 and n>=0 and n<=hi
 end
-local function near(player, name)
+__WORLD_HELPERS__
+function Service.start(services)
+    assert(services.PlayerDataManager and type(services.PlayerDataManager.GetState)=="function", "Space action requires PlayerDataManager.GetState")
+    Players.PlayerRemoving:Connect(function(p) recent[p]=nil end)
+    __PLACE_TARGET__
+    services.PlayerDataManager.OnReady(function(p)
+        local saved=services.PlayerDataManager.GetState(p,__NAMESPACE__)
+        if saved then __RESTORE__ end
+    end)
+end
+function Service.handleAction(player,services,...)
+    if typeof(player)~="Instance" or not player:IsA("Player")
+        or player.Parent~=Players or select("#",...)~=1 then return {success=false,reason="player"} end
+    local args=...
+    if typeof(args)~="table" or args.selection~=__ACTION__
+        or not integer(args.quantity,__MAX_Q__) or args.quantity<1 then
+        return {success=false,reason="input"} end
+    for k in pairs(args) do
+        if k~="selection" and k~="quantity" then return {success=false,reason="extra"} end
+    end
+    local now=os.clock()
+    if recent[player] and now-recent[player]<0.45 then return {success=false,reason="cooldown"} end
+    local state=services.PlayerDataManager.GetState(player,__NAMESPACE__)
+    if not state then return {success=false,reason="loading"} end
+    __ENSURE_TARGET__
+__EFFECT__
+end
+return Service
+'''
+
+PLANET_WORLD_HELPERS = '''local function near(player, name)
     local target=workspace:FindFirstChild(name,true)
     local char=player.Character
     local human=char and char:FindFirstChildOfClass("Humanoid")
@@ -130,33 +160,6 @@ local function placePlanetActionTarget()
     target.Size=Vector3.new(6,7,6)
     return true
 end
-function Service.start(services)
-    assert(services.PlayerDataManager and type(services.PlayerDataManager.GetState)=="function", "Space action requires PlayerDataManager.GetState")
-    Players.PlayerRemoving:Connect(function(p) recent[p]=nil end)
-    __PLACE_TARGET__
-    services.PlayerDataManager.OnReady(function(p)
-        local saved=services.PlayerDataManager.GetState(p,__NAMESPACE__)
-        if saved then __RESTORE__ end
-    end)
-end
-function Service.handleAction(player,services,...)
-    if typeof(player)~="Instance" or not player:IsA("Player")
-        or player.Parent~=Players or select("#",...)~=1 then return {success=false,reason="player"} end
-    local args=...
-    if typeof(args)~="table" or args.selection~=__ACTION__
-        or not integer(args.quantity,__MAX_Q__) or args.quantity<1 then
-        return {success=false,reason="input"} end
-    for k in pairs(args) do
-        if k~="selection" and k~="quantity" then return {success=false,reason="extra"} end
-    end
-    local now=os.clock()
-    if recent[player] and now-recent[player]<0.45 then return {success=false,reason="cooldown"} end
-    local state=services.PlayerDataManager.GetState(player,__NAMESPACE__)
-    if not state then return {success=false,reason="loading"} end
-    __ENSURE_TARGET__
-__EFFECT__
-end
-return Service
 '''
 
 EFFECTS = {
@@ -230,7 +233,8 @@ def _server(role, world, builder):
                "MarkPlanetColonized": (14, 5),
                "ExtractOtherPlanetMineral": (-10, 5)}
     x, z = offsets.get(role, (0, 0))
-    return (LUA.replace("__BUILDER__", json.dumps(builder))
+    return (LUA.replace("__WORLD_HELPERS__", PLANET_WORLD_HELPERS if is_planet else "")
+            .replace("__BUILDER__", json.dumps(builder))
             .replace("__PLACE_TARGET__", "placePlanetActionTarget()" if is_planet else "-- No world action target")
             .replace("__ENSURE_TARGET__", 'if not placePlanetActionTarget() then return {success=false,reason="target_not_ready"} end' if is_planet else '-- No planet target')
             .replace("__OFFSET_X__", str(x)).replace("__OFFSET_Z__", str(z))
