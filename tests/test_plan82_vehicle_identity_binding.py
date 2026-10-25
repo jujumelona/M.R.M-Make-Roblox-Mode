@@ -139,3 +139,13 @@ def test_root_class_mismatch_is_not_hidden_by_shared_name():
         "Departure"]["actor_world_class"] = "Model"
     assert any("VEHICLE_ACTOR_CLASS_MISMATCH" in x
                for x in vehicle_identity_errors(p))
+
+
+def test_report15_bound_part_does_not_prove_passenger_carrying_assembled_ship():
+    p = fixture(roots=("ShipHull45332831",), old="Craft52E67D11")
+    motion = p.game_design["dynamic_design"]["host_world_motion"]["Departure"]
+    motion["occupant_rule"] = "players remain aboard the vehicle"
+    assert len(bind_vehicle_actors(p)) == 1
+    problems = vehicle_identity_errors(p)
+    assert any("VEHICLE_PASSENGER_MODEL_UNPROVEN" in row for row in problems), problems
+    assert any("GetOwnedActor" in row for row in problems), problems
