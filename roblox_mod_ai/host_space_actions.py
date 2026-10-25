@@ -187,7 +187,15 @@ local function spawnColony(player,markerName)
     local name="RMMColony_"..tostring(player.UserId)
     local previous=folder:FindFirstChild(name)
     if previous then
-        return previous:IsA("Model") and previous:GetAttribute("OwnerUserId")==player.UserId
+        if not previous:IsA("Model")
+            or previous:GetAttribute("OwnerUserId")~=player.UserId then
+            return false
+        end
+        if previous:FindFirstChild("Foundation")
+            and previous:FindFirstChild("Habitat")
+            and previous:FindFirstChild("SignalBeacon") then return true end
+        -- A partial saved projection is not a valid settlement. Rebuild it.
+        previous:Destroy()
     end
     -- Prefer a repeatable slot, but resolve collisions from OTHER players
     -- before creating world parts. Every generated base stays on the 96x96 pad.
