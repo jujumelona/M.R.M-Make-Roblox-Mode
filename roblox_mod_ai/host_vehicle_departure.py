@@ -59,7 +59,8 @@ local destinationName=@DESTINATION@
 local recent={}
 function Service.start(services)
     assert(type(services.@BUILDER@)=="table"
-        and type(services.@BUILDER@.GetOwnedActor)=="function")
+        and type(services.@BUILDER@.GetOwnedActor)=="function",
+        "Departure requires a ship builder with GetOwnedActor")
     Players.PlayerRemoving:Connect(function(player) recent[player]=nil end)
 end
 function Service.handleAction(player,services,...)
