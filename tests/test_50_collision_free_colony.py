@@ -36,6 +36,10 @@ def test_colony_can_reproject_without_duplicate_ownership_write():
     assert 'state.colonized=true' not in src[a:b]
     assert 'reason="already_colonized"' not in src
     assert 'removeColony(p)' in src
+    assert 'previous:FindFirstChild("Foundation")' in src
+    assert 'previous:FindFirstChild("Habitat")' in src
+    assert 'previous:FindFirstChild("SignalBeacon")' in src
+    assert src.index('previous:Destroy()') < src.index('local preferred=player.UserId%20')
     assert '__COLONY_CLEANUP__' not in src
 
 
