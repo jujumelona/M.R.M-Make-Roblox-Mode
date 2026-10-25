@@ -16,10 +16,20 @@ RULES = {
 
 
 def _role(server):
+    description = server.description.casefold()
     for prefix, (a, b, _, _, _) in RULES.items():
-        if (server.name.startswith(prefix) and a in server.description.casefold()
-                and b in server.description.casefold()):
+        if (server.name.startswith(prefix) and a in description
+                and b in description):
             return prefix
+    # The planner may accurately describe a player-owned, timestamped
+    # planet colony without emitting the literal words "planet owned" and
+    # "colonized state". Do not force this source-identified action back to
+    # the 9B model solely because of two English wording choices.
+    if (server.name.startswith("MarkPlanetColonized")
+            and all(token in description for token in
+                    ("planet", "coloniz", "player", "timestamp"))
+            and "server" in description):
+        return "MarkPlanetColonized"
     return None
 
 
@@ -55,8 +65,18 @@ def render_host_space_action(module, proposal):
         return None
     if role != "WeaponPerformanceUpgrade":
         roles = {_role(m) for m in proposal.modules if m.kind == ModuleKind.SERVER_MODULE}
-        if not {"AlienCombat", "MarkPlanetColonized", "ExtractOtherPlanetMineral"} <= roles:
-            return None
+        # Real plans can implement the mineral producer through an independently
+        # verified mining route (HarvestSpecialMinerals), not necessarily the
+        # name ExtractOtherPlanetMineral. Combat and colonization are an
+        # atomic, self-contained pair whose world/ownership contracts are
+        # validated below. Their model-coding path must not depend on the
+        # exact spelling or existence of a third, unrelated resource module.
+        if role in ("AlienCombat", "MarkPlanetColonized"):
+            if not {"AlienCombat", "MarkPlanetColonized"} <= roles:
+                return None
+        elif role == "ExtractOtherPlanetMineral":
+            if not {"AlienCombat", "MarkPlanetColonized"} <= roles:
+                return None
     world, builder = {}, ""
     if role != "WeaponPerformanceUpgrade":
         bindings = design.get("host_vehicle_identity_bindings") or []
@@ -67,9 +87,19 @@ def render_host_space_action(module, proposal):
                                   for m in proposal.modules):
             return None
         objects = design.get("world_objects") or []
+        # The physical target must exist AND be allocated to this actual
+        # server module. A similarly named decor Part belonging to another
+        # action is not sufficient source authority for a colony mutation.
+        target_prefixes = (("PlayerOwnedPlanet", "TargetPlanet")
+                           if role == "MarkPlanetColonized"
+                           else (RULES[role][2],))
+        declared_for_module = set(
+            (design.get("module_world_objects") or {}).get(server.module_id, [])
+        )
         targets = [o["name"] for o in objects if isinstance(o, dict)
                    and o.get("class") == "Part" and isinstance(o.get("name"), str)
-                   and o["name"].startswith(RULES[role][2])]
+                   and o["name"] in declared_for_module
+                   and o["name"].startswith(target_prefixes)]
         arrivals = design.get("host_arrival_materializations") or []
         binding = bindings[0]
         launch = binding.get("server")
