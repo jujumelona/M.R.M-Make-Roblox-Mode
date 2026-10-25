@@ -28,6 +28,96 @@ _AUXILIARY = re.compile(
 _VALID_CLASS = {"Part", "MeshPart", "Model", "UnionOperation"}
 
 
+def bind_verified_vehicle_providers(proposal: Any) -> list[dict[str, Any]]:
+    """Bind a launch to the unique first-party assembled Model provider.
+
+    A builder's dynamic player-owned Model is not a static world Part. When
+    the source-authorized ordered-assembly compiler owns GetOwnedActor(player),
+    a launcher must consume that provider directly instead of guessing which
+    of several decorative Craft Parts is the playable vehicle.
+    """
+    from .host_ordered_assembly import eligible_ordered_assembly
+    from .spec import ModuleKind
+
+    design = (getattr(proposal, "game_design", {}) or {}).get("dynamic_design")
+    if not isinstance(design, dict):
+        return []
+    motions = design.get("host_world_motion")
+    ownership = design.get("module_world_objects")
+    if not isinstance(motions, dict) or not isinstance(ownership, dict):
+        return []
+    modules = {m.name: m for m in getattr(proposal, "modules", ())}
+    builders = [
+        m for m in modules.values()
+        if getattr(m, "kind", None) == ModuleKind.SERVER_MODULE
+        and _BUILD.search(str(getattr(m, "description", "")))
+        and _VEHICLE.search(str(getattr(m, "description", "")))
+        and eligible_ordered_assembly(m, proposal) is not None
+    ]
+    # Refuse ambiguous builders: only an actual host compiled builder can
+    # promise GetOwnedActor, and never bind to an unrelated visible ship.
+    if len(builders) != 1:
+        return []
+    builder = builders[0]
+    routes = design.get("host_typed_actions") or {}
+    actions = design.get("host_actions") or {}
+    remote_kinds = design.get("remotes") or {}
+    remotes_by_module = design.get("module_remotes") or {}
+    if not all(isinstance(x, dict) for x in
+               (routes, actions, remote_kinds, remotes_by_module)):
+        return []
+    changes = []
+    for owner_name, motion in motions.items():
+        if (owner_name not in modules or not isinstance(motion, dict)
+                or motion.get("kind") != "vehicle_world_transition"
+                or motion.get("actor_identity_source") == "verified_owned_actor_provider"):
+            continue
+        server = modules[owner_name]
+        if (getattr(server, "kind", None) != ModuleKind.SERVER_MODULE
+                or server == builder):
+            continue
+        assigned = [(name, binding) for name, binding in actions.items()
+                    if isinstance(binding, dict)
+                    and binding.get("service") == owner_name]
+        if len(assigned) != 1:
+            continue
+        remote, binding = assigned[0]
+        if (binding.get("kind") != "RemoteFunction"
+                or remote_kinds.get(remote) != "RemoteFunction"):
+            continue
+        typed = routes.get(remote)
+        if (not isinstance(typed, dict)
+                or typed.get("transport_only") is not True
+                or typed.get("server") != server.name):
+            continue
+        client = modules.get(typed.get("client"))
+        if (client is None or getattr(client, "kind", None) != ModuleKind.CLIENT_SCRIPT
+                or client.name != server.name.removesuffix("Server") + "Client"
+                or not client.file_path.endswith(".client.luau")
+                or remotes_by_module.get(server.module_id) not in (None, [remote])
+                or remotes_by_module.get(client.module_id) not in (None, [remote])):
+            continue
+        # Both controller sides remain linked to the source-authored world.
+        # Their decorative Craft Parts are NOT repurposed as the actual Model.
+        if not isinstance(ownership.get(server.module_id), list) or not isinstance(
+                ownership.get(client.module_id), list):
+            continue
+        motion["builder_module_id"] = builder.module_id
+        motion["actor_identity_source"] = "verified_owned_actor_provider"
+        motion["actor_provider"] = "GetOwnedActor"
+        # A previously guessed actor_world_name is not runtime authority.
+        motion.pop("actor_world_name", None)
+        motion.pop("actor_world_class", None)
+        changes.append({
+            "server": server.name, "client": client.name, "builder": builder.name,
+            "actor_provider": "GetOwnedActor", "actor": None,
+            "physical_assembly_verified": False,
+        })
+    if changes:
+        design.setdefault("host_vehicle_identity_bindings", []).extend(changes)
+    return changes
+
+
 def bind_vehicle_actors(proposal: Any) -> list[dict[str, Any]]:
     """Bind an unambiguous authored builder root to server AND client routes.
 
@@ -66,6 +156,9 @@ def bind_vehicle_actors(proposal: Any) -> list[dict[str, Any]]:
     if not isinstance(routes, dict):
         routes = {}
     for launch_name, motion in motions.items():
+        if (isinstance(motion, dict)
+                and motion.get("actor_identity_source") == "verified_owned_actor_provider"):
+            continue
         if (not isinstance(motion, dict)
                 or motion.get("kind") != "vehicle_world_transition"
                 or launch_name not in modules):
@@ -177,10 +270,15 @@ def materialize_source_linked_space_arrivals(proposal: Any) -> list[dict[str, An
         owner = modules.get(owner_name)
         builder = by_id.get(motion.get("builder_module_id"))
         actor = motion.get("actor_world_name")
-        if (owner is None or builder is None or not isinstance(actor, str)
+        provider_link = (motion.get("actor_identity_source") ==
+                         "verified_owned_actor_provider"
+                         and motion.get("actor_provider") == "GetOwnedActor")
+        world_link = (isinstance(actor, str)
+                      and actor in (ownership.get(owner.module_id) or [])
+                      and actor in (ownership.get(builder.module_id) or []))
+        if (owner is None or builder is None
                 or eligible_ordered_assembly(builder, proposal) is None
-                or actor not in (ownership.get(owner.module_id) or [])
-                or actor not in (ownership.get(builder.module_id) or [])):
+                or not (provider_link or world_link)):
             continue
         # Only a complete host builder exposes the Model returned by
         # GetOwnedActor(player), rather than the materialized Part root.
