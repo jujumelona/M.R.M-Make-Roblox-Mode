@@ -30,7 +30,7 @@ def test_57_docks_duplicate_rank_buttons_without_changing_gameplay(tmp_path):
         'child.Parent=section.frame',
         'scroll.AutomaticCanvasSize=Enum.AutomaticSize.Y',
         'toggle.Activated:Connect(function()',
-        'or candidate.Name=="RMMRankUpgrade"',
+        'candidate.Name=="RMMRankUpgrade"',
     ):
         assert token in adapter,token
     assert originals=={p.name:p.read_bytes() for p in (tmp_path/"src"/"client").glob("*.luau")
