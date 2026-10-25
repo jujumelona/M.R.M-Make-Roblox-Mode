@@ -43,6 +43,7 @@ from .economy_core import is_supported_economy_ledger, render_economy_ledger
 from .server_modules import render_dynamic_server_bootstrap
 from .host_client import render_host_client
 from .typed_action_contract import render_typed_client
+from .host_atomic_effect import render_atomic_server
 from .host_space_actions import render_host_space_action
 from .host_space_colonization import render_colony_alias
 from .host_player_data import render_callable_player_data
@@ -105,7 +106,8 @@ class LuauCodeGenerator:
                 f"{d.file_path}:{d.line_number} [{d.rule}] {d.message}"
                 for d in errors
             )
-            if (render_colony_alias(module, proposal) is not None
+            if (render_atomic_server(module, proposal) is not None
+                    or render_colony_alias(module, proposal) is not None
                     or render_host_space_action(module, proposal) is not None
                     or render_host_gameplay(module, proposal) is not None
                     or eligible_mode_navigation(module, proposal) is not None
@@ -161,6 +163,9 @@ class LuauCodeGenerator:
         # For a typed action, the host deterministically builds all form
         # controls and its Remote payload. Do not call the smaller coder for
         # a duplicate client UI or let a genre template bypass this ABI.
+        compiled_atomic_effect = render_atomic_server(module, proposal)
+        if compiled_atomic_effect is not None:
+            return compiled_atomic_effect
         verified_colony_alias = render_colony_alias(module, proposal)
         if verified_colony_alias is not None:
             return verified_colony_alias
