@@ -14,6 +14,28 @@ from pathlib import Path
 from typing import Any
 
 SCHEMA = "rmm/source-review-v1"
+REVIEW_POLICY = "host-provenance-adjudication-v2"
+
+
+def _policy_fingerprint() -> dict[str, Any]:
+    """Record the actual installed validator bytes, not an asserted git HEAD.
+
+    A Colab notebook may be running an older imported Python package even
+    after repository sync. Hashing imported files lets a failure ZIP prove
+    which source-review implementation really executed.
+    """
+    files = ("source_review.py", "source_finding_adjudication.py",
+             "source_repair_cycle.py")
+    package_dir = Path(__file__).resolve().parent
+    hashes: dict[str, str] = {}
+    for filename in files:
+        path = package_dir / filename
+        try:
+            hashes[filename] = hashlib.sha256(path.read_bytes()).hexdigest()
+        except OSError:
+            hashes[filename] = "unavailable"
+    return {"policy": REVIEW_POLICY, "source_sha256": hashes}
+
 MAX_CHUNK_CHARS = 2800
 MAX_MODEL_CALLS = 512
 FINDINGS_SCHEMA: dict[str, Any] = {
@@ -98,6 +120,7 @@ def review_generated_sources(
         "executed": False, "status": "not_run", "reason": "",
         "reviewed": [], "findings": [], "source_sha256": {},
         "fully_covered": False, "model_calls": 0, "scoped_retries": [],
+        "review_code_provenance": _policy_fingerprint(),
     }
     if not _configured():
         report["reason"] = "AI reviewer unavailable/disabled; no model review claimed"
