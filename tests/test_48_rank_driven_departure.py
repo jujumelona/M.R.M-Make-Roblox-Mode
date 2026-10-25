@@ -16,8 +16,9 @@ def test_departure_consumes_authoritative_spaceship_rank():
     assert "RunService.Heartbeat:Wait()" in luau
     assert "already_launching" in luau
     assert "already_in_orbit" in luau
-    assert 'player:SetAttribute("RMMFlightState","launching")' in luau
-    assert 'player:SetAttribute("RMMFlightState",completed and "arrived" or "interrupted")' in luau
+    assert 'player:SetAttribute("RMMFlightState",action=="return" and "returning" or "launching")' in luau
+    assert 'player:SetAttribute("RMMFlightState",finalState)' in luau
+    assert 'homeDock[player]=start' in luau
     assert "vehicle:PivotTo(destination.CFrame * CFrame.new(0,16,0))" not in luau
     assert "GetAttributeChangedSignal" in ui
     assert 'info.Text="Vehicle arrived"' not in ui
