@@ -39,7 +39,7 @@ def eligible_ordered_assembly(m:Any,p:Any)->tuple[str,str,str,list[str]]|None:
         re.search(r"\bship\s+assembly\s+state\s+machine\b",
                   owner.description, re.I)
         and re.search(r"\bPartAdded\b", owner.description, re.I)
-        and re.search(r"\bserver[- ]owned\b", owner.description, re.I)
+        and re.search(r"\bserver(?:[- ]owned|[- ]authoritative|\s+owns)\b", owner.description, re.I)
         and re.search(r"\bassembly\s+table\b", owner.description, re.I)
     )
     if (not all(rx.search(owner.description)
