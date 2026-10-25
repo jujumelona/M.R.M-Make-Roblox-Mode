@@ -74,7 +74,7 @@ def eligible_ordered_assembly(m:Any,p:Any)->tuple[str,str,str,list[str]]|None:
                  (d.get("world_objects") or []) if isinstance(w,dict)}
         names=[name for name in refs if classes.get(name) in ("Part","MeshPart")]
         if any(sum(
-                name==ident or re.fullmatch(re.escape(ident)+r"\\d+",name)
+                name==ident or re.fullmatch(re.escape(ident)+r"\d+",name)
                 is not None for name in names) != 1 for ident in ids):
             return None
         root="RMMAssemblyAnchor"
