@@ -96,3 +96,13 @@ def test_source_scan_does_not_infer_remote_from_comment_or_steal_next_gui_name(t
         'game.Remotes.Real:InvokeServer({})\\n')
     assert action_gui_names(tmp_path)==["SecondaryActions"]
     assert not install_host_hud(tmp_path)
+
+
+def test_action_screen_names_are_data_not_ascii_or_genre_assumptions(tmp_path):
+    _client(tmp_path,"Korean","상점 화면")
+    _client(tmp_path,"Fancy","My Craft Menu")
+    assert action_gui_names(tmp_path)==["My Craft Menu","상점 화면"]
+    assert install_host_hud(tmp_path)
+    hud=(tmp_path/"src"/"client"/HUD_FILE).read_text()
+    assert '"상점 화면"' in hud
+    assert '"My Craft Menu"' in hud
