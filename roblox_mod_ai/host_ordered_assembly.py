@@ -137,11 +137,65 @@ def _replace_exact(source:str,old:str,new:str)->str:
     return source.replace(old,new)
 
 
+
+def section_spatial_layout(proposal: Any, server: str, ids: list[str]) -> list[dict]:
+    """Compile collision-free local transforms from source-declared world Parts.
+
+    No inference from words like hull, spaceship, car or engine. Every physical
+    source object must be uniquely assigned to the builder; invalid geometry
+    fails closed before the model script and project are packaged.
+    """
+    design=(proposal.game_design or {}).get("dynamic_design") or {}
+    owner=next((m for m in proposal.modules
+                if m.name==server and m.kind==ModuleKind.SERVER_MODULE),None)
+    if owner is None: raise ValueError("LAYOUT_MISSING_BUILDER")
+    refs=set((design.get("module_world_objects") or {}).get(owner.module_id) or [])
+    worlds=[w for w in (design.get("world_objects") or [])
+            if isinstance(w,dict) and w.get("class") in ("Part","MeshPart")]
+    rows=[]
+    for ident in ids:
+        candidates=[w for w in worlds if w.get("name") in refs
+                    and (w.get("name")==ident or re.fullmatch(
+                        re.escape(ident)+r"\d+",str(w.get("name"))) is not None)]
+        if len(candidates)!=1:
+            raise ValueError("LAYOUT_UNBOUND_PART: "+ident)
+        raw=candidates[0].get("size")
+        if raw is None:
+            size=(4.0,2.0,4.0)
+        elif (isinstance(raw,(list,tuple)) and len(raw)==3
+              and all(type(x) in (int,float) and 0.5<=x<=32
+                      for x in raw)):
+            size=tuple(float(x) for x in raw)
+        else:
+            raise ValueError("LAYOUT_INVALID_SIZE: "+ident)
+        rows.append({"id":ident,"size":size})
+    width=max(r["size"][0] for r in rows)
+    depth=max(r["size"][2] for r in rows)
+    for i,row in enumerate(rows):
+        row["center"]=(
+            (0,1,-1)[i%3]*(width+0.5),
+            0.5+row["size"][1]/2,
+            (0,1,-1)[i//3]*(depth+0.5),
+        )
+    return rows
+
+
+def _render_layout(rows: list[dict]) -> str:
+    def fmt(n):
+        return format(n, ".7g")
+    return ",\n".join(
+        "        ["+str(i)+"] = {Vector3.new("+
+        ", ".join(fmt(x) for x in row["size"])+"), CFrame.new("+
+        ", ".join(fmt(x) for x in row["center"])+")}"
+        for i,row in enumerate(rows,1))
+
+
 def render_ordered_assembly(m:Any,p:Any,router:Any)->str|None:
     eligible=eligible_ordered_assembly(m,p)
     if eligible is None:return None
     server,remote,root,ids=eligible
     rows=_catalog(p,server,root,ids,router)
+    layout_rows=section_spatial_layout(p,server,ids)
     if m.kind==ModuleKind.CLIENT_SCRIPT:
         entries=",\n".join(
             "{id = "+json.dumps(v["id"])+", label = "+
@@ -171,28 +225,57 @@ def render_ordered_assembly(m:Any,p:Any,router:Any)->str|None:
     -- Each ordinal has its own local attachment transform. The old
     -- one-offset template stacked every sibling part at the same CFrame.
     local layout = {
-        [1] = {Vector3.new(10, 2, 12), CFrame.new(0, 3, 1)},
-        [2] = {Vector3.new(5, 3, 5), CFrame.new(0, 1, 7)},
-        [3] = {Vector3.new(7, 3, 5), CFrame.new(0, 3, -2)},
-        [4] = {Vector3.new(2, 2, 7), CFrame.new(5, 1, 0)},
-        [5] = {Vector3.new(3, 3, 5), CFrame.new(-5, 1, 0)},
-        [6] = {Vector3.new(10, 1, 8), CFrame.new(0, -2, -1)},
-        [7] = {Vector3.new(5, 2, 4), CFrame.new(0, 3, -2)},
-        [8] = {Vector3.new(5, 2, 4), CFrame.new(0, 0, 6)},
+__SECTION_LAYOUT__
     }
     local position = layout[definition.ordinal]
     if not position then return false end
     part.Size = position[1]
-    part.CFrame = parent.CFrame * position[2]
+    part.CFrame = anchor.CFrame * position[2]
     part:SetAttribute("RMMAssemblySection", id)
     part.Parent = parts
     local weld = Instance.new("WeldConstraint")
     weld.Part0 = parent
     weld.Part1 = part
     weld.Parent = part
+    updatePilotSeat(parts.Parent, anchor)
     return true
 end'''
+    revised=revised.replace("__SECTION_LAYOUT__",_render_layout(layout_rows))
     result=result[:start]+revised+result[end:]
+    pilot_layout=r'''local function updatePilotSeat(ship, anchor)
+    if not ship then return end
+    local seat = ship:FindFirstChild("PilotSeat")
+    if not seat or not seat:IsA("VehicleSeat") or seat.Occupant then return end
+    local upper = anchor.Size.Y/2
+    local parts = ship:FindFirstChild("AssembledSections")
+    if parts then
+        for _, item in parts:GetChildren() do
+            if item:IsA("BasePart") then
+                for _, signX in {-1,1} do
+                    for _, signY in {-1,1} do
+                        for _, signZ in {-1,1} do
+                            local corner = item.CFrame:PointToWorldSpace(Vector3.new(
+                                signX*item.Size.X/2,
+                                signY*item.Size.Y/2,
+                                signZ*item.Size.Z/2))
+                            upper = math.max(upper,
+                                anchor.CFrame:PointToObjectSpace(corner).Y)
+                        end
+                    end
+                end
+            end
+        end
+    end
+    local oldWeld = seat:FindFirstChild("PilotWeld")
+    if oldWeld and oldWeld:IsA("WeldConstraint") then oldWeld:Destroy() end
+    seat.CFrame = anchor.CFrame * CFrame.new(0,upper+seat.Size.Y/2+0.05,0)
+    local joint = Instance.new("WeldConstraint")
+    joint.Name = "PilotWeld"
+    joint.Part0 = anchor
+    joint.Part1 = seat
+    joint.Parent = seat
+end
+'''
     # A passenger stays physically attached during Model:PivotTo, rather than
     # being teleported separately or silently ejected. The actual occupant
     # must be checked by the departure host before moving the assembled model.
@@ -204,21 +287,40 @@ end'''
         seat.Name = "PilotSeat"
         seat.Anchored = false
         seat.Size = Vector3.new(3, 1, 3)
-        -- The hull spans anchor-local Y=2..4 and Z=-5..7, while
-        -- the cabin occupies Y=4.5..7.5, Z=-3.5..1.5.
-        -- The former (0,2,0) seat was INSIDE the solid hull; an
-        -- assembled craft could be unboardable and never launch.
-        -- Set the pilot seat flush with the hull roof at Y=4.5 and
-        -- between the cabin (Z<=1.5) and engine (Z>=5.5).
-        seat.CFrame = anchor.CFrame * CFrame.new(0, 4.5, 3.5)
+        seat.CFrame = anchor.CFrame
         seat.Parent = ship
-        local joint = Instance.new("WeldConstraint")
-        joint.Part0 = anchor
-        joint.Part1 = seat
-        joint.Parent = seat
+    end
+    updatePilotSeat(ship, anchor)
+    -- Server-side boarding is available even when components are tall.
+    -- The prompt never trusts client-supplied actor IDs or ownership.
+    local boarding = anchor:FindFirstChild("BoardVehicle")
+    if boarding and not boarding:IsA("ProximityPrompt") then return nil end
+    if not boarding then
+        boarding = Instance.new("ProximityPrompt")
+        boarding.Name = "BoardVehicle"
+        boarding.ActionText = "Board"
+        boarding.ObjectText = "Vehicle"
+        boarding.MaxActivationDistance = 10
+        boarding.RequiresLineOfSight = false
+        boarding.Parent = anchor
+        boarding.Triggered:Connect(function(requester)
+            if requester ~= player or player.Parent ~= Players
+                or ship:GetAttribute("OwnerUserId") ~= player.UserId then return end
+            if seat.Occupant ~= nil
+                or type(Service.GetOwnedActor) ~= "function"
+                or Service.GetOwnedActor(player) ~= ship then return end
+            local character = player.Character
+            local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+            local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+            if not humanoid or humanoid.Health <= 0
+                or not rootPart or not rootPart:IsA("BasePart")
+                or (rootPart.Position-anchor.Position).Magnitude > 12 then return end
+            seat:Sit(humanoid)
+        end)
     end
 '''
     result=_replace_exact(result,seat_anchor,seat_code+seat_anchor)
+    result=_replace_exact(result,"local function resolveShip(player)\n",pilot_layout+"local function resolveShip(player)\n")
     result=_replace_exact(result,"function Service.start(services)\n",
         "function Service.start(services)\n    Service._services = services\n")
     original='''        for id in pairs(SECTIONS) do
