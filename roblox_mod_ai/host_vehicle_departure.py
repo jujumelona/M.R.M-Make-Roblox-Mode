@@ -54,19 +54,31 @@ def render_departure(m:Any,p:Any,router:Any=None)->str|None:
 
 _SERVER=r'''--!strict
 local Players=game:GetService("Players")
+local RunService=game:GetService("RunService")
 local Service={}
 local destinationName=@DESTINATION@
 local recent={}
+local inFlight={}
+local function validTier(value)
+    return type(value)=="number" and value==value
+        and value%1==0 and value>=0 and value<=10
+end
 function Service.start(services)
     assert(type(services.@BUILDER@)=="table"
-        and type(services.@BUILDER@.GetOwnedActor)=="function",
-        "Departure requires a ship builder with GetOwnedActor")
-    Players.PlayerRemoving:Connect(function(player) recent[player]=nil end)
+        and type(services.@BUILDER@.GetOwnedActor)=="function"
+        and type(services.PlayerDataManager)=="table"
+        and type(services.PlayerDataManager.GetState)=="function",
+        "Departure requires both a real ship actor and authoritative upgrade profile")
+    Players.PlayerRemoving:Connect(function(player)
+        recent[player]=nil
+        inFlight[player]=nil
+    end)
 end
 function Service.handleAction(player,services,...)
     if typeof(player)~="Instance" or not player:IsA("Player")
         or player.Parent~=Players or select("#",...)~=1 or (...)~="launch" then
         return {success=false,reason="invalid_input"} end
+    if inFlight[player] then return {success=false,reason="already_launching"} end
     local vehicle=services.@BUILDER@.GetOwnedActor(player)
     if not vehicle or not vehicle:IsA("Model") or vehicle.Parent==nil
         or vehicle:GetAttribute("OwnerUserId")~=player.UserId then
@@ -78,12 +90,43 @@ function Service.handleAction(player,services,...)
     local destination=workspace:FindFirstChild(destinationName)
     if not destination or not destination:IsA("BasePart") then
         return {success=false,reason="missing_destination"} end
+    local target=destination.CFrame*CFrame.new(0,16,0)
+    local start=vehicle:GetPivot()
+    if (start.Position-target.Position).Magnitude<=80 then
+        return {success=false,reason="already_in_orbit"} end
+    -- Both the purchase and the flight read one persistent server-owned rank.
+    -- Clients cannot request a faster journey or specify a destination.
+    local progress=services.PlayerDataManager.GetState(player,"RMMRankProgress")
+    if type(progress)~="table" then return {success=false,reason="rank_loading"} end
+    local rank=progress.Spaceship or 0
+    if not validTier(rank) then return {success=false,reason="invalid_ship_rank"} end
+    local duration=math.max(3,7-0.4*rank)
     local now=os.clock()
     if recent[player] and now-recent[player]<1 then
         return {success=false,reason="cooldown"} end
     recent[player]=now
-    vehicle:PivotTo(destination.CFrame * CFrame.new(0,16,0))
-    return {success=true,vehicle=vehicle.Name,destination=destinationName}
+    inFlight[player]=true
+    player:SetAttribute("RMMFlightState","launching")
+    player:SetAttribute("RMMShipFlightSeconds",duration)
+    -- Staged server-authoritative ascent of the SAME assembled model.
+    -- This is cinematic movement, not yet pilot-controlled flight physics.
+    task.spawn(function()
+        local begin=os.clock()
+        local completed=false
+        while inFlight[player] and player.Parent==Players
+            and vehicle.Parent~=nil and vehicle:GetAttribute("OwnerUserId")==player.UserId do
+            local alpha=math.clamp((os.clock()-begin)/duration,0,1)
+            vehicle:PivotTo(start:Lerp(target,alpha))
+            if alpha>=1 then completed=true;break end
+            RunService.Heartbeat:Wait()
+        end
+        inFlight[player]=nil
+        if player.Parent==Players then
+            player:SetAttribute("RMMFlightState",completed and "arrived" or "interrupted")
+        end
+    end)
+    return {success=true,status="launching",flightSeconds=duration,
+        vehicle=vehicle.Name,destination=destinationName}
 end
 return Service
 '''
