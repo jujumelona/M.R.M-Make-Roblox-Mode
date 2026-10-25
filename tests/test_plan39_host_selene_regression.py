@@ -64,6 +64,11 @@ def test_every_host_assert_in_failed_space_protocol_has_message():
     for label, source in emitted_sources.items():
         assert "assert(" in source, label
         assert unmessaged_assert_lines(source) == [], label
+    # Grounded weapon upgrades do not need orbit/world-action helpers.
+    weapon = emitted_sources["weapon_upgrade"]
+    assert "local function near(" not in weapon
+    assert "local function arrived(" not in weapon
+    assert "local function placePlanetActionTarget(" not in weapon
 
 
 def test_failed_host_linter_does_not_call_model_or_mutate_generated_source(
