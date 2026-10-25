@@ -65,7 +65,9 @@ def test_generic_atomic_does_not_depend_on_genre_names(namespace,field,op):
     assert source is not None
     assert "state."+field+"=updated" in source
     assert 'GetState(player,"'+namespace+'")' in source
-    assert "if current < amount" in source if op=="decrement" else True
+    if op=="decrement":
+        assert "(current < amount)" in source
+        assert "current - amount" in source
     assert "state."+field+"=updated" in LuauCodeGenerator(router=NoModel()).generate_module_code(m,p)
     scope={x["name"]:x["strategy"] for x in generation_scope(p)["modules"]}
     assert scope[m.name]=="host_atomic_effect"
