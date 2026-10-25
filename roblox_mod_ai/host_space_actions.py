@@ -340,13 +340,30 @@ EFFECTS = {
     if stock==nil then stock=100 end
     local amount=state.minerals
     if amount==nil then amount=0 end
+    local refillAt=state.mineralRefillAt
+    if refillAt~=nil and not integer(refillAt,4102444800) then
+        return {success=false,reason="invalid_refill_state"} end
     if not integer(stock,100) or not integer(amount,2147483600)
-        or args.quantity>stock or amount+args.quantity>2147483600 then
-        return {success=false,reason="depleted"} end
+        or amount+args.quantity>2147483600 then
+        return {success=false,reason="invalid_mineral_state"} end
+    local wallNow=os.time()
+    if stock==0 then
+        -- A persisted depletion timestamp is authoritative across rejoins.
+        if refillAt==nil then
+            state.mineralRefillAt=wallNow+120
+            return {success=false,reason="depleted",refillAt=state.mineralRefillAt} end
+        if wallNow<refillAt then
+            return {success=false,reason="depleted",refillAt=refillAt} end
+        stock=100
+    end
+    if args.quantity>stock then return {success=false,reason="depleted"} end
     recent[player]=now
     state.mineralRemaining=stock-args.quantity
     state.minerals=amount+args.quantity
-    return {success=true,minerals=state.minerals,remaining=state.mineralRemaining}''',
+    state.mineralRefillAt=state.mineralRemaining==0 and wallNow+120 or nil
+    player:SetAttribute("RMMPlanetMinerals",state.minerals)
+    return {success=true,minerals=state.minerals,remaining=state.mineralRemaining,
+        refillAt=state.mineralRefillAt}''',
     "WeaponPerformanceUpgrade": '''    local inv=services.PlayerDataManager.GetState(player,"RMMInventory")
     if not inv or type(inv.items)~="table" or not integer(inv.items.owned_weapon,2147483600)
         or inv.items.owned_weapon<1 then return {success=false,reason="not_owned"} end
