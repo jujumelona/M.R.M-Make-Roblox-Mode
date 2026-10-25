@@ -318,7 +318,9 @@ def source_intent_conflicts(
         text, re.I,
     )
     real_gathering = re.search(
-        r"\b(?:mine|harvest|extract|gather|collect|gathered|harvested)\w*"
+        r"\b(?:mine|mines|mining|harvest|harvests|harvesting|"
+        r"extract|extracts|extracting|gather|gathers|gathering|"
+        r"collect|collects|collecting)\b"
         r".{0,75}\b(?:node|deposit|ore|world|ground|mineral|resource)\b|"
         r"\b(?:resource|ore|mineral)\b.{0,50}"
         r"\b(?:node|deposit|spawn|mine|harvest|gather|collect|extract)\w*\b",
