@@ -30,7 +30,7 @@ def test_can_return_to_previously_recorded_launch_dock():
     assert 'homeDock[player]=nil' in lua
     assert "Return to ground" in ui
     assert 'remote:InvokeServer(action)' in ui
-    assert 'state=="arrived" and "return" or "launch"' in ui
+    assert 'player:GetAttribute("RMMFlightState")=="arrived" and "return" or "launch"' in ui
     assert 'Instance.new("TextButton")' in ui
     assert ui.count('Instance.new("TextButton")')==1 # RMMHUDLayout docks exactly one.
 
