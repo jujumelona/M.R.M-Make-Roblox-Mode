@@ -387,7 +387,7 @@ def render_typed_client(module: RobloxModuleSpec, proposal: RobloxProposal) -> s
     if kind == "RemoteFunction":
         lines += [
             '    local ok, result = pcall(function() return remote:InvokeServer(payload) end)',
-            '    status.Text = ok and result ~= false and "Action confirmed" or "Action rejected"',
+            '    status.Text = ok and (result == true or (type(result) == "table" and result.success == true)) and "Action confirmed" or "Action rejected"',
         ]
     else:
         lines += [
