@@ -59,6 +59,7 @@ local Service={}
 local destinationName=@DESTINATION@
 local recent={}
 local inFlight={}
+local homeDock={}
 local function validTier(value)
     return type(value)=="number" and value==value
         and value%1==0 and value>=0 and value<=10
@@ -72,13 +73,16 @@ function Service.start(services)
     Players.PlayerRemoving:Connect(function(player)
         recent[player]=nil
         inFlight[player]=nil
+        homeDock[player]=nil
     end)
 end
 function Service.handleAction(player,services,...)
     if typeof(player)~="Instance" or not player:IsA("Player")
-        or player.Parent~=Players or select("#",...)~=1 or (...)~="launch" then
+        or player.Parent~=Players or select("#",...)~=1
+        or ((...)~="launch" and (...)~="return") then
         return {success=false,reason="invalid_input"} end
     if inFlight[player] then return {success=false,reason="already_launching"} end
+    local action=(...)
     local vehicle=services.@BUILDER@.GetOwnedActor(player)
     if not vehicle or not vehicle:IsA("Model") or vehicle.Parent==nil
         or vehicle:GetAttribute("OwnerUserId")~=player.UserId then
@@ -90,10 +94,19 @@ function Service.handleAction(player,services,...)
     local destination=workspace:FindFirstChild(destinationName)
     if not destination or not destination:IsA("BasePart") then
         return {success=false,reason="missing_destination"} end
-    local target=destination.CFrame*CFrame.new(0,16,0)
+    local orbitTarget=destination.CFrame*CFrame.new(0,16,0)
     local start=vehicle:GetPivot()
-    if (start.Position-target.Position).Magnitude<=80 then
-        return {success=false,reason="already_in_orbit"} end
+    local nearOrbit=(start.Position-orbitTarget.Position).Magnitude<=80
+    local target
+    if action=="return" then
+        if not nearOrbit then return {success=false,reason="not_in_orbit"} end
+        target=homeDock[player]
+        if typeof(target)~="CFrame" then
+            return {success=false,reason="return_destination_missing"} end
+    else
+        if nearOrbit then return {success=false,reason="already_in_orbit"} end
+        target=orbitTarget
+    end
     -- Both the purchase and the flight read one persistent server-owned rank.
     -- Clients cannot request a faster journey or specify a destination.
     local progress=services.PlayerDataManager.GetState(player,"RMMRankProgress")
@@ -105,8 +118,9 @@ function Service.handleAction(player,services,...)
     if recent[player] and now-recent[player]<1 then
         return {success=false,reason="cooldown"} end
     recent[player]=now
+    if action=="launch" then homeDock[player]=start end
     inFlight[player]=true
-    player:SetAttribute("RMMFlightState","launching")
+    player:SetAttribute("RMMFlightState",action=="return" and "returning" or "launching")
     player:SetAttribute("RMMShipFlightSeconds",duration)
     -- Staged server-authoritative ascent of the SAME assembled model.
     -- This is cinematic movement, not yet pilot-controlled flight physics.
@@ -121,11 +135,13 @@ function Service.handleAction(player,services,...)
             RunService.Heartbeat:Wait()
         end
         inFlight[player]=nil
+        if completed and action=="return" then homeDock[player]=nil end
         if player.Parent==Players then
-            player:SetAttribute("RMMFlightState",completed and "arrived" or "interrupted")
+            local finalState=completed and (action=="return" and "landed" or "arrived") or "interrupted"
+            player:SetAttribute("RMMFlightState",finalState)
         end
     end)
-    return {success=true,status="launching",flightSeconds=duration,
+    return {success=true,status=action=="return" and "returning" or "launching",flightSeconds=duration,
         vehicle=vehicle.Name,destination=destinationName}
 end
 return Service
@@ -154,20 +170,27 @@ info.Position=UDim2.new(1,-270,0,415)
 info.Text=""
 info.Parent=gui
 local busy=false
-player:GetAttributeChangedSignal("RMMFlightState"):Connect(function()
+local function refreshFlightState()
     local state=player:GetAttribute("RMMFlightState")
+    button.Text=state=="arrived" and "Return to ground" or "Launch assembled vehicle"
     if state=="arrived" then info.Text="Arrived in orbit"
+    elseif state=="landed" then info.Text="Returned to ground"
+    elseif state=="returning" then info.Text="Descending to ground..."
     elseif state=="interrupted" then info.Text="Flight interrupted"
     elseif state=="launching" then info.Text="Ascending to orbit..." end
-end)
+end
+player:GetAttributeChangedSignal("RMMFlightState"):Connect(refreshFlightState)
+refreshFlightState()
 button.Activated:Connect(function()
     if busy then return end
     busy=true
-    local ok,result=pcall(function() return remote:InvokeServer("launch") end)
+    local action=player:GetAttribute("RMMFlightState")=="arrived" and "return" or "launch"
+    local ok,result=pcall(function() return remote:InvokeServer(action) end)
     if not ok or type(result)~="table" then info.Text="Network error"
-    elseif result.success and result.status=="launching" then
-        info.Text="Launching ("..tostring(result.flightSeconds).."s)"
-    elseif result.success then info.Text="Launch accepted"
+    elseif result.success and (result.status=="launching" or result.status=="returning") then
+        info.Text=(result.status=="returning" and "Returning (" or "Launching (")
+            ..tostring(result.flightSeconds).."s)"
+    elseif result.success then info.Text="Flight accepted"
     else info.Text=tostring(result.reason or "Rejected") end
     busy=false
 end)
