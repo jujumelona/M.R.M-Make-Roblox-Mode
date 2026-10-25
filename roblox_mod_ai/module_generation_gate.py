@@ -144,7 +144,18 @@ def generated_module_errors(
             # the complete module, excluding service registry boilerplate.
             scaffolded = ("-- Host-authored lifecycle, input validation and "
                           "exported ABI.") in code
+            # Some narrowly specified host adapters delegate the action to
+            # an independently source-verified canonical service. That is a
+            # real effect even though the *alias* performs no direct write.
+            # Require an exact match to the deterministic generator output
+            # and full original-plan eligibility: arbitrary model-authored
+            # owner.handleAction calls must never bypass this gate.
+            verified_delegate = False
             if not has_gameplay_mutation(code, routed_action=scaffolded):
+                from .host_space_colonization import render_colony_alias
+                expected = render_colony_alias(module, proposal)
+                verified_delegate = expected is not None and code == expected
+            if not has_gameplay_mutation(code, routed_action=scaffolded) and not verified_delegate:
                 errors.append(
                     "ACTION_EFFECT_UNIMPLEMENTED: no executable gameplay "
                     "mutation in the source-owned action. Service.start "
