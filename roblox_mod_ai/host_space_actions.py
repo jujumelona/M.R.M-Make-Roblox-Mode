@@ -131,7 +131,7 @@ local function placePlanetActionTarget()
     return true
 end
 function Service.start(services)
-    assert(services.PlayerDataManager and type(services.PlayerDataManager.GetState)=="function")
+    assert(services.PlayerDataManager and type(services.PlayerDataManager.GetState)=="function", "Space action requires PlayerDataManager.GetState")
     Players.PlayerRemoving:Connect(function(p) recent[p]=nil end)
     __PLACE_TARGET__
     services.PlayerDataManager.OnReady(function(p)
@@ -252,7 +252,7 @@ local Players=game:GetService("Players")
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
 local player=Players.LocalPlayer
 local remote=ReplicatedStorage:WaitForChild("Remotes"):WaitForChild(__REMOTE__)
-assert(remote:IsA("RemoteFunction"))
+assert(remote:IsA("RemoteFunction"), "Space action requires a RemoteFunction")
 local gui=Instance.new("ScreenGui")
 gui.Name=__GUI__
 gui.ResetOnSpawn=false
