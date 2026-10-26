@@ -59,22 +59,10 @@ def render_host_space_action(module, proposal):
     role = _role(server)
     if role is None:
         return None
-    # Source ownership is validated through immutable requirement IDs and
-    # module-facet links, not by guessing the meaning of exact prompt words.
-    ledger = ((proposal.game_design.get("pre_design_research") or {})
-              .get("ledger") or {})
-    source_ids = {r.get("id") for r in ledger.get("requirements", [])
-                  if isinstance(r, dict) and r.get("source") == "user_prompt"
-                  and isinstance(r.get("statement"), str) and r["statement"].strip()}
-    owners = set((design.get("module_requirements") or {}).get(server.module_id, []))
-    facets = set((design.get("module_facets") or {}).get(server.module_id, []))
-    declared_facets = {
-        f.get("id") for f in ledger.get("facets", [])
-        if isinstance(f, dict) and any(
-            rid in source_ids and rid in owners for rid in (f.get("requirements") or []))
-    }
-    if not (owners & source_ids and facets & declared_facets):
-        return None
+    # The renderer is chosen from the module's claimed behavior, typed
+    # Remote ABI and source-linked world dependencies below. Never branch
+    # on Korean/English words in proposal.requested_prompt. Higher-level
+    # planning validates request-to-module ownership separately.
     if module.kind == ModuleKind.SERVER_MODULE and module.name != server.name:
         return None
     if module.kind == ModuleKind.CLIENT_SCRIPT and module.name != spec.get("client"):
