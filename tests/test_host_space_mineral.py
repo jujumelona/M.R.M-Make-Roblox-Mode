@@ -115,7 +115,8 @@ def test_failed_codegen_uses_both_verified_host_adapters():
     assert server_code == render_space_mineral(server, plan)
     assert client_code == render_space_mineral(client, plan)
     assert 'GetOwnedActor(player)' in server_code
-    assert 'GetState(player, "RMMInventory")' in server_code
+    assert 'local INVENTORY_NAMESPACE = "RMMInventory"' in server_code
+    assert 'GetState(player, INVENTORY_NAMESPACE)' in server_code
     assert 'local INVENTORY_FIELD = "specialMinerals"' in server_code
     assert 'inventory[INVENTORY_FIELD] = count + 1' in server_code
     assert 'services.PlayerDataManager.OnReady(function(player)' in server_code
