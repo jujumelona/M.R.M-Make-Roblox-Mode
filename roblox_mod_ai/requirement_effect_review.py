@@ -324,6 +324,18 @@ def _downstream_effect_evidence(
         shared = [ns for ns in namespaces if ns in content]
         if not shared or (target and target not in content):
             continue
+        # Inventory is a common shared namespace across unrelated actions.
+        # An ownership or GetOwnedActor mention alone does not prove that
+        # the specific RMMRankProgress/RMMShipSections record is consumed.
+        if target and "RMMRankProgress" in namespaces and (
+                "RMMRankProgress" not in shared):
+            continue
+        if "RMMShipSections" in namespaces and (
+                "RMMShipSections" not in shared):
+            continue
+        if "RMMWeaponProgress" in namespaces and (
+                "RMMWeaponProgress" not in shared):
+            continue
         if not any(hint and hint in content for hint in hints):
             continue
         lines = content.splitlines()
