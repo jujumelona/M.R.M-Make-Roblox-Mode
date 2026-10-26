@@ -20,6 +20,7 @@ from .request_traceability import build_request_traceability
 from .local_studio import install_local_studio_checks
 from .verification_selector import make_verification_report
 from .source_review import review_generated_sources
+from .requirement_effect_review import review_requirement_effects
 from .source_repair_cycle import run_source_repair_cycle
 from .gameplay_contract import make_studio_playtest_scenarios
 from .rbxlx_inspector import inspect_compiled_place
@@ -859,7 +860,36 @@ class RobloxProductionOrchestrator:
             # A second pass compares the actually written, formatted source
             # against each original requirement. It can run in Colab using
             # the already loaded local GGUF; Roblox Studio is NOT invoked.
-            ai_review = review_generated_sources(proposal, output_dir, self.router)
+            def review_with_requirements() -> dict:
+                line_review = review_generated_sources(proposal, output_dir, self.router)
+                if line_review.get("status") in ("failed", "not_run"):
+                    return line_review
+                # Review the full original request against the observable
+                # effects, not just lines, names, or RemoteFunction presence.
+                effects = review_requirement_effects(proposal, output_dir, self.router)
+                tool_results["requirement_effect_review"] = effects
+                (output_dir / "requirement_effect_review.json").write_text(
+                    json.dumps(effects, indent=2, ensure_ascii=False),
+                    encoding="utf-8")
+                if effects.get("status") == "failed":
+                    line_review["status"] = "failed"
+                    line_review["reason"] = (
+                        "Requirement effect review incomplete: " +
+                        effects.get("reason", "unknown"))
+                    return line_review
+                line_review["requirement_effects"] = {
+                    "status": effects["status"],
+                    "requirements": effects["requirements"],
+                }
+                line_review["findings"].extend(effects["findings"])
+                if effects["status"] == "issues_found":
+                    line_review["status"] = "issues_found"
+                    line_review["reason"] = (
+                        "Original requirement is not demonstrated by actual "
+                        "generated source effects")
+                return line_review
+
+            ai_review = review_with_requirements()
             tool_results["ai_source_review"] = ai_review
             (output_dir / "ai_source_review.json").write_text(
                 json.dumps(ai_review, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -906,9 +936,9 @@ class RobloxProductionOrchestrator:
                 repair = run_source_repair_cycle(
                     proposal, output_dir, self.router, ai_review,
                     verify=verify_review_repair,
-                    review_again=lambda: review_generated_sources(
-                        proposal, output_dir, self.router),
+                    review_again=review_with_requirements,
                     max_rounds=int(os.environ.get("RMM_AI_REPAIR_ROUNDS", "3")),
+                    allow_host_gameplay_repairs=True,
                 )
                 tool_results["ai_source_repair"] = repair
                 (output_dir / "ai_source_repair.json").write_text(
@@ -960,8 +990,9 @@ class RobloxProductionOrchestrator:
                     "schema": "rmm/codegen-checkpoint-v1", "modules": items,
                 }, indent=2, ensure_ascii=False), encoding="utf-8")
                 temporary.replace(checkpoint_file)
-            if ai_review["status"] == "failed":
-                return {"passed": False, "error": "AI source review could not finish",
+            if ai_review["status"] in ("failed", "reviewed_unverified_host_claims"):
+                return {"passed": False,
+                        "error": "Unresolved source behavior / unverified host claims",
                         "diagnostic": ai_review.get("reason", "")}
             return {"passed": True, "static_checks": len(acceptance["checks"]),
                     "ai_source_review": ai_review["status"]}
