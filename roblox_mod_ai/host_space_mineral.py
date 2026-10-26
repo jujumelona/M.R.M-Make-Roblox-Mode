@@ -155,9 +155,16 @@ function Service.start(services)
     local builder = services[BUILDER_NAME]
     assert(type(builder) == "table" and type(builder.GetOwnedActor) == "function"
         and type(services.PlayerDataManager) == "table"
-        and type(services.PlayerDataManager.GetState) == "function",
+        and type(services.PlayerDataManager.GetState) == "function"
+        and type(services.PlayerDataManager.OnReady) == "function",
         "Space mining requires real assembled craft and persistent inventory")
     assert(locateOre(), "Space mineral node and verified orbit arrival required")
+    services.PlayerDataManager.OnReady(function(player)
+        local inventory = services.PlayerDataManager.GetState(player, "RMMInventory")
+        if type(inventory) ~= "table" then return end
+        local count = inventory.specialMinerals or 0
+        if integer(count) then player:SetAttribute("RMMSpecialMinerals", count) end
+    end)
     Players.PlayerRemoving:Connect(function(player) last[player] = nil end)
 end
 function Service.handleAction(player, services, ...)
