@@ -35,7 +35,40 @@ def _blocking(report: dict[str, Any]) -> list[dict[str, Any]]:
 
 def _plan_change(module: Any, issues: list[dict[str, Any]], router: Any,
                  proposal: Any, previous_failures: list[dict[str, Any]]) -> dict[str, Any]:
-    """A second AI call diagnoses actual quoted defects before touching code."""
+    """Plan a real edit; never require redundant small-model root-cause prose.
+
+    Requirement-effect findings already contain a source-quoted observation,
+    a requested behavioral correction and source ownership. Asking another
+    small model to restate that information as a long JSON plan caused three
+    identical zero-edit failures. Preserve the findings instead.
+    """
+    grounded = bool(issues) and all(
+        row.get("evidence") == "requirement_effect_review_source_quote"
+        and row.get("quote") and row.get("issue") and row.get("repair")
+        for row in issues
+    )
+    if grounded:
+        return {
+            "file": module.file_path,
+            "root_cause": "; ".join(
+                str(row["issue"]).strip() for row in issues
+            )[:1200],
+            "change_strategy": "; ".join(
+                str(row["repair"]).strip() for row in issues
+            )[:1600],
+            "invariants": [
+                "Preserve all unrelated source-owned game behavior",
+                "Keep server authority and saved player state consistent",
+                "Never remove security checks or unrelated actions",
+            ],
+            "regression_tests": [
+                "Re-run actual offline source analyzers and ABI checks",
+                "Independently re-review the new source against the same requirement",
+            ],
+            "plan_origin": "grounded_requirement_effect_findings",
+        }
+    # For older model-authored diagnostics without a complete source-grounded
+    # repair recommendation, retain the existing planner and strict checks.
     result = router.complete_json(
         prompt=(
             "Produce a scoped Roblox Luau defect repair plan ONLY. Do not write "
@@ -157,7 +190,17 @@ def run_source_repair_cycle(
     Model-only reassurance is not a passing validation.
     """
     root = Path(root)
-    max_rounds = max(1, min(5, int(max_rounds)))
+    # Independently repair one source owner at a time. A source requirement
+    # can contain many unrelated actions (e.g. ship, broker, combat). A single
+    # ten-file transaction is brittle and three total rounds cannot repair ten
+    # distinct files. Keep the configured minimum, with a hard bounded ceiling.
+    affected_files = {
+        item.get("file") for item in _blocking(initial_review)
+        if isinstance(item.get("file"), str)
+    }
+    max_rounds = max(1, min(30, max(
+        int(max_rounds), 2 * len(affected_files)
+    )))
     report = {
         "schema": SCHEMA, "passed": False, "status": "not_run",
         "attempts": [], "initial_review": initial_review,
@@ -183,6 +226,7 @@ def run_source_repair_cycle(
         strategy_by_id = {}
     attempted_patches: set[tuple[str, str]] = set()
     changed: set[str] = set()
+    failed_file_attempts: dict[str, int] = {}
     current = initial_review
     for round_number in range(1, max_rounds + 1):
         findings = _blocking(current)
@@ -200,7 +244,23 @@ def run_source_repair_cycle(
         }
         report["attempts"].append(step)
         selected = []
-        for file_path in sorted(by_file):
+        # Prefer an untried owner. If a patch was reverted, try that owner
+        # once more with the new diagnostic, then move on rather than
+        # repeatedly spending the entire retry budget on one action.
+        candidates_in_order = sorted(
+            by_file, key=lambda p: (failed_file_attempts.get(p, 0), p)
+        )
+        candidates_in_order = [
+            path for path in candidates_in_order
+            if failed_file_attempts.get(path, 0) < 2
+        ]
+        if not candidates_in_order:
+            report["status"] = "blocked"
+            report["reason"] = (
+                "All source owners exhausted bounded local repair attempts; "
+                "unresolved behavior remains in reviewed source")
+            break
+        for file_path in candidates_in_order[:1]:
             module = modules.get(file_path)
             if module is None:
                 step["status"] = "blocked"
@@ -319,6 +379,10 @@ def run_source_repair_cycle(
             report["final_review"] = newer
         except Exception as exc:
             for module in selected:
+                failed_file_attempts[module.file_path] = (
+                    failed_file_attempts.get(module.file_path, 0) + 1
+                )
+            for module in selected:
                 if module.file_path in originals:
                     (root / module.file_path).write_text(
                         originals[module.file_path], encoding="utf-8")
@@ -326,12 +390,12 @@ def run_source_repair_cycle(
             step["status"] = "reverted"
             step["reason"] = type(exc).__name__ + ": " + str(exc)[:500]
             report["reason"] = step["reason"]
-            # A failed patch does not end the process. Ask for a new root-cause
-            # plan using the previous failure evidence on the next attempt.
-            # A repeated identical candidate is a terminal no-progress signal.
+            # Advance to another owner when this one is exhausted, preserving
+            # explicit error evidence. Never silently mark unresolved findings
+            # as completed; the final report remains failed if blockers remain.
             if "Same unsuccessful candidate repeated" in step["reason"]:
-                report["status"] = "blocked"
-                break
+                for module in selected:
+                    failed_file_attempts[module.file_path] = 2
             report["status"] = "retrying"
     else:
         report["status"] = "exhausted"
