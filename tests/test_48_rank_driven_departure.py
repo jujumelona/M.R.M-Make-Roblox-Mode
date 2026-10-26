@@ -12,6 +12,14 @@ def test_departure_consumes_authoritative_spaceship_rank():
     assert 'local rank=progress.Spaceship or 0' in luau
     assert 'if not validTier(rank)' in luau
     assert 'local duration=math.max(3,7-0.4*rank)' in luau
+    # Sections now have an actual server-side effect on the voyage duration,
+    # not merely an unused assembly score attribute.
+    assert 'GetState(player,"RMMShipSections")' in luau
+    assert 'part.owned==true' in luau
+    assert 'contribution%1~=0' in luau
+    assert 'duration=math.max(2,duration-math.min(1.5,assemblyScore/200))' in luau
+    assert 'assemblyPerformance=assemblyScore' in luau
+    assert 'player:GetAttribute("RMMShipAssemblyPerformance")' not in luau
     assert "start:Lerp(target,alpha)" in luau
     assert "RunService.Heartbeat:Wait()" in luau
     assert "already_launching" in luau
