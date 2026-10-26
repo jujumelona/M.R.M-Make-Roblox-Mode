@@ -174,3 +174,44 @@ def test_explicit_thrust_not_disguised_as_voyage_duration(tmp_path):
         "Ship upgrade must change thrust and speed, not just arrival time",
         {m.file_path: m for m in modules}, tmp_path,
     ) is None
+
+
+def test_unrelated_farm_upgrade_target_is_discovered_from_source_not_whitelist(tmp_path):
+    modules, owners = scene(tmp_path)
+    owner, _, _ = owners[0]
+    source = (tmp_path / owner.file_path).read_text()
+    (tmp_path / owner.file_path).write_text(
+        source.replace('"crew_performance_state"', '"honeyProduction"')
+    )
+    consumer = tmp_path / ROOT / "AlienCombat.luau"
+    code = consumer.read_text().replace(
+        "crew_performance_state", "honeyProduction"
+    ).replace("state.alienHp = hp", "state.honeyHarvested = hp")
+    consumer.write_text(code)
+    result = attest_paid_upgrade(
+        (tmp_path / owner.file_path).read_text(),
+        owner.file_path, "Purchase improved hive honey production",
+        {m.file_path: m for m in modules}, tmp_path,
+    )
+    assert result is not None
+    assert result["target"] == "honeyProduction"
+    assert result["server_effect_consumer"].endswith("AlienCombat.luau")
+
+
+def test_a_rank_mentioned_in_comments_and_ui_is_not_a_gameplay_effect(tmp_path):
+    modules, owners = scene(tmp_path)
+    owner, _, _ = owners[0]
+    for path in (ROOT + "AlienCombat.luau", ROOT + "LaunchCraftIntoSpace.luau"):
+        target = tmp_path / path
+        target.write_text(
+            '-- ranks.crew_performance_state or 0\n'
+            'local ranks = services.PlayerDataManager.GetState(player, "RMMRankProgress")\n'
+            'local crew = ranks.crew_performance_state or 0\n'
+            'player:SetAttribute("CrewTier", crew)\n'
+            'return {tier=crew}\n'
+        )
+    assert attest_paid_upgrade(
+        (tmp_path / owner.file_path).read_text(), owner.file_path,
+        "Buy crew upgrades that affect actions",
+        {m.file_path: m for m in modules}, tmp_path,
+    ) is None
