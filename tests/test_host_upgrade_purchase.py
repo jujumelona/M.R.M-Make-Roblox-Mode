@@ -152,11 +152,16 @@ def test_wrong_transport_missing_owner_and_unrelated_trade_fail_closed():
     assert render_host_gameplay(p.modules[0], p) is None
 
 
-def test_host_purchase_not_enabled_for_different_source_request():
+def test_host_purchase_dispatch_is_invariant_under_prompt_rewording():
+    # Pre-design validates that the requirement ledger belongs to the prompt.
+    # This reusable *code generation* path must depend on its structured
+    # owner/remote contract, not words in the raw prompt.
     p = proposal23_purchase()
+    expected = [render_host_gameplay(module, p) for module in p.modules]
     p.requested_prompt = "Plant flowers and water a garden"
-    assert render_host_gameplay(p.modules[0], p) is None
-    assert render_host_gameplay(p.modules[1], p) is None
+    actual = [render_host_gameplay(module, p) for module in p.modules]
+    assert expected == actual
+    assert all(actual)
 
 
 
