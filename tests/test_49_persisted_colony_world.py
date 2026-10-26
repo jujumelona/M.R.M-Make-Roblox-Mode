@@ -13,7 +13,7 @@ def test_planet_colonization_builds_physical_owned_settlement():
     code=render_host_space_action(server,proposal)
     assert code is not None
     for required in (
-        'local function spawnColony(player,markerName)',
+        'local function spawnColony(player,markerName,colonizedAt)',
         'local name="RMMColony_"..tostring(player.UserId)',
         'colony:SetAttribute("OwnerUserId",player.UserId)',
         'colony:SetAttribute("RMMColonyEstablished",true)',
@@ -53,3 +53,26 @@ def test_colony_still_requires_real_owned_ship_arrival():
     assert 'if state.colonized==true then' in code
     assert 'settlement="restored",already=true' in code
     assert 'if not placePlanetActionTarget()' in code
+
+
+def test_colony_provenance_is_saved_on_each_players_real_settlement():
+    proposal = fixture()
+    server = next(m for m in proposal.modules if
+                  m.name.startswith("MarkPlanetColonized")
+                  and m.name.endswith("Server"))
+    code = render_host_space_action(server, proposal)
+    assert code is not None
+    for needle in (
+        'colony:SetAttribute("RMMPlanetColonized",true)',
+        'colony:SetAttribute("RMMColonizedBy",player.UserId)',
+        'colony:SetAttribute("RMMColonizedAt",colonizedAt)',
+        'previous:SetAttribute("RMMColonizedAt",colonizedAt)',
+        'local stamp=os.time()',
+        'state.colonizedAt=stamp',
+        'spawnColony(player,',
+        'saved.colonizedAt or os.time()',
+    ):
+        assert needle in code, needle
+    assert code.index('local stamp=os.time()') < code.index('state.colonizedAt=stamp')
+    assert 'planet:SetAttribute("RMMColonizedBy",player.UserId)' not in code
+    assert 'planet:SetAttribute("RMMColonizedAt",os.time())' not in code
