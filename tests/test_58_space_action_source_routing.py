@@ -91,11 +91,16 @@ def test_58_fails_closed_without_launcher_or_arrival():
     assert render_host_space_action(combat,p) is None
 
 
-def test_58_fails_closed_without_actual_colonization_user_request():
+def test_58_host_routing_uses_validated_contract_not_literal_prompt_text():
     p,combat,colony=_report58()
+    expected_colony = render_host_space_action(colony,p)
+    expected_combat = render_host_space_action(combat,p)
+    assert expected_colony is not None and expected_combat is not None
     p.requested_prompt="우주 우주선만 제작하는 게임"
-    assert render_host_space_action(colony,p) is None
-    assert render_host_space_action(combat,p) is not None
+    # Upstream request-ledger verification must reject a stale/mismatched
+    # plan; a renderer must not reinterpret raw words behind the architect.
+    assert render_host_space_action(colony,p) == expected_colony
+    assert render_host_space_action(combat,p) == expected_combat
 
 
 def test_58_fails_closed_without_typed_remote_contract():
