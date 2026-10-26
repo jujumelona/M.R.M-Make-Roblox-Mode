@@ -123,6 +123,19 @@ def review_requirement_effects(proposal: Any, root: Path, router: Any) -> dict[s
         try:
             result = router.complete_json(
                 prompt=prompt, role="analyzer", temperature=0, max_tokens=1100,
+                json_schema={
+                    "type": "object",
+                    "properties": {
+                        "verdict": {"type": "string", "enum": [
+                            "implemented", "missing", "uncertain"]},
+                        "file": {"type": "string", "maxLength": 240},
+                        "quote": {"type": "string", "maxLength": 260},
+                        "issue": {"type": "string", "maxLength": 350},
+                        "repair": {"type": "string", "maxLength": 350},
+                    },
+                    "required": ["verdict", "file", "quote", "issue", "repair"],
+                    "additionalProperties": False,
+                },
             )
         except Exception as exc:
             report["reason"] = req_id + ": model review failed: " + (
