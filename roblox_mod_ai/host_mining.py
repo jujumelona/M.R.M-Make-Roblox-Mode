@@ -68,25 +68,65 @@ def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> st
         return None
     if module.kind not in (ModuleKind.SERVER_MODULE, ModuleKind.CLIENT_SCRIPT):
         return None
-    server = (module.name if module.kind == ModuleKind.SERVER_MODULE
-              else module.name.removesuffix("Client") + "Server")
+    design = proposal.game_design.get("dynamic_design") or {}
+    # Explicit action-to-server routing is authoritative. Never infer that a
+    # client targets a service from naming conventions when ownership exists.
+    if module.kind == ModuleKind.SERVER_MODULE:
+        server = module.name
+    else:
+        linked = (design.get("module_remotes") or {}).get(module.module_id)
+        routes_by_link = {
+            row.get("service") for remote, row in
+            (design.get("host_actions") or {}).items()
+            if isinstance(row, dict) and isinstance(linked, list)
+            and remote in linked
+        }
+        if len(routes_by_link) == 1:
+            server = next(iter(routes_by_link))
+        else:
+            server = module.name.removesuffix("Client") + "Server"
     owner = next((peer for peer in getattr(proposal, "modules", [])
                   if peer.kind == ModuleKind.SERVER_MODULE and peer.name == server), None)
-    description = (owner.description if owner else module.description).lower()
+    if owner is None:
+        return None
+    # A verified standalone resource interaction is identified by its owned
+    # source Part, no-claim wire contract, and the *same server action*.
+    # Other vehicle actions present elsewhere in the project are irrelevant.
+    materializations = [
+        row for row in (design.get("host_materialized_world") or [])
+        if isinstance(row, dict) and row.get("service") == server
+        and row.get("transport_rebased") is True
+        and row.get("input") in (
+            "RemoteFunction_server_selected_nearest_Part",
+            "host_verified_nearest_resource",
+        )
+        and not row.get("vehicle_context")
+    ]
+    declaration_owned = bool(materializations)
+    description = owner.description.lower()
     service_tokens = re.sub(
         r"(?<=[a-z])(?=[A-Z])|(?<=[A-Za-z])(?=\d)",
         " ", server,
     )
-    if (not re.search(r"\b(?:mining|mine|ore|gather|gathering|harvest|harvesting)\b", service_tokens, re.I)
-            or not re.search(r"mining|mine|ore|gather|harvest|resource", description)
-            or not re.search(r"\b(?:validat|radius|distance|proximity|range|node|deposit|deplet|cooldown|gather)\w*\b", description)):
+    legacy_named_mechanic = (
+        bool(re.search(
+            r"\b(?:mining|mine|ore|gather|gathering|harvest|harvesting)\b",
+            service_tokens, re.I))
+        and bool(re.search(r"mining|mine|ore|gather|harvest|resource", description))
+        and bool(re.search(
+            r"\b(?:validat|radius|distance|proximity|range|node|deposit|deplet|cooldown|gather)\w*\b",
+            description))
+    )
+    if not (declaration_owned or legacy_named_mechanic):
         return None
-    design = proposal.game_design.get("dynamic_design") or {}
     # A mineable source-owned Part is the actual evidence of the resource.
     # Do not reject "mining a static world object" solely because its prose
     # does not spell out the words "resource" or "ore".
     nodes = mining_world_nodes(proposal, owner or module)
     if not nodes:
+        return None
+    if declaration_owned and not any(row.get("resource_node") in nodes
+                                    for row in materializations):
         return None
     routes = [(name, binding) for name, binding in
               (design.get("host_actions") or {}).items()
@@ -98,6 +138,10 @@ def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> st
     # format the host will provide or duplicate player-facing transports.
     if len(routes) + len(world_routes) != 1:
         return None
+    if module.kind == ModuleKind.CLIENT_SCRIPT:
+        linked = (design.get("module_remotes") or {}).get(module.module_id)
+        if isinstance(linked, list) and routes and routes[0][0] not in linked:
+            return None
     reward_currency = mining_rewards_currency(owner or module, proposal)
     if world_routes:
         world_name = world_routes[0][0]
