@@ -207,7 +207,7 @@ def _confirm_scoped_progress(
         "When the edited code is insufficient to prove the original "
         "effect, return false. Respond JSON with resolved:boolean, "
         "evidence_quote:string (exact source substring from the NEW changed "
-        "Luau source), reason:string. Never claim engine execution.\\n"
+        "Luau source), reason:string. Never claim engine execution.\n"
         + json.dumps({
             "file": path,
             "previous_defects": [{
@@ -217,7 +217,7 @@ def _confirm_scoped_progress(
             "fresh_review_remaining": [{
                 "issue": row.get("issue"), "quote": row.get("quote"),
             } for row in now],
-            "actual_source_diff": "\\n".join(changes)[:8500],
+            "actual_source_diff": "\n".join(changes)[:8500],
         }, ensure_ascii=False)
     )
     try:
