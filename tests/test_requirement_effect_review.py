@@ -73,7 +73,7 @@ def test_fabricated_positive_evidence_never_passes(tmp_path):
     }])
     result = review_requirement_effects(proposal, tmp_path, model)
     assert result["status"] == "failed" and not result["fully_covered"]
-    assert "fabricated" in result["reason"]
+    assert "source citation not recoverable" in result["reason"]
 
 
 def test_uncertain_reviewer_never_counts_as_pass(tmp_path):
