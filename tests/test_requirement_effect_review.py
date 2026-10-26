@@ -154,3 +154,48 @@ def test_failed_validation_rolls_back_host_gameplay_patch(tmp_path, monkeypatch)
         max_rounds=1, agent_factory=fake_agent(),
     )
     assert not result["passed"] and target.read_text(encoding="utf-8") == BEFORE
+
+
+def test_multi_owner_requirement_reviews_entire_independent_server_files(tmp_path):
+    proposal, module, file = setup(tmp_path)
+    module.description = "Server upgrades the owned ship's thrust."
+    another = SimpleNamespace(
+        name="MarketTrade", module_id="dyn_market_trade",
+        file_path="src/server/MarketTrade.luau", code="--!strict\\nreturn true\\n",
+        description="Transfer currency and item to the buyer",
+    )
+    other_path = tmp_path / another.file_path
+    other_path.parent.mkdir(parents=True, exist_ok=True)
+    other_path.write_text(another.code, encoding="utf-8")
+    proposal.modules.append(another)
+    requirement = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
+    requirement["owner_files"] = [module.file_path, another.file_path]
+    requirement["owner_modules"] = [module.name, another.name]
+    # A long middle section must NEVER vanish from the source the model sees.
+    long_middle = "\\n".join("local sentinel%03d = %d" % (i, i) for i in range(90))
+    complete_first = BEFORE.replace("rank += 1", long_middle + "\\nrank += 1")
+    file.write_text(complete_first, encoding="utf-8")
+    model = FakeModel([
+        {"verdict": "missing", "file": FILE, "quote": "rank += 1",
+         "issue": "Only rank increases and the thrust does not change",
+         "repair": "Modify owned vehicle's thrust after upgrade"},
+        {"verdict": "missing", "file": another.file_path, "quote": "return true",
+         "issue": "No server currency or item ownership transfer",
+         "repair": "Transfer validated balances to both players"},
+    ])
+    outcome = review_requirement_effects(proposal, tmp_path, model)
+    assert outcome["status"] == "issues_found" and outcome["fully_covered"]
+    assert len(outcome["findings"]) == 2
+    assert len(model.prompts) == 2
+    assert "sentinel050" in model.prompts[1] or "sentinel050" in model.prompts[0]
+    assert "SOURCE EXCERPT OMITTED" not in "\\n".join(model.prompts)
+
+
+def test_oversized_complete_source_fails_without_fabricated_approval(tmp_path):
+    proposal, module, file = setup(tmp_path)
+    file.write_text(BEFORE + ("-- source section\\n" * 1100), encoding="utf-8")
+    model = FakeModel([])
+    result = review_requirement_effects(proposal, tmp_path, model)
+    assert result["status"] == "failed"
+    assert "exceeds reviewer context" in result["reason"]
+    assert model.prompts == []
