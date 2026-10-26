@@ -107,6 +107,9 @@ def executable_spec(module:Any,proposal:Any)->tuple[str,dict,dict]|None:
 
 
 def render_atomic_server(module:Any,proposal:Any)->str|None:
+    transaction = render_transaction_server(module, proposal)
+    if transaction is not None:
+        return transaction
     chosen=executable_spec(module,proposal)
     if chosen is None:
         return None
@@ -179,3 +182,162 @@ return Service
             .replace("__AMOUNT__",amount)
             .replace("__BOUND__",bound)
             .replace("__NEXT__",next_value))
+
+
+def render_transaction_server(module: Any, proposal: Any) -> str | None:
+    """Compile a bounded multi-field transaction, with one durable namespace.
+
+    This is a generic opt-in execution program, never derived from names,
+    genres or the wording of a request. All preconditions are checked before
+    any field is changed. There is no yield inside the transaction.
+    """
+    if module.kind != ModuleKind.SERVER_MODULE or not module.module_id.startswith("dyn_"):
+        return None
+    design = (proposal.game_design or {}).get("dynamic_design") or {}
+    routes = [(remote, route) for remote, route in
+              (design.get("host_actions") or {}).items()
+              if isinstance(route, dict) and route.get("service") == module.name]
+    if len(routes) != 1:
+        return None
+    remote, route = routes[0]
+    program = (design.get("host_executable_actions") or {}).get(remote)
+    if not isinstance(program, dict) or program.get("schema") != "rmm/transaction-effect-v1":
+        return None
+    if (route.get("kind") != "RemoteFunction" or route.get("max_args") != 1
+            or (design.get("remotes") or {}).get(remote) != "RemoteFunction"
+            or (design.get("module_remotes") or {}).get(module.module_id) != [remote]):
+        raise ValueError("TRANSACTION_REMOTE_CONTRACT_INVALID")
+    typed = (design.get("host_typed_actions") or {}).get(remote)
+    if (not isinstance(typed, dict) or typed.get("server") != module.name
+            or typed.get("transport_only") is True):
+        raise ValueError("TRANSACTION_TYPED_ACTION_REQUIRED")
+    clients = [m for m in proposal.modules
+               if m.kind == ModuleKind.CLIENT_SCRIPT and m.name == typed.get("client")
+               and (design.get("module_remotes") or {}).get(m.module_id) == [remote]
+               and m.file_path.startswith("src/client/")
+               and m.file_path.endswith(".client.luau")]
+    if (len(clients) != 1 or not module.file_path.startswith("src/server/")
+            or not module.file_path.endswith(".luau")):
+        raise ValueError("TRANSACTION_CLIENT_OR_SERVER_ABI_INVALID")
+    contract = validate_contract(typed.get("contract"),
+                                 world_entities=typed.get("world_entities") or [])
+    if contract["target"]["kind"] != "none":
+        # A world-space action additionally needs an authoritative spatial
+        # binding. Do not mistake an arbitrary UI selection for proximity.
+        raise ValueError("TRANSACTION_WORLD_TARGET_REQUIRES_VERIFIED_BINDING")
+    if set(program) != {"schema", "namespace", "changes"}:
+        raise ValueError("TRANSACTION_UNSUPPORTED_FIELDS")
+    namespace = program["namespace"]
+    rows = program["changes"]
+    if (not isinstance(namespace, str) or not _ID.fullmatch(namespace)
+            or not isinstance(rows, list) or not 1 <= len(rows) <= 5):
+        raise ValueError("TRANSACTION_INVALID_NAMESPACE_OR_LENGTH")
+    declarations = contract["state_changes"]
+    if len(declarations) != len(rows):
+        raise ValueError("TRANSACTION_UNDECLARED_EFFECT_COUNT")
+    identifiers = set()
+    checks = []
+    commits = []
+    updates = []
+    for idx, (row, declared) in enumerate(zip(rows, declarations)):
+        if not isinstance(row, dict) or set(row) != {"field", "operation", "amount", "limit"}:
+            raise ValueError("TRANSACTION_INVALID_CHANGE_SHAPE")
+        field, operation = row["field"], row["operation"]
+        if (not isinstance(field, str) or not _ID.fullmatch(field)
+                or field in identifiers or operation not in ("increment", "decrement", "set")):
+            raise ValueError("TRANSACTION_DUPLICATE_OR_UNSUPPORTED_STATE")
+        identifiers.add(field)
+        if declared != {"scope": "player", "key": namespace + "." + field,
+                        "operation": operation}:
+            raise ValueError("TRANSACTION_CHANGE_DIFFERS_FROM_DECLARATION")
+        limit = row["limit"]
+        if type(limit) is not int or not 1 <= limit <= 1000000000:
+            raise ValueError("TRANSACTION_UNBOUNDED_INTEGER")
+        amount = row["amount"]
+        if not isinstance(amount, dict):
+            raise ValueError("TRANSACTION_INVALID_AMOUNT")
+        if set(amount) == {"constant"}:
+            n = amount["constant"]
+            if type(n) is not int or not 0 <= n <= limit:
+                raise ValueError("TRANSACTION_INVALID_CONSTANT")
+            expr = str(n)
+        elif set(amount) == {"input"}:
+            field_id = amount["input"]
+            if (not isinstance(field_id, str) or not _ID.fullmatch(field_id)
+                    or len([f for f in contract["inputs"]
+                            if f["id"] == field_id and f["type"] == "integer"
+                            and f["min"] >= 0 and f["max"] <= limit]) != 1):
+                raise ValueError("TRANSACTION_UNVALIDATED_AMOUNT")
+            expr = "args." + field_id
+        else:
+            raise ValueError("TRANSACTION_INVALID_AMOUNT")
+        n = idx + 1
+        old, delta, next_value = f"old{n}", f"amount{n}", f"next{n}"
+        checks.append(
+            f"    local {old}=state.{field}\\n"
+            f"    if {old}==nil then {old}=0 end\\n"
+            f"    if type({old})~=\"number\" or {old}~={old} or {old}%1~=0 "
+            f"or {old}<0 or {old}>{limit} then\\n"
+            f"        return {{success=false,reason=\"invalid_state\"}} end\\n"
+            f"    local {delta}={expr}\\n"
+            f"    if type({delta})~=\"number\" or {delta}~={delta} or {delta}%1~=0 "
+            f"or {delta}<0 or {delta}>{limit} then\\n"
+            f"        return {{success=false,reason=\"invalid_amount\"}} end\\n"
+        )
+        if operation == "increment":
+            checks.append(
+                f"    if {old}>{limit}-{delta} then "
+                'return {success=false,reason="limit"} end\\n'
+            )
+            checks.append(f"    local {next_value}={old}+{delta}\\n")
+        elif operation == "decrement":
+            checks.append(
+                f"    if {old}<{delta} then "
+                'return {success=false,reason="insufficient"} end\\n'
+            )
+            checks.append(f"    local {next_value}={old}-{delta}\\n")
+        else:
+            checks.append(f"    local {next_value}={delta}\\n")
+        commits.append(f"    state.{field}={next_value}\\n")
+        updates.append(field + "=" + next_value)
+    if not any(m.name == "PlayerDataManager"
+               and m.kind in (ModuleKind.DATA_STORE, ModuleKind.SERVER_MODULE)
+               and m.file_path.startswith("src/server/")
+               and m.file_path.endswith(".luau")
+               and not m.file_path.endswith(".server.luau")
+               for m in proposal.modules):
+        raise ValueError("TRANSACTION_MISSING_PLAYER_PERSISTENCE")
+    guard = lua_server_guard(contract, world_name=None)
+    return ('''--!strict
+-- Host-compiled declarative multi-field transaction; not LLM-authored Luau.
+local Players=game:GetService("Players")
+local Service={}
+local function validInput(player,...)
+__GUARD__
+    return true,args
+end
+function Service.start(services)
+    assert(type(services.PlayerDataManager)=="table"
+        and type(services.PlayerDataManager.GetState)=="function",
+        "Transaction requires PlayerDataManager")
+end
+function Service.handleAction(player,services,...)
+    if typeof(player)~="Instance" or not player:IsA("Player")
+        or player.Parent~=Players then
+        return {success=false,reason="invalid_player"} end
+    local ok,args=validInput(player,...)
+    if not ok then return {success=false,reason="invalid_input"} end
+    local state=services.PlayerDataManager.GetState(player,__NAMESPACE__)
+    if type(state)~="table" then
+        return {success=false,reason="profile_not_loaded"} end
+__PRECONDITIONS__
+    -- All checks completed. No yielding calls or intermediate persistence writes.
+__COMMIT__
+    return {success=true,values={__RESULT__}}
+end
+return Service
+'''.replace("__GUARD__", guard.rstrip())
+      .replace("__NAMESPACE__", json.dumps(namespace))
+      .replace("__PRECONDITIONS__", "".join(checks).rstrip())
+      .replace("__COMMIT__", "".join(commits).rstrip())
+      .replace("__RESULT__", ",".join(updates)))
