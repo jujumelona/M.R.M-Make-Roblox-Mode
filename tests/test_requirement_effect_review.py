@@ -61,7 +61,8 @@ def test_original_requirement_compared_to_effect_and_quoted(tmp_path):
     finding = result["findings"][0]
     assert finding["line"] == 3 and finding["requirement_id"] == "req-thrust"
     assert finding["evidence"] == "requirement_effect_review_source_quote"
-    assert "real ship thrust" in model.prompts[0]
+    assert "Upgrade the ship's thrust" in model.prompts[0]
+    assert "full_game_expected_outcome_context_only" not in model.prompts[0]
     assert "rank += 1" in model.prompts[0]
 
 
