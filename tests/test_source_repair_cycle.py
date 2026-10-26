@@ -280,8 +280,8 @@ def test_changing_defect_count_does_not_revert_verified_original_fix(tmp_path, m
     proposal, module, file = _setup(tmp_path)
     import roblox_mod_ai.source_repair_cycle as cycle
     monkeypatch.setattr(cycle, "host_source_must_regenerate", lambda *args: True)
-    middle = "--!strict\\nlocal fuel = 10\\nreturn fuel\\n"
-    finished = "--!strict\\nlocal fuel = 10\\nreturn fuel + 1\\n"
+    middle = "--!strict\nlocal fuel = 10\nreturn fuel\n"
+    finished = "--!strict\nlocal fuel = 10\nreturn fuel + 1\n"
 
     class PatchRouter:
         def __init__(self):
