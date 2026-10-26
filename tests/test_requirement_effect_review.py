@@ -312,17 +312,24 @@ def test_compact_recovery_rejects_nonexistent_source_line(tmp_path):
             self.count += 1
             if self.count == 1:
                 raise ValueError("Model JSON completion truncated (finish_reason=length)")
+            if self.count == 2:
+                return {
+                    "verdict": "implemented", "evidence_line": 9999999,
+                    "issue": "none", "repair": "none",
+                }
             return {
-                "verdict": "implemented", "evidence_line": 9999999,
-                "issue": "none", "repair": "none",
+                "can_decide": True, "missing_effect": False,
+                "evidence_line": 9999999, "issue": "none", "repair": "none",
             }
 
     model = FakeCompact()
     result = review_requirement_effects(proposal, tmp_path, model)
-    assert model.count == 2
-    assert result["status"] == "failed"
-    assert "nonexistent line" in result["reason"]
-
+    assert model.count == 3
+    assert result["status"] == "failed" and not result["fully_covered"]
+    assert "nonexistent physical source line" in result["reason"]
+    assert [r["reason"] for r in result["model_retries"]][-2:] == [
+        "invalid_evidence_line", "invalid_evidence_line",
+    ]
 
 def test_non_length_model_error_fails_without_retry(tmp_path):
     proposal, _, file = setup(tmp_path)
