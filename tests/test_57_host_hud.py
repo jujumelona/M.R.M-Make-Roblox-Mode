@@ -86,14 +86,14 @@ def test_source_scan_does_not_infer_remote_from_comment_or_steal_next_gui_name(t
     root=tmp_path/"src"/"client"
     root.mkdir(parents=True)
     (root/"Decor.client.luau").write_text(
-        '-- game.Remotes.Fake:InvokeServer({})\\n'
-        'local gui=Instance.new("ScreenGui")\\n'
-        'gui.Name="Decorations"\\n')
+        '-- game.Remotes.Fake:InvokeServer({})\n'
+        'local gui=Instance.new("ScreenGui")\n'
+        'gui.Name="Decorations"\n')
     (root/"Two.client.luau").write_text(
-        'local first=Instance.new("ScreenGui")\\n'
-        'local second=Instance.new("ScreenGui")\\n'
-        'second.Name="SecondaryActions"\\n'
-        'game.Remotes.Real:InvokeServer({})\\n')
+        'local first=Instance.new("ScreenGui")\n'
+        'local second=Instance.new("ScreenGui")\n'
+        'second.Name="SecondaryActions"\n'
+        'game.Remotes.Real:InvokeServer({})\n')
     assert action_gui_names(tmp_path)==["SecondaryActions"]
     assert not install_host_hud(tmp_path)
 
