@@ -20,23 +20,28 @@ def eligible_space_mineral(module: Any, proposal: Any) -> tuple[str, str, str, s
     if (not module.module_id.startswith("dyn_")
             or module.kind not in (ModuleKind.SERVER_MODULE, ModuleKind.CLIENT_SCRIPT)):
         return None
-    server_name = (module.name if module.kind == ModuleKind.SERVER_MODULE
-                   else module.name.removesuffix("Client") + "Server")
+    design = proposal.game_design.get("dynamic_design") or {}
+    # Dispatch only through the declared host service/remote ownership.
+    # No Korean or English request phrases, specific resource types, planets,
+    # game titles, or naming suffixes are used as gameplay evidence.
+    if module.kind == ModuleKind.SERVER_MODULE:
+        server_name = module.name
+    else:
+        linked_remote_names = (design.get("module_remotes") or {}).get(
+            module.module_id, []
+        )
+        candidates = {
+            row.get("service") for name, row in
+            (design.get("host_actions") or {}).items()
+            if name in linked_remote_names and isinstance(row, dict)
+        }
+        if len(candidates) != 1:
+            return None
+        server_name = next(iter(candidates))
     owner = next((m for m in proposal.modules if
                   m.name == server_name and m.kind == ModuleKind.SERVER_MODULE), None)
     if owner is None:
         return None
-    description = owner.description.casefold()
-    source = str(proposal.requested_prompt or "").casefold()
-    if not (("mineral" in description or "ore" in description)
-            and ("harvest" in description or "mine" in description)
-            and "space" in description and "craft" in description
-            and "aboard" in description
-            and ("광물" in source or "mineral" in source)
-            and ("우주" in source or "space" in source)):
-        return None
-
-    design = proposal.game_design.get("dynamic_design") or {}
     routes = [(key, value) for key, value in
               (design.get("host_actions") or {}).items()
               if isinstance(value, dict) and value.get("service") == server_name]
@@ -55,8 +60,7 @@ def eligible_space_mineral(module: Any, proposal: Any) -> tuple[str, str, str, s
         if not module.file_path.startswith("src/server/") or not module.file_path.endswith(".luau"):
             return None
     else:
-        if (module.name != server_name.removesuffix("Server") + "Client"
-                or not module.file_path.startswith("src/client/")
+        if (not module.file_path.startswith("src/client/")
                 or not module.file_path.endswith(".client.luau")):
             return None
 
@@ -81,9 +85,19 @@ def eligible_space_mineral(module: Any, proposal: Any) -> tuple[str, str, str, s
     # owner referenced by the declared orbit-arrival contract.
     bindings = (design.get("host_vehicle_identity_bindings") or [])
     arrivals = (design.get("host_arrival_materializations") or [])
-    if len(bindings) != 1:
+    # Multiple vehicle services are valid in a generic game, but a resource
+    # action must identify exactly one real actor provider for its arrival.
+    admissible = [
+        row for row in bindings if isinstance(row, dict)
+        and row.get("actor_provider") == "GetOwnedActor"
+        and any(isinstance(a, dict) and
+                a.get("server") == row.get("server")
+                and a.get("builder") == row.get("builder")
+                for a in arrivals)
+    ]
+    if len(admissible) != 1:
         return None
-    binding = bindings[0]
+    binding = admissible[0]
     builder = binding.get("builder")
     launcher = binding.get("server")
     if (binding.get("actor_provider") != "GetOwnedActor"
