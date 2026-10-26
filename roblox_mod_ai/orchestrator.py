@@ -381,6 +381,10 @@ class RobloxProductionOrchestrator:
                     "profile": str(getattr(self.router, "profile", "")),
                 },
                 "request": proposal.requested_prompt,
+                # Exact IR, remotes, world ABI and every future adapter option
+                # affect generated code. Fingerprint the WHOLE validated plan
+                # instead of chasing new opt-in fields one by one.
+                "complete_dynamic_design": design,
                 "module": {k: v for k, v in module.to_dict().items() if k != "code"},
                 "all_modules": [{
                     "module_id": m.module_id, "name": m.name,
