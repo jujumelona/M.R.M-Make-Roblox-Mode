@@ -155,7 +155,6 @@ def ensure_mining_world_contract(proposal: RobloxProposal) -> list[dict[str, Any
                "position": list(position), "size": [4.0, 4.0, 4.0]}
         objects.append(obj)
         reserved_names.add(node)
-        occupied.add(tuple(position))
         for peer in proposal.modules:
             if peer.name == module.name or (
                     peer.name == module.name.removesuffix("Server") + "Client"):
