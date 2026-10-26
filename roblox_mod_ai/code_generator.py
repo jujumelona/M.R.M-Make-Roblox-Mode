@@ -45,6 +45,7 @@ from .host_client import render_host_client
 from .typed_action_contract import render_typed_client
 from .host_atomic_effect import render_atomic_server
 from .host_space_actions import render_host_space_action
+from .host_space_mineral import render_space_mineral
 from .host_space_colonization import render_colony_alias
 from .host_player_data import render_callable_player_data
 from .gameplay_round import render_arena_round_service, render_arena_round_controller
@@ -109,6 +110,7 @@ class LuauCodeGenerator:
             if (render_atomic_server(module, proposal) is not None
                     or render_colony_alias(module, proposal) is not None
                     or render_host_space_action(module, proposal) is not None
+                    or render_space_mineral(module, proposal) is not None
                     or render_host_gameplay(module, proposal) is not None
                     or eligible_mode_navigation(module, proposal) is not None
                     or eligible_mode_unlock(module, proposal) is not None
@@ -169,6 +171,9 @@ class LuauCodeGenerator:
         verified_colony_alias = render_colony_alias(module, proposal)
         if verified_colony_alias is not None:
             return verified_colony_alias
+        space_mineral = render_space_mineral(module, proposal)
+        if space_mineral is not None:
+            return space_mineral
         host_space_action = render_host_space_action(module, proposal)
         if host_space_action is not None:
             return host_space_action
