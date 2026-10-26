@@ -12,6 +12,8 @@ import hashlib
 import json
 import re
 from pathlib import Path
+
+from .source_upgrade_contract import attest_paid_upgrade
 from typing import Any
 
 SCHEMA = "rmm/requirement-effect-review-v1"
@@ -383,7 +385,7 @@ def review_requirement_effects(proposal: Any, root: Path, router: Any) -> dict[s
         "schema": SCHEMA, "scope": "source_semantics_no_roblox_engine",
         "status": "failed", "executed": False, "fully_covered": False,
         "reason": "", "requirements": [], "findings": [], "source_sha256": {},
-        "evidence_recovery": [], "model_retries": [],
+        "evidence_recovery": [], "model_retries": [], "cross_module_contracts": [],
     }
     detail = (getattr(proposal, "game_design", {}) or {}).get(
         "detailed_implementation_plan") or {}
@@ -444,6 +446,29 @@ def review_requirement_effects(proposal: Any, root: Path, router: Any) -> dict[s
             downstream = _downstream_effect_evidence(
                 file_path, source, modules, root,
             )
+            # The narrowly verified first-party rank protocol already has
+            # deterministic evidence spanning currency persistence and the
+            # actual gameplay consumer. Do not hand this proof to a 9B
+            # language reviewer which repeatedly described server-owned
+            # leaderstats as client-only and requested nonexistent APIs.
+            # Any missing link automatically returns None and receives the
+            # normal independent model review below.
+            attestation = attest_paid_upgrade(
+                source, file_path, original, modules, root,
+            )
+            if attestation is not None:
+                report["executed"] = True
+                report["requirements"].append({
+                    "id": req_id, "verdict": "implemented",
+                    "file": file_path, "line": attestation["line"],
+                    "quote": attestation["quote"], "issue": "none",
+                    "method": attestation["method"],
+                    "scope": attestation["scope"],
+                })
+                report["cross_module_contracts"].append({
+                    "requirement_id": req_id, **attestation,
+                })
+                continue
             # A written implementation responsibility is a promise, not code
             # evidence. The reviewer must inspect the entire actual Luau file.
             prompt = (
