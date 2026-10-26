@@ -40,6 +40,9 @@ def make_plan():
     proposal = SimpleNamespace(
         requested_prompt="Mine resources and earn currency to build a spaceship",
         game_design={"dynamic_design": design},
+        # A real RobloxProposal always has a complete module roster. Adapter
+        # ownership must be checked against it rather than an unbound mock.
+        modules=[server, client],
     )
     return server, client, proposal
 
