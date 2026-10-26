@@ -115,3 +115,53 @@ def test_generated_jest_config_contains_real_newline(tmp_path):
     source=(project/"tests/jest.config.lua").read_text(encoding="utf-8")
     assert source == 'return { testMatch = {"**/*.spec"} }\n'
     assert r"\n" not in source
+
+
+def test_rojo_world_positions_use_serialized_cframe_not_derived_position(tmp_path):
+    proposal = RobloxProposal(
+        requested_prompt="우주선 제작 후 우주 이동", game_title="Space",
+        description="", modules=[],
+        game_design={"dynamic_design": {
+            "world_objects": [
+                {"name": "RMMOrbitArrival_real", "class": "Part",
+                 "size": [96, 4, 96], "position": [0, 8000, 0]},
+                {"name": "PlanetTarget_real", "class": "Part",
+                 "size": [6, 7, 6], "position": [20, 8012, 0]},
+            ],
+            "remotes": {},
+        }},
+    )
+    project = RobloxProjectGenerator(tmp_path).generate_rojo_project_json(proposal)
+    ws = project["tree"]["Workspace"]
+    for name, coords in (
+        ("RMMOrbitArrival_real", [0, 8000, 0]),
+        ("PlanetTarget_real", [20, 8012, 0]),
+        ("Baseplate", [0, -10, 0]),
+        ("SpawnLocation", [0, 1, 0]),
+    ):
+        props = ws[name]["$properties"]
+        assert "Position" not in props, name
+        assert props["CFrame"] == [*coords, 1, 0, 0, 0, 1, 0, 0, 0, 1]
+
+
+def test_standalone_rbxlx_part_contains_complete_rotation_matrix(tmp_path):
+    proposal = RobloxProposal(
+        requested_prompt="Demo", game_title="Demo",
+        description="", modules=[], game_design={}
+    )
+    generated = tmp_path / "test.rbxlx"
+    RobloxProjectGenerator(tmp_path).build_rbxlx_place_file(
+        proposal, generated
+    )
+    root = ET.parse(generated).getroot()
+    part = next(item for item in root.findall(".//Item[@class='Part']")
+                if item.findtext("./Properties/string[@name='Name']") == "Baseplate")
+    pose = part.find("./Properties/CoordinateFrame[@name='CFrame']")
+    assert pose is not None
+    for component, expected in (
+        ("X", "0"), ("Y", "-10"), ("Z", "0"),
+        ("R00", "1"), ("R01", "0"), ("R02", "0"),
+        ("R10", "0"), ("R11", "1"), ("R12", "0"),
+        ("R20", "0"), ("R21", "0"), ("R22", "1"),
+    ):
+        assert pose.findtext(component) == expected
