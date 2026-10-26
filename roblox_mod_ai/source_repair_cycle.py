@@ -5,6 +5,7 @@ is reverted if validation regresses, and the full history is persisted.
 """
 from __future__ import annotations
 
+import difflib
 import hashlib
 import json
 import os
@@ -169,6 +170,83 @@ def _repair_host_action_scoped(
     if len(revised) < len(source) * 0.85:
         raise ValueError("Host patch removed too much existing source")
     return revised
+
+
+def _confirm_scoped_progress(
+    router: Any, path: str, before: str, after: str,
+    previous: list[dict[str, Any]], now: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Check that the ORIGINAL defect was fixed, not merely renamed.
+
+    The holistic reviewer can discover new defects in a corrected module;
+    its total finding count is not a monotonic measure of progress. Do not
+    accept a new defect as a fix by itself: require an independent focused
+    review of the precise old issue against the changed source, plus an
+    actual source quote selected by the host.
+    """
+    if before == after or not previous:
+        return {"resolved": False, "reason": "No changed source or prior defect"}
+    if not all(f.get("evidence") == "requirement_effect_review_source_quote"
+               for f in previous):
+        return {"resolved": False, "reason": "Insufficient original defect provenance"}
+    # The newer reviewer must have inspected this exact changed file.
+    # A new holistic report lacking this file is acceptable only when it
+    # explicitly claims no blockers anywhere, handled by the caller.
+    if not isinstance(now, list):
+        return {"resolved": False, "reason": "Missing renewed review"}
+    changes = list(difflib.unified_diff(
+        before.splitlines(), after.splitlines(), n=3, lineterm=""))
+    if not changes or len(changes) > 1600:
+        return {"resolved": False, "reason": "No bounded inspectable change"}
+    prompt = (
+        "Independent narrow source-diff verification. Decide ONLY whether "
+        "the original, quoted behavioral defect was concretely addressed "
+        "by this patch. Ignore new or unrelated defects (those stay in the "
+        "full blocking review). Do not mistake changed variable names, "
+        "comments, extra attributes, or copied text for working gameplay. "
+        "When the edited code is insufficient to prove the original "
+        "effect, return false. Respond JSON with resolved:boolean, "
+        "evidence_quote:string (exact source substring from the NEW changed "
+        "Luau source), reason:string. Never claim engine execution.\\n"
+        + json.dumps({
+            "file": path,
+            "previous_defects": [{
+                "issue": row.get("issue"), "repair": row.get("repair"),
+                "source_quote": row.get("quote"),
+            } for row in previous],
+            "fresh_review_remaining": [{
+                "issue": row.get("issue"), "quote": row.get("quote"),
+            } for row in now],
+            "actual_source_diff": "\\n".join(changes)[:8500],
+        }, ensure_ascii=False)
+    )
+    try:
+        reply = router.complete_json(
+            prompt=prompt, role="analyzer", temperature=0, max_tokens=450,
+            json_schema={
+                "type": "object",
+                "properties": {
+                    "resolved": {"type": "boolean"},
+                    "evidence_quote": {"type": "string", "maxLength": 180},
+                    "reason": {"type": "string", "maxLength": 300},
+                },
+                "required": ["resolved", "evidence_quote", "reason"],
+                "additionalProperties": False,
+            },
+        )
+    except Exception as exc:
+        return {"resolved": False,
+                "reason": "Focused review failed: " + type(exc).__name__}
+    if not isinstance(reply, dict) or reply.get("resolved") is not True:
+        return {"resolved": False, "reason": str(
+            reply.get("reason", "") if isinstance(reply, dict)
+            else "Invalid model response")[:300]}
+    evidence = reply.get("evidence_quote")
+    if (not isinstance(evidence, str) or len(evidence.strip()) < 8
+            or evidence not in after or evidence.lstrip().startswith("--")):
+        return {"resolved": False, "reason": "Missing actual post-patch source evidence"}
+    return {"resolved": True, "evidence_quote": evidence[:180],
+            "reason": str(reply.get("reason", ""))[:300]}
 
 
 def run_source_repair_cycle(
@@ -371,10 +449,28 @@ def run_source_repair_cycle(
                 report.update(passed=True, status="passed", final_review=newer,
                               reason="Defects corrected; deterministic checks and fresh AI review passed")
                 break
-            # Evidence remained or changed; keep patch ONLY if exact blocking
-            # count decreases. Otherwise rollback and request a different plan.
-            if len(_blocking(newer)) >= len(findings):
-                raise ValueError("Blocking source defects did not decrease; revert required")
+            # The number of defects in the WHOLE project does not
+            # necessarily fall when a per-file bug is fixed. A re-review can
+            # identify a DIFFERENT defect in that same module. Require an
+            # independently evidenced correction of the ORIGINAL bug; keep
+            # the newly discovered bug blocking, and continue from there.
+            remaining = _blocking(newer)
+            if len(remaining) >= len(findings):
+                individual_checks = {}
+                for module in selected:
+                    path = module.file_path
+                    individual_checks[path] = _confirm_scoped_progress(
+                        router, path, originals[path], candidates[path],
+                        by_file[path],
+                        [finding for finding in remaining
+                         if finding.get("file") == path],
+                    )
+                step["scoped_progress"] = individual_checks
+                if not all(row["resolved"] for row in individual_checks.values()):
+                    raise ValueError(
+                        "Original defect unproven after patch; revert required: " +
+                        json.dumps(individual_checks, ensure_ascii=False)[:350]
+                    )
             current = newer
             changed.update(candidates)
             step["status"] = "improved_needs_next_round"
