@@ -1,9 +1,12 @@
-"""Deterministic proof of a narrow cross-module paid-upgrade transaction.
+"""Source-bound, genre-independent verification for host-authored paid upgrades.
 
-A quoted source line does not prove a 9B reviewer's semantic assertion. This
-source contract verifies the COMPLETE producer -> persistent currency/profile
--> gameplay consumer chain for host-authored rank purchases. It does not
-certify Roblox engine execution or cover other, unmatched gameplay.
+Do not infer effects from game names, English/Korean prompt vocabulary, or
+known targets such as Spaceship / owned_weapon / crew_performance_state.
+
+Recognize the EXACT host paid-upgrade ABI, verify persisted debit, then trace
+the declared TARGET through a different server consumer into a real state or
+world mutation. Unsupported patterns are reviewed normally (fail closed).
+This is a narrow static proof, NOT a Studio gameplay test.
 """
 from __future__ import annotations
 
@@ -12,148 +15,217 @@ from pathlib import Path
 from typing import Any
 
 
-def _match(pattern: str, code: str) -> bool:
-    return re.search(pattern, code, flags=re.S) is not None
+def _match(pattern: str, code: str) -> re.Match[str] | None:
+    return re.search(pattern, code, flags=re.S)
+
+
+def _ident(text: str, name: str) -> bool:
+    return re.search(r"(?<![\w])" + re.escape(name) + r"(?![\w])", text) is not None
+
+
+def _executable_lines(source: str) -> list[str]:
+    # Disallow convincing-looking Luau comments from becoming effect evidence.
+    return [line.split("--", 1)[0].strip() for line in source.splitlines()]
+
+
+def _effect_consumer(code: str, namespace: str, target: str) -> bool:
+    """Small forward data-flow check from persisted rank to observable effect.
+
+    Accept a read of exactly the stored field, followed by arithmetic or a
+    conditional that controls a real state write / engine action. No generic
+    "rank mentioned anywhere" positive conclusion. Only source-grounded
+    effects in the SAME server file qualify.
+    """
+    lines = _executable_lines(code)
+    # Read the same authoritative state namespace as the purchasing owner.
+    pattern = (r'\blocal\s+(\w+)\s*=\s*services\.PlayerDataManager\.GetState'
+               r'\s*\(\s*player\s*,\s*"' + re.escape(namespace) + r'"\s*\)')
+    joined = "\n".join(lines)
+    providers = set(re.findall(pattern, joined))
+    if not providers:
+        return False
+    read_pattern = (
+        r'\blocal\s+(\w+)\s*=\s*(\w+)\s*(?:\.'
+        + re.escape(target) + r'\b|\[\s*"' + re.escape(target)
+        + r'"\s*\])'
+    )
+    variables: set[str] = set()
+    read_lines = []
+    for i, line in enumerate(lines):
+        found = re.search(read_pattern, line)
+        if found and found.group(2) in providers:
+            variables.add(found.group(1))
+            read_lines.append(i)
+    if not variables:
+        return False
+
+    # Iterate because derived values can be defined in nested blocks. Do not
+    # assume a fixed game mechanic, consumer name, rank level, or math formula.
+    for _ in range(8):
+        added: set[str] = set()
+        for i, line in enumerate(lines):
+            if i < min(read_lines) or not line:
+                continue
+            # Direct assignment: 'local duration = formula(rank)' or
+            # 'hp = math.max(0, hp - damage)'.
+            m = re.match(r'(?:local\s+)?(\w+)\s*=\s*(.+)$', line)
+            if m and any(_ident(m.group(2), t) for t in variables):
+                added.add(m.group(1))
+            # Branch-control dependency: 'if rank >= n then damage += 1'.
+            if re.search(r'\bif\b.+\bthen\b', line):
+                condition = line.split("then", 1)[0]
+                if any(_ident(condition, t) for t in variables):
+                    for body_line in lines[i:i + 5]:
+                        incr = re.search(
+                            r'\b(\w+)\s*(?:\+=|-=|\*=|/=)', body_line
+                        )
+                        if incr:
+                            added.add(incr.group(1))
+        if added.issubset(variables):
+            break
+        variables.update(added)
+
+    # Require a concrete sink whose input actually contains the tainted value.
+    # Persisted property mutations and real engine gameplay actions qualify;
+    # displaying a player Attribute or returning the rank does NOT.
+    for i, line in enumerate(lines):
+        if i < min(read_lines) or not line:
+            continue
+        state = re.search(
+            r'\b(?:state|progress|inventory)\s*(?:\.\w+|\[.+?\])\s*=\s*(.+)',
+            line,
+        )
+        if state and any(_ident(state.group(1), t) for t in variables):
+            return True
+        engine = re.search(
+            r':(?:PivotTo|MoveTo|TakeDamage|ApplyImpulse|'
+            r'ApplyAngularImpulse|SetAttribute)\s*\((.+)',
+            line,
+        )
+        if engine and not line.lstrip().startswith("--"):
+            # SetAttribute is cosmetic/metadata and cannot prove a gameplay
+            # effect on its own (the target may simply be UI rank display).
+            if ":SetAttribute" in line:
+                continue
+            if any(_ident(engine.group(1), t) for t in variables):
+                return True
+        # Physical properties like speed / collision / force are effects.
+        property_write = re.search(
+            r'\b\w+\.(?:WalkSpeed|JumpPower|AssemblyLinearVelocity|'
+            r'VectorVelocity|MaxForce|MaxTorque|Health|'
+            r'Damage|Thrust|Speed|Capacity)\s*=\s*(.+)', line,
+        )
+        if property_write and any(
+                _ident(property_write.group(1), t) for t in variables):
+            return True
+    return False
+
+
+def _requested_effect_is_more_specific(original: str, consumer: str) -> bool:
+    """Conservatively reject an explicit property request absent in the sink.
+
+    This is NOT a game-genre dictionary. Extract any source-level field names
+    the user explicitly says 'must change X [and Y]' and require their
+    occurrence in executable consumer code. Generic prose is left to review.
+    """
+    m = re.search(
+        r'\bmust\s+(?:actually\s+)?(?:change|modify|increase)\s+'
+        r'([A-Za-z_][A-Za-z0-9_]*(?:\s+and\s+[A-Za-z_][A-Za-z0-9_]*)*)',
+        original, re.I,
+    )
+    if not m:
+        return False
+    fields = re.split(r'\s+and\s+', m.group(1))
+    joined = "\n".join(_executable_lines(consumer)).casefold()
+    return any(not _ident(joined, field.casefold()) for field in fields)
 
 
 def attest_paid_upgrade(
     source: str, file_path: str, original: str,
     modules: dict[str, Any], root: Path,
 ) -> dict[str, Any] | None:
-    """Verify saved coin debit and observable downstream rank effect.
-
-    Only recognize the known first-party host protocol, NEVER a free-form
-    model-generated file with lookalike comments or invented methods. This is
-    intentionally fail-closed when generator implementation or source changes.
-    """
-    if not file_path.startswith("src/server/"):
+    if not file_path.startswith("src/server/") or not original.strip():
         return None
-    if not all(piece in source for piece in (
-        "local TARGET", "local COST", "local STEP", "local MAX",
-        'GetState(player, "RMMRankProgress")',
-        'GetState(player, "RMMInventory")',
-        "Service.handleAction", "ranks[TARGET]", "coins.Value", "nextRank",
-    )):
-        # Support the minified first-party source before stylua formatting.
-        if not all(piece in source for piece in (
-            "local TARGET=", "local COST=", "local STEP=", "local MAX=",
-            'GetState(player,"RMMRankProgress")',
-            'GetState(player,"RMMInventory")',
-            "Service.handleAction", "ranks[TARGET]", "coins.Value", "nextRank",
-        )):
-            return None
-
-    m = re.search(r'\blocal\s+TARGET\s*=\s*"([^"]+)"', source)
-    if not m:
+    # ABI verification, not any small-model-authored string that happens to
+    # mention the same key. The host owns the atomic transaction.
+    declared = _match(r'\blocal\s+TARGET\s*=\s*"([A-Za-z_]\w*)"', source)
+    if not declared:
         return None
-    target = m.group(1)
-    user = original.casefold()
-    if target == "crew_performance_state":
-        if not ("선원" in user or "crew" in user):
-            return None
-    elif target == "Spaceship":
-        if not ("우주선" in user or "spaceship" in user or "ship" in user):
-            return None
-        # Explicitly promised thrust/speed/capacity are not verified by a
-        # voyage-time calculation alone.
-        if any(word in user for word in (
-            "추력", "속도", "적재량", "thrust", "speed", "capacity",
-        )):
-            return None
-    elif target == "owned_weapon":
-        if not ("무기" in user or "weapon" in user):
-            return None
-    else:
-        return None
-
-    # Prove the actual protected purchase path. String literals, comments,
-    # mere ranks and player attributes do not qualify.
-    if not all(_match(pattern, source) for pattern in (
+    target = declared.group(1)
+    wallet_guard = (
         r'local\s+coins\s*=\s*stats\s+and\s+stats:FindFirstChild\("Coins"\)',
         r'coins:IsA\("IntValue"\)',
         r'coins\.Value\s*<\s*COST',
         r'coins\.Value\s*-=\s*COST',
-        r'local\s+ranks\s*=\s*services\.PlayerDataManager\.GetState'
-        r'\s*\(\s*player\s*,\s*"RMMRankProgress"\s*\)',
         r'local\s+nextRank\s*=\s*math\.min\s*\(\s*MAX\s*,\s*rank\s*\+\s*STEP\s*\)',
         r'ranks\s*\[\s*TARGET\s*\]\s*=\s*nextRank',
         r'player\.Parent\s*~=\s*Players',
         r'select\s*\(\s*"#"\s*,\s*\.\.\.\s*\)\s*~=\s*1',
         r'function\s+Service\.handleAction\s*\(',
-    )):
+        r'local\s+COST\s*=\s*\d+',
+        r'local\s+MAX\s*=\s*\d+',
+        r'local\s+STEP\s*=\s*\d+',
+    )
+    if not all(_match(pattern, source) for pattern in wallet_guard):
         return None
-    # This first-party handler must not yield between debit and rank update.
-    debit = re.search(r'coins\.Value\s*-=\s*COST', source)
-    rank = re.search(r'ranks\s*\[\s*TARGET\s*\]\s*=\s*nextRank', source)
-    if not debit or not rank or debit.end() >= rank.start():
+    state = _match(
+        r'local\s+ranks\s*=\s*services\.PlayerDataManager\.GetState'
+        r'\s*\(\s*player\s*,\s*"([A-Za-z_]\w*)"\s*\)', source,
+    )
+    if state is None:
         return None
-    critical = source[debit.end():rank.start()]
-    if any(x in critical for x in ("task.wait", ":WaitForChild", "RemoteFunction", "coroutine.yield")):
+    namespace = state.group(1)
+    debit = _match(r'coins\.Value\s*-=\s*COST', source)
+    write = _match(r'ranks\s*\[\s*TARGET\s*\]\s*=\s*nextRank', source)
+    if not debit or not write or debit.end() >= write.start():
         return None
-
-    profile_candidates = [
-        path for path in modules
-        if path.startswith("src/server/") and "PlayerDataManager" in path
-    ]
-    if len(profile_candidates) != 1:
-        return None
-    profile = (root / profile_candidates[0]).read_text(encoding="utf-8")
-    if not all(_match(p, profile) for p in (
-        r'coinsVal\.Value\s*=\s*data\.coins',
-        r'data\.coins\s*=\s*coins\.Value',
-        r'function\s+PlayerDataManager\.GetState\s*\(\s*player\s*,\s*namespace\s*\)',
-        r'local\s+data\s*=\s*sessionData\s*\[\s*player\.UserId\s*\]',
-        r'data\.gameState\s*\[\s*namespace\s*\]',
-        r'savePlayerData\s*=\s*function',
-        r'UpdateAsync\s*\(',
-    )):
+    critical = source[debit.end():write.start()]
+    if any(x in critical for x in (
+            "task.wait", ":WaitForChild", "RemoteFunction", "coroutine.yield")):
         return None
 
-    if target == "crew_performance_state":
-        consumer_checks = (
-            r'GetState\s*\(\s*player\s*,\s*"RMMRankProgress"\s*\)',
-            r'local\s+crew\s*=\s*ranks\.crew_performance_state\s+or\s+0',
-            r'if\s+crew\s*>=\s*3\s+then\s+damage\s*\+=\s*1',
-            r'state\.alienHp\s*=\s*hp',
-            r'hp\s*=\s*math\.max\s*\(\s*0\s*,\s*hp\s*-\s*damage\s*\)',
-        )
-    elif target == "Spaceship":
-        consumer_checks = (
-            r'GetState\s*\(\s*player\s*,\s*"RMMRankProgress"\s*\)',
-            r'local\s+rank\s*=\s*progress\.Spaceship\s+or\s+0',
-            r'local\s+duration\s*=\s*math\.max\s*\(\s*3\s*,\s*7\s*-\s*0\.4\s*\*\s*rank\s*\)',
-            r'\/\s*duration',
-            r'vehicle:PivotTo\s*\(\s*start:Lerp\s*\(\s*target\s*,\s*alpha\s*\)\s*\)',
-        )
-    else:
-        consumer_checks = (
-            r'GetState\s*\(\s*player\s*,\s*"RMMRankProgress"\s*\)',
-            r'local\s+weaponRank\s*=\s*ranks\.owned_weapon\s+or\s+0',
-            r'if\s+weaponRank\s*>=\s*3\s+then\s+damage\s*\+=\s*1',
-            r'hp\s*=\s*math\.max\s*\(\s*0\s*,\s*hp\s*-\s*damage\s*\)',
-            r'inv\.items',
-        )
-    consumer_files = []
-    for path in sorted(modules):
-        if path == file_path or not path.startswith("src/server/"):
+    # Find an actual persistence owner by its implementation contract, not
+    # by a particular module's file name or game's currency narrative.
+    profile_files = []
+    for path in modules:
+        if not path.startswith("src/server/"):
             continue
         code = (root / path).read_text(encoding="utf-8")
-        if all(_match(pat, code) for pat in consumer_checks):
-            consumer_files.append(path)
-    if len(consumer_files) != 1:
+        if all(_match(pattern, code) for pattern in (
+            r'coinsVal\.Value\s*=\s*data\.coins',
+            r'data\.coins\s*=\s*coins\.Value',
+            r'function\s+PlayerDataManager\.GetState\s*\(',
+            r'data\.gameState\s*\[\s*namespace\s*\]',
+            r'savePlayerData\s*=\s*function',
+            r'UpdateAsync\s*\(',
+        )):
+            profile_files.append(path)
+    if len(profile_files) != 1:
         return None
 
-    # Exact positive evidence for the host's own evidence ledger, not an
-    # engine-tested claim. Report both ends to make audit reproducible.
-    line = source[:rank.start()].count("\n") + 1
+    consumer_paths: list[str] = []
+    for path in sorted(modules):
+        if path == file_path or path == profile_files[0] or not path.startswith("src/server/"):
+            continue
+        consumer = (root / path).read_text(encoding="utf-8")
+        if (_effect_consumer(consumer, namespace, target)
+                and not _requested_effect_is_more_specific(original, consumer)):
+            consumer_paths.append(path)
+    if len(consumer_paths) != 1:
+        # Multiple candidate consumers are ambiguous, not proof that a
+        # specific requirement is fulfilled. Emit normal review instead.
+        return None
+    assert write is not None
+    line = source[:write.start()].count("\n") + 1
     return {
         "verdict": "implemented",
         "file": file_path,
         "line": line,
-        "quote": source[rank.start():rank.end()],
+        "quote": source[write.start():write.end()],
         "method": "deterministic_persisted_upgrade_source_contract",
         "scope": "static_source_only_no_roblox_studio",
         "target": target,
-        "coin_persistence_owner": profile_candidates[0],
-        "server_effect_consumer": consumer_files[0],
+        "state_namespace": namespace,
+        "coin_persistence_owner": profile_files[0],
+        "server_effect_consumer": consumer_paths[0],
     }
