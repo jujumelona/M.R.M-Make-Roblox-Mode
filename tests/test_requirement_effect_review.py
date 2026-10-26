@@ -443,3 +443,97 @@ def test_invalid_compact_nonobject_is_not_accepted_as_success(tmp_path):
     assert model.n == 3
     assert result["status"] == "reviewed_no_blockers"
     assert result["model_retries"][1]["reason"] == "invalid_model_result"
+
+
+def test_upgrade_review_sees_actual_cross_module_combat_consumer(tmp_path):
+    from roblox_mod_ai.requirement_effect_review import _downstream_effect_evidence
+    proposal, module, file = setup(tmp_path)
+    original = (
+        '--!strict\nlocal TARGET = "crew_performance_state"\n'
+        'local ranks = services.PlayerDataManager.GetState(player, "RMMRankProgress")\n'
+        'ranks[TARGET] = nextRank\nreturn true\n'
+    )
+    file.write_text(original, encoding="utf-8")
+    combat = SimpleNamespace(
+        name="AlienCombatServer", module_id="dyn_combat",
+        file_path="src/server/AlienCombatServer.luau",
+        code=(
+            '--!strict\n'
+            'local ranks = services.PlayerDataManager.GetState(player, "RMMRankProgress")\n'
+            'local crew = ranks.crew_performance_state or 0\n'
+            'local damage = 1\n'
+            'if crew >= 3 then damage += 1 end\n'
+            'state.alienHp = math.max(0, state.alienHp - damage)\n'
+        )
+    )
+    other = tmp_path / combat.file_path
+    other.parent.mkdir(parents=True, exist_ok=True)
+    other.write_text(combat.code, encoding="utf-8")
+    proposal.modules.append(combat)
+    hits = _downstream_effect_evidence(
+        FILE, original, {m.file_path: m for m in proposal.modules}, tmp_path,
+    )
+    assert len(hits) == 1
+    assert hits[0]["file"] == combat.file_path
+    assert "if crew >= 3 then damage += 1 end" in hits[0]["source_excerpt"]
+    model = FakeModel([missing()])
+    review_requirement_effects(proposal, tmp_path, model)
+    assert "downstream_server_consumers" in model.prompts[0]
+    assert "state.alienHp" in model.prompts[0]
+
+
+def test_upgrade_review_sees_ship_departure_duration_consumer(tmp_path):
+    from roblox_mod_ai.requirement_effect_review import _downstream_effect_evidence
+    proposal, module, file = setup(tmp_path)
+    upgrade = (
+        '--!strict\nlocal TARGET = "Spaceship"\n'
+        'local ranks = services.PlayerDataManager.GetState(player, "RMMRankProgress")\n'
+        'ranks[TARGET] = nextRank\nreturn true\n'
+    )
+    file.write_text(upgrade, encoding="utf-8")
+    departure = (
+        '--!strict\n'
+        'local progress = services.PlayerDataManager.GetState(player, "RMMRankProgress")\n'
+        'local rank = progress.Spaceship or 0\n'
+        'local duration = math.max(3, 7 - 0.4 * rank)\n'
+        'vehicle:PivotTo(target)\n'
+    )
+    name = "src/server/DepartureServer.luau"
+    other = tmp_path / name
+    other.parent.mkdir(parents=True, exist_ok=True)
+    other.write_text(departure, encoding="utf-8")
+    proposal.modules.append(SimpleNamespace(
+        name="DepartureServer", module_id="dyn_departure",
+        file_path=name, code=departure
+    ))
+    hits = _downstream_effect_evidence(
+        FILE, upgrade, {m.file_path: m for m in proposal.modules}, tmp_path,
+    )
+    assert len(hits) == 1
+    assert "duration = math.max" in hits[0]["source_excerpt"]
+
+
+def test_cross_module_evidence_does_not_invent_missing_consumer(tmp_path):
+    from roblox_mod_ai.requirement_effect_review import _downstream_effect_evidence
+    proposal, module, file = setup(tmp_path)
+    upgrade = (
+        '--!strict\nlocal TARGET = "Spaceship"\n'
+        'local ranks = services.PlayerDataManager.GetState(player, "RMMRankProgress")\n'
+        'ranks[TARGET] = nextRank\nreturn true\n'
+    )
+    unrelated = (
+        '--!strict\n'
+        'local unused = services.PlayerDataManager.GetState(player, "RMMRankProgress")\n'
+        'local health = 10\n'
+    )
+    name = "src/server/UnrelatedServer.luau"
+    other = tmp_path / name
+    other.parent.mkdir(parents=True, exist_ok=True)
+    other.write_text(unrelated, encoding="utf-8")
+    proposal.modules.append(SimpleNamespace(
+        name="UnrelatedServer", module_id="dyn_other",
+        file_path=name, code=unrelated
+    ))
+    assert _downstream_effect_evidence(
+        FILE, upgrade, {m.file_path: m for m in proposal.modules}, tmp_path,
+    ) == []
