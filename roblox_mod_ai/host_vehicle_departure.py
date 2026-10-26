@@ -151,6 +151,26 @@ function Service.handleAction(player,services,...)
     local rank=progress.Spaceship or 0
     if not validTier(rank) then return {success=false,reason="invalid_ship_rank"} end
     local duration=math.max(3,7-0.4*rank)
+    -- The real installed ship sections contribute to voyage performance.
+    -- Read ONLY saved server-owned installed sections; never trust a GUI
+    -- supplied score or an arbitrary client-set Player attribute. Combined
+    -- with the purchased rank this changes actual server flight progression.
+    local assembly=services.PlayerDataManager.GetState(player,"RMMShipSections")
+    if type(assembly)~="table" or type(assembly.sections)~="table" then
+        return {success=false,reason="assembly_loading"} end
+    local assemblyScore=0
+    for _,part in pairs(assembly.sections) do
+        if type(part)=="table" and part.owned==true then
+            local contribution=part.performance
+            if type(contribution)~="number" or contribution~=contribution
+                or contribution%1~=0 or contribution<1 or contribution>1000 then
+                return {success=false,reason="invalid_section_performance"} end
+            assemblyScore=math.min(8000,assemblyScore+contribution)
+        end
+    end
+    if assemblyScore==0 then
+        return {success=false,reason="ship_performance_unavailable"} end
+    duration=math.max(2,duration-math.min(1.5,assemblyScore/200))
     local now=os.clock()
     if recent[player] and now-recent[player]<1 then
         return {success=false,reason="cooldown"} end
@@ -194,7 +214,7 @@ function Service.handleAction(player,services,...)
         end
     end)
     return {success=true,status=action=="return" and "returning" or "launching",flightSeconds=duration,
-        vehicle=vehicle.Name,destination=destinationName}
+        vehicle=vehicle.Name,destination=destinationName,assemblyPerformance=assemblyScore}
 end
 return Service
 '''
