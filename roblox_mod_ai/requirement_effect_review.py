@@ -314,7 +314,8 @@ def _downstream_effect_evidence(
     if "RMMWeaponProgress" in namespaces:
         hints.update(("weapon.tier", "state.tier"))
     if "RMMShipSections" in namespaces:
-        hints.update(("GetOwnedActor", "RMMShipAssemblyPerformance"))
+        hints.update(("assemblyScore", "RMMShipAssemblyPerformance",
+                      "GetOwnedActor"))
     found: list[dict[str, str]] = []
     for other in sorted(modules):
         if other == file_path or not other.startswith("src/server/"):
@@ -330,6 +331,15 @@ def _downstream_effect_evidence(
             i for i, line in enumerate(lines)
             if any(hint and hint in line for hint in hints)
         ]
+        # Prefer a calculation adjacent to the shared-state read, not a
+        # distant GetOwnedActor call at the top of a large launch service.
+        if "RMMShipSections" in shared:
+            score_lines = [
+                i for i, line in enumerate(lines)
+                if "assemblyScore" in line or "RMMShipAssemblyPerformance" in line
+            ]
+            if score_lines:
+                indices = score_lines
         if not indices:
             continue
         read_index = next(
