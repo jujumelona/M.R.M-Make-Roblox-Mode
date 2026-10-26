@@ -97,7 +97,7 @@ def normalize_verified_server_body(body: str, proposal: RobloxProposal) -> str:
     # deleting the forged local variable. Such mutation can conceal a
     # compromised coder response. Reject before benign ABI normalization.
     untrusted = _mask_strings(_without_comments(body))
-    if re.search(r"\\blocal\\s+(?:player|services)\\s*(?::\\s*\\w+)?\\s*=", untrusted):
+    if re.search(r"\blocal\s+(?:player|services)\s*(?::\s*\w+)?\s*=", untrusted):
         raise ValueError("HOST_IDENTITY_SHADOWED: trusted actor and services cannot be rebound")
     body = normalize_trusted_player_aliases(body)
     body = normalize_verified_peer_abi(body, proposal)
