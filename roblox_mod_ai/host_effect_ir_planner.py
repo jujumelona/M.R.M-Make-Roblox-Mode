@@ -13,7 +13,7 @@ from typing import Any
 
 from .typed_action_contract import validate_contract, TypedActionContractError
 
-_IDENTIFIER = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,31}\\Z")
+_IDENTIFIER = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,31}\Z")
 _NAMESPACE = "RMMGameplayState"
 
 _EFFECT_SCHEMA = {
@@ -127,7 +127,7 @@ def try_plan_effect_data(router: Any, system: dict[str, Any],
             "field. Source=constant uses constant; source=quantity uses "
             "validated integer quantity with bounded multiplier. Use "
             "short stable ASCII field IDs and explicit positive limits. "
-            "No scripts, no Remote definitions.\\n" +
+            "No scripts, no Remote definitions.\n" +
             json.dumps({"source": source,
                         "behavior": system.get("server_behavior", ""),
                         "outcome": system.get("observable_result", "")},
