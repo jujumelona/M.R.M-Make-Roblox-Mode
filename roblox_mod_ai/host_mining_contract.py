@@ -15,6 +15,7 @@ from typing import Any
 
 from .spec import ModuleKind, RobloxProposal
 from .host_mining_nodes import mining_world_nodes
+from .world_interaction_placement import place_first_interaction, spawn_anchor
 
 _MINE = re.compile(r"\b(?:mining|mines?|ores?|harvest(?:ing)?|gather(?:ing)?)\b|채굴|자원파밍", re.I)
 _SERVICE_MINE = re.compile(r"\b(?:mining|mine|ore|gather|gathering|harvest|harvesting)\b", re.I)
@@ -70,10 +71,6 @@ def ensure_mining_world_contract(proposal: RobloxProposal) -> list[dict[str, Any
         raise ValueError("module_world_objects must be a module-id dictionary")
     reserved_names = {
         obj.get("name") for obj in objects if isinstance(obj, dict)
-    }
-    occupied = {
-        (tuple(obj.get("position") or ()))
-        for obj in objects if isinstance(obj, dict)
     }
     mutations: list[dict[str, Any]] = []
     # The local model may supply only a *transport* form, not a gameplay
@@ -143,39 +140,22 @@ def ensure_mining_world_contract(proposal: RobloxProposal) -> list[dict[str, Any
             node = "ResourceNode" + suffix + str(idx)
         else:
             raise ValueError("Could not allocate a unique mined resource Part")
-        # Mining is the FIRST requested gameplay step. The original
-        # slot=len(world_objects) placed its only resource node 130+ studs
-        # away from SpawnLocation in the real space-survival experience.
-        # Prefer a grounded, unoccupied pad within the server's 18-stud
-        # interaction radius of spawn; avoid overlapping authored geometry.
-        def clear_ground(x: float, z: float) -> bool:
-            return all(
-                not (abs(x - p[0]) < 7 and abs(z - p[2]) < 7)
-                for p in occupied if len(p) == 3
-            )
-
-        first_step = [
-            (8.0, 2.0, 12.0), (-8.0, 2.0, 12.0),
-            (12.0, 2.0, 8.0), (-12.0, 2.0, 8.0),
-            (8.0, 2.0, -12.0), (-8.0, 2.0, -12.0),
-        ]
-        position = next(
-            (xyz for xyz in first_step if clear_ground(xyz[0], xyz[2])),
-            None,
+        # Use authored geometry and actual spawn, never a fixed coordinate,
+        # game genre or object-count-derived position.
+        anchor = spawn_anchor(
+            proposal.game_design,
+            round_lobby=any(m.module_id == "mod_arena_round"
+                            for m in proposal.modules),
         )
-        if position is None:
-            slot = len(objects)
-            while True:
-                position = (float(24 + slot % 17 * 12), 2.0,
-                            float(24 + slot // 17 * 12))
-                if position not in occupied:
-                    break
-                slot += 1
+        position = place_first_interaction(
+            objects, anchor=anchor, size=(4.0, 4.0, 4.0),
+            max_distance=18.0,
+        )
         obj = {"name": node, "class": "Part",
                "position": list(position), "size": [4.0, 4.0, 4.0]}
         objects.append(obj)
         reserved_names.add(node)
-        occupied.add(position)
+        occupied.add(tuple(position))
         for peer in proposal.modules:
             if peer.name == module.name or (
                     peer.name == module.name.removesuffix("Server") + "Client"):
