@@ -75,11 +75,11 @@ def test_round_lobby_is_outside_arena_and_only_required_remotes_are_installed():
     generator = object.__new__(RobloxProjectGenerator)
     rojo = generator.generate_rojo_project_json(proposal)
     world = rojo["tree"]["Workspace"]
-    assert not _in_ring(world["SpawnLocation"]["$properties"]["Position"])
-    assert not _in_ring(world["ShopStalls"]["ShopCounter"]["$properties"]["Position"])
+    assert not _in_ring(world["SpawnLocation"]["$properties"]["CFrame"][:3])
+    assert not _in_ring(world["ShopStalls"]["ShopCounter"]["$properties"]["CFrame"][:3])
     for name, coin in world["Coins"].items():
         if name.startswith("Coin"):
-            assert not _in_ring(coin["$properties"]["Position"])
+            assert not _in_ring(coin["$properties"]["CFrame"][:3])
     remotes = rojo["tree"]["ReplicatedStorage"]["Remotes"]
     assert {name for name in remotes if not name.startswith("$")} == {
         "AttackRequest", "ShopPurchase", "ShopWeaponUse", "RoundStatus"}
@@ -97,7 +97,7 @@ def test_noncombat_shop_keeps_spawn_in_default_world_and_no_attack_channels():
     proposal = _make_proposal(combat=False, round_game=False, coins=False)
     rojo = object.__new__(RobloxProjectGenerator).generate_rojo_project_json(proposal)
     world = rojo["tree"]["Workspace"]
-    assert world["SpawnLocation"]["$properties"]["Position"] == [0, 1, 0]
+    assert world["SpawnLocation"]["$properties"]["CFrame"][:3] == [0, 1, 0]
     remotes = rojo["tree"]["ReplicatedStorage"]["Remotes"]
     assert {name for name in remotes if not name.startswith("$")} == {
         "ShopPurchase", "ShopWeaponUse"}
