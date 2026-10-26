@@ -17,6 +17,15 @@ from .project_modes import EXISTING_ADDON, write_addon_manifest
 from .spec import RobloxAssetSpec, RobloxModuleSpec, RobloxProposal
 
 
+
+def _placement_cframe(position: list[float]) -> list[float]:
+    """Rojo's serializable Part.CFrame (translation plus identity rotation)."""
+    if (not isinstance(position, (tuple, list)) or len(position) != 3
+            or any(type(value) not in (int, float) for value in position)):
+        raise ValueError("World position must be a numeric XYZ triple")
+    return [*position, 1, 0, 0, 0, 1, 0, 0, 0, 1]
+
+
 class RobloxProjectGenerator:
     """Creates Rojo project layouts, Luau file trees, native .rbxlx Place files, and real 3D instances."""
 
@@ -83,7 +92,7 @@ class RobloxProjectGenerator:
                 "$properties": {
                     "Anchored": True,
                     "Size": instance["size"],
-                    "Position": instance["position"],
+                    "CFrame": _placement_cframe(instance["position"]),
                 },
             }
             if name in host_world_actions:
@@ -109,7 +118,7 @@ class RobloxProjectGenerator:
                     "$className": "Part",
                     "$properties": {
                         "Anchored": True, "CanCollide": False, "CanTouch": True,
-                        "Size": [2, 2, 2], "Position": [index * 6 - 15, 3, 68 if round_lobby else 8],
+                        "Size": [2, 2, 2], "CFrame": _placement_cframe([index * 6 - 15, 3, 68 if round_lobby else 8]),
                         "Color": [1, 0.82, 0], "Shape": "Ball",
                     },
                 }
@@ -119,7 +128,7 @@ class RobloxProjectGenerator:
                 "$className": "Folder",
                 "ShopCounter": {
                     "$className": "Part",
-                    "$properties": {"Anchored": True, "Size": [10, 4, 4], "Position": [15, 2, 60 if round_lobby else 0]},
+                    "$properties": {"Anchored": True, "Size": [10, 4, 4], "CFrame": _placement_cframe([15, 2, 60 if round_lobby else 0])},
                     "ShopPrompt": {
                         "$className": "ProximityPrompt",
                         "$properties": {"ActionText": "Open Shop", "ObjectText": "Merchant"},
@@ -135,7 +144,7 @@ class RobloxProjectGenerator:
                 ("West", [2, 6, 40], [-20, 3, 0]),
             ):
                 walls[name] = {"$className": "Part", "$properties": {
-                    "Anchored": True, "Size": size, "Position": pos,
+                    "Anchored": True, "Size": size, "CFrame": _placement_cframe(pos),
                 }}
             world["CombatArena"] = walls
         if features.get("is_obby"):
@@ -143,10 +152,10 @@ class RobloxProjectGenerator:
             for stage in range(1, max(1, min(int(counts.get("stages", 5)), 128)) + 1):
                 world["Checkpoints"][f"Stage{stage}"] = {"$className": "Part",
                     "$properties": {"Anchored": True, "Size": [8, 1, 8],
-                                    "Position": [0, 1 + (stage - 1) * 3, stage * 25]}}
+                                    "CFrame": _placement_cframe([0, 1 + (stage - 1) * 3, stage * 25])}}
             world["KillBricks"] = {"$className": "Folder",
                 "LavaHazard": {"$className": "Part", "$properties": {
-                    "Anchored": True, "Size": [20, 1, 10], "Position": [0, 0.5, 35]}}}
+                    "Anchored": True, "Size": [20, 1, 10], "CFrame": _placement_cframe([0, 0.5, 35])}}}
         if features.get("is_tycoon"):
             world["TycoonPlots"] = {"$className": "Folder"}
             for name, size, pos in (
@@ -155,16 +164,16 @@ class RobloxProjectGenerator:
                 ("Collector", [8, 2, 8], [-20, 1, 28]),
             ):
                 world["TycoonPlots"][name] = {"$className": "Part",
-                    "$properties": {"Anchored": True, "Size": size, "Position": pos}}
+                    "$properties": {"Anchored": True, "Size": size, "CFrame": _placement_cframe(pos)}}
         if features.get("is_simulator"):
             world["SellZones"] = {"$className": "Folder",
                 "SellPad": {"$className": "Part", "$properties": {
-                    "Anchored": True, "Size": [12, 1, 12], "Position": [30, 0.5, 0]}}}
+                    "Anchored": True, "Size": [12, 1, 12], "CFrame": _placement_cframe([30, 0.5, 0])}}}
         world["Baseplate"] = {"$className": "Part", "$properties": {
-            "Anchored": True, "Size": [512, 20, 512], "Position": [0, -10, 0],
+            "Anchored": True, "Size": [512, 20, 512], "CFrame": _placement_cframe([0, -10, 0]),
         }}
         world["SpawnLocation"] = {"$className": "SpawnLocation", "$properties": {
-            "Anchored": True, "Size": [12, 1, 12], "Position": [0, 1, 60 if round_lobby else 0],
+            "Anchored": True, "Size": [12, 1, 12], "CFrame": _placement_cframe([0, 1, 60 if round_lobby else 0]),
         }}
         rep_packages = proposal.game_design.get("ui_backend") == "fusion"
         server_packages = proposal.game_design.get("storage_backend") == "profilestore"
