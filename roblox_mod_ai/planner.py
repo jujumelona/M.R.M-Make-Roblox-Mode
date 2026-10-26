@@ -537,6 +537,7 @@ class RobloxGameDesignPlanner:
                     "host_client_actions": dynamic_design.get("host_client_actions", {}),
                     "host_action_choices": dynamic_design.get("host_action_choices", {}),
                     "host_typed_actions": dynamic_design.get("host_typed_actions", {}),
+                    "host_executable_actions": dynamic_design.get("host_executable_actions", {}),
                     "host_world_actions": dynamic_design.get("host_world_actions", {}),
                     "host_world_motion": dynamic_design.get("host_world_motion", {}),
                     "acceptance_facets": dynamic_design["acceptance_facets"],
