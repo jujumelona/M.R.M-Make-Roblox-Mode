@@ -30,10 +30,21 @@ def spawn_anchor(design: dict[str, Any], *, round_lobby: bool = False) -> tuple[
     return (0.0, 1.0, 60.0 if round_lobby else 0.0)
 
 
+def spawn_size(design: dict[str, Any]) -> tuple[float, float, float]:
+    """Actual SpawnLocation dimensions shared with the place generator."""
+    dynamic = design.get("dynamic_design") or {}
+    explicit = dynamic.get("spawn_size", [12, 1, 12])
+    dimensions = _vector(explicit)
+    if min(dimensions) <= 0:
+        raise ValueError("Invalid SpawnLocation footprint")
+    return dimensions
+
+
 def place_first_interaction(
     world_objects: list[dict[str, Any]],
     *,
     anchor: tuple[float, float, float],
+    spawn_bounds: tuple[float, float, float] = (12.0, 1.0, 12.0),
     size: tuple[float, float, float] = (4.0, 4.0, 4.0),
     max_distance: float = 18.0,
     clearance: float = 1.0,
@@ -60,7 +71,14 @@ def place_first_interaction(
     if horizontal <= dx / 2 + clearance:
         raise ValueError("Interaction volume exceeds server interaction range")
 
-    bounds: list[tuple[tuple[float, float, float], tuple[float, float, float]]] = []
+    # SpawnLocation is created by the project generator (not always listed in
+    # dynamic world_objects). Protect the pad itself from intersecting nodes.
+    spawn_extent = _vector(spawn_bounds)
+    if min(spawn_extent) <= 0:
+        raise ValueError("Invalid player spawn bounds")
+    bounds: list[tuple[tuple[float, float, float], tuple[float, float, float]]] = [
+        ((sx, sy, sz), spawn_extent),
+    ]
     for obj in world_objects:
         if not isinstance(obj, dict):
             raise ValueError("Malformed authored world object")
