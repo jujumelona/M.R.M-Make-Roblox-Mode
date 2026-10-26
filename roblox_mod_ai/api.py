@@ -81,6 +81,29 @@ class CompleteChatReply:
                     and audit_detailed_plan(proposal)["passed"])
 
 
+    @property
+    def implementation_ready(self) -> bool:
+        """True only for a source-covered, audited executable architecture.
+
+        `ready_to_build` historically means a source-validated DRAFT may
+        enter the production worker, which will compile the architecture.
+        Do not confuse admission to that worker with completed implementation.
+        """
+        proposal = self.authored_plan.proposal
+        return (
+            proposal.game_design.get("planning_phase") != "intent_draft"
+            and self.ready_to_build
+        )
+
+    @property
+    def implementation_pending(self) -> bool:
+        """A valid source draft still awaiting executable game architecture."""
+        return bool(
+            self.authored_plan.proposal.game_design.get("planning_phase")
+            == "intent_draft"
+        )
+
+
 class CompleteRobloxAISession:
     """Conversational session for Roblox experience planning, revision, and production."""
 
