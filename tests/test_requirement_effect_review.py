@@ -176,12 +176,12 @@ def test_multi_owner_requirement_reviews_entire_independent_server_files(tmp_pat
     complete_first = BEFORE.replace("rank += 1", long_middle + "\\nrank += 1")
     file.write_text(complete_first, encoding="utf-8")
     model = FakeModel([
-        {"verdict": "missing", "file": FILE, "quote": "rank += 1",
-         "issue": "Only rank increases and the thrust does not change",
-         "repair": "Modify owned vehicle's thrust after upgrade"},
         {"verdict": "missing", "file": another.file_path, "quote": "return true",
          "issue": "No server currency or item ownership transfer",
          "repair": "Transfer validated balances to both players"},
+        {"verdict": "missing", "file": FILE, "quote": "rank += 1",
+         "issue": "Only rank increases and the thrust does not change",
+         "repair": "Modify owned vehicle's thrust after upgrade"},
     ])
     outcome = review_requirement_effects(proposal, tmp_path, model)
     assert outcome["status"] == "issues_found" and outcome["fully_covered"]
