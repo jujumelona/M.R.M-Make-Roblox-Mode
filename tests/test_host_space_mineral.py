@@ -70,6 +70,9 @@ def fixture():
                 "service": server.name, "resource_node": node,
                 "transport_rebased": True,
                 "input": "RemoteFunction_server_selected_nearest_Part",
+                "reward": {"namespace": "RMMInventory", "key": "specialMinerals",
+                           "attribute": "RMMSpecialMinerals",
+                           "label": "Collect special minerals"},
             }],
             "module_world_objects": {
                 server.module_id: [
@@ -113,9 +116,11 @@ def test_failed_codegen_uses_both_verified_host_adapters():
     assert client_code == render_space_mineral(client, plan)
     assert 'GetOwnedActor(player)' in server_code
     assert 'GetState(player, "RMMInventory")' in server_code
-    assert 'inventory.specialMinerals = count + 1' in server_code
+    assert 'local INVENTORY_FIELD = "specialMinerals"' in server_code
+    assert 'inventory[INVENTORY_FIELD] = count + 1' in server_code
     assert 'services.PlayerDataManager.OnReady(function(player)' in server_code
-    assert 'player:SetAttribute("RMMSpecialMinerals", count)' in server_code
+    assert 'local RESOURCE_ATTRIBUTE = "RMMSpecialMinerals"' in server_code
+    assert 'player:SetAttribute(RESOURCE_ATTRIBUTE, count)' in server_code
     assert 'select("#", ...) ~= 0' in server_code
     assert 'seat.Occupant ~= humanoid' in server_code
     assert 'node:IsA("BasePart")' in server_code
@@ -144,8 +149,52 @@ def test_does_not_mask_invalid_world_contract():
     plan.game_design["dynamic_design"]["host_vehicle_identity_bindings"][0]["builder"] = "GhostShip"
     assert eligible_space_mineral(server, plan) is None
     plan, server, client, remote = fixture()
+    # A future unrelated genre with the SAME explicit action contract must
+    # use the same host implementation regardless of its prompt wording.
     plan.requested_prompt = "농장 상점만 있는 게임"
-    assert eligible_space_mineral(server, plan) is None
+    assert eligible_space_mineral(server, plan) is not None
     plan, server, client, remote = fixture()
     plan.game_design["dynamic_design"]["host_arrival_materializations"].clear()
     assert eligible_space_mineral(server, plan) is None
+
+
+def test_real_generic_vehicle_resource_uses_declared_state_not_game_words():
+    plan, server, client, remote = fixture()
+    server.name = "CollectCargoServer"
+    server.description = "Driver collects cargo at an authorized destination"
+    client.name = "CargoControls"
+    client.description = "Driver controls"
+    plan.requested_prompt = "Farm delivery jobs with driving and cargo"
+    design = plan.game_design["dynamic_design"]
+    design["host_actions"][remote]["service"] = server.name
+    design["host_materialized_world"][0]["service"] = server.name
+    design["host_materialized_world"][0]["reward"] = {
+        "namespace": "RMMInventory",
+        "key": "farmProduce",
+        "attribute": "ProduceCount",
+        "label": "Load produce",
+    }
+    plan.modules[2] = server
+    plan.modules[3] = client
+    assert eligible_space_mineral(server, plan) is not None
+    assert eligible_space_mineral(client, plan) is not None
+    srv = render_space_mineral(server, plan)
+    cli = render_space_mineral(client, plan)
+    assert 'local INVENTORY_FIELD = "farmProduce"' in srv
+    assert 'local RESOURCE_ATTRIBUTE = "ProduceCount"' in srv
+    assert 'button.Text = "Load produce"' in cli
+    assert 'RMMFlightState' not in srv
+    assert 'RMMFlightState' not in cli
+    assert 'PilotSeat' not in srv
+    assert 'CFrame.new(18, 7, 12)' not in srv
+    assert 'craft:FindFirstChildWhichIsA("VehicleSeat", true)' in srv
+
+
+def test_invalid_declared_reward_or_range_does_not_fall_back_to_guessed_code():
+    plan, server, client, remote = fixture()
+    record = plan.game_design["dynamic_design"]["host_materialized_world"][0]
+    record["reward"]["key"] = "bad.name"
+    assert render_space_mineral(server, plan) is None
+    record["reward"]["key"] = "fruit"
+    record["interaction_range"] = -2
+    assert render_space_mineral(server, plan) is None
