@@ -148,8 +148,9 @@ def test_exhausted_attempts_keep_original_code(tmp_path):
         review_again=lambda: None, max_rounds=3,
         agent_factory=_factory(patches),
     )
-    assert not result["passed"] and result["status"] == "exhausted"
-    assert len(result["attempts"]) == 3
+    assert not result["passed"] and result["status"] == "blocked"
+    # Do not burn a third model attempt on the same unchanged failure.
+    assert len(result["attempts"]) == 2
     assert all(x["status"] == "reverted" for x in result["attempts"])
     assert file.read_text(encoding="utf-8") == SOURCE
 
@@ -179,3 +180,97 @@ def test_source_changed_since_review_never_repaired_silently(tmp_path):
     assert not result["passed"]
     assert "Source changed since AI review" in result["reason"]
     assert file.read_text(encoding="utf-8") == FIXED
+
+
+def test_grounded_defect_does_not_require_second_llm_root_cause_plan(tmp_path):
+    proposal, module, file = _setup(tmp_path)
+    review = _report(module.file_path, SOURCE)
+    review["findings"][0]["evidence"] = "requirement_effect_review_source_quote"
+
+    class PatchOnlyRouter:
+        def __init__(self):
+            self.calls = []
+        def complete_json(self, **kwargs):
+            prompt = kwargs["prompt"]
+            self.calls.append(prompt)
+            assert prompt.startswith("Patch exactly ONE"), (
+                "Small model must receive a direct bounded patch, not a "
+                "redundant English root-cause-planning task"
+            )
+            return {"before": "local fuel = 0", "after": "local fuel = 10"}
+
+    import roblox_mod_ai.source_repair_cycle as cycle
+    original_host_detector = cycle.host_source_must_regenerate
+    cycle.host_source_must_regenerate = lambda *args: True
+    try:
+        router = PatchOnlyRouter()
+        result = run_source_repair_cycle(
+            proposal, tmp_path, router, review,
+            verify=lambda: {"passed": file.read_text(encoding="utf-8") == FIXED},
+            review_again=lambda: _report(module.file_path, FIXED, "reviewed_no_blockers"),
+            max_rounds=1, allow_host_gameplay_repairs=True,
+        )
+        assert result["passed"] and file.read_text(encoding="utf-8") == FIXED
+        assert len(router.calls) == 1
+        assert result["attempts"][0]["plans"][0]["plan_origin"] == (
+            "grounded_requirement_effect_findings"
+        )
+    finally:
+        cycle.host_source_must_regenerate = original_host_detector
+
+
+def test_many_grounded_defects_are_repaired_independently(tmp_path, monkeypatch):
+    proposal, first, first_file = _setup(tmp_path)
+    second = SimpleNamespace(
+        name="ShipCargo", module_id="dyn_ship_cargo",
+        file_path="src/server/ShipCargo.luau", code=SOURCE,
+    )
+    second_file = tmp_path / second.file_path
+    second_file.write_text(SOURCE, encoding="utf-8")
+    proposal.modules.append(second)
+    import roblox_mod_ai.source_repair_cycle as cycle
+    monkeypatch.setattr(cycle, "host_source_must_regenerate", lambda *args: True)
+
+    class Router:
+        def __init__(self):
+            self.calls = []
+        def complete_json(self, **kwargs):
+            assert kwargs["prompt"].startswith("Patch exactly ONE")
+            self.calls.append(kwargs["prompt"])
+            return {"before": "local fuel = 0", "after": "local fuel = 10"}
+
+    def review():
+        findings = []
+        hashes = {}
+        for module in proposal.modules:
+            value = (tmp_path / module.file_path).read_text(encoding="utf-8")
+            hashes[module.file_path] = _sha(value)
+            if value == SOURCE:
+                findings.append({
+                    "file": module.file_path, "line": 2,
+                    "quote": "local fuel = 0", "severity": "blocking",
+                    "issue": "Fuel is unchanged in actual source",
+                    "repair": "Replace the fuel constant after valid action",
+                    "evidence": "requirement_effect_review_source_quote",
+                })
+        return {
+            "status": "issues_found" if findings else "reviewed_no_blockers",
+            "fully_covered": True,
+            "source_sha256": hashes, "findings": findings,
+        }
+
+    router = Router()
+    result = run_source_repair_cycle(
+        proposal, tmp_path, router, review(),
+        verify=lambda: {"passed": True}, review_again=review,
+        max_rounds=1, allow_host_gameplay_repairs=True,
+    )
+    assert result["passed"]
+    assert len(result["attempts"]) == 2
+    assert [r["status"] for r in result["attempts"]] == [
+        "improved_needs_next_round", "passed",
+    ]
+    assert len(router.calls) == 2
+    assert first_file.read_text(encoding="utf-8") == FIXED
+    assert second_file.read_text(encoding="utf-8") == FIXED
+    assert set(result["changed_files"]) == {first.file_path, second.file_path}
