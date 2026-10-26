@@ -178,7 +178,7 @@ def test_rojo_project_contains_mineable_world_part_not_just_planner_metadata(tmp
     node = world["ResourceNode03886011"]
     assert node["$className"] == "Part"
     assert node["$properties"]["Anchored"] is True
-    assert node["$properties"]["Position"] != world["LaunchGate93682111"]["$properties"]["Position"]
+    assert node["$properties"]["CFrame"][:3] != world["LaunchGate93682111"]["$properties"]["CFrame"][:3]
     assert "ResourceMiningEconomy0388601Action" in rojo["tree"]["ReplicatedStorage"]["Remotes"]
     assert rojo["tree"]["ReplicatedStorage"]["Remotes"]["ResourceMiningEconomy0388601Action"]["$className"] == "RemoteFunction"
 
