@@ -99,3 +99,50 @@ def test_saved_builtin_profile_plan_audits_actual_migrated_module(tmp_path, desi
         assert not result["passed"], "Migration must not skip compiled-source equality"
         assert any(c["id"] == "module.source.PlayerDataManager" and not c["passed"]
                    for c in result["checks"])
+
+
+def test_compiled_world_part_requires_real_cframe_at_expected_orbit(tmp_path):
+    import xml.etree.ElementTree as ET
+    root = ET.Element("roblox", {"version": "4"})
+    ws = ET.SubElement(root, "Item", {"class": "Workspace"})
+    props = ET.SubElement(ws, "Properties")
+    ET.SubElement(props, "string", {"name": "Name"}).text = "Workspace"
+    obj = ET.SubElement(ws, "Item", {"class": "Part"})
+    oprops = ET.SubElement(obj, "Properties")
+    ET.SubElement(oprops, "string", {"name": "Name"}).text = "OrbitPad"
+    pose = ET.SubElement(oprops, "Vector3", {"name": "Position"})
+    for name, value in (("X", "0"), ("Y", "8000"), ("Z", "0")):
+        ET.SubElement(pose, name).text = value
+    rbxlx = tmp_path / "orbit.rbxlx"
+    ET.ElementTree(root).write(rbxlx, encoding="utf-8")
+    proposal = RobloxProposal(
+        requested_prompt="Launch into orbit", game_title="Orbit",
+        description="", modules=[],
+        game_design={"dynamic_design": {"world_objects": [{
+            "name": "OrbitPad", "class": "Part", "size": [96, 4, 96],
+            "position": [0, 8000, 0]
+        }]}}
+    )
+    before = inspect_compiled_place(proposal, rbxlx)
+    assert not before["passed"]
+    assert next(row for row in before["checks"]
+                if row["id"] == "dynamic.world.OrbitPad")["passed"]
+    assert not next(row for row in before["checks"]
+                    if row["id"] == "dynamic.world_pose.OrbitPad")["passed"]
+
+    pose.tag = "CoordinateFrame"
+    pose.set("name", "CFrame")
+    for k, v in (("R00", "1"), ("R01", "0"), ("R02", "0"),
+                 ("R10", "0"), ("R11", "1"), ("R12", "0"),
+                 ("R20", "0"), ("R21", "0"), ("R22", "1")):
+        ET.SubElement(pose, k).text = v
+    ET.ElementTree(root).write(rbxlx, encoding="utf-8")
+    after = inspect_compiled_place(proposal, rbxlx)
+    assert after["passed"], after
+
+    pose.find("Y").text = "0"
+    ET.ElementTree(root).write(rbxlx, encoding="utf-8")
+    altered = inspect_compiled_place(proposal, rbxlx)
+    assert not altered["passed"]
+    assert not next(row for row in altered["checks"]
+                    if row["id"] == "dynamic.world_pose.OrbitPad")["passed"]
