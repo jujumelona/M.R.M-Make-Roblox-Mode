@@ -38,7 +38,7 @@ def eligible_contextual_harvest(module: Any, proposal: Any) -> tuple[str, str, s
         if len(candidates) != 1:
             return None
         server_name = next(iter(candidates))
-    owner = next((m for m in proposal.modules if
+    owner = next((m for m in getattr(proposal, "modules", ()) if
                   m.name == server_name and m.kind == ModuleKind.SERVER_MODULE), None)
     if owner is None:
         return None
