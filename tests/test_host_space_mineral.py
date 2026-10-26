@@ -70,6 +70,12 @@ def fixture():
                 "service": server.name, "resource_node": node,
                 "transport_rebased": True,
                 "input": "RemoteFunction_server_selected_nearest_Part",
+                "vehicle_context": {
+                    "requires_seated_driver": True,
+                    "actor_provider": "GetOwnedActor",
+                    "builder": builder.name,
+                    "arrival": arrival,
+                },
                 "reward": {"namespace": "RMMInventory", "key": "specialMinerals",
                            "attribute": "RMMSpecialMinerals",
                            "label": "Collect special minerals"},
@@ -202,3 +208,40 @@ def test_invalid_declared_reward_or_range_does_not_fall_back_to_guessed_code():
     record["interaction_range"] = -2
     with pytest.raises(ValueError, match="INVALID_CONTEXTUAL_HARVEST_CONTRACT"):
         render_space_mineral(server, plan)
+
+
+def test_unrelated_vehicle_cannot_give_standalone_gathering_a_vehicle_gate():
+    """Same declared resource action in a world with a different vehicle."""
+    from roblox_mod_ai.host_mining import render_host_mining
+    plan, server, client, remote = fixture()
+    design = plan.game_design["dynamic_design"]
+    # An independent resource action has no action-owned driver prerequisite.
+    design["host_materialized_world"][0].pop("vehicle_context")
+    plan.requested_prompt = "Gather crops first to pay for a tractor"
+    server.name = "CropGatherServer"
+    client.name = "CropGatherClient"
+    server.description = "Server grants owned resources from a gather node"
+    design["host_actions"][remote]["service"] = server.name
+    design["host_materialized_world"][0]["service"] = server.name
+    # The global vehicle and arrival contract remain, but are NOT owned by
+    # this action; the renderer must never attach its resource to them.
+    assert eligible_space_mineral(server, plan) is None
+    assert eligible_space_mineral(client, plan) is None
+    srv = render_host_mining(server, plan)
+    cli = render_host_mining(client, plan)
+    assert srv and cli
+    assert "GetOwnedActor" not in srv
+    assert 'local NODE_NAMES = {"ResourceNode4E4CE2163F1"}' in srv
+    assert "node.CFrame = arrival.CFrame" not in srv
+    assert "remote:InvokeServer()" in cli
+    assert "VehicleSeat" not in srv
+
+
+def test_vehicle_context_requires_exact_owned_builder_and_destination():
+    plan, server, client, remote = fixture()
+    record = plan.game_design["dynamic_design"]["host_materialized_world"][0]
+    record["vehicle_context"]["arrival"] = "UnrelatedWorld"
+    assert eligible_space_mineral(server, plan) is None
+    record["vehicle_context"]["arrival"] = "RMMOrbitArrival_ced7651c1e"
+    record["vehicle_context"]["requires_seated_driver"] = False
+    assert eligible_space_mineral(server, plan) is None
