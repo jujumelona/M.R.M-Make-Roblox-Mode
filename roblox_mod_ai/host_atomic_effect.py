@@ -261,14 +261,18 @@ def render_transaction_server(module: Any, proposal: Any) -> str | None:
             if type(n) is not int or not 0 <= n <= limit:
                 raise ValueError("TRANSACTION_INVALID_CONSTANT")
             expr = str(n)
-        elif set(amount) == {"input"}:
+        elif set(amount) in ({"input"}, {"input", "multiplier"}):
             field_id = amount["input"]
+            multiplier = amount.get("multiplier", 1)
             if (not isinstance(field_id, str) or not _ID.fullmatch(field_id)
+                    or type(multiplier) is not int or not 1 <= multiplier <= 1000000
                     or len([f for f in contract["inputs"]
                             if f["id"] == field_id and f["type"] == "integer"
-                            and f["min"] >= 0 and f["max"] <= limit]) != 1):
+                            and f["min"] >= 0
+                            and f["max"] * multiplier <= limit]) != 1):
                 raise ValueError("TRANSACTION_UNVALIDATED_AMOUNT")
-            expr = "args." + field_id
+            expr = ("args." + field_id if multiplier == 1
+                    else "args." + field_id + "*" + str(multiplier))
         else:
             raise ValueError("TRANSACTION_INVALID_AMOUNT")
         n = idx + 1
