@@ -80,6 +80,115 @@ def _recover_source_line(
     return line_number, actual[:180]
 
 
+def _review_with_bounded_truncation_recovery(
+    router: Any, prompt: str, source: str, file_path: str,
+    requirement_id: str, original: str, responsibility: str,
+    schema: dict[str, Any],
+    retries: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Recover from token-budget exhaustion without treating it as a verdict.
+
+    The first pass retains the existing source-level review. If the local 9B
+    consumes its response budget, a shorter, numbered-line JSON contract
+    replaces verbose free-form quotes. The host selects evidence directly
+    from the full source, never by trusting an invented model quotation.
+    Only finish_reason=length is recoverable; all other failures remain real.
+    """
+    try:
+        return router.complete_json(
+            prompt=prompt, role="analyzer", temperature=0,
+            max_tokens=1700, json_schema=schema,
+        )
+    except ValueError as exc:
+        if "finish_reason=length" not in str(exc):
+            raise
+        retries.append({
+            "requirement": requirement_id, "file": file_path,
+            "reason": "model_output_truncated", "phase": "full_review",
+            "token_budget": 1700,
+        })
+
+    lines = source.splitlines()
+    numbered = "\n".join(f"{n}: {line}" for n, line in enumerate(lines, 1))
+    compact_schema = {
+        "type": "object",
+        "properties": {
+            "verdict": {"type": "string", "enum": [
+                "implemented", "missing", "uncertain"]},
+            "evidence_line": {"type": "integer"},
+            "issue": {"type": "string", "maxLength": 200},
+            "repair": {"type": "string", "maxLength": 200},
+        },
+        "required": ["verdict", "evidence_line", "issue", "repair"],
+        "additionalProperties": False,
+    }
+    compact_prompt = (
+        "Review exactly ONE Roblox Luau server module against its OWN user "
+        "requirement; do not require other modules' responsibilities. "
+        "Return ONLY one SHORT JSON object, with verdict, evidence_line "
+        "(an EXACT physical line number in the numbered source; 0 only "
+        "when uncertain), issue (one sentence), repair (one sentence). "
+        "No source quote, no reasoning, no lists, no extra text. "
+        "A rank or attribute alone does not prove physical performance. "
+        "Do not invent peer-to-peer trading from the word trade. "
+        "Evidence must show actual code effect or an inadequate substitute. "
+        "No Studio gameplay verification.\n"
+        + json.dumps({
+            "requirement": original[:1100],
+            "owned_behavior": responsibility[:1000],
+            "file": file_path,
+            "source_lines": numbered,
+        }, ensure_ascii=False)
+    )
+    for budget in (2600, 4096):
+        try:
+            short = router.complete_json(
+                prompt=compact_prompt, role="analyzer", temperature=0,
+                max_tokens=budget, json_schema=compact_schema,
+            )
+        except ValueError as exc:
+            if "finish_reason=length" not in str(exc):
+                raise
+            retries.append({
+                "requirement": requirement_id, "file": file_path,
+                "reason": "model_output_truncated",
+                "phase": "compact_line_review", "token_budget": budget,
+            })
+            continue
+        if not isinstance(short, dict):
+            raise ValueError("Compact model review did not return an object")
+        verdict = short.get("verdict")
+        if verdict not in ("implemented", "missing", "uncertain"):
+            raise ValueError("Compact model review has invalid verdict")
+        if verdict == "uncertain":
+            return {
+                "verdict": verdict, "file": file_path, "quote": "",
+                "issue": str(short.get("issue", ""))[:200],
+                "repair": str(short.get("repair", ""))[:200],
+            }
+        number = short.get("evidence_line")
+        if type(number) is not int or not (1 <= number <= len(lines)):
+            raise ValueError("Compact model review selected a nonexistent line")
+        quote = lines[number - 1].strip()
+        if (len(quote) < 8 or quote.startswith(("--", "*"))
+                or quote in ("end", "else", "return false", "return nil")):
+            raise ValueError("Compact model review provided no executable source evidence")
+        retries.append({
+            "requirement": requirement_id, "file": file_path,
+            "reason": "recovered_with_host_selected_source_line",
+            "phase": "compact_line_review", "token_budget": budget,
+            "line": number,
+        })
+        return {
+            "verdict": verdict, "file": file_path, "quote": quote[:180],
+            "issue": str(short.get("issue", ""))[:200],
+            "repair": str(short.get("repair", ""))[:200],
+        }
+    raise ValueError(
+        "Model JSON remained truncated after bounded compact-source retries"
+    )
+
+
 def review_requirement_effects(proposal: Any, root: Path, router: Any) -> dict[str, Any]:
     """Inspect every explicitly owned requirement; block ungrounded passes.
 
@@ -91,7 +200,7 @@ def review_requirement_effects(proposal: Any, root: Path, router: Any) -> dict[s
         "schema": SCHEMA, "scope": "source_semantics_no_roblox_engine",
         "status": "failed", "executed": False, "fully_covered": False,
         "reason": "", "requirements": [], "findings": [], "source_sha256": {},
-        "evidence_recovery": [],
+        "evidence_recovery": [], "model_retries": [],
     }
     detail = (getattr(proposal, "game_design", {}) or {}).get(
         "detailed_implementation_plan") or {}
@@ -193,10 +302,12 @@ def review_requirement_effects(proposal: Any, root: Path, router: Any) -> dict[s
             )
             report["executed"] = True
             try:
-                result = router.complete_json(
-                    prompt=prompt, role="analyzer", temperature=0,
-                    max_tokens=1100,
-                    json_schema={
+                result = _review_with_bounded_truncation_recovery(
+                    router=router, prompt=prompt, source=source,
+                    file_path=file_path, requirement_id=req_id,
+                    original=original, responsibility=responsibility,
+                    retries=report["model_retries"],
+                    schema={
                         "type": "object",
                         "properties": {
                             "verdict": {"type": "string", "enum": [
