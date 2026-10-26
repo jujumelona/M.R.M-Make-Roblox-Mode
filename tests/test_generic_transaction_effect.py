@@ -199,3 +199,48 @@ def test_generic_generator_uses_transaction_not_model_written_module():
     output = LuauCodeGenerator(ForbiddenModel()).generate_module_code(server, p)
     assert output == render_atomic_server(server, p)
     assert "state.ore=next1" in output
+
+
+def test_semantic_architecture_preserves_executable_effect_ir():
+    from roblox_mod_ai.host_architecture import expand_semantic_facet
+    program = {
+        "schema": "rmm/transaction-effect-v1",
+        "namespace": "RMMGameplayState",
+        "changes": [
+            {"field": "points", "operation": "increment",
+             "amount": {"constant": 3}, "limit": 9999},
+        ],
+    }
+    raw = {"systems": [{
+        "name": "GainPoints",
+        "server_behavior": (
+            "The server validates the authenticated player action, then "
+            "increases the player's persistent points by three within a "
+            "strict checked limit."
+        ),
+        "client_behavior": (
+            "A player clicks the button to request the points increase "
+            "and sees the confirmed updated points count."
+        ),
+        "observable_result": (
+            "The player sees their saved points increase by three."
+        ),
+        "interaction": "request_response", "input_mode": "custom",
+        "world_entities": [],
+        "action_contract": {
+            "inputs": [], "target": {"kind": "none"},
+            "state_changes": [{
+                "scope": "player", "key": "RMMGameplayState.points",
+                "operation": "increment",
+            }],
+        },
+        "effect_program": program,
+    }]}
+    converted = expand_semantic_facet(
+        raw, facet_id="intent-points", requirement_ids=["req-001"],
+        source_requirements=[{"id": "req-001", "statement": "Gain points"}],
+        reserved_modules=set(), reserved_remotes=set(), reserved_objects=set(),
+    )
+    remote, saved = next(iter(converted["_host_executable_actions"].items()))
+    assert saved == program
+    assert converted["_host_typed_actions"][remote]["transport_only"] is False
