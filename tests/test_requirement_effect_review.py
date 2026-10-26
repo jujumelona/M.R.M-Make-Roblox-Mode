@@ -537,3 +537,31 @@ def test_cross_module_evidence_does_not_invent_missing_consumer(tmp_path):
     assert _downstream_effect_evidence(
         FILE, upgrade, {m.file_path: m for m in proposal.modules}, tmp_path,
     ) == []
+
+
+def test_shared_inventory_does_not_falsely_prove_ship_performance(tmp_path):
+    from roblox_mod_ai.requirement_effect_review import _downstream_effect_evidence
+    proposal, module, file = setup(tmp_path)
+    builder = (
+        '--!strict\n'
+        'local inventory = services.PlayerDataManager.GetState(player, "RMMInventory")\n'
+        'local assembly = services.PlayerDataManager.GetState(player, "RMMShipSections")\n'
+        'assembly.sections.engine = {owned = true, performance = 5}\n'
+    )
+    other = (
+        '--!strict\n'
+        'local inv = services.PlayerDataManager.GetState(player, "RMMInventory")\n'
+        'local ship = services.PiecewiseShipCraft.GetOwnedActor(player)\n'
+        'return inv and ship\n'
+    )
+    name = "src/server/UnrelatedShipServer.luau"
+    target = tmp_path / name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(other, encoding="utf-8")
+    proposal.modules.append(SimpleNamespace(
+        name="UnrelatedShipServer", module_id="dyn_unrelated",
+        file_path=name, code=other,
+    ))
+    assert _downstream_effect_evidence(
+        FILE, builder, {m.file_path: m for m in proposal.modules}, tmp_path,
+    ) == []
