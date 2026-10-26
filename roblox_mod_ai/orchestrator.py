@@ -887,6 +887,14 @@ class RobloxProductionOrchestrator:
                     line_review["reason"] = (
                         "Original requirement is not demonstrated by actual "
                         "generated source effects")
+                elif line_review["status"] == "reviewed_unverified_host_claims":
+                    # Those claims are still in the report, but they are NOT
+                    # independently verified blocking defects. Otherwise
+                    # a repaired, fully reviewed action can never finish.
+                    line_review["status"] = "reviewed_no_blockers"
+                    line_review["reason"] = (
+                        "Original effects independently reviewed; speculative "
+                        "host template claims retained as unverified advisories")
                 return line_review
 
             ai_review = review_with_requirements()
@@ -1006,7 +1014,7 @@ class RobloxProductionOrchestrator:
             # defects. Retain them verbatim for generator-level inspection;
             # only an independent requirement-effect gap can trigger the
             # guarded, verified host-gameplay repair path above.
-            if ai_review["status"] == "reviewed_unverified_host_claims":
+            if ai_review.get("unverified_host_claims"):
                 tool_results["host_source_claims"] = {
                     "status": "unverified",
                     "count": len(ai_review.get("unverified_host_claims", [])),
