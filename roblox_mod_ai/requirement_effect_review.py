@@ -84,7 +84,7 @@ def _recover_source_line(
 def _review_with_bounded_truncation_recovery(
     router: Any, prompt: str, source: str, file_path: str,
     requirement_id: str, original: str, responsibility: str,
-    schema: dict[str, Any],
+    downstream: list[dict[str, str]], schema: dict[str, Any],
     retries: list[dict[str, Any]],
 ) -> dict[str, Any]:
     """Recover from token-budget exhaustion without treating it as a verdict.
@@ -139,6 +139,7 @@ def _review_with_bounded_truncation_recovery(
             "owned_behavior": responsibility[:1000],
             "file": file_path,
             "source_lines": numbered,
+            "verified_downstream_server_sources": downstream,
         }, ensure_ascii=False)
     )
     # A constrained JSON schema is not a guarantee for small GGUF models.
@@ -169,6 +170,7 @@ def _review_with_bounded_truncation_recovery(
                     "original_requirement": original[:900],
                     "owner_behavior": responsibility[:800],
                     "source_lines": numbered,
+                    "verified_downstream_server_sources": downstream,
                 }, ensure_ascii=False)
             )
             response_schema = {
@@ -451,7 +453,11 @@ def review_requirement_effects(proposal: Any, root: Path, router: Any) -> dict[s
                 "owned by another module. Do not assume absent cross-module "
                 "code is required within THIS file. Reply 'implemented' only "
                 "if THIS module's source-grounded responsibility is implemented by "
-                "real source effects. Reply 'missing' with a real code quote "
+                "real effects, including downstream effects applied by another "
+                "SERVER source provided here. The original user requested "
+                "modular ship construction, not an obligatory mass/thrust/armor "
+                "formula for every section: do not invent unrequested physics. "
+                "Reply 'missing' with a real code quote "
                 "if an essential promised effect is absent or substituted. "
                 "Reply 'uncertain' only for dependencies that genuinely cannot "
                 "be decided from this full source. Never claim Studio testing. "
@@ -476,7 +482,7 @@ def review_requirement_effects(proposal: Any, root: Path, router: Any) -> dict[s
                     router=router, prompt=prompt, source=source,
                     file_path=file_path, requirement_id=req_id,
                     original=original, responsibility=responsibility,
-                    retries=report["model_retries"],
+                    downstream=downstream, retries=report["model_retries"],
                     schema={
                         "type": "object",
                         "properties": {
