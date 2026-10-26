@@ -990,6 +990,13 @@ class RobloxProductionOrchestrator:
                     "schema": "rmm/codegen-checkpoint-v1", "modules": items,
                 }, indent=2, ensure_ascii=False), encoding="utf-8")
                 temporary.replace(checkpoint_file)
+            if (ai_review["status"] == "not_run"
+                    and not source_only
+                    and proposal.game_design.get("dynamic_design")):
+                return {"passed": False,
+                        "error": "REQUIREMENT_REVIEW_NOT_EXECUTED: gameplay semantics "
+                                 "cannot be approved without the configured reviewer",
+                        "diagnostic": ai_review.get("reason", "")}
             if ai_review["status"] in ("failed", "reviewed_unverified_host_claims"):
                 return {"passed": False,
                         "error": "Unresolved source behavior / unverified host claims",
