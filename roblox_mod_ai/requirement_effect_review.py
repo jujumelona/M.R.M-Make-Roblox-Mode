@@ -158,11 +158,15 @@ def review_requirement_effects(proposal: Any, root: Path, router: Any) -> dict[s
                 "read by downstream gameplay where required. A rank counter "
                 "or attribute alone does not implement speed, thrust, capacity "
                 "or weapon damage. A static target alone is not NPC combat AI. "
-                "A broker-only sale is not a player-to-player transfer. "
-                "Do not assume missing code exists in other files. "
-                "Do not require this ONE file to implement unrelated clauses "
-                "owned by other modules. Reply 'implemented' only if THIS "
-                "module's complete declared responsibility is implemented by "
+                "Do not invent player-to-player trading from the word "
+                "trade: a server broker is legitimate unless the ORIGINAL "
+                "USER explicitly requests bilateral exchange. An architecture "
+                "description is NOT permission to expand the user request. "
+                "A weapon module need NOT modify ship thrust; an alien combat "
+                "module need NOT perform mineral extraction or colonization "
+                "owned by another module. Do not assume absent cross-module "
+                "code is required within THIS file. Reply 'implemented' only "
+                "if THIS module's source-grounded responsibility is implemented by "
                 "real source effects. Reply 'missing' with a real code quote "
                 "if an essential promised effect is absent or substituted. "
                 "Reply 'uncertain' only for dependencies that genuinely cannot "
@@ -173,7 +177,8 @@ def review_requirement_effects(proposal: Any, root: Path, router: Any) -> dict[s
                 + json.dumps({
                     "requirement_id": req_id,
                     "original_request": original[:2200],
-                    "expected_outcome": outcome[:4600],
+                    "full_game_expected_outcome_context_only": outcome[:4600],
+                    "review_scope": "this module alone; never demand unrelated owner effects",
                     "module": module.name,
                     "file": file_path,
                     "owned_behavior": responsibility[:1800],
