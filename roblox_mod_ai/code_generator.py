@@ -71,10 +71,12 @@ class LuauCodeGenerator:
                     "Blocked incomplete Roblox implementation blueprint before code generation: "
                     + "; ".join(blueprint_audit["errors"])
                 )
-        from .generation_scope import generation_scope
+        from .generation_scope import generation_scope, assert_prompt_invariant_routing
+        routing = generation_scope(proposal)
+        assert_prompt_invariant_routing(proposal, original_scope=routing)
         strategy_by_id = {
             entry["module_id"]: entry["strategy"]
-            for entry in generation_scope(proposal)["modules"]
+            for entry in routing["modules"]
         }
         completed_modules: list[RobloxModuleSpec] = []
         for mod in proposal.modules:
