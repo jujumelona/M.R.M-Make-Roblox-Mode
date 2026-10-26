@@ -237,6 +237,7 @@ def expand_semantic_facet(
     host_world_actions: dict[str, dict[str, str]] = {}
     host_action_choices: dict[str, list[dict[str, str]]] = {}
     host_typed_actions: dict[str, dict[str, Any]] = {}
+    host_executable_actions: dict[str, dict[str, Any]] = {}
     results: list[str] = []
     used_modules = set(reserved_modules)
     used_remotes = set(reserved_remotes)
@@ -284,6 +285,29 @@ def expand_semantic_facet(
                 )
             except TypedActionContractError as exc:
                 raise HostArchitectureError("INVALID_TYPED_ACTION_CONTRACT: " + str(exc)) from exc
+        executable = system.get("effect_program")
+        if executable is not None:
+            if (not isinstance(executable, dict)
+                    or executable.get("schema") not in (
+                        "rmm/atomic-effect-v1", "rmm/transaction-effect-v1")
+                    or typed_contract is None
+                    or system.get("host_standard_transport") is True
+                    or typed_contract["target"]["kind"] != "none"
+                    or interaction != "request_response"):
+                raise HostArchitectureError(
+                    "EXECUTION_PROGRAM_REQUIRES_TYPED_STATE_CONTRACT")
+            if executable["schema"] == "rmm/transaction-effect-v1":
+                rows = executable.get("changes")
+                if (set(executable) != {"schema", "namespace", "changes"}
+                        or not isinstance(rows, list)
+                        or not 1 <= len(rows) <= 5
+                        or len(rows) != len(typed_contract["state_changes"])):
+                    raise HostArchitectureError("EXECUTION_PROGRAM_INVALID_TRANSACTION")
+            else:
+                if (set(executable) != {"schema", "namespace", "field",
+                                       "operation", "amount", "limit"}
+                        or len(typed_contract["state_changes"]) != 1):
+                    raise HostArchitectureError("EXECUTION_PROGRAM_INVALID_ATOMIC_EFFECT")
         choices = system.get("action_choices", [])
         if (not isinstance(choices, list) or len(choices) > 12
                 or any(not isinstance(item, dict)
@@ -441,6 +465,8 @@ def expand_semantic_facet(
                 stem = _pascal(target["name"], "WorldObject")
                 resolved_world = (
                     stem[:23] + suffix + str(index_of_target + 1))
+            if executable is not None:
+                host_executable_actions[remote_name] = executable
             host_typed_actions[remote_name] = {
                 "contract": typed_contract,
                 "server": server_name, "client": client_name,
@@ -518,6 +544,7 @@ def expand_semantic_facet(
         "_host_world_actions": host_world_actions,
         "_host_action_choices": host_action_choices,
         "_host_typed_actions": host_typed_actions,
+        "_host_executable_actions": host_executable_actions,
         "_host_client_actions": {
             modules_row["name"]: {
                 "remote": modules_row["uses_remotes"][0],
