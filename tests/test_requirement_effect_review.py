@@ -87,6 +87,9 @@ def test_uncertain_reviewer_never_counts_as_pass(tmp_path):
 
 class Planner:
     def complete_json(self, **kwargs):
+        if kwargs["prompt"].startswith("Patch exactly ONE"):
+            return {"before": "local rank = 0\\nrank += 1\\nreturn rank",
+                    "after": "local thrust = 1\\nthrust += 1\\nreturn thrust"}
         return {"file": FILE,
                 "root_cause": "Thrust not updated by rank purchase",
                 "change_strategy": "Update real thrust after currency charge",
