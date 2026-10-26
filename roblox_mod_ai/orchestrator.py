@@ -452,10 +452,21 @@ class RobloxProductionOrchestrator:
                 if not content or generated_module_errors(
                         module, proposal, content, self.analyzer):
                     return
+                digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+                signature = checkpoint_signature(module)
+                old = entries.get(module.file_path)
+                attested = bool(
+                    isinstance(old, dict)
+                    and old.get("semantic_repair_verified") is True
+                    and old.get("input_sha256") == signature
+                    and old.get("source_sha256") == digest
+                )
                 entries[module.file_path] = {
-                    "input_sha256": checkpoint_signature(module),
-                    "source_sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+                    "input_sha256": signature,
+                    "source_sha256": digest,
                 }
+                if attested:
+                    entries[module.file_path]["semantic_repair_verified"] = True
                 staging = checkpoint_file.with_suffix(".json.tmp")
                 staging.write_text(json.dumps({
                     "schema": "rmm/codegen-checkpoint-v1", "modules": entries,
@@ -500,6 +511,25 @@ class RobloxProductionOrchestrator:
                         module.code if module.module_id.startswith("dyn_")
                         and not is_host_generated and module.code else None,
                     )
+                    if (is_host_generated and module.module_id.startswith("dyn_")
+                            and module.file_path.startswith(("src/server/", "src/client/"))
+                            and isinstance(stored, dict)
+                            and stored.get("semantic_repair_verified") is True
+                            and previous is not None
+                            and not generated_module_errors(
+                                module, proposal, previous, self.analyzer)):
+                        # Persist verified repairs across a resumed build. Only
+                        # same plan+generator revision and exact disk hash may
+                        # override a GENERATED GAMEPLAY action; protected
+                        # network, player profiles and bootstrap stay host-owned.
+                        module.code = previous
+                        trajectory.record(
+                            "generation", "resume verified gameplay repair " +
+                            module.file_path, {
+                                "source_sha256": stored["source_sha256"],
+                                "host_base_revalidated": True,
+                            }, passed=True,
+                        )
                     if (module.module_id.startswith("dyn_")
                             and not is_host_generated and module.code
                             and previous is None):
@@ -959,6 +989,53 @@ class RobloxProductionOrchestrator:
                      "changed_files": repair["changed_files"]},
                     passed=repair["passed"],
                 )
+                # Persist each independently verified repair EVEN IF OTHER
+                # required files still have blocking findings. Without this,
+                # every restart regenerates the pre-repair host template and
+                # repeats the same successful edits. Never certify the whole
+                # game when only a subset is repaired.
+                attested_paths: set[str] = set()
+                for completed_step in repair.get("attempts", []):
+                    if (completed_step.get("status") in
+                            ("passed", "improved_needs_next_round")
+                            and isinstance(completed_step.get("validation"), dict)
+                            and completed_step["validation"].get("passed") is True
+                            and isinstance(completed_step.get("review"), dict)
+                            and completed_step["review"].get("fully_covered") is True):
+                        for edit in completed_step.get("edits", []):
+                            if isinstance(edit, dict) and isinstance(edit.get("file"), str):
+                                attested_paths.add(edit["file"])
+                attested_paths.intersection_update(repair.get("changed_files", []))
+                if attested_paths:
+                    try:
+                        saved = json.loads(checkpoint_file.read_text(encoding="utf-8"))
+                    except (OSError, ValueError, TypeError):
+                        saved = {}
+                    items = saved.get("modules", {})
+                    if not isinstance(items, dict):
+                        items = {}
+                    for repaired_module in proposal.modules:
+                        if repaired_module.file_path not in attested_paths:
+                            continue
+                        final_source = (output_dir / repaired_module.file_path).read_text(
+                            encoding="utf-8")
+                        items[repaired_module.file_path] = {
+                            "input_sha256": checkpoint_signature(repaired_module),
+                            "source_sha256": hashlib.sha256(
+                                final_source.encode("utf-8")).hexdigest(),
+                            "semantic_repair_verified": True,
+                        }
+                    temporary = checkpoint_file.with_suffix(".json.tmp")
+                    temporary.write_text(json.dumps({
+                        "schema": "rmm/codegen-checkpoint-v1", "modules": items,
+                    }, indent=2, ensure_ascii=False), encoding="utf-8")
+                    temporary.replace(checkpoint_file)
+                trajectory.record(
+                    "static", "retain verified per-module repair progress", {
+                        "files": sorted(attested_paths),
+                        "overall_repair_passed": repair["passed"],
+                    }, passed=True,
+                )
                 if not repair["passed"]:
                     return {"passed": False,
                             "error": "AI defect repair exhausted or blocked: " + repair["reason"],
@@ -974,30 +1051,6 @@ class RobloxProductionOrchestrator:
                 if not analysis_report.passed or not acceptance["passed"]:
                     return {"passed": False,
                             "error": "Final static acceptance regressed after source review repair"}
-                # Retain only VERIFIED repaired code in the checkpoint.
-                # Otherwise next Colab run resumes the stale pre-repair source
-                # and makes the same small AI repeat all failed attempts.
-                try:
-                    saved = json.loads(checkpoint_file.read_text(encoding="utf-8"))
-                except (OSError, ValueError, TypeError):
-                    saved = {}
-                items = saved.get("modules", {})
-                if not isinstance(items, dict):
-                    items = {}
-                for module in proposal.modules:
-                    if module.file_path not in repair["changed_files"]:
-                        continue
-                    final_source = (output_dir / module.file_path).read_text(encoding="utf-8")
-                    items[module.file_path] = {
-                        "input_sha256": checkpoint_signature(module),
-                        "source_sha256": hashlib.sha256(
-                            final_source.encode("utf-8")).hexdigest(),
-                    }
-                temporary = checkpoint_file.with_suffix(".json.tmp")
-                temporary.write_text(json.dumps({
-                    "schema": "rmm/codegen-checkpoint-v1", "modules": items,
-                }, indent=2, ensure_ascii=False), encoding="utf-8")
-                temporary.replace(checkpoint_file)
             if ai_review["status"] == "not_run":
                 # Offline compile-only CI deliberately has no model. Keep
                 # parser/Rojo checks executable, but do not claim semantic
