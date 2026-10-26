@@ -123,6 +123,32 @@ def inspect_compiled_place(proposal: RobloxProposal, compiled: Path,
                      if name==obj["name"] and kind==obj["class"]
                      and any(_name(p)=="Workspace" for p in _ancestors(e,parents))]
             check("dynamic.world."+obj["name"],len(matches)==1)
+            # Presence is not enough: a Position-only exported Part can
+            # exist in the XML yet fail to materialize at its declared orbit
+            # or mining coordinates. Rojo must serialize actual CFrame.
+            correct_pose = False
+            if len(matches) == 1 and obj.get("class") in (
+                    "Part", "MeshPart", "SpawnLocation"):
+                props = matches[0].find("Properties")
+                cframe = (next(
+                    (item for item in props
+                     if item.get("name") == "CFrame"), None)
+                    if props is not None else None)
+                expected_xyz = obj.get("position")
+                if (cframe is not None and cframe.tag in (
+                        "CoordinateFrame", "CFrame")
+                        and isinstance(expected_xyz, (list, tuple))
+                        and len(expected_xyz) == 3):
+                    try:
+                        actual_xyz = [float(cframe.findtext(axis))
+                                      for axis in ("X", "Y", "Z")]
+                        correct_pose = all(
+                            abs(actual - float(expected)) < 0.001
+                            for actual, expected in zip(actual_xyz, expected_xyz)
+                        )
+                    except (TypeError, ValueError):
+                        correct_pose = False
+            check("dynamic.world_pose."+obj["name"],correct_pose)
         for remote_name, remote_class in dynamic.get("remotes", {}).items():
             matching=[e for n,k,e in items
                       if n==remote_name and k==remote_class and
