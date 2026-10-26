@@ -274,31 +274,31 @@ def render_transaction_server(module: Any, proposal: Any) -> str | None:
         n = idx + 1
         old, delta, next_value = f"old{n}", f"amount{n}", f"next{n}"
         checks.append(
-            f"    local {old}=state.{field}\\n"
-            f"    if {old}==nil then {old}=0 end\\n"
+            f"    local {old}=state.{field}\n"
+            f"    if {old}==nil then {old}=0 end\n"
             f"    if type({old})~=\"number\" or {old}~={old} or {old}%1~=0 "
-            f"or {old}<0 or {old}>{limit} then\\n"
-            f"        return {{success=false,reason=\"invalid_state\"}} end\\n"
-            f"    local {delta}={expr}\\n"
+            f"or {old}<0 or {old}>{limit} then\n"
+            f"        return {{success=false,reason=\"invalid_state\"}} end\n"
+            f"    local {delta}={expr}\n"
             f"    if type({delta})~=\"number\" or {delta}~={delta} or {delta}%1~=0 "
-            f"or {delta}<0 or {delta}>{limit} then\\n"
-            f"        return {{success=false,reason=\"invalid_amount\"}} end\\n"
+            f"or {delta}<0 or {delta}>{limit} then\n"
+            f"        return {{success=false,reason=\"invalid_amount\"}} end\n"
         )
         if operation == "increment":
             checks.append(
                 f"    if {old}>{limit}-{delta} then "
-                'return {success=false,reason="limit"} end\\n'
+                'return {success=false,reason="limit"} end\n'
             )
-            checks.append(f"    local {next_value}={old}+{delta}\\n")
+            checks.append(f"    local {next_value}={old}+{delta}\n")
         elif operation == "decrement":
             checks.append(
                 f"    if {old}<{delta} then "
-                'return {success=false,reason="insufficient"} end\\n'
+                'return {success=false,reason="insufficient"} end\n'
             )
-            checks.append(f"    local {next_value}={old}-{delta}\\n")
+            checks.append(f"    local {next_value}={old}-{delta}\n")
         else:
-            checks.append(f"    local {next_value}={delta}\\n")
-        commits.append(f"    state.{field}={next_value}\\n")
+            checks.append(f"    local {next_value}={delta}\n")
+        commits.append(f"    state.{field}={next_value}\n")
         updates.append(field + "=" + next_value)
     if not any(m.name == "PlayerDataManager"
                and m.kind in (ModuleKind.DATA_STORE, ModuleKind.SERVER_MODULE)
