@@ -244,3 +244,23 @@ def test_semantic_architecture_preserves_executable_effect_ir():
     remote, saved = next(iter(converted["_host_executable_actions"].items()))
     assert saved == program
     assert converted["_host_typed_actions"][remote]["transport_only"] is False
+
+
+def test_noop_increment_cannot_be_declared_as_finished_gameplay():
+    from roblox_mod_ai.host_effect_ir_planner import compile_effect_data
+    p, server, remote = _candidate()
+    program = p.game_design["dynamic_design"]["host_executable_actions"][remote]
+    program["changes"][1]["amount"] = {"constant": 0}
+    with pytest.raises(ValueError, match="TRANSACTION_INVALID_CONSTANT"):
+        render_atomic_server(server, p)
+    with pytest.raises(ValueError, match="DECLARATIVE_EFFECT_ZERO_MUTATION"):
+        compile_effect_data({
+            "supported": True,
+            "uses_quantity": False,
+            "quantity_max": 1,
+            "changes": [{
+                "field": "score", "operation": "increment",
+                "source": "constant", "constant": 0,
+                "multiplier": 1, "limit": 100,
+            }],
+        })
