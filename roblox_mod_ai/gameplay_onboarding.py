@@ -39,7 +39,21 @@ def render_game_objectives(proposal: RobloxProposal) -> str:
                 r"(?:게임|모드)?\s*(?:을|를)?\s*(?:만들어\s*줘|만들어주세요|제작해\s*줘|제작해주세요)[.!?\s]*$",
                 "", proposal.requested_prompt.strip(), flags=re.I
             ).strip(" ,.!?")[:130] or str(contract.get("objective", "활동을 진행하세요."))
-            hint = actions[0][:125] if actions else "맵을 탐색하세요."
+            # An internal planning phrase like "execute requested intent-..."
+            # is NOT a player action. Prefer a concrete already-authored
+            # gameplay entry point, never display internal feature IDs.
+            candidate = actions[0][:125] if actions else ""
+            if re.search(r"execute requested|intent-[0-9a-f]+|TODO|NOT RUN",
+                         candidate, flags=re.I):
+                candidate = ""
+            if not candidate and (
+                    ("자원" in proposal.requested_prompt
+                     or "채굴" in proposal.requested_prompt)
+                    and any(m.name.startswith(("ResourceGather", "Mining"))
+                            and m.file_path.startswith("src/server/")
+                            for m in proposal.modules)):
+                candidate = "자원 노드 근처로 이동해 채굴 버튼을 눌러 자원을 모으세요."
+            hint = candidate or "맵을 탐색하세요."
     else:
         if mode == "round":
             goal = ("Collect coins, buy equipment and win the arena round."
