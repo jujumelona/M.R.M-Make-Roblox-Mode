@@ -80,6 +80,64 @@ def _plan_change(module: Any, issues: list[dict[str, Any]], router: Any,
     }
 
 
+def _repair_host_action_scoped(
+    source: str, path: str, issues: list[dict[str, Any]],
+    plan: dict[str, Any], router: Any,
+) -> str:
+    """Ask the small model for ONE bounded anchored edit, never a whole file.
+
+    It is only called for generated gameplay, never infrastructure. Actual
+    analyzers and independent re-review still decide whether to retain it.
+    """
+    anchor = str(issues[0].get("quote", ""))
+    offset = source.find(anchor)
+    if offset < 0:
+        raise ValueError("Host patch anchor no longer appears in reviewed source")
+    start = max(0, offset - 1300)
+    end = min(len(source), offset + max(200, len(anchor)) + 1300)
+    result = router.complete_json(
+        prompt=(
+            "Patch exactly ONE local Luau behavior defect. Return two short "
+            "JSON strings 'before' and 'after' (literal source fragments); "
+            "DO NOT return a whole script, disable validation, or remove "
+            "other mechanics. 'before' must match the supplied source window "
+            "verbatim and exactly once in the complete original source. "
+            "'after' must implement the missing effect, preserving authority "
+            "and persistent state. A second pass will run compiler, static "
+            "contracts, and independent behavioral review.\n"
+            + json.dumps({
+                "file": path, "issue": issues[:2],
+                "root_cause": plan["root_cause"],
+                "change_strategy": plan["change_strategy"],
+                "source_window": source[start:end],
+            }, ensure_ascii=False)
+        ),
+        role="coder", temperature=0, max_tokens=1800,
+        json_schema={
+            "type": "object",
+            "properties": {
+                "before": {"type": "string", "maxLength": 1200},
+                "after": {"type": "string", "maxLength": 2200},
+            },
+            "required": ["before", "after"],
+            "additionalProperties": False,
+        },
+    )
+    if not isinstance(result, dict):
+        raise ValueError("Host patch has invalid JSON")
+    before, after = result.get("before"), result.get("after")
+    if (not isinstance(before, str) or not isinstance(after, str)
+            or len(before) < 8 or len(before) > 1200
+            or len(after) > 2200 or before == after
+            or source.count(before) != 1
+            or before not in source[start:end]):
+        raise ValueError("Host patch must change one unique small source hunk")
+    revised = source.replace(before, after, 1)
+    if len(revised) < len(source) * 0.85:
+        raise ValueError("Host patch removed too much existing source")
+    return revised
+
+
 def run_source_repair_cycle(
     proposal: Any,
     root: Path,
@@ -206,9 +264,15 @@ def run_source_repair_cycle(
                                  ensure_ascii=False)[:6000]
                 )
                 original = originals[module.file_path]
-                candidate = agent.repair(
-                    module, proposal, existing_code=original,
-                    diagnostics=diagnostic, attempts=2,
+                is_host = host_source_must_regenerate(
+                    module, strategy_by_id.get(module.module_id, ""))
+                candidate = (
+                    _repair_host_action_scoped(
+                        original, module.file_path, issues, plan, router)
+                    if is_host and allow_host_gameplay_repairs
+                    else agent.repair(
+                        module, proposal, existing_code=original,
+                        diagnostics=diagnostic, attempts=2)
                 )
                 if not isinstance(candidate, str) or candidate == original or not candidate.strip():
                     raise ValueError("Repair produced no substantive source change")
