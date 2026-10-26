@@ -203,3 +203,42 @@ def test_unrelated_no_mining_game_design_remains_byte_for_byte_unchanged():
     original = copy.deepcopy(p.game_design["dynamic_design"])
     assert ensure_mining_world_contract(p) == []
     assert p.game_design["dynamic_design"] == original
+
+
+def test_first_mining_node_is_reachable_from_spawn_even_with_many_decorations():
+    import math
+    p = proposal20()
+    design = p.game_design["dynamic_design"]
+    # Real user's authored game had 25+ unrelated world objects before
+    # its single resource node, leaving first gameplay 130+ studs away.
+    for i in range(25):
+        design["world_objects"].append({
+            "name": "Decoration" + str(i), "class": "Part",
+            "position": [24.0 + i * 12, 2.0, 24.0],
+            "size": [4.0, 4.0, 4.0],
+        })
+    updates = ensure_mining_world_contract(p)
+    assert len(updates) == 1
+    node = next(x for x in design["world_objects"]
+                if x["name"] == updates[0]["resource_node"])
+    x, y, z = node["position"]
+    assert y == 2.0
+    assert math.hypot(x, z) <= 18.0
+    assert node["position"] not in [
+        obj["position"] for obj in design["world_objects"]
+        if obj["name"] != node["name"]
+    ]
+
+
+def test_first_mining_node_avoids_occupied_near_spawn_pad():
+    p = proposal20()
+    design = p.game_design["dynamic_design"]
+    design["world_objects"].append({
+        "name": "NearbyObstacle", "class": "Part",
+        "position": [8.0, 2.0, 12.0], "size": [4.0, 4.0, 4.0],
+    })
+    updates = ensure_mining_world_contract(p)
+    node = next(x for x in design["world_objects"]
+                if x["name"] == updates[0]["resource_node"])
+    assert node["position"] != [8.0, 2.0, 12.0]
+    assert abs(node["position"][0] - 8) >= 7 or abs(node["position"][2] - 12) >= 7
