@@ -81,7 +81,7 @@ from .module_generation_gate import (
     generated_module_errors,
 )
 from .scaffold_policy import is_host_scaffolded_source
-from .generation_scope import generation_scope
+from .generation_scope import generation_scope, assert_prompt_invariant_routing
 from .implementation_blueprint import audit_implementation_blueprint
 
 def explicit_stage_verdict(details: Any) -> bool:
@@ -328,6 +328,7 @@ class RobloxProductionOrchestrator:
             if handoffs:
                 tool_results["host_protocol_handovers"] = handoffs
             scope = generation_scope(proposal)
+            assert_prompt_invariant_routing(proposal, original_scope=scope)
             tool_results["generation_scope"] = scope
             trajectory.record("preflight", "generation scope", {
                 "counts": scope["counts"],
