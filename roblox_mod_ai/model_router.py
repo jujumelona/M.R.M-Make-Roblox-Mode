@@ -43,6 +43,8 @@ class ModelRouter:
         # Keep the legacy experimental type-manifest path opt-in for tests
         # and explicit research, never as the production hard gate.
         self.supports_typed_action_contract = False
+        # Prefer short, validated execution data over whole-file Luau when feasible.
+        self.supports_declarative_effect_program = True
         self.adapters: dict[str, ModelAdapter] = {}
         self._init_adapters()
 
