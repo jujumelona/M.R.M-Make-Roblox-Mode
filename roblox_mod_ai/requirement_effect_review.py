@@ -140,26 +140,107 @@ def _review_with_bounded_truncation_recovery(
             "source_lines": numbered,
         }, ensure_ascii=False)
     )
-    for budget in (2600, 4096):
+    # A constrained JSON schema is not a guarantee for small GGUF models.
+    # If the enum is missing/invalid, change representation on the next
+    # request instead of retrying the same broken schema or aborting the game.
+    # Boolean questions are simpler than copying an enum verbatim.
+    invalid_reason = ""
+    length_failures = 0
+    for attempt, budget in enumerate((2600, 4096)):
+        simple = attempt > 0
+        if simple:
+            query = (
+                "Assess the EXACT server-owned action below. Return a tiny JSON "
+                "object with can_decide (JSON boolean), missing_effect (JSON "
+                "boolean), evidence_line (integer), issue (short sentence), "
+                "repair (short sentence). No verdict field, no markdown. "
+                "If source evidence is insufficient, can_decide=false and "
+                "evidence_line=0. When can_decide=true, evidence_line MUST "
+                "refer to a real numbered executable source line. "
+                "missing_effect=true means the original user's promised action "
+                "is not really performed; a mere rank is not a physical effect. "
+                "Do not invent requirements such as player-to-player trades "
+                "when the original user says only trade. Do not demand other "
+                "modules' responsibilities. DO NOT claim Roblox Studio tests. "
+                "This is a REFORMULATION because the last output was unusable: "
+                + invalid_reason[:200] + "\\n"
+                + json.dumps({
+                    "original_requirement": original[:900],
+                    "owner_behavior": responsibility[:800],
+                    "source_lines": numbered,
+                }, ensure_ascii=False)
+            )
+            response_schema = {
+                "type": "object", "properties": {
+                    "can_decide": {"type": "boolean"},
+                    "missing_effect": {"type": "boolean"},
+                    "evidence_line": {"type": "integer"},
+                    "issue": {"type": "string", "maxLength": 160},
+                    "repair": {"type": "string", "maxLength": 160},
+                },
+                "required": ["can_decide", "missing_effect",
+                             "evidence_line", "issue", "repair"],
+                "additionalProperties": False,
+            }
+        else:
+            query = compact_prompt
+            response_schema = compact_schema
         try:
             short = router.complete_json(
-                prompt=compact_prompt, role="analyzer", temperature=0,
-                max_tokens=budget, json_schema=compact_schema,
+                prompt=query, role="analyzer", temperature=0,
+                max_tokens=budget, json_schema=response_schema,
             )
         except ValueError as exc:
             if "finish_reason=length" not in str(exc):
                 raise
+            length_failures += 1
+            invalid_reason = "response hit output token ceiling"
             retries.append({
                 "requirement": requirement_id, "file": file_path,
                 "reason": "model_output_truncated",
-                "phase": "compact_line_review", "token_budget": budget,
+                "phase": "boolean_review" if simple else "compact_line_review",
+                "token_budget": budget,
             })
             continue
         if not isinstance(short, dict):
-            raise ValueError("Compact model review did not return an object")
-        verdict = short.get("verdict")
-        if verdict not in ("implemented", "missing", "uncertain"):
-            raise ValueError("Compact model review has invalid verdict")
+            invalid_reason = "model returned a non-object"
+            retries.append({
+                "requirement": requirement_id, "file": file_path,
+                "reason": "invalid_model_result", "phase":
+                    "boolean_review" if simple else "compact_line_review",
+            })
+            continue
+        if simple:
+            decidable = short.get("can_decide")
+            missing_effect = short.get("missing_effect")
+            if type(decidable) is not bool or type(missing_effect) is not bool:
+                invalid_reason = "model did not return JSON booleans"
+                retries.append({
+                    "requirement": requirement_id, "file": file_path,
+                    "reason": "invalid_boolean_result",
+                    "phase": "boolean_review",
+                })
+                continue
+            verdict = (
+                "uncertain" if not decidable
+                else "missing" if missing_effect else "implemented"
+            )
+        else:
+            verdict = short.get("verdict")
+            if verdict not in ("implemented", "missing", "uncertain"):
+                # Logging the invalid value helps diagnose actual MiMo output;
+                # do not normalize unknown words into 'implemented'.
+                invalid_reason = (
+                    "enum verdict invalid: " +
+                    repr(short.get("verdict"))[:80]
+                )
+                retries.append({
+                    "requirement": requirement_id, "file": file_path,
+                    "reason": "invalid_compact_verdict",
+                    "phase": "compact_line_review", "token_budget": budget,
+                    "returned_verdict": repr(short.get("verdict"))[:80],
+                })
+                continue
         if verdict == "uncertain":
             return {
                 "verdict": verdict, "file": file_path, "quote": "",
@@ -168,24 +249,41 @@ def _review_with_bounded_truncation_recovery(
             }
         number = short.get("evidence_line")
         if type(number) is not int or not (1 <= number <= len(lines)):
-            raise ValueError("Compact model review selected a nonexistent line")
+            invalid_reason = "nonexistent physical source line"
+            retries.append({
+                "requirement": requirement_id, "file": file_path,
+                "reason": "invalid_evidence_line",
+                "phase": "boolean_review" if simple else "compact_line_review",
+            })
+            continue
         quote = lines[number - 1].strip()
         if (len(quote) < 8 or quote.startswith(("--", "*"))
                 or quote in ("end", "else", "return false", "return nil")):
-            raise ValueError("Compact model review provided no executable source evidence")
+            invalid_reason = "source line is empty, comment or non-evidence"
+            retries.append({
+                "requirement": requirement_id, "file": file_path,
+                "reason": "invalid_evidence_line",
+                "phase": "boolean_review" if simple else "compact_line_review",
+            })
+            continue
         retries.append({
             "requirement": requirement_id, "file": file_path,
             "reason": "recovered_with_host_selected_source_line",
-            "phase": "compact_line_review", "token_budget": budget,
-            "line": number,
+            "phase": "boolean_review" if simple else "compact_line_review",
+            "token_budget": budget, "line": number,
         })
         return {
             "verdict": verdict, "file": file_path, "quote": quote[:180],
             "issue": str(short.get("issue", ""))[:200],
             "repair": str(short.get("repair", ""))[:200],
         }
+    if length_failures == 2:
+        raise ValueError(
+            "Model JSON remained truncated after bounded compact-source retries"
+        )
     raise ValueError(
-        "Model JSON remained truncated after bounded compact-source retries"
+        "Compact model review remained invalid after alternate boolean "
+        "classification; last_error=" + invalid_reason[:200]
     )
 
 
