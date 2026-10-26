@@ -107,8 +107,8 @@ def test_failed_codegen_uses_both_verified_host_adapters():
         assert match and match[1] == remote
     scope = generation_scope(plan)
     strategy = {r["name"]: r["strategy"] for r in scope["modules"]}
-    assert strategy[server.name] == "host_space_mineral"
-    assert strategy[client.name] == "host_space_mineral"
+    assert strategy[server.name] == "host_contextual_harvest"
+    assert strategy[client.name] == "host_contextual_harvest"
     coder = LuauCodeGenerator(NoModel())
     server_code = coder.generate_with_self_correction(server, plan)
     client_code = coder.generate_with_self_correction(client, plan)
@@ -193,8 +193,11 @@ def test_real_generic_vehicle_resource_uses_declared_state_not_game_words():
 def test_invalid_declared_reward_or_range_does_not_fall_back_to_guessed_code():
     plan, server, client, remote = fixture()
     record = plan.game_design["dynamic_design"]["host_materialized_world"][0]
+    import pytest
     record["reward"]["key"] = "bad.name"
-    assert render_space_mineral(server, plan) is None
+    with pytest.raises(ValueError, match="INVALID_CONTEXTUAL_HARVEST_CONTRACT"):
+        render_space_mineral(server, plan)
     record["reward"]["key"] = "fruit"
     record["interaction_range"] = -2
-    assert render_space_mineral(server, plan) is None
+    with pytest.raises(ValueError, match="INVALID_CONTEXTUAL_HARVEST_CONTRACT"):
+        render_space_mineral(server, plan)
