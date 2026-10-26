@@ -321,3 +321,41 @@ def generation_scope(
             "invalid, but is an unmitigated source of long-output failures."
         ),
     }
+
+
+def assert_prompt_invariant_routing(proposal: Any, *, original_scope: dict[str, Any] | None = None) -> None:
+    """Reject gameplay routes chosen from literal prompt wording.
+
+    Two plans with identical validated module graphs and structured contracts
+    must select the same generator strategies, irrespective of the raw text
+    that originally led to those contracts. This is a routing check, not
+    evidence that the authored mechanics work in Roblox Studio.
+    """
+    from copy import copy
+
+    if not (proposal.game_design.get("dynamic_design") or {}):
+        return
+    baseline = original_scope if original_scope is not None else generation_scope(proposal)
+    text_free = copy(proposal)
+    text_free.requested_prompt = "[raw prompt withheld: use validated contracts]"
+    alternative = generation_scope(text_free)
+
+    def by_id(report: dict[str, Any]) -> dict[str, str]:
+        return {str(row["module_id"]): str(row["strategy"])
+                for row in report["modules"] if str(row["module_id"]).startswith("dyn_")}
+
+    actual = by_id(baseline)
+    without_text = by_id(alternative)
+    mismatches = [
+        f"{module_id}: {strategy} -> {without_text.get(module_id, '<missing>')}"
+        for module_id, strategy in actual.items()
+        if without_text.get(module_id) != strategy
+    ]
+    if set(without_text) != set(actual):
+        mismatches.append("dynamic module roster changed")
+    if mismatches:
+        raise ValueError(
+            "PROMPT_DEPENDENT_GENERATOR_ROUTE: action dispatch must depend on "
+            "validated gameplay contracts rather than matching the original "
+            "prompt's words: " + "; ".join(mismatches)
+        )
