@@ -258,7 +258,8 @@ def render_transaction_server(module: Any, proposal: Any) -> str | None:
             raise ValueError("TRANSACTION_INVALID_AMOUNT")
         if set(amount) == {"constant"}:
             n = amount["constant"]
-            if type(n) is not int or not 0 <= n <= limit:
+            if (type(n) is not int or not 0 <= n <= limit
+                    or (operation != "set" and n == 0)):
                 raise ValueError("TRANSACTION_INVALID_CONSTANT")
             expr = str(n)
         elif set(amount) in ({"input"}, {"input", "multiplier"}):
