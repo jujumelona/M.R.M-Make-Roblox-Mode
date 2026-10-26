@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -287,6 +288,73 @@ def _review_with_bounded_truncation_recovery(
     )
 
 
+def _downstream_effect_evidence(
+    file_path: str, source: str, modules: dict[str, Any], root: Path,
+) -> list[dict[str, str]]:
+    """Locate actual server consumers of the SAME persisted gameplay state.
+
+    One-file reviewers incorrectly called real upgrades fake ranks because
+    the *other* independent server action reads RMMRankProgress for combat
+    damage or launch duration. This returns bounded on-disk CONSUMER snippets,
+    not claims of implementation or synthetic acceptance evidence. The model
+    must still judge whether the effect is actually used.
+    """
+    namespaces = set(re.findall(
+        r'GetState\\s*\\(\\s*player\\s*,\\s*["\\\'](RMM[A-Za-z0-9_]+)["\\\']',
+        source,
+    ))
+    if not namespaces:
+        return []
+    target_match = re.search(
+        r'\\blocal\\s+TARGET\\s*=\\s*["\\\']([A-Za-z_][A-Za-z0-9_]*)["\\\']',
+        source,
+    )
+    target = target_match.group(1) if target_match else ""
+    hints = {target} if target else set()
+    if "RMMWeaponProgress" in namespaces:
+        hints.update(("weapon.tier", "state.tier"))
+    if "RMMShipSections" in namespaces:
+        hints.update(("GetOwnedActor", "RMMShipAssemblyPerformance"))
+    found: list[dict[str, str]] = []
+    for other in sorted(modules):
+        if other == file_path or not other.startswith("src/server/"):
+            continue
+        content = (root / other).read_text(encoding="utf-8")
+        shared = [namespace for namespace in namespaces
+                  if namespace in content]
+        if not shared:
+            continue
+        # A shared data namespace by itself is NOT proof of effect. Require
+        # the expected state key (if known) to appear in consumer source.
+        if target and target not in content:
+            continue
+        if not any(hint and hint in content for hint in hints):
+            continue
+        lines = content.splitlines()
+        indices = [
+            i for i, line in enumerate(lines)
+            if any(hint and hint in line for hint in hints)
+        ]
+        if not indices:
+            continue
+        # Include both the state read and downstream calculations. Keep model
+        # context bounded, because the local 9B already suffers token limits.
+        first = min(indices[0], next(
+            (i for i, line in enumerate(lines)
+             if any(ns in line for ns in shared)), indices[0]))
+        begin = max(0, first - 5)
+        end = min(len(lines), max(indices[0] + 28, first + 28))
+        excerpt = "\\n".join(
+            f"{i + 1}: {lines[i]}" for i in range(begin, end)
+        )
+        found.append({"file": other,
+                      "shared_persisted_state": ", ".join(sorted(shared)),
+                      "source_excerpt": excerpt[:4600]})
+        if len(found) >= 3:
+            break
+    return found
+
+
 def review_requirement_effects(proposal: Any, root: Path, router: Any) -> dict[str, Any]:
     """Inspect every explicitly owned requirement; block ungrounded passes.
 
@@ -356,13 +424,23 @@ def review_requirement_effects(proposal: Any, root: Path, router: Any) -> dict[s
                 return report
             module = modules[file_path]
             responsibility = str(getattr(module, "description", "") or "")
+            downstream = _downstream_effect_evidence(
+                file_path, source, modules, root,
+            )
             # A written implementation responsibility is a promise, not code
             # evidence. The reviewer must inspect the entire actual Luau file.
             prompt = (
                 "Independently audit ONE complete Roblox Luau server source. "
                 "Check whether the OWNED BEHAVIOR below actually mutates the "
-                "real server-owned state described, and whether that state is "
-                "read by downstream gameplay where required. A rank counter "
+                "real server-owned state described. IMPORTANT: upgrades can "
+                "legitimately persist a rank in ONE source and have their real "
+                "effects consumed by ANOTHER server source. Independently "
+                "inspect the provided on-disk DOWNSTREAM consumer source lines. "
+                "A purchased crew rank that modifies combat damage or a ship "
+                "rank that modifies actual voyage duration IS a real gameplay "
+                "effect; do not demand duplicate physics or inventory state "
+                "inside a purchasing module when a real connected consumer "
+                "already implements the user-requested effect. However a rank counter "
                 "or attribute alone does not implement speed, thrust, capacity "
                 "or weapon damage. A static target alone is not NPC combat AI. "
                 "Do not invent player-to-player trading from the word "
@@ -396,6 +474,7 @@ def review_requirement_effects(proposal: Any, root: Path, router: Any) -> dict[s
                     "file": file_path,
                     "owned_behavior": responsibility[:1800],
                     "entire_source": source,
+                    "downstream_server_consumers": downstream,
                 }, ensure_ascii=False)
             )
             report["executed"] = True
