@@ -2219,6 +2219,18 @@ class RobloxDynamicArchitect:
                             "Typed action conflicts with existing Remote input")
                     host_actions[remote_name]["max_args"] = 1
             result["host_typed_actions"] = typed_actions
+            executable_actions: dict[str, dict[str, Any]] = {}
+            for part in accepted_parts:
+                for remote_name, program in part.get(
+                        "_host_executable_actions", {}).items():
+                    if (remote_name in executable_actions
+                            or remote_name not in host_actions
+                            or remote_name not in typed_actions
+                            or typed_actions[remote_name].get("transport_only") is True):
+                        raise DynamicDesignError(
+                            "Executable effect must own one typed server action")
+                    executable_actions[remote_name] = program
+            result["host_executable_actions"] = executable_actions
             # A Roblox ProximityPrompt already renders a cross-platform
             # object interaction. Host owns its Instance and server callback;
             # no fabricated client module or client-to-server Remote.
