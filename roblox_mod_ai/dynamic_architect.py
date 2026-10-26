@@ -41,6 +41,7 @@ from .typed_action_contract import (
     validate_contract, complete_typed_contract, host_owned_action_contract,
     validated_host_choice_options,
 )
+from .host_effect_ir_planner import try_plan_effect_data
 
 _VALID_NAME = re.compile(r"^[A-Z][A-Za-z0-9]{2,58}$")
 _VALID_REMOTE = re.compile(r"^[A-Z][A-Za-z0-9]{2,55}$")
@@ -1710,7 +1711,24 @@ class RobloxDynamicArchitect:
                                 if (system.get("input_mode", "custom") == "custom"
                                         and system.get("interaction") in {
                                             "event", "request_response"}):
-                                    if getattr(
+                                    # Structured numeric effects are compiled by
+                                    # the host. If a short model-generated IR
+                                    # cannot represent the *whole* action, use
+                                    # the existing typed transport + bounded
+                                    # body writer; never fabricate a success.
+                                    effect_candidate = (
+                                        try_plan_effect_data(self.router, system, subset)
+                                        if getattr(self.router, "supports_host_standard_transport", False)
+                                        else None
+                                    )
+                                    if effect_candidate is not None:
+                                        executable_contract, executable_program = effect_candidate
+                                        system = dict(
+                                            system, action_contract=executable_contract,
+                                            effect_program=executable_program,
+                                            host_standard_transport=False,
+                                        )
+                                    elif getattr(
                                             self.router, "supports_host_standard_transport", False):
                                         # Host supplies a stable input ABI. Never
                                         # ask a 9B model to invent another
