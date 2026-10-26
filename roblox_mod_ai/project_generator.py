@@ -15,6 +15,7 @@ from .creator_store import RobloxCreatorStoreCatalog
 from .request_traceability import build_request_traceability
 from .project_modes import EXISTING_ADDON, write_addon_manifest
 from .spec import RobloxAssetSpec, RobloxModuleSpec, RobloxProposal
+from .world_interaction_placement import spawn_anchor
 
 
 
@@ -173,7 +174,7 @@ class RobloxProjectGenerator:
             "Anchored": True, "Size": [512, 20, 512], "CFrame": _placement_cframe([0, -10, 0]),
         }}
         world["SpawnLocation"] = {"$className": "SpawnLocation", "$properties": {
-            "Anchored": True, "Size": [12, 1, 12], "CFrame": _placement_cframe([0, 1, 60 if round_lobby else 0]),
+            "Anchored": True, "Size": [12, 1, 12], "CFrame": _placement_cframe(spawn_anchor(proposal.game_design, round_lobby=round_lobby)),
         }}
         rep_packages = proposal.game_design.get("ui_backend") == "fusion"
         server_packages = proposal.game_design.get("storage_backend") == "profilestore"
