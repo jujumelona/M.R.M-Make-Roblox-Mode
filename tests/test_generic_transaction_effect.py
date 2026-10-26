@@ -129,3 +129,73 @@ def test_transaction_does_not_fabricate_program():
     p, server, remote = _candidate()
     p.game_design["dynamic_design"]["host_executable_actions"].pop(remote)
     assert render_atomic_server(server, p) is None
+
+
+def test_compact_numeric_planner_builds_same_contract_without_genre_names():
+    from roblox_mod_ai.host_effect_ir_planner import try_plan_effect_data
+    class Router:
+        supports_declarative_effect_program = True
+        def complete_json(self, prompt, **kwargs):
+            assert "source" in prompt and "behavior" in prompt
+            assert kwargs["json_schema"]["required"]
+            return {
+                "supported": True,
+                "uses_quantity": True,
+                "quantity_max": 10,
+                "changes": [
+                    {"field": "ore", "operation": "decrement",
+                     "source": "quantity", "constant": 0, "multiplier": 1,
+                     "limit": 1000},
+                    {"field": "credits", "operation": "increment",
+                     "source": "quantity", "constant": 0, "multiplier": 2,
+                     "limit": 10000},
+                ],
+            }
+    system = {"input_mode": "custom", "interaction": "request_response",
+              "server_behavior": "A validated player action transfers owned counts.",
+              "observable_result": "Two owned counts update together.",
+              "world_entities": []}
+    result = try_plan_effect_data(
+        Router(), system, [{"statement": "Change two numeric resources"}],
+    )
+    assert result is not None
+    contract, program = result
+    assert len(contract["state_changes"]) == 2
+    assert program["changes"][1]["amount"] == {
+        "input": "quantity", "multiplier": 2,
+    }
+
+
+def test_ir_planner_rejects_quantity_overflow_and_does_not_guess():
+    from roblox_mod_ai.host_effect_ir_planner import compile_effect_data, try_plan_effect_data
+    bad = {
+        "supported": True,
+        "uses_quantity": True, "quantity_max": 1000,
+        "changes": [{"field": "count", "operation": "increment",
+                     "source": "quantity", "constant": 0,
+                     "multiplier": 100, "limit": 100}],
+    }
+    with pytest.raises(ValueError, match="DECLARATIVE_EFFECT_UNBOUNDED_QUANTITY"):
+        compile_effect_data(bad)
+    class Unsupported:
+        supports_declarative_effect_program = True
+        def complete_json(self, *_args, **_kwargs):
+            return dict(bad, supported=False)
+    assert try_plan_effect_data(Unsupported(), {
+        "input_mode": "custom", "interaction": "request_response",
+        "world_entities": [],
+        "server_behavior": "Complex game action", "observable_result": "Outcome",
+    }, [{"statement": "Complex requested game action"}]) is None
+
+
+def test_generic_generator_uses_transaction_not_model_written_module():
+    from roblox_mod_ai.code_generator import LuauCodeGenerator
+    class ForbiddenModel:
+        def complete(self, *_args, **_kwargs):
+            raise AssertionError("Typed executable transaction must not use coder")
+        def complete_json(self, *_args, **_kwargs):
+            raise AssertionError("Typed executable transaction must not use coder")
+    p, server, _ = _candidate()
+    output = LuauCodeGenerator(ForbiddenModel()).generate_module_code(server, p)
+    assert output == render_atomic_server(server, p)
+    assert "state.ore=next1" in output
