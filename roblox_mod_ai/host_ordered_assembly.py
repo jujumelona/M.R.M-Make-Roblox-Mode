@@ -30,7 +30,7 @@ _SCHEMA={"type":"object","properties":{"sections":{"type":"array","items":{
 def eligible_ordered_assembly(m:Any,p:Any)->tuple[str,str,str,list[str]]|None:
     if not m.module_id.startswith("dyn_") or m.kind not in (ModuleKind.SERVER_MODULE,ModuleKind.CLIENT_SCRIPT):return None
     server=m.name if m.kind==ModuleKind.SERVER_MODULE else m.name.removesuffix("Client")+"Server"
-    owner=next((x for x in p.modules if x.name==server and x.kind==ModuleKind.SERVER_MODULE),None)
+    owner=next((x for x in getattr(p, "modules", ()) if x.name==server and x.kind==ModuleKind.SERVER_MODULE),None)
     if owner is None:return None
     # A source-owned, PartAdded-driven assembly state machine is already a
     # server-owned lifecycle contract. Persist its authoritative state in the
