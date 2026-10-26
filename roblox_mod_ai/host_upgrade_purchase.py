@@ -20,12 +20,13 @@ def render_host_upgrade_purchase(module: RobloxModuleSpec, proposal: RobloxPropo
                   if m.kind == ModuleKind.SERVER_MODULE and m.name == server), None)
     if owner is None:
         return None
+    # A renderer may inspect validated module behavior and Remote contracts,
+    # but must never depend on literal Korean/English words in the raw prompt.
+    # Full request/architecture consistency is enforced upstream.
     description = owner.description.casefold()
-    prompt = proposal.requested_prompt.casefold()
-    if (not all(t in description for t in ("weapon", "crew", "ship", "currency",
-                                           "upgrade", "purchase", "inventory"))
-            or not any(x in prompt for x in ("무기", "weapon"))
-            or not any(x in prompt for x in ("선원", "crew"))):
+    if not all(t in description for t in (
+            "weapon", "crew", "ship", "currency",
+            "upgrade", "purchase", "inventory")):
         return None
     design = proposal.game_design.get("dynamic_design") or {}
     bound = [(name, binding) for name, binding in
