@@ -114,6 +114,8 @@ def test_failed_codegen_uses_both_verified_host_adapters():
     assert 'GetOwnedActor(player)' in server_code
     assert 'GetState(player, "RMMInventory")' in server_code
     assert 'inventory.specialMinerals = count + 1' in server_code
+    assert 'services.PlayerDataManager.OnReady(function(player)' in server_code
+    assert 'player:SetAttribute("RMMSpecialMinerals", count)' in server_code
     assert 'select("#", ...) ~= 0' in server_code
     assert 'seat.Occupant ~= humanoid' in server_code
     assert 'node:IsA("BasePart")' in server_code
