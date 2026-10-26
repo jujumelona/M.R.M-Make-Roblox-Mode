@@ -274,3 +274,91 @@ def test_many_grounded_defects_are_repaired_independently(tmp_path, monkeypatch)
     assert first_file.read_text(encoding="utf-8") == FIXED
     assert second_file.read_text(encoding="utf-8") == FIXED
     assert set(result["changed_files"]) == {first.file_path, second.file_path}
+
+
+def test_changing_defect_count_does_not_revert_verified_original_fix(tmp_path, monkeypatch):
+    proposal, module, file = _setup(tmp_path)
+    import roblox_mod_ai.source_repair_cycle as cycle
+    monkeypatch.setattr(cycle, "host_source_must_regenerate", lambda *args: True)
+    middle = "--!strict\\nlocal fuel = 10\\nreturn fuel\\n"
+    finished = "--!strict\\nlocal fuel = 10\\nreturn fuel + 1\\n"
+
+    class PatchRouter:
+        def __init__(self):
+            self.fixes = 0
+            self.focus = 0
+        def complete_json(self, **kwargs):
+            prompt = kwargs["prompt"]
+            if prompt.startswith("Patch exactly ONE"):
+                self.fixes += 1
+                if self.fixes == 1:
+                    return {"before": "local fuel = 0", "after": "local fuel = 10"}
+                return {"before": "return fuel", "after": "return fuel + 1"}
+            assert prompt.startswith("Independent narrow source-diff")
+            self.focus += 1
+            return {"resolved": True, "evidence_quote": "local fuel = 10",
+                    "reason": "Original zero fuel initialization was corrected"}
+    router = PatchRouter()
+    def review():
+        source = file.read_text(encoding="utf-8")
+        row = ({
+            "file": module.file_path, "quote": "local fuel = 0",
+            "line": 2, "severity": "blocking",
+            "issue": "The fuel is initialized to zero with no usable amount",
+            "repair": "Set initial fuel to a positive validated amount",
+            "evidence": "requirement_effect_review_source_quote",
+        } if source == SOURCE else {
+            "file": module.file_path, "quote": "return fuel",
+            "line": 3, "severity": "blocking",
+            "issue": "The fuel getter has no derived usage feedback",
+            "repair": "Return a useful positive observable result",
+            "evidence": "requirement_effect_review_source_quote",
+        })
+        return {
+            "status": "reviewed_no_blockers" if source == finished else "issues_found",
+            "fully_covered": True, "source_sha256": {
+                module.file_path: _sha(source)
+            },
+            "findings": [] if source == finished else [row],
+        }
+    initial = review()
+    result = run_source_repair_cycle(
+        proposal, tmp_path, router, initial,
+        verify=lambda: {"passed": True}, review_again=review,
+        max_rounds=2, allow_host_gameplay_repairs=True,
+    )
+    assert result["passed"]
+    assert file.read_text(encoding="utf-8") == finished
+    assert result["attempts"][0]["status"] == "improved_needs_next_round"
+    assert result["attempts"][0]["scoped_progress"][module.file_path]["resolved"]
+    assert result["attempts"][0]["review"]["status"] == "issues_found"
+    assert result["attempts"][1]["status"] == "passed"
+    assert router.focus == 1
+
+
+def test_scoped_reviewer_must_show_real_new_code_evidence(tmp_path, monkeypatch):
+    proposal, module, file = _setup(tmp_path)
+    import roblox_mod_ai.source_repair_cycle as cycle
+    monkeypatch.setattr(cycle, "host_source_must_regenerate", lambda *args: True)
+    initial = _report(module.file_path, SOURCE)
+    initial["findings"][0]["evidence"] = "requirement_effect_review_source_quote"
+
+    class FalseProgress:
+        def complete_json(self, **kwargs):
+            if kwargs["prompt"].startswith("Patch exactly ONE"):
+                return {"before": "local fuel = 0", "after": "local fuel = 10"}
+            return {"resolved": True, "evidence_quote": "fantasy_source_not_present",
+                    "reason": "Model mistakenly called patch complete"}
+    def still_blocked():
+        new = _report(module.file_path, file.read_text(encoding="utf-8"))
+        new["findings"][0]["issue"] = "Different unresolved action defect"
+        return new
+    result = run_source_repair_cycle(
+        proposal, tmp_path, FalseProgress(), initial,
+        verify=lambda: {"passed": True},
+        review_again=still_blocked, max_rounds=1,
+        allow_host_gameplay_repairs=True,
+    )
+    assert not result["passed"]
+    assert file.read_text(encoding="utf-8") == SOURCE
+    assert result["changed_files"] == []
