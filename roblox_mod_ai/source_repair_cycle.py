@@ -90,6 +90,7 @@ def run_source_repair_cycle(
     review_again: Callable[[], dict[str, Any]],
     max_rounds: int = 3,
     agent_factory: Callable[..., Any] = RobloxCodeRepairAgent,
+    allow_host_gameplay_repairs: bool = False,
 ) -> dict[str, Any]:
     """Retry until clean review or a bounded, explained failure.
 
@@ -147,12 +148,25 @@ def run_source_repair_cycle(
                 step["status"] = "blocked"
                 report["reason"] = "Review referenced unknown module: " + file_path
                 break
-            # An AI patch to a first-party template would be regenerated at
-            # the next build and can bypass security. Require generator fix.
+            # First-party infrastructure remains immutable. For an actual
+            # generated gameplay action, a fresh, source-quoted whole-requirement
+            # review can authorize a *per-build* correction. Verification and
+            # re-review still gate publication; no Python template is modified.
+            is_host = host_source_must_regenerate(
+                module, strategy_by_id.get(module.module_id, ""))
+            behavior_gap = bool(by_file[file_path]) and all(
+                finding.get("evidence") == "requirement_effect_review_source_quote"
+                for finding in by_file[file_path]
+            )
+            allowed_host_action = (
+                allow_host_gameplay_repairs and behavior_gap
+                and module.module_id.startswith("dyn_")
+                and module.module_id not in HOST_OWNED_IDS
+                and module.file_path.startswith(("src/server/", "src/client/"))
+            )
             if (not module.module_id.startswith("dyn_")
                     or module.module_id in HOST_OWNED_IDS
-                    or host_source_must_regenerate(
-                        module, strategy_by_id.get(module.module_id, ""))):
+                    or (is_host and not allowed_host_action)):
                 step["status"] = "blocked"
                 report["reason"] = (
                     "First-party host template needs generator-level repair: " + file_path)
@@ -207,6 +221,9 @@ def run_source_repair_cycle(
                     "file": module.file_path, "before_sha256": _hash(original),
                     "after_sha256": _hash(candidate),
                 })
+            # Edits to host-generated action code are current-build overrides
+            # only. The next build regenerates the host original and repeats
+            # this independent gate instead of trusting a stale saved patch.
             # Apply all candidates transactionally. Failed verification/review
             # restores the exact original bytes and the in-memory module code.
             for module in selected:
