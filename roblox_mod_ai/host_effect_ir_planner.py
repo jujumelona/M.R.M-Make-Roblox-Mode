@@ -71,6 +71,8 @@ def compile_effect_data(candidate: Any) -> tuple[dict[str, Any], dict[str, Any]]
                 or type(constant) is not int or not 0 <= constant <= max_value):
             raise ValueError("DECLARATIVE_EFFECT_INVALID_STATE_OR_AMOUNT")
         used.add(field)
+        if source == "constant" and operation != "set" and constant == 0:
+            raise ValueError("DECLARATIVE_EFFECT_ZERO_MUTATION")
         if source == "quantity":
             if not uses_input or limit_input * multiplier > max_value:
                 raise ValueError("DECLARATIVE_EFFECT_UNBOUNDED_QUANTITY")
