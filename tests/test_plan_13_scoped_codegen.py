@@ -52,14 +52,14 @@ def test_host_player_identity_cannot_be_shadowed_by_client_selection():
     # An exact known typo is removed so the host's trusted player parameter
     # remains in scope. Any arbitrary alias still fails closed.
     code = normalize_verified_server_body(
-        "local player = args[1]\\nplayer:SetAttribute('Mode','Space')",
+        "local player = args[1]\nplayer:SetAttribute('Mode','Space')",
         PROPOSAL,
     )
     assert "local player = args[1]" not in code
     assert "player:SetAttribute('Mode','Space')" in code
     with pytest.raises(ValueError, match="HOST_IDENTITY_SHADOWED"):
         normalize_verified_server_body(
-            "local player = args.selection\\nplayer:SetAttribute('Mode','Space')",
+            "local player = args.selection\nplayer:SetAttribute('Mode','Space')",
             PROPOSAL,
         )
 
