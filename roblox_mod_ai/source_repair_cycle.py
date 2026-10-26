@@ -255,6 +255,8 @@ def run_source_repair_cycle(
             if failed_file_attempts.get(path, 0) < 2
         ]
         if not candidates_in_order:
+            # Exhaustion is a status, not a third phantom repair attempt.
+            report["attempts"].pop()
             report["status"] = "blocked"
             report["reason"] = (
                 "All source owners exhausted bounded local repair attempts; "
