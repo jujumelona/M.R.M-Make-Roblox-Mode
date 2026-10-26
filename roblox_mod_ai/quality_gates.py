@@ -152,7 +152,8 @@ def acceptance_obligations(proposal: RobloxProposal, project_root: Path) -> dict
         # collectible placed between its walls lets spectators enter combat.
         arena = world.get("CombatArena", {})
         def position(row: dict) -> list:
-            return row.get("$properties", {}).get("Position", [])
+            frame = row.get("$properties", {}).get("CFrame", [])
+            return frame[:3] if isinstance(frame, list) and len(frame) == 12 else []
         west, east = position(arena.get("West", {})), position(arena.get("East", {}))
         south, north = position(arena.get("South", {})), position(arena.get("North", {}))
         if all(len(p) == 3 for p in (west, east, south, north)):
