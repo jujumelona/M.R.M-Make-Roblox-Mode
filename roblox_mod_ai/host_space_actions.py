@@ -219,7 +219,10 @@ COLONY_WORLD_HELPERS = '''local function settlementFolder()
     end
     return folder
 end
-local function spawnColony(player,markerName)
+local function spawnColony(player,markerName,colonizedAt)
+    if type(colonizedAt)~="number" or colonizedAt~=colonizedAt
+        or colonizedAt%1~=0 or colonizedAt<1 or colonizedAt>4102444800 then
+        return false end
     local marker=workspace:FindFirstChild(markerName,true)
     if not marker or not marker:IsA("BasePart") then return false end
     local folder=settlementFolder()
@@ -233,7 +236,11 @@ local function spawnColony(player,markerName)
         end
         if previous:FindFirstChild("Foundation")
             and previous:FindFirstChild("Habitat")
-            and previous:FindFirstChild("SignalBeacon") then return true end
+            and previous:FindFirstChild("SignalBeacon") then
+            previous:SetAttribute("RMMPlanetColonized",true)
+            previous:SetAttribute("RMMColonizedBy",player.UserId)
+            previous:SetAttribute("RMMColonizedAt",colonizedAt)
+            return true end
         -- A partial saved projection is not a valid settlement. Rebuild it.
         previous:Destroy()
     end
@@ -261,6 +268,11 @@ local function spawnColony(player,markerName)
     colony:SetAttribute("OwnerUserId",player.UserId)
     colony:SetAttribute("RMMColonySlot",slot)
     colony:SetAttribute("RMMColonyEstablished",true)
+    -- Colony is a per-player owned world Model. A shared planet Part is
+    -- NOT safe for global ownership metadata in a multiplayer server.
+    colony:SetAttribute("RMMPlanetColonized",true)
+    colony:SetAttribute("RMMColonizedBy",player.UserId)
+    colony:SetAttribute("RMMColonizedAt",colonizedAt)
     local base=Instance.new("Part")
     base.Name="Foundation"
     base.Size=Vector3.new(9,1,9)
@@ -357,20 +369,22 @@ EFFECTS = {
         return {success=false,reason="not_on_planet"} end
     if state.planetOwned~=true then return {success=false,reason="not_owned"} end
     if state.colonized==true then
+        local savedAt=state.colonizedAt or os.time()
         -- Restore a missing visual colony without repeating the transaction
         -- or changing saved ownership, even after external map cleanup.
-        if not spawnColony(player,__ARRIVAL__) then
+        if not spawnColony(player,__ARRIVAL__,savedAt) then
             return {success=false,reason="settlement_unavailable"} end
         recent[player]=now
         return {success=true,colonized=true,settlement="restored",already=true}
     end
     -- An explicit world artifact is part of successful colonization.
     -- Never commit a saved colony state when materialization failed.
-    if not spawnColony(player,__ARRIVAL__) then
+    local stamp=os.time()
+    if not spawnColony(player,__ARRIVAL__,stamp) then
         return {success=false,reason="settlement_unavailable"} end
     recent[player]=now
     state.colonized=true
-    state.colonizedAt=os.time()
+    state.colonizedAt=stamp
     player:SetAttribute("RMMPlanetColonized",true)
     return {success=true,colonized=true,settlement="built"}''',
     "ExtractOtherPlanetMineral": '''    if not arrived(player,services,__ARRIVAL__) or not near(player,__TARGET__) then
@@ -442,7 +456,7 @@ def _server(role, world, builder):
     restoration = RESTORE[role]
     if role == "MarkPlanetColonized":
         restoration += ('\n        if saved.colonized==true then spawnColony(p,'
-                        + json.dumps(world["arrival"]) + ') end')
+                        + json.dumps(world["arrival"]) + ',saved.colonizedAt or os.time()) end')
     helpers = (PLANET_WORLD_HELPERS if is_planet else "")
     if role == "MarkPlanetColonized":
         helpers += COLONY_WORLD_HELPERS
