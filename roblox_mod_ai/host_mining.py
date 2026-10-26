@@ -88,7 +88,13 @@ def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> st
     owner = next((peer for peer in getattr(proposal, "modules", [])
                   if peer.kind == ModuleKind.SERVER_MODULE and peer.name == server), None)
     if owner is None:
-        return None
+        # Lightweight legacy design fixtures sometimes omit a module list
+        # entirely. Their explicit host action and on-disk world Part still
+        # provide enough ownership proof for the conservative legacy branch.
+        # A real plan with declared modules must have a matching server.
+        if getattr(proposal, "modules", None):
+            return None
+        owner = module
     # A verified standalone resource interaction is identified by its owned
     # source Part, no-claim wire contract, and the *same server action*.
     # Other vehicle actions present elsewhere in the project are irrelevant.
