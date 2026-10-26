@@ -291,22 +291,20 @@ def _review_with_bounded_truncation_recovery(
 def _downstream_effect_evidence(
     file_path: str, source: str, modules: dict[str, Any], root: Path,
 ) -> list[dict[str, str]]:
-    """Locate actual server consumers of the SAME persisted gameplay state.
+    """On-disk producer-to-consumer state paths, not semantic approval.
 
-    One-file reviewers incorrectly called real upgrades fake ranks because
-    the *other* independent server action reads RMMRankProgress for combat
-    damage or launch duration. This returns bounded on-disk CONSUMER snippets,
-    not claims of implementation or synthetic acceptance evidence. The model
-    must still judge whether the effect is actually used.
+    Purchase scripts legitimately save a rank which another server module
+    reads into damage or voyage duration. The 9B reviewer must inspect both
+    sources before claiming that the rank has no gameplay effect.
     """
     namespaces = set(re.findall(
-        r'GetState\\s*\\(\\s*player\\s*,\\s*["\\\'](RMM[A-Za-z0-9_]+)["\\\']',
+        r'GetState\s*\(\s*player\s*,\s*"(RMM[A-Za-z0-9_]+)"',
         source,
     ))
     if not namespaces:
         return []
     target_match = re.search(
-        r'\\blocal\\s+TARGET\\s*=\\s*["\\\']([A-Za-z_][A-Za-z0-9_]*)["\\\']',
+        r'local\s+TARGET\s*=\s*"([A-Za-z_][A-Za-z0-9_]*)"',
         source,
     )
     target = target_match.group(1) if target_match else ""
@@ -320,13 +318,8 @@ def _downstream_effect_evidence(
         if other == file_path or not other.startswith("src/server/"):
             continue
         content = (root / other).read_text(encoding="utf-8")
-        shared = [namespace for namespace in namespaces
-                  if namespace in content]
-        if not shared:
-            continue
-        # A shared data namespace by itself is NOT proof of effect. Require
-        # the expected state key (if known) to appear in consumer source.
-        if target and target not in content:
+        shared = [ns for ns in namespaces if ns in content]
+        if not shared or (target and target not in content):
             continue
         if not any(hint and hint in content for hint in hints):
             continue
@@ -337,19 +330,19 @@ def _downstream_effect_evidence(
         ]
         if not indices:
             continue
-        # Include both the state read and downstream calculations. Keep model
-        # context bounded, because the local 9B already suffers token limits.
-        first = min(indices[0], next(
+        read_index = next(
             (i for i, line in enumerate(lines)
-             if any(ns in line for ns in shared)), indices[0]))
-        begin = max(0, first - 5)
-        end = min(len(lines), max(indices[0] + 28, first + 28))
-        excerpt = "\\n".join(
+             if any(ns in line for ns in shared)), indices[0])
+        begin = max(0, min(indices[0], read_index) - 5)
+        end = min(len(lines), max(indices[0] + 28, read_index + 28))
+        excerpt = "\n".join(
             f"{i + 1}: {lines[i]}" for i in range(begin, end)
         )
-        found.append({"file": other,
-                      "shared_persisted_state": ", ".join(sorted(shared)),
-                      "source_excerpt": excerpt[:4600]})
+        found.append({
+            "file": other,
+            "shared_persisted_state": ", ".join(sorted(shared)),
+            "source_excerpt": excerpt[:3700],
+        })
         if len(found) >= 3:
             break
     return found
