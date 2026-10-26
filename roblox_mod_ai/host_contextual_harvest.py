@@ -73,6 +73,17 @@ def eligible_contextual_harvest(module: Any, proposal: Any) -> tuple[str, str, s
     ]
     if len(materializations) != 1:
         return None
+    # A world can contain vehicles for unrelated gameplay. Their existence
+    # does NOT impose vehicle ownership, arrival and seating prerequisites
+    # on an independent resource action. Only an ACTION-OWNED declaration
+    # authorizes the extra preconditions, moving its node, and vehicle UI.
+    context = materializations[0].get("vehicle_context")
+    if not isinstance(context, dict) or (
+            context.get("requires_seated_driver") is not True
+            or context.get("actor_provider") != "GetOwnedActor"
+            or not isinstance(context.get("builder"), str)
+            or not isinstance(context.get("arrival"), str)):
+        return None
     node = materializations[0].get("resource_node")
     world = (design.get("world_objects") or [])
     names = (design.get("module_world_objects") or {}).get(owner.module_id) or []
@@ -89,10 +100,12 @@ def eligible_contextual_harvest(module: Any, proposal: Any) -> tuple[str, str, s
     # action must identify exactly one real actor provider for its arrival.
     admissible = [
         row for row in bindings if isinstance(row, dict)
-        and row.get("actor_provider") == "GetOwnedActor"
-        and any(isinstance(a, dict) and
-                a.get("server") == row.get("server")
+        and row.get("actor_provider") == context["actor_provider"]
+        and row.get("builder") == context["builder"]
+        and any(isinstance(a, dict)
+                and a.get("server") == row.get("server")
                 and a.get("builder") == row.get("builder")
+                and a.get("arrival") == context["arrival"]
                 for a in arrivals)
     ]
     if len(admissible) != 1:
