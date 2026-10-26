@@ -125,12 +125,41 @@ def render_space_mineral(module: Any, proposal: Any) -> str | None:
     if selected is None:
         return None
     _owner, remote, node, builder, arrival = selected
+    design = proposal.game_design.get("dynamic_design") or {}
+    materializations = [
+        row for row in (design.get("host_materialized_world") or [])
+        if isinstance(row, dict) and row.get("service") == _owner
+        and row.get("resource_node") == node
+    ]
+    if len(materializations) != 1:
+        return None
+    authored = materializations[0]
+    # The host's state ABI is shared across genres. The reward field, amount,
+    # display and maximum interaction distance are data, never invented Luau.
+    reward = authored.get("reward") or {}
+    if not isinstance(reward, dict):
+        return None
+    namespace = reward.get("namespace", "RMMInventory")
+    field = reward.get("key", "resources")
+    attribute = reward.get("attribute", "RMMResourceCount")
+    label = reward.get("label", "Collect resource")
+    radius = authored.get("interaction_range", 55)
+    if (not all(isinstance(x, str) and _IDENTIFIER.fullmatch(x)
+                for x in (namespace, field, attribute))
+            or not isinstance(label, str) or not 1 <= len(label) <= 64
+            or type(radius) not in (int, float) or not 5 <= radius <= 256):
+        return None
     code = _SERVER if module.kind == ModuleKind.SERVER_MODULE else _CLIENT
     for key, value in (
         ("@REMOTE@", json.dumps(remote)),
         ("@NODE@", json.dumps(node)),
         ("@BUILDER@", json.dumps(builder)),
         ("@ARRIVAL@", json.dumps(arrival)),
+        ("@NAMESPACE@", json.dumps(namespace)),
+        ("@FIELD@", json.dumps(field)),
+        ("@ATTRIBUTE@", json.dumps(attribute)),
+        ("@LABEL@", json.dumps(label)),
+        ("@MAX_RANGE@", str(radius)),
     ):
         code = code.replace(key, value)
     return code
@@ -142,6 +171,10 @@ local Service = {}
 local NODE_NAME = @NODE@
 local ARRIVAL_NAME = @ARRIVAL@
 local BUILDER_NAME = @BUILDER@
+local INVENTORY_NAMESPACE = @NAMESPACE@
+local INVENTORY_FIELD = @FIELD@
+local RESOURCE_ATTRIBUTE = @ATTRIBUTE@
+local MAX_RANGE = @MAX_RANGE@
 local MAX_INVENTORY = 2147483647
 local COOLDOWN = 0.8
 local last = setmetatable({}, {__mode = "k"})
@@ -161,8 +194,15 @@ local function locateOre()
     if not node or not arrival then return false end
     -- Use the REAL server-authored orbit marker, never a fake Craft Part.
     node.Anchored = true
-    node.CFrame = arrival.CFrame * CFrame.new(18, 7, 12)
-    node:SetAttribute("RMMOrbitalOre", true)
+    -- Use the actual declared arrival pad bounds, never a map-specific
+    -- coordinate; verify the target remains a server-owned workspace Part.
+    local offset = Vector3.new(
+        arrival.Size.X / 4,
+        arrival.Size.Y / 2 + node.Size.Y / 2 + 1,
+        arrival.Size.Z / 4
+    )
+    node.CFrame = arrival.CFrame * CFrame.new(offset)
+    node:SetAttribute("RMMHarvestTarget", true)
     return true
 end
 function Service.start(services)
@@ -174,10 +214,10 @@ function Service.start(services)
         "Space mining requires real assembled craft and persistent inventory")
     assert(locateOre(), "Space mineral node and verified orbit arrival required")
     services.PlayerDataManager.OnReady(function(player)
-        local inventory = services.PlayerDataManager.GetState(player, "RMMInventory")
+        local inventory = services.PlayerDataManager.GetState(player, INVENTORY_NAMESPACE)
         if type(inventory) ~= "table" then return end
-        local count = inventory.specialMinerals or 0
-        if integer(count) then player:SetAttribute("RMMSpecialMinerals", count) end
+        local count = inventory[INVENTORY_FIELD] or 0
+        if integer(count) then player:SetAttribute(RESOURCE_ATTRIBUTE, count) end
     end)
     Players.PlayerRemoving:Connect(function(player) last[player] = nil end)
 end
@@ -185,9 +225,6 @@ function Service.handleAction(player, services, ...)
     if typeof(player) ~= "Instance" or not player:IsA("Player")
         or player.Parent ~= Players or select("#", ...) ~= 0 then
         return {success = false, reason = "invalid_request"}
-    end
-    if player:GetAttribute("RMMFlightState") ~= "arrived" then
-        return {success = false, reason = "not_in_space"}
     end
     local builder = services[BUILDER_NAME]
     if type(builder) ~= "table" or type(builder.GetOwnedActor) ~= "function" then
@@ -200,34 +237,35 @@ function Service.handleAction(player, services, ...)
         or not humanoid or humanoid.Health <= 0 then
         return {success = false, reason = "craft_unavailable"}
     end
-    local seat = craft:FindFirstChild("PilotSeat", true)
+    local seat = craft:FindFirstChildWhichIsA("VehicleSeat", true)
     if not seat or not seat:IsA("VehicleSeat") or seat.Occupant ~= humanoid then
         return {success = false, reason = "not_aboard"}
     end
     local node, arrival = worldParts()
-    if not node or not arrival or node:GetAttribute("RMMOrbitalOre") ~= true
-        or (node.Position - arrival.Position).Magnitude > 45
-        or (craft:GetPivot().Position - node.Position).Magnitude > 55 then
+    if not node or not arrival or node:GetAttribute("RMMHarvestTarget") ~= true
+        or (node.Position - arrival.Position).Magnitude >
+           (arrival.Size.Magnitude + node.Size.Magnitude)
+        or (craft:GetPivot().Position - node.Position).Magnitude > MAX_RANGE then
         return {success = false, reason = "outside_orbit_mining_range"}
     end
     local now = os.clock()
     if last[player] and now - last[player] < COOLDOWN then
         return {success = false, reason = "cooldown"}
     end
-    local inventory = services.PlayerDataManager.GetState(player, "RMMInventory")
+    local inventory = services.PlayerDataManager.GetState(player, INVENTORY_NAMESPACE)
     if type(inventory) ~= "table" then
         return {success = false, reason = "profile_loading"}
     end
-    local count = inventory.specialMinerals or 0
+    local count = inventory[INVENTORY_FIELD] or 0
     if not integer(count) or count == MAX_INVENTORY then
         return {success = false, reason = "inventory_invalid"}
     end
     -- Server selected target, server validated actual ship and pilot, and a
     -- no-yield persisted inventory mutation. Never charge arbitrary Coins.
-    inventory.specialMinerals = count + 1
+    inventory[INVENTORY_FIELD] = count + 1
     last[player] = now
     node:SetAttribute("RMMLastHarvest", now)
-    player:SetAttribute("RMMSpecialMinerals", count + 1)
+    player:SetAttribute(RESOURCE_ATTRIBUTE, count + 1)
     return {success = true, harvested = 1, total = count + 1}
 end
 return Service
@@ -244,27 +282,26 @@ if not remote or not remote:IsA("RemoteFunction") then
     error("Special-mineral harvest RemoteFunction missing")
 end
 local gui = Instance.new("ScreenGui")
-gui.Name = "RMMSpaceMineralHarvest"
+gui.Name = "RMMContextResourceHarvest"
 gui.ResetOnSpawn = false
 gui.Parent = player:WaitForChild("PlayerGui")
 local button = Instance.new("TextButton")
 button.Size = UDim2.fromOffset(260, 48)
 button.Position = UDim2.new(1, -278, 1, -150)
-button.Text = "Harvest special mineral"
+button.Text = @LABEL@
 button.Parent = gui
 local status = Instance.new("TextLabel")
 status.Size = UDim2.fromOffset(270, 45)
 status.Position = UDim2.new(1, -278, 1, -98)
-status.Text = "Requires your craft at the orbital mining node"
+status.Text = "Approach the resource with your authorized vehicle"
 status.Parent = gui
 local busy = false
 local function refresh()
-    button.Active = player:GetAttribute("RMMFlightState") == "arrived" and not busy
+    button.Active = not busy
 end
-player:GetAttributeChangedSignal("RMMFlightState"):Connect(refresh)
 refresh()
 button.Activated:Connect(function()
-    if busy or player:GetAttribute("RMMFlightState") ~= "arrived" then return end
+    if busy then return end
     busy = true
     refresh()
     local ok, result = pcall(function() return remote:InvokeServer() end)
@@ -273,7 +310,7 @@ button.Activated:Connect(function()
     if not ok or type(result) ~= "table" then
         status.Text = "Harvest network error"
     elseif result.success then
-        status.Text = "Special minerals: " .. tostring(result.total)
+        status.Text = "Resources: " .. tostring(result.total)
     else
         status.Text = "Rejected: " .. tostring(result.reason or "unknown")
     end
