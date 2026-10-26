@@ -15,7 +15,7 @@ from typing import Any
 
 from .spec import ModuleKind, RobloxProposal
 from .host_mining_nodes import mining_world_nodes
-from .world_interaction_placement import place_first_interaction, spawn_anchor
+from .world_interaction_placement import place_first_interaction, spawn_anchor, spawn_size
 
 _MINE = re.compile(r"\b(?:mining|mines?|ores?|harvest(?:ing)?|gather(?:ing)?)\b|채굴|자원파밍", re.I)
 _SERVICE_MINE = re.compile(r"\b(?:mining|mine|ore|gather|gathering|harvest|harvesting)\b", re.I)
@@ -148,7 +148,9 @@ def ensure_mining_world_contract(proposal: RobloxProposal) -> list[dict[str, Any
                             for m in proposal.modules),
         )
         position = place_first_interaction(
-            objects, anchor=anchor, size=(4.0, 4.0, 4.0),
+            objects, anchor=anchor,
+            spawn_bounds=spawn_size(proposal.game_design),
+            size=(4.0, 4.0, 4.0),
             max_distance=18.0,
         )
         obj = {"name": node, "class": "Part",
