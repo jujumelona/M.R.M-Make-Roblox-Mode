@@ -248,3 +248,94 @@ def test_comment_citation_does_not_prove_effect(tmp_path):
     ])
     result = review_requirement_effects(proposal, tmp_path, model)
     assert result["status"] == "failed"
+
+
+
+def test_truncated_long_review_recovers_from_compact_source_line(tmp_path):
+    proposal, _, file = setup(tmp_path)
+
+    class LengthThenCompact:
+        def __init__(self):
+            self.calls = []
+        def complete_json(self, **kwargs):
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                raise ValueError(
+                    "Model JSON completion truncated (finish_reason=length); "
+                    "request a smaller scoped output instead of reparsing it"
+                )
+            return {
+                "verdict": "missing", "evidence_line": 3,
+                "issue": "Rank rises but owned ship thrust is unchanged",
+                "repair": "Update actual server owned ship thrust during purchase",
+            }
+
+    model = LengthThenCompact()
+    result = review_requirement_effects(proposal, tmp_path, model)
+    assert result["status"] == "issues_found" and result["fully_covered"]
+    assert result["findings"][0]["quote"] == "rank += 1"
+    assert result["findings"][0]["line"] == 3
+    assert len(model.calls) == 2
+    assert model.calls[0]["max_tokens"] == 1700
+    assert model.calls[1]["max_tokens"] == 2600
+    assert "source_lines" in model.calls[1]["prompt"]
+    assert [r["reason"] for r in result["model_retries"]] == [
+        "model_output_truncated", "recovered_with_host_selected_source_line",
+    ]
+
+
+def test_three_length_exhaustions_fail_without_success(tmp_path):
+    proposal, _, file = setup(tmp_path)
+
+    class AlwaysLength:
+        def __init__(self):
+            self.calls = []
+        def complete_json(self, **kwargs):
+            self.calls.append(kwargs["max_tokens"])
+            raise ValueError("Model JSON completion truncated (finish_reason=length)")
+
+    model = AlwaysLength()
+    result = review_requirement_effects(proposal, tmp_path, model)
+    assert model.calls == [1700, 2600, 4096]
+    assert result["status"] == "failed" and not result["fully_covered"]
+    assert "remained truncated" in result["reason"]
+    assert len(result["model_retries"]) == 3
+
+
+def test_compact_recovery_rejects_nonexistent_source_line(tmp_path):
+    proposal, _, file = setup(tmp_path)
+
+    class FakeCompact:
+        def __init__(self):
+            self.count = 0
+        def complete_json(self, **kwargs):
+            self.count += 1
+            if self.count == 1:
+                raise ValueError("Model JSON completion truncated (finish_reason=length)")
+            return {
+                "verdict": "implemented", "evidence_line": 9999999,
+                "issue": "none", "repair": "none",
+            }
+
+    model = FakeCompact()
+    result = review_requirement_effects(proposal, tmp_path, model)
+    assert model.count == 2
+    assert result["status"] == "failed"
+    assert "nonexistent line" in result["reason"]
+
+
+def test_non_length_model_error_fails_without_retry(tmp_path):
+    proposal, _, file = setup(tmp_path)
+
+    class ServerDown:
+        def __init__(self):
+            self.count = 0
+        def complete_json(self, **kwargs):
+            self.count += 1
+            raise ValueError("model endpoint unavailable")
+
+    model = ServerDown()
+    result = review_requirement_effects(proposal, tmp_path, model)
+    assert model.count == 1
+    assert result["status"] == "failed"
+    assert "model endpoint unavailable" in result["reason"]
