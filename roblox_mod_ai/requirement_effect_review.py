@@ -24,6 +24,62 @@ def _locate(source: str, quote: str) -> int:
     return source[:source.index(quote)].count("\n") + 1
 
 
+def _recover_source_line(
+    source: str, path: str, requirement_id: str, reported: dict[str, Any],
+    router: Any,
+) -> tuple[int, str] | None:
+    """Recover a real Luau evidence line; NEVER trust invented free-form quotes.
+
+    The first model's claim can be useful without its invented citation. A
+    second bounded request identifies an exact PHYSICAL source line, and the
+    host—not the LLM—extracts the actual bytes. This is source-grounding only,
+    not proof that the model's semantic judgement is true.
+    """
+    lines = source.splitlines()
+    numbered = "\n".join(
+        f"{index}: {line}" for index, line in enumerate(lines, start=1)
+    )
+    response = router.complete_json(
+        prompt=(
+            "The previous analysis cited a string that is NOT present "
+            "verbatim in the complete source. Find ONE relevant PHYSICAL "
+            "source line numbered below which directly demonstrates the "
+            "stated defect or actual implementation effect. "
+            "Respond with JSON {line: integer, explanation: string}. "
+            "Do NOT invent source or a line. If no suitable concrete line "
+            "exists, use line 0. An invented citation will be rejected.\n"
+            + json.dumps({
+                "requirement_id": requirement_id,
+                "file": path,
+                "verdict": reported.get("verdict"),
+                "issue": str(reported.get("issue", ""))[:350],
+                "old_invalid_quote": str(reported.get("quote", ""))[:260],
+                "numbered_complete_source": numbered,
+            }, ensure_ascii=False)
+        ),
+        role="analyzer", temperature=0, max_tokens=450,
+        json_schema={
+            "type": "object",
+            "properties": {
+                "line": {"type": "integer"},
+                "explanation": {"type": "string", "maxLength": 250},
+            },
+            "required": ["line", "explanation"],
+            "additionalProperties": False,
+        },
+    )
+    if not isinstance(response, dict):
+        return None
+    line_number = response.get("line")
+    if type(line_number) is not int or not 1 <= line_number <= len(lines):
+        return None
+    actual = lines[line_number - 1].strip()
+    if (len(actual) < 8 or actual.startswith(("--", "--[", "*"))
+            or actual in ("end", "else", "return false", "return nil")):
+        return None
+    return line_number, actual[:180]
+
+
 def review_requirement_effects(proposal: Any, root: Path, router: Any) -> dict[str, Any]:
     """Inspect every explicitly owned requirement; block ungrounded passes.
 
@@ -35,6 +91,7 @@ def review_requirement_effects(proposal: Any, root: Path, router: Any) -> dict[s
         "schema": SCHEMA, "scope": "source_semantics_no_roblox_engine",
         "status": "failed", "executed": False, "fully_covered": False,
         "reason": "", "requirements": [], "findings": [], "source_sha256": {},
+        "evidence_recovery": [],
     }
     detail = (getattr(proposal, "game_design", {}) or {}).get(
         "detailed_implementation_plan") or {}
@@ -170,8 +227,30 @@ def review_requirement_effects(proposal: Any, root: Path, router: Any) -> dict[s
                 return report
             line = _locate(source, quote)
             if not line:
-                report["reason"] = req_id + ": missing or fabricated source evidence"
-                return report
+                # Never let a malformed citation terminate gameplay review
+                # before trying a bounded, numbered-line source lookup.
+                try:
+                    recovered = _recover_source_line(
+                        source, file_path, req_id, result, router,
+                    )
+                except Exception as exc:
+                    recovered = None
+                    report["evidence_recovery"].append({
+                        "requirement": req_id, "file": file_path,
+                        "status": "failed",
+                        "reason": type(exc).__name__ + ": " + str(exc)[:280],
+                    })
+                if recovered is None:
+                    report["reason"] = (
+                        req_id + ": source citation not recoverable in " + file_path
+                    )
+                    return report
+                line, quote = recovered
+                report["evidence_recovery"].append({
+                    "requirement": req_id, "file": file_path,
+                    "status": "grounded", "line": line,
+                    "note": "Real line recovered; behavior still subject to tests",
+                })
             record = {
                 "id": req_id, "verdict": verdict, "file": path, "line": line,
                 "quote": quote[:180], "issue": str(result.get("issue", ""))[:350],
