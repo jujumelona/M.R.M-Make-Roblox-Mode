@@ -162,6 +162,12 @@ def review_requirement_effects(proposal: Any, root: Path, router: Any) -> dict[s
                 "trade: a server broker is legitimate unless the ORIGINAL "
                 "USER explicitly requests bilateral exchange. An architecture "
                 "description is NOT permission to expand the user request. "
+                "PlayerDataManager.GetState in a SERVER module is an "
+                "authoritative persistence-backed state, NOT client-local "
+                "state. A player attribute can mirror that authoritative "
+                "state; that alone is not a defect. A broker trade which "
+                "debits earned inventory and credits coins is real trading "
+                "unless the original request specifically requires peers. "
                 "A weapon module need NOT modify ship thrust; an alien combat "
                 "module need NOT perform mineral extraction or colonization "
                 "owned by another module. Do not assume absent cross-module "
@@ -177,8 +183,8 @@ def review_requirement_effects(proposal: Any, root: Path, router: Any) -> dict[s
                 + json.dumps({
                     "requirement_id": req_id,
                     "original_request": original[:2200],
-                    "full_game_expected_outcome_context_only": outcome[:4600],
-                    "review_scope": "this module alone; never demand unrelated owner effects",
+                    "review_scope": "original user wording plus this module's action only; "
+                    "AI-expanded implementation plan is NOT an acceptance authority",
                     "module": module.name,
                     "file": file_path,
                     "owned_behavior": responsibility[:1800],
