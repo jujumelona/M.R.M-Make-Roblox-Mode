@@ -9,6 +9,7 @@ import pytest
 
 from roblox_mod_ai.atomic_action_authoring import author_verified_atomic_systems
 from roblox_mod_ai.atomic_action_quotes import SourceActionBindingError
+from roblox_mod_ai.host_architecture import HOST_OWNED_SEMANTIC_FACET_SCHEMA
 
 
 SOURCE = (
@@ -90,7 +91,7 @@ def test_colony_result_repair_preserves_accepted_atomic_siblings():
     result = author_verified_atomic_systems(
         router, ACTIONS,
         source_clause=SOURCE, original_prompt=SOURCE,
-        json_schema={"type": "object"},
+        json_schema=HOST_OWNED_SEMANTIC_FACET_SCHEMA,
     )
     assert len(router.calls) == 4, "3 initial actions and just 1 local repair"
     assert result == VALID_SYSTEMS
@@ -105,7 +106,7 @@ def test_repeated_colony_result_fails_fast_without_replanning_all_actions():
         author_verified_atomic_systems(
             router, ACTIONS,
             source_clause=SOURCE, original_prompt=SOURCE,
-            json_schema={"type": "object"},
+            json_schema=HOST_OWNED_SEMANTIC_FACET_SCHEMA,
         )
     assert len(router.calls) == 4
 
@@ -115,6 +116,6 @@ def test_local_repair_must_be_bounded():
         author_verified_atomic_systems(
             ScriptedRouter(), ACTIONS,
             source_clause=SOURCE, original_prompt=SOURCE,
-            json_schema={"type": "object"},
+            json_schema=HOST_OWNED_SEMANTIC_FACET_SCHEMA,
             max_attempts_per_action=99,
         )
