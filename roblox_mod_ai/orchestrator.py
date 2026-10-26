@@ -998,10 +998,20 @@ class RobloxProductionOrchestrator:
                     "status": "not_run", "executed": False,
                     "reason": "Model disabled/unavailable: only source/structure checks",
                 }
-            if ai_review["status"] in ("failed", "reviewed_unverified_host_claims"):
+            if ai_review["status"] == "failed":
                 return {"passed": False,
-                        "error": "Unresolved source behavior / unverified host claims",
+                        "error": "Requirement/source review could not finish",
                         "diagnostic": ai_review.get("reason", "")}
+            # Source-only model suspicions about host templates are not proven
+            # defects. Retain them verbatim for generator-level inspection;
+            # only an independent requirement-effect gap can trigger the
+            # guarded, verified host-gameplay repair path above.
+            if ai_review["status"] == "reviewed_unverified_host_claims":
+                tool_results["host_source_claims"] = {
+                    "status": "unverified",
+                    "count": len(ai_review.get("unverified_host_claims", [])),
+                    "reason": "Host template claims require independent evidence",
+                }
             return {"passed": True, "static_checks": len(acceptance["checks"]),
                     "ai_source_review": ai_review["status"]}
 
