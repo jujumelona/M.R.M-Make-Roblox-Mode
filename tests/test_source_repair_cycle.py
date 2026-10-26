@@ -327,7 +327,7 @@ def test_changing_defect_count_does_not_revert_verified_original_fix(tmp_path, m
         verify=lambda: {"passed": True}, review_again=review,
         max_rounds=2, allow_host_gameplay_repairs=True,
     )
-    assert result["passed"]
+    assert result["passed"], [(x["status"], x.get("reason"), x.get("scoped_progress")) for x in result["attempts"]]
     assert file.read_text(encoding="utf-8") == finished
     assert result["attempts"][0]["status"] == "improved_needs_next_round"
     assert result["attempts"][0]["scoped_progress"][module.file_path]["resolved"]
