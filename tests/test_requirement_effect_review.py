@@ -339,3 +339,100 @@ def test_non_length_model_error_fails_without_retry(tmp_path):
     assert model.count == 1
     assert result["status"] == "failed"
     assert "model endpoint unavailable" in result["reason"]
+
+
+def test_invalid_compact_verdict_recovers_through_boolean_question(tmp_path):
+    proposal, _, file = setup(tmp_path)
+    class Router:
+        def __init__(self):
+            self.calls = []
+        def complete_json(self, **kwargs):
+            self.calls.append(kwargs)
+            if len(self.calls) == 1:
+                raise ValueError("Model JSON completion truncated (finish_reason=length)")
+            if len(self.calls) == 2:
+                return {
+                    "verdict": "partly_missing", "evidence_line": 3,
+                    "issue": "Rank only", "repair": "Set ship thrust",
+                }
+            return {
+                "can_decide": True, "missing_effect": True,
+                "evidence_line": 3,
+                "issue": "Only displayed rank changes, not real thrust",
+                "repair": "Bind purchased tier to actual ship thrust",
+            }
+    router = Router()
+    result = review_requirement_effects(proposal, tmp_path, router)
+    assert result["status"] == "issues_found" and result["fully_covered"]
+    assert result["findings"][0]["quote"] == "rank += 1"
+    assert [r["reason"] for r in result["model_retries"]] == [
+        "model_output_truncated", "invalid_compact_verdict",
+        "recovered_with_host_selected_source_line",
+    ]
+    assert [call["max_tokens"] for call in router.calls] == [1700, 2600, 4096]
+    assert "can_decide" in router.calls[2]["prompt"]
+    assert "missing_effect" in router.calls[2]["json_schema"]["properties"]
+
+
+def test_invalid_compact_verdict_and_invalid_boolean_fail_closed(tmp_path):
+    proposal, _, file = setup(tmp_path)
+    class Router:
+        def __init__(self):
+            self.n = 0
+        def complete_json(self, **kwargs):
+            self.n += 1
+            if self.n == 1:
+                raise ValueError("Model JSON completion truncated (finish_reason=length)")
+            if self.n == 2:
+                return {"verdict": "????", "evidence_line": 3}
+            return {
+                "can_decide": "yes", "missing_effect": "no",
+                "evidence_line": 3, "issue": "none", "repair": "none",
+            }
+    router = Router()
+    result = review_requirement_effects(proposal, tmp_path, router)
+    assert router.n == 3
+    assert result["status"] == "failed" and not result["fully_covered"]
+    assert "remained invalid" in result["reason"]
+
+
+def test_compact_wrong_source_line_recovers_without_inventing_quote(tmp_path):
+    proposal, _, file = setup(tmp_path)
+    class Router:
+        def __init__(self):
+            self.n = 0
+        def complete_json(self, **kwargs):
+            self.n += 1
+            if self.n == 1:
+                raise ValueError("Model JSON completion truncated (finish_reason=length)")
+            if self.n == 2:
+                return {"verdict": "implemented", "evidence_line": 999}
+            return {"can_decide": False, "missing_effect": False,
+                    "evidence_line": 0, "issue": "Needs more context",
+                    "repair": "none"}
+    model = Router()
+    result = review_requirement_effects(proposal, tmp_path, model)
+    assert model.n == 3
+    assert result["status"] == "failed"
+    assert result["requirements"][0]["verdict"] == "uncertain"
+    assert result["findings"] == []
+
+
+def test_invalid_compact_nonobject_is_not_accepted_as_success(tmp_path):
+    proposal, _, file = setup(tmp_path)
+    class Router:
+        def __init__(self):
+            self.n = 0
+        def complete_json(self, **kwargs):
+            self.n += 1
+            if self.n == 1:
+                raise ValueError("Model JSON completion truncated (finish_reason=length)")
+            if self.n == 2:
+                return ["missing", 3]
+            return {"can_decide": True, "missing_effect": False,
+                    "evidence_line": 3, "issue": "none", "repair": "none"}
+    model = Router()
+    result = review_requirement_effects(proposal, tmp_path, model)
+    assert model.n == 3
+    assert result["status"] == "reviewed_no_blockers"
+    assert result["model_retries"][1]["reason"] == "invalid_model_result"
