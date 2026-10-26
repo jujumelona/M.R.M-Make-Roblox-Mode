@@ -10,22 +10,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from pathlib import Path
 from typing import Any
 
 SCHEMA = "rmm/requirement-effect-review-v1"
-MAX_OWNER_CONTEXT = 24000
+MAX_SINGLE_SOURCE_CHARS = 16000
 MAX_REQUIREMENTS = 24
-
-
-def _excerpt(text: str, budget: int) -> str:
-    """A bounded view; short sources remain complete."""
-    if len(text) <= budget:
-        return text
-    head = budget // 2
-    tail = budget - head - 40
-    return text[:head] + "\n...[SOURCE EXCERPT OMITTED]...\n" + text[-tail:]
 
 
 def _locate(source: str, quote: str) -> int:
@@ -85,105 +75,121 @@ def review_requirement_effects(proposal: Any, root: Path, router: Any) -> dict[s
         if not files or any(path not in modules for path in files):
             report["reason"] = req_id + ": missing actual source owners"
             return report
-        # Budget is divided across owners, never filled solely by the first.
-        each = max(1000, MAX_OWNER_CONTEXT // len(files))
-        samples: list[dict[str, str]] = []
-        for file_path in files:
+        # A requirement may own several independent gameplay systems. Read
+        # each SERVER owner in full and judge its specific promised behavior,
+        # instead of asking a 9B model to infer six systems from head/tail
+        # fragments. A missing part of any system blocks that requirement.
+        servers = [path for path in files if path.startswith("src/server/")]
+        if not servers:
+            report["reason"] = req_id + ": no authoritative server source owner"
+            return report
+        for file_path in servers:
             source = (root / file_path).read_text(encoding="utf-8")
-            samples.append({
-                "file": file_path,
-                "source": _excerpt(source, each),
-                "truncated": len(source) > each,
-            })
-        prompt = (
-            "Independent Roblox Luau BEHAVIOR review. Compare the EXACT "
-            "original request and each clause of the observable outcome with "
-            "the provided owner sources. Inspect actual server-side state "
-            "mutations and downstream usage. A rank counter/attribute alone "
-            "does NOT prove physical thrust/speed/capacity; a stationary "
-            "health Part alone does NOT prove NPC AI; names/GUI/remotes do "
-            "NOT prove working mechanics. Never claim Studio playtesting. "
-            "Return JSON only: verdict ('implemented', 'missing', 'uncertain'), "
-            "file (one of provided paths), quote (EXACT verbatim substring of "
-            "that file), issue (specific unfulfilled outcome, or 'none'), "
-            "repair (concrete change needed, or 'none'). "
-            "To say implemented you must have inspected ALL outcome clauses, "
-            "and provide one actual effect-bearing source quote; do not "
-            "treat a trivial return/constant as effect evidence. "
-            "Say missing ONLY with an actual quoted limited behavior. "
-            "If excerpts omit needed code, say uncertain.\n" +
-            json.dumps({
-                "requirement_id": req_id,
-                "original_request": original[:2200],
-                "expected_outcome": outcome[:4600],
-                "owner_sources": samples,
-            }, ensure_ascii=False)
-        )
-        report["executed"] = True
-        try:
-            result = router.complete_json(
-                prompt=prompt, role="analyzer", temperature=0, max_tokens=1100,
-                json_schema={
-                    "type": "object",
-                    "properties": {
-                        "verdict": {"type": "string", "enum": [
-                            "implemented", "missing", "uncertain"]},
-                        "file": {"type": "string", "maxLength": 240},
-                        "quote": {"type": "string", "maxLength": 260},
-                        "issue": {"type": "string", "maxLength": 350},
-                        "repair": {"type": "string", "maxLength": 350},
-                    },
-                    "required": ["verdict", "file", "quote", "issue", "repair"],
-                    "additionalProperties": False,
-                },
-            )
-        except Exception as exc:
-            report["reason"] = req_id + ": model review failed: " + (
-                type(exc).__name__ + ": " + str(exc))[:350]
-            return report
-        if not isinstance(result, dict):
-            report["reason"] = req_id + ": invalid model output"
-            return report
-        verdict = result.get("verdict")
-        path = result.get("file")
-        quote = result.get("quote")
-        if verdict not in ("implemented", "missing", "uncertain"):
-            report["reason"] = req_id + ": invalid verdict"
-            return report
-        if verdict == "uncertain":
-            report["requirements"].append({
-                "id": req_id, "verdict": verdict, "issue": str(result.get("issue", ""))[:350],
-            })
-            report["reason"] = req_id + ": effect cannot be verified from owner sources"
-            return report
-        if path not in files or not isinstance(quote, str):
-            report["reason"] = req_id + ": unknown evidence owner"
-            return report
-        source = (root / path).read_text(encoding="utf-8")
-        line = _locate(source, quote)
-        if not line:
-            report["reason"] = req_id + ": missing or fabricated source evidence"
-            return report
-        # A claim based only on a truncated excerpt cannot establish absence
-        # across the full module; it still needs an actual source location.
-        record = {
-            "id": req_id, "verdict": verdict, "file": path, "line": line,
-            "quote": quote[:180], "issue": str(result.get("issue", ""))[:350],
-        }
-        report["requirements"].append(record)
-        if verdict == "missing":
-            issue = str(result.get("issue", "")).strip()
-            repair = str(result.get("repair", "")).strip()
-            if len(issue) < 8 or len(repair) < 8:
-                report["reason"] = req_id + ": missing concrete defect and repair"
+            if len(source) > MAX_SINGLE_SOURCE_CHARS:
+                report["reason"] = (
+                    req_id + ": full source exceeds reviewer context for " + file_path
+                )
                 return report
-            report["findings"].append({
-                "file": path, "line": line, "quote": quote[:180],
-                "severity": "blocking", "requirement_id": req_id,
-                "issue": req_id + ": " + issue[:300],
-                "repair": repair[:350],
-                "evidence": "requirement_effect_review_source_quote",
-            })
+            module = modules[file_path]
+            responsibility = str(getattr(module, "description", "") or "")
+            # A written implementation responsibility is a promise, not code
+            # evidence. The reviewer must inspect the entire actual Luau file.
+            prompt = (
+                "Independently audit ONE complete Roblox Luau server source. "
+                "Check whether the OWNED BEHAVIOR below actually mutates the "
+                "real server-owned state described, and whether that state is "
+                "read by downstream gameplay where required. A rank counter "
+                "or attribute alone does not implement speed, thrust, capacity "
+                "or weapon damage. A static target alone is not NPC combat AI. "
+                "A broker-only sale is not a player-to-player transfer. "
+                "Do not assume missing code exists in other files. "
+                "Do not require this ONE file to implement unrelated clauses "
+                "owned by other modules. Reply 'implemented' only if THIS "
+                "module's complete declared responsibility is implemented by "
+                "real source effects. Reply 'missing' with a real code quote "
+                "if an essential promised effect is absent or substituted. "
+                "Reply 'uncertain' only for dependencies that genuinely cannot "
+                "be decided from this full source. Never claim Studio testing. "
+                "Return ONLY JSON: verdict, file, quote, issue, repair. "
+                "For implemented/missing, quote an EXACT substring of the file "
+                "showing the relevant effect or its inadequate substitute.\n"
+                + json.dumps({
+                    "requirement_id": req_id,
+                    "original_request": original[:2200],
+                    "expected_outcome": outcome[:4600],
+                    "module": module.name,
+                    "file": file_path,
+                    "owned_behavior": responsibility[:1800],
+                    "entire_source": source,
+                }, ensure_ascii=False)
+            )
+            report["executed"] = True
+            try:
+                result = router.complete_json(
+                    prompt=prompt, role="analyzer", temperature=0,
+                    max_tokens=1100,
+                    json_schema={
+                        "type": "object",
+                        "properties": {
+                            "verdict": {"type": "string", "enum": [
+                                "implemented", "missing", "uncertain"]},
+                            "file": {"type": "string", "maxLength": 240},
+                            "quote": {"type": "string", "maxLength": 260},
+                            "issue": {"type": "string", "maxLength": 350},
+                            "repair": {"type": "string", "maxLength": 350},
+                        },
+                        "required": ["verdict", "file", "quote", "issue", "repair"],
+                        "additionalProperties": False,
+                    },
+                )
+            except Exception as exc:
+                report["reason"] = req_id + "/" + file_path + ": model review failed: " + (
+                    type(exc).__name__ + ": " + str(exc))[:350]
+                return report
+            if not isinstance(result, dict):
+                report["reason"] = req_id + "/" + file_path + ": invalid model output"
+                return report
+            verdict = result.get("verdict")
+            path = result.get("file")
+            quote = result.get("quote")
+            if verdict not in ("implemented", "missing", "uncertain"):
+                report["reason"] = req_id + "/" + file_path + ": invalid verdict"
+                return report
+            if verdict == "uncertain":
+                report["requirements"].append({
+                    "id": req_id, "file": file_path, "verdict": verdict,
+                    "issue": str(result.get("issue", ""))[:350],
+                })
+                report["reason"] = (
+                    req_id + "/" + file_path +
+                    ": unresolved source dependency; no automatic pass"
+                )
+                return report
+            if path != file_path or not isinstance(quote, str):
+                report["reason"] = req_id + ": unknown source-evidence owner"
+                return report
+            line = _locate(source, quote)
+            if not line:
+                report["reason"] = req_id + ": missing or fabricated source evidence"
+                return report
+            record = {
+                "id": req_id, "verdict": verdict, "file": path, "line": line,
+                "quote": quote[:180], "issue": str(result.get("issue", ""))[:350],
+            }
+            report["requirements"].append(record)
+            if verdict == "missing":
+                issue = str(result.get("issue", "")).strip()
+                repair = str(result.get("repair", "")).strip()
+                if len(issue) < 8 or len(repair) < 8:
+                    report["reason"] = req_id + ": missing concrete defect and repair"
+                    return report
+                report["findings"].append({
+                    "file": path, "line": line, "quote": quote[:180],
+                    "severity": "blocking", "requirement_id": req_id,
+                    "issue": req_id + ": " + issue[:300],
+                    "repair": repair[:350],
+                    "evidence": "requirement_effect_review_source_quote",
+                })
     report["fully_covered"] = True
     report["status"] = ("issues_found" if report["findings"]
                         else "reviewed_no_blockers")
