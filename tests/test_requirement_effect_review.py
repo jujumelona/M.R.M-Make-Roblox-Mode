@@ -202,3 +202,48 @@ def test_oversized_complete_source_fails_without_fabricated_approval(tmp_path):
     assert result["status"] == "failed"
     assert "exceeds reviewer context" in result["reason"]
     assert model.prompts == []
+
+
+def test_invalid_model_quote_recovers_real_numbered_line(tmp_path):
+    proposal, _, file = setup(tmp_path)
+    model = FakeModel([
+        {"verdict": "missing", "file": FILE,
+         "quote": "ship.thrust = ship.thrust * 2",
+         "issue": "Rank increments but ship's thrust stays unchanged",
+         "repair": "Tie ship thrust to the saved upgrade"},
+        {"line": 3, "explanation": "Line 3 only increments the rank"},
+    ])
+    result = review_requirement_effects(proposal, tmp_path, model)
+    assert result["status"] == "issues_found"
+    assert result["fully_covered"]
+    assert result["findings"][0]["line"] == 3
+    assert result["findings"][0]["quote"] == "rank += 1"
+    assert result["evidence_recovery"][0]["status"] == "grounded"
+    assert "numbered_complete_source" in model.prompts[1]
+
+
+def test_unrecoverable_citation_cannot_be_accepted(tmp_path):
+    proposal, _, file = setup(tmp_path)
+    model = FakeModel([
+        {"verdict": "implemented", "file": FILE,
+         "quote": "ship.Thrust = 99",
+         "issue": "none", "repair": "none"},
+        {"line": 0, "explanation": "No actual line supports the claimed effect"},
+    ])
+    result = review_requirement_effects(proposal, tmp_path, model)
+    assert result["status"] == "failed"
+    assert not result["fully_covered"]
+    assert "not recoverable" in result["reason"]
+
+
+def test_comment_citation_does_not_prove_effect(tmp_path):
+    proposal, _, file = setup(tmp_path)
+    file.write_text("-- dummy effect only\\n" + BEFORE, encoding="utf-8")
+    model = FakeModel([
+        {"verdict": "implemented", "file": FILE,
+         "quote": "ship.Thrust = 99",
+         "issue": "none", "repair": "none"},
+        {"line": 1, "explanation": "The comment claims an effect"},
+    ])
+    result = review_requirement_effects(proposal, tmp_path, model)
+    assert result["status"] == "failed"
