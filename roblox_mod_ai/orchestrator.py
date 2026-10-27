@@ -1128,6 +1128,16 @@ class RobloxProductionOrchestrator:
                         + str([x["id"] for x in structural["checks"] if not x["passed"]])}
             build_mode = "rojo_cli"
             rbxlx_path = str(place)
+            # The on-disk files, not the pre-StyLua model outputs, are the
+            # source of truth. Sync signed checkpoints only after successful
+            # static verification and the real compiled-place inspection.
+            from .codegen_checkpoint import sync_release_checkpoints
+            checkpoint_sync = sync_release_checkpoints(
+                output_dir, proposal.modules, checkpoint_signature,
+            )
+            tool_results["release_checkpoint"] = {
+                "success": True, **checkpoint_sync,
+            }
             # Include the compiled Place in the downloadable ZIP (previously
             # only the source folder was archived). Include a standalone
             # Windows Studio local smoke kit; no credentials or publishing.
@@ -1146,6 +1156,21 @@ class RobloxProductionOrchestrator:
                 for relative, digest in artifact_manifest["source_files"].items():
                     if relative not in names or hashlib.sha256(archive.read(relative)).hexdigest() != digest:
                         return {"passed": False, "error": f"ZIP source mismatch: {relative}"}
+                # Generation checkpoints must match the exact final ZIP
+                # contents, not the unformatted or pre-repair in-memory code.
+                if "generation_checkpoint.json" not in names:
+                    return {"passed": False, "error": "ZIP missing release checkpoint"}
+                release_checkpoint = json.loads(
+                    archive.read("generation_checkpoint.json"),
+                ).get("modules", {})
+                for mod in proposal.modules:
+                    item = release_checkpoint.get(mod.file_path, {})
+                    if (mod.file_path not in names
+                            or item.get("source_sha256") != hashlib.sha256(
+                                archive.read(mod.file_path),
+                            ).hexdigest()):
+                        return {"passed": False, "error":
+                                "ZIP release checkpoint mismatch: " + mod.file_path}
                 if "artifact_manifest.json" not in names:
                     return {"passed": False, "error": "ZIP missing manifest"}
                 # The artifact isn't usable offline unless the executable
