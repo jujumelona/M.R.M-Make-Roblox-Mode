@@ -521,8 +521,6 @@ def _combine_derived_market_income(
     perms = source_action_authorizations(source)
     if not perms["earned_resource_market"] or perms["peer_asset_exchange"]:
         return raw
-    if len(raw) < 3:
-        return raw
     spans = eligible_atomic_action_spans(source)
     by_id = {row["id"]: row["quote"] for row in spans}
     by_quote = {row["quote"]: row["id"] for row in spans}
@@ -549,6 +547,45 @@ def _combine_derived_market_income(
         "the sold resource inventory and credits earned money to the "
         "same player's authoritative balance."
     )
+    # An original span can already contain both words. Patch only that
+    # existing trade/income owner if it is a vague currency updater, before
+    # attempting to merge two distinct income and trade source spans.
+    combo_quote = re.compile(
+        r"^(?:돈\\s*모으기?|돈\\s*벌기?|코인\\s*모으기?)"
+        r"\\s+(?:거래|판매|교환)$", re.I,
+    )
+    for index, row in enumerate(raw):
+        quote = by_id.get(row.get("source_id"), "")
+        if (not combo_quote.fullmatch(quote.strip())
+                or unrelated_trade_target.search(row.get("action", ""))
+                or independent_income_origin.search(row.get("action", ""))):
+            continue
+        old_action = str(row.get("action", ""))
+        if (re.search(r"\\b(?:deduct|debit|subtract|consume)\\w*\\b", old_action, re.I)
+                and re.search(r"\\b(?:credit|award|pay|increase)\\w*\\b", old_action, re.I)
+                and re.search(r"\\b(?:resource|ore|inventory)\\b", old_action, re.I)
+                and re.search(r"\\b(?:money|currency|coins?|credits?)\\b", old_action, re.I)):
+            continue
+        revised = [dict(item) for item in raw]
+        revised[index]["action"] = settlement
+        try:
+            checked = verify_or_bind_actions(
+                router, source, revised,
+                require_complete=False, max_actions=max_actions,
+            )
+        except SourceActionBindingError:
+            continue
+        before = _coverage_issues(
+            source, verify_or_bind_actions(
+                router, source, raw, require_complete=False,
+                max_actions=max_actions,
+            ),
+        )
+        after = _coverage_issues(source, checked)
+        if not after or _coverage_improves(before, after):
+            return revised
+    if len(raw) < 3:
+        return raw
     for money_i, income in enumerate(raw):
         iq = by_id.get(income.get("source_id"), "")
         if not money_quote.fullmatch(iq.strip()):
