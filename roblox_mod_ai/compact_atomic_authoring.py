@@ -53,7 +53,15 @@ def author_compact_atomic_system(
         "must specify validated input, real server-owned state mutation, "
         "and rejection of invalid requests. Avoid themes, menus, UI, "
         "other actions, speculative player-to-player exchange and Robux. "
-        "world_entities lists at most 5 physical/owned target names. "
+        "world_entities is ONLY for concrete physical objects in "
+        "Workspace, such as a mineable resource node, ship hull or an "
+        "interaction terminal. Never put inventories, resource balances, "
+        "wallets, credits, scores, abstract requests or player profile "
+        "fields there; describe those as server-owned data in "
+        "server_behavior. Use [] if the action has no physical target. "
+        "For gathering, validate a real server-owned gatherable source, "
+        "not a requested resource grant. The player cannot choose their "
+        "own currency reward by supplying an amount. "
         "No other fields. JSON only.\n"
         + json.dumps({"source_quote": action["source_quote"],
                       "owned_action": action["action"],
