@@ -501,6 +501,101 @@ def _recover_explicit_market_exchange(
     return None
 
 
+
+def _combine_derived_market_income(
+    router: Any, source: str, raw: list[dict[str, str]],
+    *, max_actions: int,
+) -> list[dict[str, str]]:
+    """Avoid two currency writers for a single resource-sale/earn loop.
+
+    The original source must contain *adjacent*, unmodified words for money
+    accumulation and trade, and must authorize resource-market settlement.
+    A standalone income action with an independently specified origin (e.g.
+    mining payout, quest, salary or kill reward) is not merged. The combined
+    source quote is an existing ORIGINAL source span, never a synthetic ID.
+
+    This is a source-owned action-planning rewrite, NOT successful Luau
+    verification. Every replacement is re-bound and fully revalidated.
+    """
+    from .request_semantics import source_action_authorizations
+    perms = source_action_authorizations(source)
+    if not perms["earned_resource_market"] or perms["peer_asset_exchange"]:
+        return raw
+    if len(raw) < 3:
+        return raw
+    spans = eligible_atomic_action_spans(source)
+    by_id = {row["id"]: row["quote"] for row in spans}
+    by_quote = {row["quote"]: row["id"] for row in spans}
+    money_quote = re.compile(
+        r"^(?:돈\s*모으기?|돈\s*벌기?|코인\s*모으기?|"
+        r"earn(?:ing)?\s+(?:money|coins?|credits?)|"
+        r"save\s+money)$", re.I,
+    )
+    trade_quote = re.compile(
+        r"^(?:거래|판매|교환|trade|trading|sell|sale|exchange)$", re.I,
+    )
+    independent_income_origin = re.compile(
+        r"\b(?:mine|mining|harvest|gather|quest|mission|salary|wage|"
+        r"bounty|combat|kill|enemy|alien|job|salary|reward\s+for)\b|"
+        r"채굴|퀘스트|임무|급여|전투|몬스터|현상금", re.I,
+    )
+    unrelated_trade_target = re.compile(
+        r"\b(?:ship|crew|weapon|component|upgrade|recruit|part)\b|"
+        r"우주선|선원|무기|부품|업그레이드", re.I,
+    )
+    settlement = (
+        "Server executes an authenticated resource trade at an approved "
+        "server price: validates available owned resources, deducts "
+        "the sold resource inventory and credits earned money to the "
+        "same player's authoritative balance."
+    )
+    for money_i, income in enumerate(raw):
+        iq = by_id.get(income.get("source_id"), "")
+        if not money_quote.fullmatch(iq.strip()):
+            continue
+        if independent_income_origin.search(income.get("action", "")):
+            continue
+        for trade_i, trade in enumerate(raw):
+            if money_i == trade_i:
+                continue
+            tq = by_id.get(trade.get("source_id"), "")
+            if not trade_quote.fullmatch(tq.strip()):
+                continue
+            if unrelated_trade_target.search(trade.get("action", "")):
+                continue
+            combined = iq + " " + tq
+            combined_id = by_quote.get(combined)
+            if combined_id is None or combined not in source:
+                continue
+            # Do not rewrite an already valid, source-owned two-effect sale.
+            # A money-only action may misleadingly satisfy the whole-facet
+            # currency validator while the independent trade lacks a receipt.
+            action = trade.get("action", "")
+            low = action.casefold()
+            already_settles = (
+                bool(re.search(r"\b(?:deduct|debit|subtract|consume)\w*\b", low))
+                and bool(re.search(r"\b(?:credit|award|pay|increase)\w*\b", low))
+                and bool(re.search(r"\b(?:resource|ore|inventory)\b", low))
+                and bool(re.search(r"\b(?:money|currency|coins?|credits?|balance)\b", low))
+            )
+            candidate = [dict(row) for i, row in enumerate(raw) if i != money_i]
+            replacement_i = trade_i - (1 if money_i < trade_i else 0)
+            candidate[replacement_i]["source_id"] = combined_id
+            if not already_settles:
+                candidate[replacement_i]["action"] = settlement
+            try:
+                checked = verify_or_bind_actions(
+                    router, source, candidate,
+                    max_actions=max_actions,
+                )
+            except SourceActionBindingError:
+                continue
+            if not _coverage_issues(source, checked):
+                return candidate
+    return raw
+
+
+
 def complete_source_owned_actions(
     router: Any, source: str, *, initial_actions: Any = None,
     max_actions: int = _MAX_ACTIONS,
@@ -543,6 +638,13 @@ def complete_source_owned_actions(
     while True:
         gaps = _coverage_issues(source, bound)
         if not gaps:
+            # The model can split "earn money" and "trade" into two writers
+            # even when the only source-authorized income is the resource sale.
+            # Merge only an adjacent source phrase, then rerun ALL original
+            # binding and semantic gates rather than accepting free money.
+            raw = _combine_derived_market_income(
+                router, source, raw, max_actions=max_actions,
+            )
             return verify_or_bind_actions(
                 router, source, raw, max_actions=max_actions,
             )
