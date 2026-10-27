@@ -301,6 +301,124 @@ def _repair_owned_purchase_effect(
     return None
 
 
+
+def _repair_incomplete_owned_exchange(
+    router: Any, source: str, raw: list[dict[str, str]],
+    gaps: list[str], max_actions: int, evidence: list[str],
+) -> list[dict[str, str]] | None:
+    """Repair one previously source-bound exchange without adding fake actions.
+
+    A generic "change currency" claim is not a trade. Instead of repeatedly
+    asking a 9B model for a whole new action (often the same 29-token answer),
+    request the TWO missing state effects as bounded fields. Preserve the
+    source ID, all sibling actions and all already-met source obligations.
+    This is NOT a game-specific template and NEVER invents actual prices.
+    """
+    if not any(str(issue).startswith("SOURCE_TRADE_ACTION_MISSING:")
+               for issue in gaps):
+        return None
+    from .atomic_transaction_repair import (
+        _DEBIT, _PAYMENT_ASSET, _DELIVERY, _NEGATIVE,
+    )
+    source_quotes = {
+        row["id"]: row["quote"] for row in eligible_atomic_action_spans(source)
+    }
+    ranked = []
+    for i, row in enumerate(raw):
+        quote = row.get("source_quote") or source_quotes.get(row.get("source_id"), "")
+        action = row.get("action", "")
+        if not (_PURCHASE_ACTION.search(quote)
+                or _PURCHASE_ACTION.search(action)):
+            continue
+        # Prefer the source span specifically declaring an exchange, then
+        # the already-source-owned action. Never rewrite unrelated siblings.
+        ranked.append((not bool(_PURCHASE_ACTION.search(quote)), i))
+    for _priority, i in sorted(ranked)[:2]:
+        row = raw[i]
+        quote = row.get("source_quote") or source_quotes.get(row.get("source_id"), "")
+        for _attempt in range(2):
+            try:
+                reply = router.complete_json(
+                    "Repair one EXISTING source-owned economic exchange with "
+                    "TWO actual server-owned state mutations, never a menu or "
+                    "a mere balance mention. Return JSON object "
+                    "{given_mutation, received_mutation}, each describing an "
+                    "affirmative concrete change on the authenticated player's "
+                    "owned inventory or wallet. For a sale, subtract an owned "
+                    "item/resource and credit earned currency. For a purchase, "
+                    "deduct the approved owned payment and deliver the item. "
+                    "Choose the direction only from the ORIGINAL source clause "
+                    "and preserved action, without inventing another player, "
+                    "Robux, prices, unrelated assets or a new gameplay action. "
+                    "Preserve the previously accepted action target, and "
+                    "never repeat the rejected vague claim. JSON only.\n"
+                    + json.dumps({
+                        "source_clause": source,
+                        "immutable_source_quote": quote,
+                        "existing_action": row["action"],
+                        "missing_validation": gaps[:3],
+                        "prior_rejections": evidence[-2:],
+                    }, ensure_ascii=False),
+                    role="planner", temperature=0.0, max_tokens=230,
+                    json_schema={
+                        "type": "object",
+                        "properties": {
+                            "given_mutation": {"type": "string",
+                                               "minLength": 24, "maxLength": 180},
+                            "received_mutation": {"type": "string",
+                                                  "minLength": 24, "maxLength": 180},
+                        },
+                        "required": ["given_mutation", "received_mutation"],
+                        "additionalProperties": False,
+                    },
+                )
+            except (ValueError, TypeError, RuntimeError) as exc:
+                evidence.append("OWNED_EXCHANGE_EFFECT_RESPONSE_INVALID: " +
+                                str(exc)[:160])
+                continue
+            given = reply.get("given_mutation") if isinstance(reply, dict) else None
+            received = reply.get("received_mutation") if isinstance(reply, dict) else None
+            if (not isinstance(given, str) or not isinstance(received, str)
+                    or not 24 <= len(given.strip()) <= 180
+                    or not 24 <= len(received.strip()) <= 180):
+                evidence.append("OWNED_EXCHANGE_EFFECT_FIELDS_INVALID")
+                continue
+            debit = _DEBIT.search(given)
+            if (not debit or not _PAYMENT_ASSET.search(
+                    given[debit.start():debit.end()+100])
+                    or not _DELIVERY.search(received)
+                    or _NEGATIVE.search(given)
+                    or _NEGATIVE.search(received)):
+                evidence.append("OWNED_EXCHANGE_EFFECT_NO_DUAL_MUTATION")
+                continue
+            corrected = (
+                "For this requested trade or purchase, the server validates "
+                "the authenticated player's owned items, available balance "
+                "and authorized exchange amount and rejects insufficient "
+                "or duplicate attempts; on success " +
+                given.strip().rstrip(".; ") + "; then " +
+                received.strip().rstrip(".; ") + "."
+            )
+            candidate = [dict(item) for item in raw]
+            candidate[i]["action"] = corrected
+            try:
+                verified = verify_or_bind_actions(
+                    router, source, candidate,
+                    require_complete=False, max_actions=max_actions,
+                )
+            except SourceActionBindingError as exc:
+                evidence.append("OWNED_EXCHANGE_SOURCE_REJECTED: " +
+                                str(exc)[:160])
+                continue
+            after = _coverage_issues(source, verified)
+            if not _coverage_improves(gaps, after):
+                evidence.append("OWNED_EXCHANGE_NO_COVERAGE_PROGRESS: " +
+                                "; ".join(after[:2]))
+                continue
+            return candidate
+    return None
+
+
 def complete_source_owned_actions(
     router: Any, source: str, *, initial_actions: Any = None,
     max_actions: int = _MAX_ACTIONS,
@@ -472,6 +590,19 @@ def complete_source_owned_actions(
                 appended = True
                 break
         if not appended:
+            # Last structured repair: an existing source-owned action can
+            # contain an incomplete exchange. Repair it in place; do not
+            # burn another action slot or discard independently valid actions.
+            replacement_actions = _repair_incomplete_owned_exchange(
+                router, source, raw, gaps, max_actions, rejection_evidence,
+            )
+            if replacement_actions is not None:
+                raw = replacement_actions
+                bound = verify_or_bind_actions(
+                    router, source, raw,
+                    require_complete=False, max_actions=max_actions,
+                )
+                continue
             raise SourceActionBindingError(
                 "ATOMIC_SOURCE_MISSING_ACTION_UNRESOLVED: " +
                 "; ".join(gaps[:3]) +
