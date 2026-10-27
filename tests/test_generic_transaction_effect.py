@@ -281,3 +281,23 @@ def test_atomic_effect_rejects_zero_increment_as_fake_gameplay():
     }
     with pytest.raises(ValueError, match="EXECUTABLE_ACTION_INVALID_CONSTANT"):
         render_atomic_server(server, p)
+
+
+def test_numeric_compiler_requires_positive_quantities_for_arithmetic():
+    import copy
+    p, server, remote = _candidate()
+    design = p.game_design["dynamic_design"]
+    # Zero is a valid wire integer, but not a meaningful increment/decrement.
+    design["host_typed_actions"][remote]["contract"]["inputs"][0]["min"] = 0
+    with pytest.raises(ValueError, match="TRANSACTION_UNVALIDATED_AMOUNT"):
+        render_atomic_server(server, p)
+
+    row = design["host_typed_actions"][remote]["contract"]["state_changes"][0]
+    design["host_typed_actions"][remote]["contract"]["state_changes"] = [row]
+    design["host_executable_actions"][remote] = {
+        "schema": "rmm/atomic-effect-v1",
+        "namespace": "Progress", "field": "ore", "operation": "decrement",
+        "amount": {"input": "quantity"}, "limit": 1000,
+    }
+    with pytest.raises(ValueError, match="EXECUTABLE_ACTION_INPUT_NOT_VALIDATED"):
+        render_atomic_server(server, p)
