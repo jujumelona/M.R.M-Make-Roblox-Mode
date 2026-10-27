@@ -6,9 +6,17 @@ coins that did not exist. The host uses the approved market for vague trade requ
 P2P barter only when explicitly source-owned; no invented currency or Remotes.
 """
 from test_host_peer_barter import make_plan
-from roblox_mod_ai.host_peer_barter import (
-    _needs_earned_currency_market, render_host_peer_barter,
-)
+from roblox_mod_ai.host_peer_barter import render_host_peer_barter
+from roblox_mod_ai.request_semantics import source_action_authorizations
+
+
+def _authorize(plan):
+    # Source classification is a planning input; host rendering never
+    # rereads the prompt. Revisions must recompute and validate the IR.
+    permissions = source_action_authorizations(plan.requested_prompt)
+    plan.game_design["dynamic_design"]["source_action_authorizations"] = permissions
+    return permissions["earned_resource_market"]
+
 from roblox_mod_ai.luau_analyzer import LuauStaticAnalyzer
 
 
@@ -18,7 +26,7 @@ def test_resource_to_coins_mining_trade_progression_is_reachable():
         "우주모드 자원파밍 돈모으기 거래로 우주선을 부위마다 만들고 "
         "무기 선원 성능을 돈으로 구매 업그레이드"
     )
-    assert _needs_earned_currency_market(plan)
+    assert _authorize(plan)
     scode = render_host_peer_barter(server, plan)
     ccode = render_host_peer_barter(client, plan)
     assert scode and ccode
@@ -41,7 +49,7 @@ def test_resource_to_coins_mining_trade_progression_is_reachable():
 
 def test_explicitly_peer_only_trade_does_not_mint_new_currency():
     server, client, plan = make_plan()
-    assert not _needs_earned_currency_market(plan)
+    assert not _authorize(plan)
     code = render_host_peer_barter(server, plan)
     assert code and 'Market.handleAction' not in code
 
@@ -54,7 +62,7 @@ def test_earning_requires_resource_and_currency_and_transaction_source():
         "Buy weapons using existing credits, but no mining",
     ):
         plan.requested_prompt = prompt
-        assert not _needs_earned_currency_market(plan)
+        assert not _authorize(plan)
 
 
 def test_paid_first_weapon_purchase_unblocks_real_weapon_upgrade_dependency():
@@ -135,7 +143,7 @@ def test_combined_market_and_peer_only_when_both_requested():
         "Mine resources, earn coins by selling ores to the market, and "
         "trade items between players"
     )
-    assert _needs_earned_currency_market(plan)
+    assert _authorize(plan)
     src = render_host_peer_barter(server, plan)
     client_src = render_host_peer_barter(client, plan)
     assert src and client_src
@@ -148,6 +156,7 @@ def test_combined_market_and_peer_only_when_both_requested():
 def test_model_invented_peer_trade_without_market_or_authorization_fails():
     server, client, plan = make_plan()
     plan.requested_prompt = "Build a ship out of mined resources"
+    _authorize(plan)
     assert render_host_peer_barter(server, plan) is None
     assert render_host_peer_barter(client, plan) is None
 
@@ -166,6 +175,7 @@ def test_report15_market_only_uses_one_argument_and_no_fake_world_services():
     plan.requested_prompt = (
         "우주모드 인데 자원파밍 돈모으기 거래 등으로 우주선을 부위마다 만든다"
     )
+    _authorize(plan)
     route = plan.game_design["dynamic_design"]["host_actions"]["PlayerAssetExchangeAction"]
     route["max_args"] = 1
     scode = render_host_peer_barter(server, plan)
