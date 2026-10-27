@@ -95,3 +95,24 @@ def test_not_conflate_ship_part_purchase_with_resource_market_income():
     assert _combine_derived_market_income(
         NoModel(), SOURCE, rows, max_actions=6,
     ) == rows
+
+
+def test_already_combined_source_owner_is_repaired_in_place():
+    actions = [
+        a("자원파밍",
+          "Server mines ore nodes in the world and credits gathered resource inventory."),
+        a("돈모으기 거래",
+          "Server vaguely updates player currency balance and reports trade status."),
+        a("우주선을 부위마다 만들어서",
+          "Server assembles ship components and attaches sections to the ship hull."),
+    ]
+    revised = complete_source_owned_actions(
+        NoModel(), SOURCE, initial_actions=actions,
+    )
+    assert len(revised) == 3
+    assert revised[1]["source_quote"] == "돈모으기 거래"
+    assert "deducts" in revised[1]["action"]
+    assert "credits earned money" in revised[1]["action"]
+    assert revised[0]["action"] == actions[0]["action"]
+    assert revised[2]["action"] == actions[2]["action"]
+    assert not _coverage_issues(SOURCE, revised)
