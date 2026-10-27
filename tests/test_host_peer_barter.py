@@ -134,3 +134,53 @@ def test_peer_barter_luau_static_analysis_for_both_roles():
         errors = [d for d in analyzer.analyze_source(code, mod.file_path)
                   if d.severity == "ERROR"]
         assert not errors, [(e.rule, e.line_number, e.message) for e in errors]
+
+
+def test_prompt_text_cannot_change_validated_barter_dispatch():
+    from roblox_mod_ai.generation_scope import (
+        generation_scope, assert_prompt_invariant_routing,
+    )
+    server, client, plan = make_plan()
+    expected = (render_host_peer_barter(server, plan),
+                render_host_peer_barter(client, plan))
+    assert all(expected)
+    # Regression: the production resolver previously failed because the
+    # barter host reread the raw prompt, changing both source routes.
+    scope = generation_scope(plan)
+    assert_prompt_invariant_routing(plan, original_scope=scope)
+    plan.requested_prompt = "[raw prompt withheld: use validated contracts]"
+    assert (render_host_peer_barter(server, plan),
+            render_host_peer_barter(client, plan)) == expected
+
+
+def test_vague_trade_cannot_enable_peer_exchange_even_if_model_invents_it():
+    server, client, plan = make_plan()
+    plan.requested_prompt = "Mine resources, earn coins, trade, and build gear"
+    plan.game_design["dynamic_design"]["source_action_authorizations"] = (
+        source_action_authorizations(plan.requested_prompt)
+    )
+    assert plan.game_design["dynamic_design"]["source_action_authorizations"] == {
+        "schema": "rmm/source-action-authorizations-v1",
+        "peer_asset_exchange": False,
+        "earned_resource_market": True,
+    }
+    generated = render_host_peer_barter(server, plan)
+    assert generated is not None
+    assert "pending[a]" not in generated  # no two-party offer transfer
+    assert "Market" in generated or "price" in generated.lower()
+    # The strategy and resulting source are now insensitive to the raw text.
+    before = render_host_peer_barter(client, plan)
+    plan.requested_prompt = "A completely unrelated sample sentence"
+    assert render_host_peer_barter(server, plan) == generated
+    assert render_host_peer_barter(client, plan) == before
+
+
+def test_source_authorization_tampering_is_detected_before_build():
+    import pytest
+    from roblox_mod_ai.request_semantics import assert_source_action_authorizations
+    _server, _client, plan = make_plan()
+    assert_source_action_authorizations(plan)
+    plan.game_design["dynamic_design"]["source_action_authorizations"][
+        "peer_asset_exchange"] = False
+    with pytest.raises(ValueError, match="SOURCE_AUTHORIZATIONS_INVALID"):
+        assert_source_action_authorizations(plan)
