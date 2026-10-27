@@ -17,7 +17,9 @@ from .semantic_preservation import (
     source_intent_conflicts, source_outcome_conflicts,
 )
 from .request_semantics import request_semantic_errors
-from .compact_atomic_authoring import author_compact_atomic_system
+from .compact_atomic_authoring import (
+    author_compact_atomic_system, host_verified_resource_market,
+)
 from .atomic_transaction_repair import (
     require_transaction_repair, author_transaction_repair,
 )
@@ -97,6 +99,22 @@ def author_verified_atomic_systems(
                 [action], [preserved], original_prompt=original_prompt,
             )
             accepted.append(dict(preserved))
+            continue
+        # The source compiler has already proved that money earned from
+        # selling owned resources is the SAME transaction as trading.
+        # Generate its fixed, source-derived debit+credit contract here
+        # rather than allowing a 9B retry to invent a balance minting API.
+        # The public ownership gate still validates both fields.
+        host_market = host_verified_resource_market(
+            action, original_prompt=original_prompt,
+        )
+        if host_market is not None:
+            validate_atomic_system_ownership(
+                [action], [host_market], original_prompt=original_prompt,
+            )
+            accepted.append(dict(host_market))
+            if retained_verified is not None:
+                retained_verified[owner] = dict(host_market)
             continue
         system: dict[str, Any] | None = None
         seen: set[str] = set()
