@@ -1,0 +1,31 @@
+name: RMM resource sale and ship catalog regression
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'roblox_mod_ai/host_resource_market_sale.py'
+      - 'roblox_mod_ai/host_ship_attachment.py'
+      - 'roblox_mod_ai/code_generator.py'
+      - 'roblox_mod_ai/generation_scope.py'
+      - 'tests/test_plan86_market_sale_and_ship_catalog.py'
+      - '.github/workflows/rmm-market-catalog-regression.yml'
+  workflow_dispatch:
+jobs:
+  transaction:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RMM_PREDESIGN_LIVE_SEARCH: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e '.[dev]'
+      - run: python -m compileall -q roblox_mod_ai tests
+      - name: Verify market sale and repaired ship builder
+        run: |
+          python -m pytest -q tests/test_plan86_market_sale_and_ship_catalog.py
+          python -m pytest -q tests/test_plan84_source_linked_ship_actor_provider.py
+          python -m pytest -q tests/test_host_ship_attachment.py
+          python -m pytest -q tests/test_plan83_ordered_assembly_launch.py
