@@ -36,7 +36,9 @@ def bind_verified_vehicle_providers(proposal: Any) -> list[dict[str, Any]]:
     a launcher must consume that provider directly instead of guessing which
     of several decorative Craft Parts is the playable vehicle.
     """
-    from .host_ordered_assembly import eligible_ordered_assembly
+    from .host_vehicle_actor_capability import (
+        eligible_vehicle_actor_builder, matching_launch_provider,
+    )
     from .spec import ModuleKind
 
     design = (getattr(proposal, "game_design", {}) or {}).get("dynamic_design")
@@ -52,7 +54,7 @@ def bind_verified_vehicle_providers(proposal: Any) -> list[dict[str, Any]]:
         if getattr(m, "kind", None) == ModuleKind.SERVER_MODULE
         and _BUILD.search(str(getattr(m, "description", "")))
         and _VEHICLE.search(str(getattr(m, "description", "")))
-        and eligible_ordered_assembly(m, proposal) is not None
+        and eligible_vehicle_actor_builder(m, proposal) is not None
     ]
     # Refuse ambiguous builders: only an actual host compiled builder can
     # promise GetOwnedActor, and never bind to an unrelated visible ship.
@@ -74,7 +76,8 @@ def bind_verified_vehicle_providers(proposal: Any) -> list[dict[str, Any]]:
             continue
         server = modules[owner_name]
         if (getattr(server, "kind", None) != ModuleKind.SERVER_MODULE
-                or server == builder):
+                or server == builder
+                or not matching_launch_provider(proposal, builder, owner_name)):
             continue
         assigned = [(name, binding) for name, binding in actions.items()
                     if isinstance(binding, dict)
@@ -102,8 +105,13 @@ def bind_verified_vehicle_providers(proposal: Any) -> list[dict[str, Any]]:
         if not isinstance(ownership.get(server.module_id), list) or not isinstance(
                 ownership.get(client.module_id), list):
             continue
+        compiler = eligible_vehicle_actor_builder(builder, proposal)
+        if compiler is None:
+            continue
         motion["builder_module_id"] = builder.module_id
         motion["actor_identity_source"] = "verified_owned_actor_provider"
+        if compiler in {"section_attachment", "resource_ship_builder"}:
+            design.setdefault("host_flight_ready_builders", {})[builder.name] = compiler
         motion["actor_provider"] = "GetOwnedActor"
         # A previously guessed actor_world_name is not runtime authority.
         motion.pop("actor_world_name", None)
@@ -249,7 +257,7 @@ def materialize_source_linked_space_arrivals(proposal: Any) -> list[dict[str, An
     An unrelated mover or an ambiguous ship does not qualify.
     """
     from hashlib import sha256
-    from .host_ordered_assembly import eligible_ordered_assembly
+    from .host_vehicle_actor_capability import eligible_vehicle_actor_builder
 
     design = (getattr(proposal, "game_design", {}) or {}).get("dynamic_design")
     if not isinstance(design, dict):
@@ -278,7 +286,7 @@ def materialize_source_linked_space_arrivals(proposal: Any) -> list[dict[str, An
                       and actor in (ownership.get(owner.module_id) or [])
                       and actor in (ownership.get(builder.module_id) or []))
         if (owner is None or builder is None
-                or eligible_ordered_assembly(builder, proposal) is None
+                or eligible_vehicle_actor_builder(builder, proposal) is None
                 or not (provider_link or world_link)):
             continue
         # Only a complete host builder exposes the Model returned by
