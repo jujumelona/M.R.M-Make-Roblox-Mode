@@ -327,6 +327,8 @@ class RobloxProductionOrchestrator:
             handoffs = rebase_complete_host_protocols(proposal, source_scope)
             if handoffs:
                 tool_results["host_protocol_handovers"] = handoffs
+            from .request_semantics import assert_source_action_authorizations
+            assert_source_action_authorizations(proposal)
             scope = generation_scope(proposal)
             assert_prompt_invariant_routing(proposal, original_scope=scope)
             tool_results["generation_scope"] = scope
