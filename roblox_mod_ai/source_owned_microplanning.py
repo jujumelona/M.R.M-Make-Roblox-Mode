@@ -447,8 +447,8 @@ def _recover_explicit_market_exchange(
     if not permissions["earned_resource_market"] or permissions["peer_asset_exchange"]:
         return None
     market_word = re.compile(
-        r"거래|교환|판매|매매|\\b(?:trad(?:e|es|ing)|exchang(?:e|es|ing)|"
-        r"barter\\w*|sell\\w*|sold)\\b", re.I,
+        r"거래|교환|판매|매매|\b(?:trad(?:e|es|ing)|exchang(?:e|es|ing)|"
+        r"barter\w*|sell\w*|sold)\b", re.I,
     )
     if not market_word.search(source):
         return None
