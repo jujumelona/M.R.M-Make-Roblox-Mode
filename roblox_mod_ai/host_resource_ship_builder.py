@@ -96,6 +96,11 @@ def try_resource_ship_builder(
         + ", ordinal = " + str(i + 1) + "}" for i, row in enumerate(rows)
     )
     source = _SERVER.replace("__SECTIONS__", entries)
+    linked = ((proposal.game_design.get("dynamic_design") or {})
+              .get("host_flight_ready_builders") or {})
+    if linked.get(server) == "resource_ship_builder":
+        from .host_flight_ready_attachment import render_flight_ready_attachment
+        source = render_flight_ready_attachment(source)
     marker = (
         '    if profile.sections[id] ~= nil then\n'
         '        return {success = false, reason = "already_built"}\n'
