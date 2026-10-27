@@ -37,6 +37,83 @@ _ATOMIC_OUTCOME_SCHEMA = {
 }
 
 
+
+def host_verified_resource_market(
+    action: dict[str, str], *, original_prompt: str,
+) -> dict[str, Any] | None:
+    """Compile a source-authorized owned-resource sale as one atomic system.
+
+    A common, precisely specified server transaction does not need a weak
+    small model to rewrite the same two required state mutations. No Roblox
+    execution is claimed here: Luau, persistence, runtime and security gates
+    remain independently required later.
+    """
+    import re
+    from .request_semantics import (
+        source_action_authorizations, request_semantic_errors,
+    )
+    from .semantic_preservation import (
+        source_intent_conflicts, source_outcome_conflicts,
+    )
+
+    if not isinstance(action, dict) or not isinstance(original_prompt, str):
+        return None
+    quote = action.get("source_quote")
+    owned = action.get("action")
+    if not isinstance(quote, str) or not isinstance(owned, str):
+        return None
+    if quote not in original_prompt:
+        return None
+    auth = source_action_authorizations(original_prompt)
+    if not auth["earned_resource_market"] or auth["peer_asset_exchange"]:
+        return None
+    # This exact combined source quote was re-bound to a genuine original
+    # source span by the host microplanner. Do not guess whether an unrelated
+    # purchase, P2P trade or passive money counter is a resource market.
+    if not (re.search(r"돈\s*모으|돈\s*벌|코인\s*모으|"
+                      r"\b(?:earn|save|collect)\s+(?:money|coins?)\b", quote, re.I)
+            and re.search(r"거래|판매|교환|\b(?:trade|sell|sale|exchange)\b",
+                          quote, re.I)):
+        return None
+    if not all((
+        re.search(r"\b(?:resource|ore|mineral|inventory)\b", owned, re.I),
+        re.search(r"\b(?:money|currency|coins?|credits?)\b", owned, re.I),
+        re.search(r"\b(?:deduct|debit|subtract|consume)\w*\b", owned, re.I),
+        re.search(r"\b(?:credit|add|award|pay)\w*\b", owned, re.I),
+    )):
+        return None
+    server = (
+        "When the authenticated player requests a resource sale, the server "
+        "verifies the selected owned resource, positive quantity, stock and "
+        "server-owned market price. On acceptance it atomically deducts the "
+        "sold resource inventory and credits earned money to that same "
+        "player's authoritative currency balance; invalid, duplicate and "
+        "insufficient-stock requests change neither balance."
+    )
+    outcome = (
+        "After a successful trade, the player's owned resource inventory "
+        "decreases by the sold quantity and the earned money balance "
+        "increases by the server-priced payout; rejected requests change "
+        "neither displayed balance."
+    )
+    result = {
+        "name": "OwnedResourceMarketSale",
+        "server_behavior": server,
+        "observable_result": outcome,
+        "world_entities": [],
+    }
+    # This is not an unconditional shortcut. Every same public source,
+    # outcome and authorization validator must approve it before reuse.
+    if (source_intent_conflicts(quote, server)
+            or source_intent_conflicts(owned, server)
+            or source_outcome_conflicts(quote, outcome)
+            or source_outcome_conflicts(owned, outcome)
+            or request_semantic_errors(result, original_prompt)):
+        return None
+    return result
+
+
+
 def author_compact_atomic_system(
     router: Any, action: dict[str, str], *, previous_issues: dict[str, Any],
 ) -> dict[str, Any]:
