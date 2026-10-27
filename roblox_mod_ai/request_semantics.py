@@ -71,6 +71,24 @@ _PEER_TRADE_OUTPUT = re.compile(
     re.I,
 )
 
+
+# Another common representation of unsolicited bilateral gameplay is a
+# source-acceptance claim about an asset moving from a seller to a buyer.
+# This is different from an NPC/broker crediting the authenticated seller.
+# Check the effect itself rather than particular item, planet or genre names.
+_BILATERAL_ASSET_EFFECT = re.compile(
+    r"\b(?:ownership|owner)\b.{0,90}\bchanges?\b.{0,100}"
+    r"\bfrom\s+(?:the\s+)?seller\b.{0,80}"
+    r"\bto\s+(?:the\s+)?buyer\b|"
+    r"\btransfer\w*\b.{0,100}\bseller['’]s\b.{0,100}\bbuyer\b|"
+    r"\bseller['’]s\s+(?:currency|money|coins?|credits?)\s+"
+    r"(?:balance\s+)?decreases?\b.{0,150}"
+    r"\bbuyer['’]s\s+(?:currency|money|coins?|credits?)\s+"
+    r"(?:balance\s+)?increases?\b",
+    re.I | re.S,
+)
+
+
 def request_semantic_errors(value: Any, original_prompt: str) -> list[str]:
     """Reject unsolicited platform monetization with a repairable diagnosis."""
     def values(item: Any):
@@ -93,7 +111,8 @@ def request_semantic_errors(value: Any, original_prompt: str) -> list[str]:
             "MarketplaceService or a Robux balance API."
         )
     if (not _EXPLICIT_PEER_TRADE.search(original_prompt)
-            and any(_PEER_TRADE_OUTPUT.search(text) for text in values(value))):
+            and any(_PEER_TRADE_OUTPUT.search(text) or _BILATERAL_ASSET_EFFECT.search(text)
+                    for text in values(value))):
         errors.append(
             "UNREQUESTED_PEER_TRADE: user requested trading without authorizing "
             "two-party item exchange. Do not invent P2P counters, double-profile "
@@ -185,4 +204,18 @@ def assert_source_action_authorizations(proposal: Any) -> None:
         raise ValueError(
             "SOURCE_AUTHORIZATIONS_INVALID: compiled gameplay permissions "
             "do not match the original request; rebuild the source-ledger plan"
+        )
+    # Model-written acceptance statements and module responsibilities cannot
+    # certify a capability that was not authorized by the user. Otherwise a
+    # compiled market sale can pass a contradictory two-player exchange test.
+    claims_to_audit = {
+        "acceptance": design.get("acceptance") or {},
+        "module_behaviors": design.get("module_behaviors") or {},
+    }
+    errors = request_semantic_errors(
+        claims_to_audit, proposal.requested_prompt,
+    )
+    if errors:
+        raise ValueError(
+            "SOURCE_ACCEPTANCE_UNAUTHORIZED: " + " | ".join(errors)
         )
