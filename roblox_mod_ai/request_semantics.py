@@ -97,13 +97,13 @@ _COUNTERPARTY_ASSET_EFFECT = re.compile(
     r"\b.{0,140}\b(?:the\s+)?(?:other\s+player|counterparty|recipient)"
     r"\b|"
     r"\b(?:both|each)\s+(?:players?['’]s?\s+)?"
-    r"(?:inventor(?:y|ies)|wallets?|balances?|owned\s+assets?)"
+    r"(?:inventor(?:y|ies)|wallets?|owned\s+assets?)"
     r"\b.{0,150}\b(?:transfer|mutat|modif|chang|updat|exchang|credit|debit|deduct)"
     r"\w*\b|"
     r"\b(?:transfer|exchang|mutat|modif|chang|updat|credit|debit|deduct)"
     r"\w*\b.{0,150}"
     r"\b(?:both|each)\s+(?:players?['’]s?\s+)?"
-    r"(?:inventor(?:y|ies)|wallets?|balances?|owned\s+assets?)\b",
+    r"(?:inventor(?:y|ies)|wallets?|owned\s+assets?)\b",
     re.I | re.S,
 )
 
