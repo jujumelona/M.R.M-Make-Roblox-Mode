@@ -122,6 +122,10 @@ def sample(*, terse=False):
 def test_disjoint_real_world_objects_bind_to_same_real_owned_model():
     p, builder, ui, launcher, launch_ui = sample(terse=True)
     d = p.game_design["dynamic_design"]
+    from roblox_mod_ai.host_ship_attachment import _source_linked_section_builder
+    from roblox_mod_ai.host_mining import render_host_mining
+    assert _source_linked_section_builder(builder, p), "source-linked author / launch relation failed"
+    assert render_host_mining(p.modules[2], p) is not None, "mining source unbound"
     assert eligible_ship_attachment(builder, p) is not None
     assert any("VEHICLE_ACTOR_NOT_BUILT_OBJECT" in error
                for error in vehicle_identity_errors(p))
