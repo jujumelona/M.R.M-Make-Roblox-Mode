@@ -29,6 +29,58 @@ _SCHEMA = {
 }
 
 
+def _source_linked_section_builder(owner: Any, proposal: Any) -> bool:
+    """Admit short small-model assembly descriptions ONLY when launch is linked.
+
+    The actual implementation remains the host's secure add-once, resource
+    debiting section builder. A decorative ship or unsourced mechanic fails.
+    """
+    source = str(getattr(proposal, "requested_prompt", "") or "")
+    desc = str(getattr(owner, "description", "") or "")
+    assembly = bool(re.search(
+        r"우주선.{0,70}(?:부위|부품|부분)|"
+        r"\b(?:ship|spaceship|spacecraft|craft|vessel)\b"
+        r".{0,80}\b(?:part|section|component|module)s?\b|"
+        r"\b(?:assembl|build|construct)\w*\b.{0,80}"
+        r"\b(?:ship|spacecraft|vehicle)\b", source, re.I,
+    ))
+    departure = bool(re.search(
+        r"우주(?:로|에)\s*(?:나가|출발|진입|이동)|"
+        r"\b(?:launch|depart|travel|fly)\w*\b.{0,70}"
+        r"\b(?:space|orbit)\b", source, re.I,
+    ))
+    authored = all((
+        re.search(r"\b(?:ship|spaceship|spacecraft|craft|vessel)\b", desc, re.I),
+        re.search(r"\b(?:part|section|component|module)s?\b", desc, re.I),
+        re.search(r"\b(?:attach|install|assembl|build|construct)\w*\b", desc, re.I),
+        re.search(r"\bserver\b", desc, re.I),
+    ))
+    if not assembly or not departure or not authored or re.search(
+        r"\b(?:remov|replac|detach|uninstall|refund)\w*\b", desc, re.I,
+    ):
+        return False
+    d = (proposal.game_design or {}).get("dynamic_design") or {}
+    motions = d.get("host_world_motion") or {}
+    actions = d.get("host_actions") or {}
+    typed = d.get("host_typed_actions") or {}
+    kinds = d.get("remotes") or {}
+    # Require the second independently source-authored physical transition
+    # with its typed host-owned Remote pair before selecting this adapter.
+    launches = [
+        name for name, motion in motions.items()
+        if isinstance(motion, dict)
+        and motion.get("kind") == "vehicle_world_transition"
+        and name != owner.name
+        and any(isinstance(route, dict)
+                and route.get("service") == name
+                and route.get("kind") == kinds.get(remote) == "RemoteFunction"
+                and isinstance(typed.get(remote), dict)
+                and typed[remote].get("transport_only") is True
+                for remote, route in actions.items())
+    ]
+    return len(launches) == 1
+
+
 def eligible_ship_attachment(module: Any, proposal: Any) -> tuple[str, str] | None:
     if (not module.module_id.startswith("dyn_")
             or module.kind not in (ModuleKind.SERVER_MODULE, ModuleKind.CLIENT_SCRIPT)):
@@ -41,13 +93,16 @@ def eligible_ship_attachment(module: Any, proposal: Any) -> tuple[str, str] | No
     desc = owner.description.casefold()
     # This adapter handles an *add-once* section contract, not the separately
     # supported remove/replace/upgrade assembly workflow.
-    if (not re.search(r"\b(?:spaceship|ship|vessel)\s+(?:assembly|construction)\b", desc)
-            or not re.search(r"\b(?:modular\s+)?sections?\b", desc)
-            or not re.search(r"\b(?:add|attach|install|build)\b", desc)
-            or not re.search(r"\b(?:duplicate|already\s+present)\b", desc)
-            or not re.search(r"\b(?:performance|contribution)\b", desc)
-            or not re.search(r"\b(?:build\s+context|radius|proximity|range)\b", desc)
-            or not re.search(r"\b(?:persist|save|record)\w*\b", desc)):
+    lacks_strict_evidence = (
+        not re.search(r"\b(?:spaceship|ship|vessel)\s+(?:assembly|construction)\b", desc)
+        or not re.search(r"\b(?:modular\s+)?sections?\b", desc)
+        or not re.search(r"\b(?:add|attach|install|build)\b", desc)
+        or not re.search(r"\b(?:duplicate|already\s+present)\b", desc)
+        or not re.search(r"\b(?:performance|contribution)\b", desc)
+        or not re.search(r"\b(?:build\s+context|radius|proximity|range)\b", desc)
+        or not re.search(r"\b(?:persist|save|record)\w*\b", desc)
+    )
+    if lacks_strict_evidence and not _source_linked_section_builder(owner, proposal):
         return None
     if re.search(r"\b(?:remove|uninstall|replace|unassign)\b", desc):
         return None
