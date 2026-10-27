@@ -81,7 +81,8 @@ def executable_spec(module:Any,proposal:Any)->tuple[str,dict,dict]|None:
         raise ValueError("EXECUTABLE_ACTION_INVALID_AMOUNT")
     if set(amount)=={"constant"}:
         val=amount["constant"]
-        if type(val) is not int or not 0<=val<=limit:
+        if (type(val) is not int or not 0<=val<=limit
+                or (op != "set" and val == 0)):
             raise ValueError("EXECUTABLE_ACTION_INVALID_CONSTANT")
         amount_code=str(val)
     elif set(amount)=={"input"}:
