@@ -50,22 +50,6 @@ def is_bilateral_asset_exchange(description: str) -> bool:
     )
 
 
-def _needs_earned_currency_market(proposal) -> bool:
-    """Allow resource cash-out only when the original source asks to earn money.
-
-    Two-player trading transfers existing balances but cannot create the
-    currency that starts at zero for every new player.
-    """
-    source = str(getattr(proposal, "requested_prompt", "") or "").casefold()
-    resource = re.search(r"(?:자원|광물|채굴|파밍|\b(?:ore|resources?|mining|mine)\b)", source)
-    currency = re.search(r"(?:돈|화폐|코인|\b(?:money|coins?|credits?|currency)\b)", source)
-    earn = re.search(r"(?:모으|벌|얻|판매|팔|거래|\b(?:earn|sell|trade|exchange)\b)", source)
-    only_peers = (
-        re.search(r"(?:플레이어끼리|유저끼리|player.to.player|between players)", source)
-        and not re.search(r"(?:판매|팔|돈모으|earn|sell|market)", source)
-    )
-    return bool(resource and currency and earn and not only_peers)
-
 
 def _with_market(module, remote: str) -> str:
     """Compose existing audited market and barter implementations on one ABI."""
@@ -129,18 +113,21 @@ def render_host_peer_barter(module, proposal):
     # of spendable currency; P2P balance exchange alone cannot satisfy it.
     # A server-market sale accepts one server-validated quantity argument.
     # The combined market + peer ledger needs an additional command tag.
-    requested_market = _needs_earned_currency_market(proposal)
+    # Capability was derived and verified at source planning time.
+    # The adapter must never look at the original natural-language prompt.
+    claims = design.get("source_action_authorizations")
+    if (not isinstance(claims, dict)
+            or claims.get("schema") != "rmm/source-action-authorizations-v1"
+            or type(claims.get("peer_asset_exchange")) is not bool
+            or type(claims.get("earned_resource_market")) is not bool):
+        return None
+    requested_market = claims["earned_resource_market"]
     arity = routes[0][1].get("max_args")
     market_single_arg = (arity is None or
                          (type(arity) is int and arity >= 1))
     market_tagged_peer = (arity is None or
                           (type(arity) is int and arity >= 2))
-    from .request_semantics import _EXPLICIT_PEER_TRADE
-    original = str(getattr(proposal, "requested_prompt", "") or "")
-    peer_authorized = bool(
-        _EXPLICIT_PEER_TRADE.search(original)
-        or re.search(r"\bbetween\s+players\b", original, re.I)
-    )
+    peer_authorized = claims["peer_asset_exchange"]
     if requested_market and not peer_authorized and market_single_arg:
         # A vague user trade request does NOT authorize cross-player
         # transfers. Sell mined resources to the host market only; preserve
