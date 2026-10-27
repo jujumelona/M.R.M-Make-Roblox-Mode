@@ -47,6 +47,17 @@ _EXPLICIT_PEER_TRADE = re.compile(
     r"\bplayers?\b.{0,65}\btrade\b.{0,60}\beach\s+other\b",
     re.I,
 )
+# "between players" alone may mean chat, combat or matchmaking.
+# A mutual trade verb must be present before granting inventory-transfer rights.
+_PEER_TRADE_CONTEXT = re.compile(
+    r"\b(?:trade|trading|barter|exchange|exchanging)\b.{0,90}"
+    r"\bbetween\s+players\b|"
+    r"\bbetween\s+players\b.{0,90}"
+    r"\b(?:trade|trading|barter|exchange|exchanging)\b",
+    re.I,
+)
+
+
 _PEER_TRADE_OUTPUT = re.compile(
     r"\bplayer[- ]to[- ]player\s+(?:trade|trading|exchange)\b|"
     r"\b(?:p2p|peer[- ]to[- ]peer)\s+(?:trade|trading|exchange)\b|"
@@ -129,7 +140,8 @@ def request_semantic_errors(value: Any, original_prompt: str) -> list[str]:
             "the game's earned currency and owned items. Do not introduce "
             "MarketplaceService or a Robux balance API."
         )
-    if (not _EXPLICIT_PEER_TRADE.search(original_prompt)
+    if (not (_EXPLICIT_PEER_TRADE.search(original_prompt)
+             or _PEER_TRADE_CONTEXT.search(original_prompt))
             and any(_PEER_TRADE_OUTPUT.search(text) or _BILATERAL_ASSET_EFFECT.search(text)
                     or _COUNTERPARTY_ASSET_EFFECT.search(text)
                     for text in values(value))):
@@ -182,7 +194,7 @@ def source_action_authorizations(original_prompt: str) -> dict[str, Any]:
         "schema": "rmm/source-action-authorizations-v1",
         "peer_asset_exchange": bool(
             _EXPLICIT_PEER_TRADE.search(original_prompt)
-            or re.search(r"\bbetween\s+players\b", original_prompt, re.I)
+            or _PEER_TRADE_CONTEXT.search(original_prompt)
         ),
         "earned_resource_market": market,
     }
