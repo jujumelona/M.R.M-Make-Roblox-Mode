@@ -551,8 +551,8 @@ def _combine_derived_market_income(
     # existing trade/income owner if it is a vague currency updater, before
     # attempting to merge two distinct income and trade source spans.
     combo_quote = re.compile(
-        r"^(?:돈\\s*모으기?|돈\\s*벌기?|코인\\s*모으기?)"
-        r"\\s+(?:거래|판매|교환)$", re.I,
+        r"^(?:돈\s*모으기?|돈\s*벌기?|코인\s*모으기?)"
+        r"\s+(?:거래|판매|교환)$", re.I,
     )
     for index, row in enumerate(raw):
         quote = by_id.get(row.get("source_id"), "")
@@ -561,10 +561,10 @@ def _combine_derived_market_income(
                 or independent_income_origin.search(row.get("action", ""))):
             continue
         old_action = str(row.get("action", ""))
-        if (re.search(r"\\b(?:deduct|debit|subtract|consume)\\w*\\b", old_action, re.I)
-                and re.search(r"\\b(?:credit|award|pay|increase)\\w*\\b", old_action, re.I)
-                and re.search(r"\\b(?:resource|ore|inventory)\\b", old_action, re.I)
-                and re.search(r"\\b(?:money|currency|coins?|credits?)\\b", old_action, re.I)):
+        if (re.search(r"\b(?:deduct|debit|subtract|consume)\w*\b", old_action, re.I)
+                and re.search(r"\b(?:credit|award|pay|increase)\w*\b", old_action, re.I)
+                and re.search(r"\b(?:resource|ore|inventory)\b", old_action, re.I)
+                and re.search(r"\b(?:money|currency|coins?|credits?)\b", old_action, re.I)):
             continue
         revised = [dict(item) for item in raw]
         revised[index]["action"] = settlement
