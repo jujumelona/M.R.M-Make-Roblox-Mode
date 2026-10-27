@@ -63,6 +63,7 @@ def _source_linked_section_builder(owner: Any, proposal: Any) -> bool:
     motions = d.get("host_world_motion") or {}
     actions = d.get("host_actions") or {}
     typed = d.get("host_typed_actions") or {}
+    launch_contracts = d.get("host_launch_contracts") or {}
     kinds = d.get("remotes") or {}
     # Require the second independently source-authored physical transition
     # with its typed host-owned Remote pair before selecting this adapter.
@@ -74,8 +75,10 @@ def _source_linked_section_builder(owner: Any, proposal: Any) -> bool:
         and any(isinstance(route, dict)
                 and route.get("service") == name
                 and route.get("kind") == kinds.get(remote) == "RemoteFunction"
-                and isinstance(typed.get(remote), dict)
-                and typed[remote].get("transport_only") is True
+                and isinstance(
+                    typed.get(remote) or launch_contracts.get(remote), dict)
+                and (typed.get(remote) or
+                     launch_contracts.get(remote)).get("transport_only") is True
                 for remote, route in actions.items())
     ]
     return len(launches) == 1
