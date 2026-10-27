@@ -7,6 +7,7 @@ invent sender balances. Consent/asset checks stay in host runtime code.
 from roblox_mod_ai.code_generator import LuauCodeGenerator
 from roblox_mod_ai.generation_scope import generation_scope
 from roblox_mod_ai.host_peer_barter import is_bilateral_asset_exchange, render_host_peer_barter
+from roblox_mod_ai.request_semantics import source_action_authorizations
 from roblox_mod_ai.host_gameplay import render_host_gameplay
 from roblox_mod_ai.luau_analyzer import LuauStaticAnalyzer
 from roblox_mod_ai.spec import RobloxProposal, RobloxModuleSpec, ModuleKind, RobloxService
@@ -53,6 +54,8 @@ def fixture():
     mine_remote="ResourceMiningAndCurrency23C0F11Action"
     trade_remote="PlayerToPlayerTradingViaMD228CB1Action"
     design={
+        "source_action_authorizations": source_action_authorizations(
+            "Construct a game with mined resources and peer trades"),
         "world_objects": [{"name":"ResourceNode23C0F111","class":"Part"}],
         "module_world_objects": {mine.module_id:["ResourceNode23C0F111"],
                                  server.module_id: [], client.module_id: []},
