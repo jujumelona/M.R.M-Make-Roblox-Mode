@@ -72,6 +72,7 @@ def eligible_owned_weapon_performance(module: Any, proposal: Any) -> tuple[str, 
     except (KeyError, TypeError):
         return None
     if (len(fields) != 2
+            or "selection" not in fields or "quantity" not in fields
             or fields["selection"].get("type") != "text"
             or fields["quantity"].get("type") != "integer"
             or fields["quantity"].get("min") != 1
@@ -193,7 +194,8 @@ function Service.handleAction(player, services, ...)
     for _, entry in pairs(entitlements) do
         if type(entry) == "table" and entry.purchased == true
             and entry.kind == "weapon"
-            and (entry.label == tool.Name or entry.id == tool.Name) then
+            and type(_) == "string"
+            and string.sub(_, -#tool.Name - 1) == "/" .. tool.Name then
             licensed = true
             break
         end
