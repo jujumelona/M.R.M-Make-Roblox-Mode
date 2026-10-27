@@ -326,6 +326,25 @@ def source_intent_conflicts(
         r"\b(?:node|deposit|spawn|mine|harvest|gather|collect|extract)\w*\b",
         text, re.I,
     )
+    # An abstract "resource-gathering" event is not a real harvest. The
+    # production small-model response granted resources into a balance without
+    # naming any mineable/harvestable world source. Our former lexical check
+    # incorrectly counted the noun "resource-gathering" as an interaction.
+    # Require evidence of a world-derived source, not just a resource verb,
+    # before treating a server-side inventory grant as farming gameplay.
+    gatherable_origin = re.search(
+        r"\\b(?:node|deposit|vein|mineable|harvestable|world|ground|"
+        r"rock|tree|crop|plant|pickup|resource\\s+(?:source|object))\\b|"
+        r"광맥|채굴지|광석|자원\\s*(?:노드|지점|원천)",
+        text, re.I,
+    )
+    if (require_implementation and gathering_requested and real_gathering
+            and not gatherable_origin):
+        errors.append(
+            "RESOURCE_GATHER_SOURCE_UNBOUND: a resource-gathering label or "
+            "inventory reward is insufficient; declare the authoritative "
+            "mineable/harvestable world source and the server extraction effect"
+        )
     if (require_implementation and gathering_requested and inventory_sale
             and paid_instead and not real_gathering):
         errors.append(
@@ -400,6 +419,21 @@ def source_intent_conflicts(
             "SOURCE_CURRENCY_EARNING_MISSING: requested money earning must "
             "credit a player-owned balance through an authoritative action; "
             "only buying or spending existing credits is insufficient"
+        )
+    # The client may request an action or quantity, but it cannot pick how
+    # much reward currency the server mints. This exact production proposal
+    # added the client's "requested amount" to the balance with only a daily
+    # cap; that is not an earning source and is trivially exploitable.
+    if (require_implementation and money_earned_requested and re.search(
+        r"\\b(?:add|credit|increase|grant|award)\\w*\\b.{0,95}"
+        r"\\b(?:requested|user[- ]supplied|client[- ]supplied)\\s+"
+        r"(?:\\w+\\s+){0,3}amount\\b",
+        text, re.I,
+    )):
+        errors.append(
+            "SOURCE_UNBACKED_EARNING_AMOUNT: the client-requested amount "
+            "cannot determine earned currency; the server must calculate a "
+            "reward from verified gameplay or a server-owned exchange"
         )
     # A named exchange mechanic cannot be replaced by a craft recipe or a
     # generic "trade available" label. Require an observable server-side
