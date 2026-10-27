@@ -19,6 +19,7 @@ from .host_level_upgrade import render_rank_protocol
 from .host_ordered_assembly import render_ordered_assembly
 from .host_vehicle_departure import render_departure
 from .host_resource_market_sale import render_resource_market_sale
+from .host_owned_weapon_performance import render_owned_weapon_performance
 from .host_gameplay import render_host_gameplay
 from .generation_provenance import host_source_must_regenerate
 from .host_mode_navigation import eligible_mode_navigation, try_mode_navigation
@@ -111,6 +112,7 @@ class LuauCodeGenerator:
                 for d in errors
             )
             if (render_resource_market_sale(module, proposal) is not None
+                    or render_owned_weapon_performance(module, proposal) is not None
                     or render_atomic_server(module, proposal) is not None
                     or render_colony_alias(module, proposal) is not None
                     or render_host_space_action(module, proposal) is not None
@@ -186,6 +188,9 @@ class LuauCodeGenerator:
         market_sale = render_resource_market_sale(module, proposal)
         if market_sale is not None:
             return market_sale
+        owned_weapon = render_owned_weapon_performance(module, proposal)
+        if owned_weapon is not None:
+            return owned_weapon
         typed_ui = render_typed_client(module, proposal)
         if typed_ui is not None:
             return typed_ui
