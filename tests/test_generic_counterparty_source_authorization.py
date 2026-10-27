@@ -73,3 +73,39 @@ def test_preflight_does_not_accept_bilateral_module_hidden_outside_acceptance():
 def test_actor_flow_aliases_do_not_bypass_source_permissions(claim):
     errors = request_semantic_errors({"server_behavior": claim}, MARKET)
     assert any("UNREQUESTED_PEER_TRADE" in issue for issue in errors)
+
+
+def test_nonphysical_state_variables_never_become_workspace_parts():
+    from roblox_mod_ai.semantic_world_entities import assert_physical_world_entities
+    from roblox_mod_ai.host_architecture import expand_semantic_facet, HostArchitectureError
+
+    for name in (
+        "PlayerCurrency", "PlayerInventory", "CounterpartyCurrency",
+        "CounterpartyInventory", "TradeRequest", "CrewPerformanceState",
+        "ResourceBalance",
+    ):
+        with pytest.raises(ValueError, match="WORLD_ENTITY_LOGICAL_STATE_NOT_PHYSICAL"):
+            assert_physical_world_entities([name])
+    # Physical scene objects remain legitimate, regardless of gameplay.
+    assert_physical_world_entities([
+        "ResourceNode", "ShipHull", "InventoryChest", "TradeRequestBoard",
+        "CurrencyMachine", "AlienNPC",
+    ])
+    raw = {"systems": [{
+        "name": "Transfer",
+        "server_behavior": ("Server validates the owned resources before "
+                            "paying the player and updating the owned balance."),
+        "client_behavior": "Player requests a payout and views the balance.",
+        "observable_result": "Owned balance is updated.",
+        "interaction": "request_response", "input_mode": "custom",
+        "world_entities": ["PlayerCurrency"],
+    }]}
+    with pytest.raises(HostArchitectureError, match="WORLD_ENTITY_LOGICAL_STATE_NOT_PHYSICAL"):
+        expand_semantic_facet(
+            raw, facet_id="intent-transfer", requirement_ids=["req-001"],
+            source_requirements=[{
+                "id": "req-001", "statement": "Earn credits from resources",
+            }],
+            reserved_modules=set(), reserved_remotes=set(),
+            reserved_objects=set(),
+        )
