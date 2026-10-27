@@ -195,8 +195,8 @@ def _catalog(proposal: Any, server: str, router: Any) -> list[dict[str, Any]]:
               .get("host_flight_ready_builders") or {})
     if linked.get(server) == "section_attachment":
         owner_text = owner.description.casefold()
-        if (re.search(r"\b(?:ship|spaceship|spacecraft|vessel )\b", owner_text)
-                and re.search(r"\b(?:section|component|part)s?\\b", owner_text)):
+        if (re.search(r"\b(?:ship|spaceship|spacecraft|vessel)\b", owner_text)
+                and re.search(r"\b(?:section|component|part)s?\b", owner_text)):
             defaults = {"sections": [
                 {"id": "Hull", "label": "Hull", "cost": 10, "performance": 2},
                 {"id": "Engine", "label": "Engine", "cost": 20, "performance": 3},
