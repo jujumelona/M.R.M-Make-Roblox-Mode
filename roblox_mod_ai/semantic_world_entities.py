@@ -46,3 +46,33 @@ def normalize_world_names(raw: dict[str, Any]) -> tuple[dict[str, Any], list[tup
                 normalized.append((i, j))
         updated.append(dict(system, world_entities=world))
     return (dict(raw, systems=updated) if normalized else raw), normalized
+
+
+# The world contract creates physical Roblox Parts. A plain gameplay-state
+# variable is not a Part, service or replicated Remote, irrespective of its
+# model-generated name. Keep actual physical nouns such as InventoryChest,
+# CurrencyMachine or TradeRequestBoard; reject names ending in a logical
+# state/data role until the planner specifies an actual world object.
+_LOGICAL_DATA_SUFFIX = re.compile(
+    r"(?:balance|currency|inventory|wallet|state|data|request|ledger|"
+    r"progress|score|level|rank)\Z", re.I,
+)
+
+
+def assert_physical_world_entities(world_names: list[str]) -> None:
+    """Refuse to materialize logical state handles as real world geometry.
+
+    The small model must keep state in a typed/persistent server contract
+    instead of inventing workspace Parts and then referencing them as services.
+    This check applies to any gameplay domain, not only trade or inventory.
+    """
+    for name in world_names:
+        if not isinstance(name, str):
+            raise ValueError("WORLD_ENTITY_NAME_INVALID")
+        normalized = re.sub(r"[\s_\-]+", "", name)
+        if _LOGICAL_DATA_SUFFIX.search(normalized):
+            raise ValueError(
+                "WORLD_ENTITY_LOGICAL_STATE_NOT_PHYSICAL: " + name
+                + " is a logical datum, not a physical Roblox Instance. "
+                "Describe a physical world object or use typed server state."
+            )
