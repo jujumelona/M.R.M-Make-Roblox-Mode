@@ -170,6 +170,13 @@ class RobloxProductionOrchestrator:
         receipt = WorkReceipt(task_id=f"rmm_{proposal.game_title}_{int(time.time())}", overall_success=False)
         errors: list[str] = []
         tool_results: dict[str, dict] = {}
+        # The original architect's errors must survive the transition from
+        # source planning to resolve_dependencies. Otherwise the entire
+        # failure ZIP reports only secondary unowned requirement symptoms.
+        from .architecture_failure_receipt import export_architecture_compilation_report
+        tool_results["architecture_compilation"] = (
+            export_architecture_compilation_report(proposal, output_dir)
+        )
         acceptance: dict = {"passed": False, "checks": []}
         runtime: dict = {"passed": False, "executed": False, "status": "not_run",
                          "reason": "Roblox Studio has not tested this build"}
