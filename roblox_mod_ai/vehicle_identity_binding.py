@@ -257,7 +257,9 @@ def materialize_source_linked_space_arrivals(proposal: Any) -> list[dict[str, An
     An unrelated mover or an ambiguous ship does not qualify.
     """
     from hashlib import sha256
-    from .host_vehicle_actor_capability import eligible_vehicle_actor_builder
+    from .host_vehicle_actor_capability import (
+        eligible_vehicle_actor_builder, has_bound_physical_actor_provider,
+    )
 
     design = (getattr(proposal, "game_design", {}) or {}).get("dynamic_design")
     if not isinstance(design, dict):
@@ -286,7 +288,7 @@ def materialize_source_linked_space_arrivals(proposal: Any) -> list[dict[str, An
                       and actor in (ownership.get(owner.module_id) or [])
                       and actor in (ownership.get(builder.module_id) or []))
         if (owner is None or builder is None
-                or eligible_vehicle_actor_builder(builder, proposal) is None
+                or not has_bound_physical_actor_provider(builder, proposal, motion)
                 or not (provider_link or world_link)):
             continue
         # Only a complete host builder exposes the Model returned by
