@@ -33,7 +33,7 @@ from .semantic_input_contract import (
     apply_interaction_patch, apply_client_input_completion,
     CLIENT_INPUT_ONLY_SCHEMA,
 )
-from .semantic_world_entities import normalize_world_names
+from .semantic_world_entities import normalize_world_names, normalize_logical_state_references
 from .source_ownership_review import (
     SOURCE_OWNERSHIP_REVIEW_SCHEMA, ground_source_ownership,
 )
@@ -1040,6 +1040,7 @@ class RobloxDynamicArchitect:
                 rejected_scope_names: list[str] = []
                 host_bound_indexes: list[int] = []
                 discarded_ui_choices: list[dict[str, Any]] = []
+                removed_logical_world: list[dict[str, Any]] = []
                 # Preserve compact repair evidence when parsing/validation
                 # rejects it; prior failure bundles only recorded
                 # unavailable_or_too_large and hid the actual model defect.
@@ -1697,6 +1698,12 @@ class RobloxDynamicArchitect:
                             draft, host_bound_indexes = bind_host_standard_transport(draft)
                         else:
                             host_bound_indexes = []
+                        # Logical profile fields are not Workspace Parts. This
+                        # structural correction is limited to custom input:
+                        # world prompts / physical targets remain fail-closed.
+                        draft, removed_logical_world = (
+                            normalize_logical_state_references(draft)
+                        )
                         # Production models provide only a short declarative
                         # typed input/target/effect manifest. The host owns
                         # all UI, Remotes, client argument marshaling and
@@ -1949,6 +1956,7 @@ class RobloxDynamicArchitect:
                         "typed_contract_attempts": list(typed_attempts),
                         "host_bound_transport_indexes": list(host_bound_indexes),
                         "discarded_ui_choices": list(discarded_ui_choices),
+                        "normalized_logical_world_refs": list(removed_logical_world),
                     })
                     successful = True
                     break
@@ -1968,6 +1976,7 @@ class RobloxDynamicArchitect:
                             else "unavailable_or_too_large",
                         "typed_contract_attempts": list(typed_attempts),
                         "discarded_ui_choices": list(discarded_ui_choices),
+                        "normalized_logical_world_refs": list(removed_logical_world),
                         "transport_repair_response": (
                             repair_response
                             if isinstance(repair_response, (dict, list))
