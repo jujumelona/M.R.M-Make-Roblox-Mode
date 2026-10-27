@@ -96,8 +96,10 @@ def generation_scope(
             strategy = ("bounded_typed_server_action"
                         if len(linked) == 1 and single_host_action(proposal, module)
                         else "invalid_typed_server_action")
-        elif render_host_gameplay(module, proposal) is not None:
-            strategy = "host_verified_template"
+        # Order mirrors LuauCodeGenerator.generate_module_code exactly.
+        # A mismatch is dangerous: generation scopes and checkpoint receipts
+        # must describe the handler that will ACTUALLY be emitted, even if
+        # multiple capability adapters match the same action.
         elif eligible_departure(module, proposal) is not None:
             strategy = "host_declarative_vehicle_departure"
         elif eligible_ordered_assembly(module, proposal) is not None:
@@ -107,9 +109,6 @@ def generation_scope(
                 else module.name.removesuffix("Client") + "Server"
               ) == "section_attachment"
               and eligible_ship_attachment(module, proposal) is not None):
-            # This specific paired section builder has been proven to serve
-            # the actual launch Model. Do not allow an earlier unrelated
-            # ship facade strategy to suppress its GetOwnedActor provider.
             strategy = "host_declarative_ship_attachment"
         elif ((design.get("host_flight_ready_builders") or {}).get(
                 module.name if module.kind == ModuleKind.SERVER_MODULE
@@ -119,40 +118,42 @@ def generation_scope(
             strategy = "host_declarative_resource_ship_builder"
         elif eligible_rank_protocol(module, proposal) is not None:
             strategy = "host_declarative_rank_upgrade"
-        elif eligible_mode_navigation(module, proposal) is not None:
-            strategy = "host_declarative_mode_navigation"
         elif eligible_mode_unlock(module, proposal) is not None:
             strategy = "host_declarative_mode_unlock"
+        elif eligible_mode_navigation(module, proposal) is not None:
+            strategy = "host_declarative_mode_navigation"
         elif eligible_ship_purchase_facade(module, proposal) is not None:
             strategy = "host_ship_purchase_facade"
-        elif eligible_catalog_purchase(module, proposal) is not None:
-            strategy = "host_declarative_catalog"
-        elif eligible_trade_catalog(module, proposal) is not None:
-            strategy = "host_declarative_trade_catalog"
-        elif eligible_declarative_upgrade(module, proposal) is not None:
-            strategy = "host_declarative_general_upgrades"
-        elif eligible_ship_slot_configuration(module, proposal) is not None:
-            strategy = "host_declarative_ship_slot_configuration"
-        elif eligible_ship_slot_levels(module, proposal) is not None:
-            strategy = "host_declarative_ship_slot_levels"
+        elif eligible_ship_part_catalog(module, proposal) is not None:
+            strategy = "host_declarative_ship_part_catalog"
+        elif eligible_ship_owned_upgrades(module, proposal) is not None:
+            strategy = "host_declarative_ship_upgrades"
+        elif eligible_capped_ship_parts(module, proposal) is not None:
+            strategy = "host_declarative_capped_ship_parts"
+        elif eligible_ship_attachment(module, proposal) is not None:
+            strategy = "host_declarative_ship_attachment"
+        elif eligible_ship_reconfiguration(module, proposal) is not None:
+            strategy = "host_declarative_ship_reconfiguration"
+        elif eligible_ship_hierarchy(module, proposal) is not None:
+            strategy = "host_declarative_ship_hierarchy"
         elif eligible_ship_launch_gate(module, proposal) is not None:
             strategy = "host_declarative_ship_launch_gate"
+        elif eligible_ship_slot_levels(module, proposal) is not None:
+            strategy = "host_declarative_ship_slot_levels"
+        elif eligible_ship_slot_configuration(module, proposal) is not None:
+            strategy = "host_declarative_ship_slot_configuration"
         elif eligible_resource_ship_builder(module, proposal) is not None:
             strategy = "host_declarative_resource_ship_builder"
         elif eligible_ship_sections(module, proposal) is not None:
             strategy = "host_declarative_ship_sections"
-        elif eligible_ship_hierarchy(module, proposal) is not None:
-            strategy = "host_declarative_ship_hierarchy"
-        elif eligible_ship_reconfiguration(module, proposal) is not None:
-            strategy = "host_declarative_ship_reconfiguration"
-        elif eligible_ship_attachment(module, proposal) is not None:
-            strategy = "host_declarative_ship_attachment"
-        elif eligible_capped_ship_parts(module, proposal) is not None:
-            strategy = "host_declarative_capped_ship_parts"
-        elif eligible_ship_owned_upgrades(module, proposal) is not None:
-            strategy = "host_declarative_ship_upgrades"
-        elif eligible_ship_part_catalog(module, proposal) is not None:
-            strategy = "host_declarative_ship_part_catalog"
+        elif eligible_declarative_upgrade(module, proposal) is not None:
+            strategy = "host_declarative_general_upgrades"
+        elif eligible_catalog_purchase(module, proposal) is not None:
+            strategy = "host_declarative_catalog"
+        elif eligible_trade_catalog(module, proposal) is not None:
+            strategy = "host_declarative_trade_catalog"
+        elif render_host_gameplay(module, proposal) is not None:
+            strategy = "host_verified_template"
         elif module.name in design.get("host_client_actions", {}):
             strategy = "host_zero_argument_ui"
         elif single_client_action(proposal, module):
