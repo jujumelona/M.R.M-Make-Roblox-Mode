@@ -566,3 +566,28 @@ def test_typed_ui_refuses_implicit_success_for_server_failure_objects():
     assert 'result == true' in source
     assert 'type(result) == "table" and result.success == true' in source
     assert '"Action rejected"' in source
+
+
+def test_typed_input_and_state_names_cannot_be_luau_keywords():
+    from roblox_mod_ai.typed_action_contract import (
+        TypedActionContractError, validate_contract,
+    )
+    contract = {
+        "inputs": [{"id": "quantity", "label": "Quantity", "type": "integer",
+                    "min": 1, "max": 10}],
+        "target": {"kind": "none"},
+        "state_changes": [{"scope": "player",
+                            "key": "Gameplay.balance",
+                            "operation": "increment"}],
+    }
+    assert validate_contract(contract, world_entities=[]) == contract
+    import copy
+    for bad in ("end", "function", "local", "repeat", "continue"):
+        changed = copy.deepcopy(contract)
+        changed["inputs"][0]["id"] = bad
+        with pytest.raises(TypedActionContractError, match="Invalid"):
+            validate_contract(changed, world_entities=[])
+        changed = copy.deepcopy(contract)
+        changed["state_changes"][0]["key"] = "Gameplay." + bad
+        with pytest.raises(TypedActionContractError, match="Invalid"):
+            validate_contract(changed, world_entities=[])
