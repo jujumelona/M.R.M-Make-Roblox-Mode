@@ -1,0 +1,39 @@
+name: RMM built-vehicle provider regression
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'roblox_mod_ai/host_flight_ready_attachment.py'
+      - 'roblox_mod_ai/host_vehicle_actor_capability.py'
+      - 'roblox_mod_ai/vehicle_identity_binding.py'
+      - 'roblox_mod_ai/vehicle_identity_contract.py'
+      - 'roblox_mod_ai/host_ship_attachment.py'
+      - 'roblox_mod_ai/host_resource_ship_builder.py'
+      - 'roblox_mod_ai/host_vehicle_departure.py'
+      - 'roblox_mod_ai/generation_scope.py'
+      - 'roblox_mod_ai/code_generator.py'
+      - 'roblox_mod_ai/host_protocol_handoff.py'
+      - 'tests/test_plan84_source_linked_ship_actor_provider.py'
+      - '.github/workflows/rmm-vehicle-provider-regression.yml'
+  workflow_dispatch:
+jobs:
+  actor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RMM_PREDESIGN_LIVE_SEARCH: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e '.[dev]'
+      - name: Compile modified host builder modules
+        run: python -m compileall -q roblox_mod_ai tests/test_plan84_source_linked_ship_actor_provider.py
+      - name: Verify owner Model, launch pairing, tests and host Luau
+        run: |
+          python -m pytest -q tests/test_plan84_source_linked_ship_actor_provider.py
+          python -m pytest -q tests/test_plan83_ordered_assembly_launch.py
+          python -m pytest -q tests/test_host_ship_attachment.py
+          python -m pytest -q tests/test_host_resource_ship_builder.py
+          python -m pytest -q tests/test_plan82_vehicle_identity_binding.py
