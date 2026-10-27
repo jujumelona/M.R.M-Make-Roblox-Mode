@@ -123,7 +123,7 @@ def normalize_logical_state_references(
                 str(system.get("server_behavior") or ""),
             )).lower()
             phrase = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", name).lower()
-            if phrase in physical_text and re.search(
+            if (phrase in physical_text or name.lower() in physical_text) and re.search(
                 r"\b(?:click\w*|touch\w*|approach\w*|interact\w*|proximity|"
                 r"walk\w*|stand\w*|open\w*|raycast\w*|collision\w*|"
                 r"distance|position|workspace)\b",
