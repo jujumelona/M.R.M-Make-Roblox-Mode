@@ -101,9 +101,20 @@ def normalize_logical_state_references(
         world = system.get("world_entities")
         contract = system.get("action_contract")
         target = contract.get("target") if isinstance(contract, dict) else None
+        # This pass runs BEFORE the host binds Remote transport. A semantic
+        # action can legitimately have no interaction enum yet, or the small
+        # model can write 'none' and leave the host to choose a Remote. Gating
+        # logical data extraction on event/request_response caused every
+        # ResourceBalance pseudo-Part to survive, then fail physical validation
+        # identically on all scoped retries. Transport is NOT the authority for
+        # deciding whether an entity name is a persistent/numeric datum.
+        #
+        # Retain world_prompt / physical targets fail-closed, including an
+        # explicitly malformed world_prompt interaction awaiting correction.
+        # The explicit physical-action language check below is unchanged.
         safe_custom = (
             system.get("input_mode", "custom") == "custom"
-            and system.get("interaction") in ("event", "request_response")
+            and system.get("interaction") != "world_prompt"
             and (not isinstance(target, dict) or target.get("kind") == "none")
         )
         if not safe_custom or not isinstance(world, list):
