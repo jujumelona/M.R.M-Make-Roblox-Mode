@@ -118,11 +118,15 @@ def normalize_logical_state_references(
                 continue
             # Natural-language UI/interaction with an object can designate
             # real world affordances. Never silently convert such a target.
-            client = str(system.get("client_behavior") or "").lower()
+            physical_text = " ".join((
+                str(system.get("client_behavior") or ""),
+                str(system.get("server_behavior") or ""),
+            )).lower()
             phrase = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", name).lower()
-            if phrase in client and re.search(
-                r"\b(click|touch|approach|interact|proximity|walk|stand|open)\b",
-                client,
+            if phrase in physical_text and re.search(
+                r"\b(click|touch|approach|interact|proximity|walk|stand|open|"
+                r"raycast|collision|touching|distance|position|workspace)\b",
+                physical_text,
             ):
                 accepted.append(name)
                 continue
