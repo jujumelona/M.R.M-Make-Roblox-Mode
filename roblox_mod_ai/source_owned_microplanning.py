@@ -395,7 +395,7 @@ def _repair_incomplete_owned_exchange(
             # Restrict each model effect rather than bypassing the ABI or
             # cutting off one of the state mutations.
             kind = ("purchase" if re.search(
-                r"구매|구입|\\b(?:purchas\\w*|buy|bought)\\b", quote, re.I,
+                r"구매|구입|\b(?:purchas\w*|buy|bought)\b", quote, re.I,
             ) else "trade")
             corrected = (
                 "Server validates and executes the requested " + kind + ": " +
