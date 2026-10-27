@@ -364,9 +364,9 @@ def _repair_incomplete_owned_exchange(
                         "type": "object",
                         "properties": {
                             "given_mutation": {"type": "string",
-                                               "minLength": 24, "maxLength": 180},
+                                               "minLength": 24, "maxLength": 80},
                             "received_mutation": {"type": "string",
-                                                  "minLength": 24, "maxLength": 180},
+                                                  "minLength": 24, "maxLength": 80},
                         },
                         "required": ["given_mutation", "received_mutation"],
                         "additionalProperties": False,
@@ -379,8 +379,8 @@ def _repair_incomplete_owned_exchange(
             given = reply.get("given_mutation") if isinstance(reply, dict) else None
             received = reply.get("received_mutation") if isinstance(reply, dict) else None
             if (not isinstance(given, str) or not isinstance(received, str)
-                    or not 24 <= len(given.strip()) <= 180
-                    or not 24 <= len(received.strip()) <= 180):
+                    or not 24 <= len(given.strip()) <= 80
+                    or not 24 <= len(received.strip()) <= 80):
                 evidence.append("OWNED_EXCHANGE_EFFECT_FIELDS_INVALID")
                 continue
             debit = _DEBIT.search(given)
@@ -391,14 +391,20 @@ def _repair_incomplete_owned_exchange(
                     or _NEGATIVE.search(received)):
                 evidence.append("OWNED_EXCHANGE_EFFECT_NO_DUAL_MUTATION")
                 continue
+            # Existing source-binding ABI limits actions to 220 chars.
+            # Restrict each model effect rather than bypassing the ABI or
+            # cutting off one of the state mutations.
+            kind = ("purchase" if re.search(
+                r"구매|구입|\\b(?:purchas\\w*|buy|bought)\\b", quote, re.I,
+            ) else "trade")
             corrected = (
-                "For this requested trade or purchase, the server validates "
-                "the authenticated player's owned items, available balance "
-                "and authorized exchange amount and rejects insufficient "
-                "or duplicate attempts; on success " +
+                "Server validates and executes the requested " + kind + ": " +
                 given.strip().rstrip(".; ") + "; then " +
                 received.strip().rstrip(".; ") + "."
             )
+            if len(corrected) > 220:
+                evidence.append("OWNED_EXCHANGE_ACTION_TOO_LONG")
+                continue
             candidate = [dict(item) for item in raw]
             candidate[i]["action"] = corrected
             try:
