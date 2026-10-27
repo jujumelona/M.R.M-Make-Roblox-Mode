@@ -96,6 +96,21 @@ def generation_scope(
             strategy = "host_declarative_vehicle_departure"
         elif eligible_ordered_assembly(module, proposal) is not None:
             strategy = "host_declarative_ordered_assembly"
+        elif ((design.get("host_flight_ready_builders") or {}).get(
+                module.name if module.kind == ModuleKind.SERVER_MODULE
+                else module.name.removesuffix("Client") + "Server"
+              ) == "section_attachment"
+              and eligible_ship_attachment(module, proposal) is not None):
+            # This specific paired section builder has been proven to serve
+            # the actual launch Model. Do not allow an earlier unrelated
+            # ship facade strategy to suppress its GetOwnedActor provider.
+            strategy = "host_declarative_ship_attachment"
+        elif ((design.get("host_flight_ready_builders") or {}).get(
+                module.name if module.kind == ModuleKind.SERVER_MODULE
+                else module.name.removesuffix("Client") + "Server"
+              ) == "resource_ship_builder"
+              and eligible_resource_ship_builder(module, proposal) is not None):
+            strategy = "host_declarative_resource_ship_builder"
         elif eligible_rank_protocol(module, proposal) is not None:
             strategy = "host_declarative_rank_upgrade"
         elif eligible_mode_navigation(module, proposal) is not None:
