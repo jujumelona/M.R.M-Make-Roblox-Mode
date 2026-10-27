@@ -205,6 +205,10 @@ def test_real_failure_15_mining_and_bilateral_barter_are_composed_not_conflicted
         "우주모드 자원파밍 돈모으기 거래 우주선 제작, "
         "플레이어 간 아이템과 화폐 거래도 허용"
     )
+    from roblox_mod_ai.request_semantics import source_action_authorizations
+    p.game_design["dynamic_design"]["source_action_authorizations"] = (
+        source_action_authorizations(p.requested_prompt)
+    )
     ensure_mining_world_contract(p)
     for mod in (server,client):
         mine=render_host_mining(mod,p)
