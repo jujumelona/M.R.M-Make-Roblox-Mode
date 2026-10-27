@@ -68,8 +68,8 @@ def weapon_plan():
         "transport_only": True, "world_entities": [],
         "contract": {
             "inputs": [
-                {"id": "selection", "type": "text"},
-                {"id": "quantity", "type": "integer", "min": 1, "max": 10000},
+                {"id": "selection", "label": "Owned weapon", "type": "text"},
+                {"id": "quantity", "label": "Requested count", "type": "integer", "min": 1, "max": 10000},
             ],
             "target": {"kind": "none"}, "state_changes": [],
         },
