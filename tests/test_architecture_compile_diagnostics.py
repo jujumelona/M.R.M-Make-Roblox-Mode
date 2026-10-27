@@ -116,3 +116,22 @@ def test_server_physical_access_keeps_real_target():
     corrected, repairs = normalize_logical_state_references(source)
     assert corrected == source
     assert repairs == []
+
+
+def test_physical_intent_is_preserved_across_host_ui_transport():
+    from roblox_mod_ai.semantic_input_contract import bind_host_standard_transport
+    raw = {"systems": [{
+        "name": "UseTerminal",
+        "interaction": "request_response", "input_mode": "custom",
+        "server_behavior": "Authorize one player action against owned state.",
+        "client_behavior": (
+            "Player clicks the Trade Request nearby, confirms an action, "
+            "and sees the result."
+        ),
+        "world_entities": ["TradeRequest"],
+    }]}
+    normalized, repairs = normalize_logical_state_references(raw)
+    assert normalized == raw and repairs == []
+    compiled, changed = bind_host_standard_transport(normalized)
+    assert changed == [0]
+    assert compiled["systems"][0]["world_entities"] == ["TradeRequest"]
