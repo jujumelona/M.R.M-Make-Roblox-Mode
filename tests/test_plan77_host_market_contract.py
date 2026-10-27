@@ -14,7 +14,7 @@ class NoPlannerCalls:
         raise AssertionError("Host-authorized market recovery must not re-prompt the 9B model")
 
 
-SOURCE = "자원파밍 돈모으기 거래 등으로 우주선을 부위마다 만들어서 만들수있고"
+SOURCE = "우주모드 인데 자원파밍 돈모으기 거래 등으로 우주선을 부위마다 만들어서 만들수있고"
 
 
 def _source_id(text, part):
