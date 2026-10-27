@@ -141,7 +141,10 @@ def source_action_authorizations(original_prompt: str) -> dict[str, Any]:
     )
     return {
         "schema": "rmm/source-action-authorizations-v1",
-        "peer_asset_exchange": bool(_EXPLICIT_PEER_TRADE.search(original_prompt)),
+        "peer_asset_exchange": bool(
+            _EXPLICIT_PEER_TRADE.search(original_prompt)
+            or re.search(r"\\bbetween\\s+players\\b", original_prompt, re.I)
+        ),
         "earned_resource_market": market,
     }
 
