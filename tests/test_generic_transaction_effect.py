@@ -264,3 +264,20 @@ def test_noop_increment_cannot_be_declared_as_finished_gameplay():
                 "multiplier": 1, "limit": 100,
             }],
         })
+
+
+def test_atomic_effect_rejects_zero_increment_as_fake_gameplay():
+    p, server, remote = _candidate()
+    design = p.game_design["dynamic_design"]
+    design["host_typed_actions"][remote]["contract"]["state_changes"] = [
+        {"scope": "player", "key": "Progress.credits",
+         "operation": "increment"},
+    ]
+    design["host_executable_actions"][remote] = {
+        "schema": "rmm/atomic-effect-v1",
+        "namespace": "Progress", "field": "credits",
+        "operation": "increment", "amount": {"constant": 0},
+        "limit": 1000,
+    }
+    with pytest.raises(ValueError, match="EXECUTABLE_ACTION_INVALID_CONSTANT"):
+        render_atomic_server(server, p)
