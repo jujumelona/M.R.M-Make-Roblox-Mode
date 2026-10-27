@@ -486,6 +486,18 @@ def complete_source_owned_actions(
         # are occupied. New gameplay actions, unlike local field repairs,
         # must respect the source-owned maximum.
         if len(raw) >= max_actions:
+            # A full source-owned action roster cannot append another action.
+            # It CAN repair an incomplete existing transaction in place.
+            rewritten = _repair_incomplete_owned_exchange(
+                router, source, raw, gaps, max_actions, rejection_evidence,
+            )
+            if rewritten is not None:
+                raw = rewritten
+                bound = verify_or_bind_actions(
+                    router, source, raw,
+                    require_complete=False, max_actions=max_actions,
+                )
+                continue
             break
         occupied = {row["source_quote"] for row in bound}
         candidates = [
