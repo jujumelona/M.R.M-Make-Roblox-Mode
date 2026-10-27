@@ -20,6 +20,14 @@ def eligible_resource_market_sale(module: Any, proposal: Any) -> tuple[str, str]
             or module.kind not in (ModuleKind.SERVER_MODULE, ModuleKind.CLIENT_SCRIPT)):
         return None
     d = (proposal.game_design.get("dynamic_design") or {})
+    # The source parser must independently authorize the market exchange.
+    # A hallucinated sale in a model-authored service description alone is
+    # not permission to create or move player money.
+    authorizations = d.get("source_action_authorizations") or {}
+    if (not isinstance(authorizations, dict)
+            or authorizations.get("earned_resource_market") is not True
+            or authorizations.get("peer_asset_exchange") is True):
+        return None
     remote_links = d.get("module_remotes") or {}
     server = (module.name if module.kind == ModuleKind.SERVER_MODULE
               else module.name.removesuffix("Client") + "Server")
