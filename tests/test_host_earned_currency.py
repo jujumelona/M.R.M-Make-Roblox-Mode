@@ -235,7 +235,12 @@ def test_followup_trade_and_ship_slot_contracts_do_not_require_specific_names():
         ),
     )
     p.modules.extend([trade,parts])
+    # This follow-up explicitly authorizes a second player as an actor.
+    # Market-only requests must never silently gain peer inventory transfers.
+    from roblox_mod_ai.request_semantics import source_action_authorizations
+    p.requested_prompt = "Earn coins by mining, upgrade, and trade items between players"
     d=p.game_design["dynamic_design"]
+    d["source_action_authorizations"] = source_action_authorizations(p.requested_prompt)
     d["host_actions"]["TradeAction"]={"service":trade.name,"kind":"RemoteFunction"}
     d["remotes"]["TradeAction"]="RemoteFunction"
     d["host_actions"]["ShipPartAction"]={"service":parts.name,"kind":"RemoteFunction"}
