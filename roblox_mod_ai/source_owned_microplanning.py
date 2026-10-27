@@ -633,6 +633,83 @@ def _combine_derived_market_income(
 
 
 
+
+def _replace_weak_owner_with_stronger_overlapping_action(
+    router: Any, source: str, raw: list[dict[str, str]], *,
+    max_actions: int,
+) -> list[dict[str, str]]:
+    """Repair a weak atomic action, never append its effect as a duplicate.
+
+    The model often chooses a *broader* overlapping quote for a stronger
+    implementation of an already owned feature. Example: "resource farming"
+    only granted inventory, so it appended a real mineable-node harvest under
+    "resource farming earn money". The broader quote then requires money in
+    the harvest, even though the separate verified trade supplies the money.
+
+    Reuse only the existing shorter immutable owner. Require strict semantic
+    improvement for that exact quote and no lost whole-clause obligations.
+    Never use keyword overlap alone as proof of an executable mechanic.
+    """
+    if len(raw) < 3:
+        return raw
+    source_ids = {
+        span["id"]: span["quote"]
+        for span in eligible_atomic_action_spans(source)
+    }
+    try:
+        before_bound = verify_or_bind_actions(
+            router, source, raw, require_complete=False,
+            max_actions=max_actions,
+        )
+    except SourceActionBindingError:
+        return raw
+    before_gaps = set(_coverage_issues(source, before_bound))
+    for new_i, candidate in enumerate(raw):
+        broader = source_ids.get(candidate.get("source_id"), "")
+        replacement = candidate.get("action", "")
+        if not broader or not isinstance(replacement, str):
+            continue
+        for old_i, original in enumerate(raw):
+            if new_i == old_i:
+                continue
+            narrower = source_ids.get(original.get("source_id"), "")
+            old_action = original.get("action", "")
+            if (not narrower or not isinstance(old_action, str)
+                    or len(broader) <= len(narrower)):
+                continue
+            # Both are unchanged source spans and the shorter phrase must
+            # occur at a complete whitespace-delimited boundary, not merely
+            # share a substring or an unrelated gameplay keyword.
+            if not re.search(
+                r"(?<!\S)" + re.escape(narrower) + r"(?!\S)", broader,
+            ):
+                continue
+            old_errors = set(source_intent_conflicts(
+                narrower, old_action, require_implementation=True,
+            ))
+            new_errors = set(source_intent_conflicts(
+                narrower, replacement, require_implementation=True,
+            ))
+            if not old_errors or not new_errors < old_errors:
+                continue
+            proposed = [dict(row) for i, row in enumerate(raw) if i != new_i]
+            remapped = old_i - (1 if new_i < old_i else 0)
+            proposed[remapped]["action"] = replacement
+            try:
+                verified = verify_or_bind_actions(
+                    router, source, proposed, require_complete=False,
+                    max_actions=max_actions,
+                )
+            except SourceActionBindingError:
+                continue
+            # Full-clause protection: replacing a separate income/payment or
+            # independently requested second world action is NOT permitted
+            # when it introduces a missing obligation elsewhere.
+            if set(_coverage_issues(source, verified)) <= before_gaps:
+                return proposed
+    return raw
+
+
 def complete_source_owned_actions(
     router: Any, source: str, *, initial_actions: Any = None,
     max_actions: int = _MAX_ACTIONS,
@@ -673,6 +750,19 @@ def complete_source_owned_actions(
     failed_proposals: set[str] = set()
     rejection_evidence: list[str] = []
     while True:
+        # A stronger harvest/upgrade/other source action must replace a weak
+        # existing owner before a multiword quote is assigned to a duplicate.
+        # This preserves the independently accepted siblings and avoids
+        # demanding unrelated effects from the broad quotation.
+        promoted = _replace_weak_owner_with_stronger_overlapping_action(
+            router, source, raw, max_actions=max_actions,
+        )
+        if promoted is not raw:
+            raw = promoted
+            bound = verify_or_bind_actions(
+                router, source, raw, require_complete=False,
+                max_actions=max_actions,
+            )
         # Consolidate an adjacent, source-authorized market income even when
         # the model's money-only action currently fails whole-clause coverage.
         # This prevents wasting attempts "fixing" the independent currency
