@@ -89,6 +89,25 @@ _BILATERAL_ASSET_EFFECT = re.compile(
 )
 
 
+# Multi-actor asset mutations must be source-authorized. Detect semantics of
+# transferring player-owned state, even when the model avoids 'P2P', 'seller'
+# and 'buyer'. This is a generic security boundary, not a game-genre route.
+_COUNTERPARTY_ASSET_EFFECT = re.compile(
+    r"\\b(?:credit|pay|debit|deduct|transfer|grant|give|move|exchange)\\w*"
+    r"\\b.{0,140}\\b(?:the\\s+)?(?:other\\s+player|counterparty|recipient)"
+    r"\\b|"
+    r"\\b(?:both|each)\\s+(?:players?['’]s?\\s+)?"
+    r"(?:inventor(?:y|ies)|wallets?|balances?|owned\\s+assets?)"
+    r"\\b.{0,150}\\b(?:transfer|mutat|modif|chang|updat|exchang|credit|debit|deduct)"
+    r"\\w*\\b|"
+    r"\\b(?:transfer|exchang|mutat|modif|chang|updat|credit|debit|deduct)"
+    r"\\w*\\b.{0,150}"
+    r"\\b(?:both|each)\\s+(?:players?['’]s?\\s+)?"
+    r"(?:inventor(?:y|ies)|wallets?|balances?|owned\\s+assets?)\\b",
+    re.I | re.S,
+)
+
+
 def request_semantic_errors(value: Any, original_prompt: str) -> list[str]:
     """Reject unsolicited platform monetization with a repairable diagnosis."""
     def values(item: Any):
@@ -111,7 +130,7 @@ def request_semantic_errors(value: Any, original_prompt: str) -> list[str]:
             "MarketplaceService or a Robux balance API."
         )
     if (not _EXPLICIT_PEER_TRADE.search(original_prompt)
-            and any(_PEER_TRADE_OUTPUT.search(text) or _BILATERAL_ASSET_EFFECT.search(text)
+            and any(_PEER_TRADE_OUTPUT.search(text) or _BILATERAL_ASSET_EFFECT.search(text)\n                    or _COUNTERPARTY_ASSET_EFFECT.search(text)
                     for text in values(value))):
         errors.append(
             "UNREQUESTED_PEER_TRADE: user requested trading without authorizing "
@@ -211,6 +230,13 @@ def assert_source_action_authorizations(proposal: Any) -> None:
     claims_to_audit = {
         "acceptance": design.get("acceptance") or {},
         "module_behaviors": design.get("module_behaviors") or {},
+        # Renderers consume module descriptions as executable semantics,
+        # therefore descriptions require the same source-authorization gate.
+        "module_descriptions": [
+            getattr(module, "description", "")
+            for module in getattr(proposal, "modules", ())
+            if str(getattr(module, "module_id", "")).startswith("dyn_")
+        ],
     }
     errors = request_semantic_errors(
         claims_to_audit, proposal.requested_prompt,
