@@ -184,3 +184,23 @@ def test_source_authorization_tampering_is_detected_before_build():
         "peer_asset_exchange"] = False
     with pytest.raises(ValueError, match="SOURCE_AUTHORIZATIONS_INVALID"):
         assert_source_action_authorizations(plan)
+
+
+def test_between_players_without_trade_is_not_asset_exchange_permission():
+    from roblox_mod_ai.request_semantics import (
+        request_semantic_errors, source_action_authorizations,
+    )
+    vague = "Players can chat between players while exploring the world"
+    assert source_action_authorizations(vague)["peer_asset_exchange"] is False
+    assert any("UNREQUESTED_PEER_TRADE" in error for error in
+               request_semantic_errors(
+                   "Players can trade owned inventory assets with each other",
+                   vague,
+               ))
+    explicit = "Players barter inventory items between players."
+    assert source_action_authorizations(explicit)["peer_asset_exchange"] is True
+    assert not any("UNREQUESTED_PEER_TRADE" in error for error in
+                   request_semantic_errors(
+                       "Players can trade owned inventory assets with each other",
+                       explicit,
+                   ))
