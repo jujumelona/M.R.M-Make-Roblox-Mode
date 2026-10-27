@@ -76,3 +76,60 @@ def assert_physical_world_entities(world_names: list[str]) -> None:
                 + " is a logical datum, not a physical Roblox Instance. "
                 "Describe a physical world object or use typed server state."
             )
+
+
+
+def normalize_logical_state_references(
+    raw: dict[str, Any],
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Remove model-authored pseudo-Parts for numeric/logical data, not actions.
+
+    Only the player's custom-input semantics may take this correction: logical
+    variables belong to server-owned state, not Workspace. World prompts and
+    explicitly physical targets are NOT silently rewritten; the host's strict
+    physical-entity validator then rejects them for a scoped replan.
+    """
+    systems = raw.get("systems")
+    if not isinstance(systems, list):
+        return raw, []
+    updated = []
+    removed = []
+    for i, system in enumerate(systems):
+        if not isinstance(system, dict):
+            updated.append(system)
+            continue
+        world = system.get("world_entities")
+        contract = system.get("action_contract")
+        target = contract.get("target") if isinstance(contract, dict) else None
+        safe_custom = (
+            system.get("input_mode", "custom") == "custom"
+            and system.get("interaction") in ("event", "request_response")
+            and (not isinstance(target, dict) or target.get("kind") == "none")
+        )
+        if not safe_custom or not isinstance(world, list):
+            updated.append(system)
+            continue
+        accepted = []
+        for name in world:
+            if not isinstance(name, str) or not _LOGICAL_DATA_SUFFIX.search(
+                re.sub(r"[\s_\-]+", "", name)
+            ):
+                accepted.append(name)
+                continue
+            # Natural-language UI/interaction with an object can designate
+            # real world affordances. Never silently convert such a target.
+            client = str(system.get("client_behavior") or "").lower()
+            phrase = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", name).lower()
+            if phrase in client and re.search(
+                r"\b(click|touch|approach|interact|proximity|walk|stand|open)\b",
+                client,
+            ):
+                accepted.append(name)
+                continue
+            removed.append({
+                "system_index": i,
+                "name": name,
+                "reason": "logical_state_reference_not_world_geometry",
+            })
+        updated.append(dict(system, world_entities=accepted))
+    return (dict(raw, systems=updated) if removed else raw), removed
