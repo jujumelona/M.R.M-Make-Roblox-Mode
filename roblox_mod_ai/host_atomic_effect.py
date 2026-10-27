@@ -91,7 +91,8 @@ def executable_spec(module:Any,proposal:Any)->tuple[str,dict,dict]|None:
             raise ValueError("EXECUTABLE_ACTION_INVALID_INPUT")
         matches=[x for x in contract["inputs"]
                  if x["id"]==field_id and x["type"]=="integer"
-                 and x["min"]>=0 and x["max"]<=limit]
+                 and x["min"] >= (1 if op != "set" else 0)
+                 and x["max"]<=limit]
         if len(matches)!=1:
             raise ValueError("EXECUTABLE_ACTION_INPUT_NOT_VALIDATED")
         amount_code="args."+field_id
@@ -270,7 +271,7 @@ def render_transaction_server(module: Any, proposal: Any) -> str | None:
                     or type(multiplier) is not int or not 1 <= multiplier <= 1000000
                     or len([f for f in contract["inputs"]
                             if f["id"] == field_id and f["type"] == "integer"
-                            and f["min"] >= 0
+                            and f["min"] >= (1 if operation != "set" else 0)
                             and f["max"] * multiplier <= limit]) != 1):
                 raise ValueError("TRANSACTION_UNVALIDATED_AMOUNT")
             expr = ("args." + field_id if multiplier == 1
