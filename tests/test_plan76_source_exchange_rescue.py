@@ -38,6 +38,10 @@ class TinyPlanner:
             allowed = fields["actions"]["items"]["properties"]["source_id"]["enum"]
             return {"actions": [{"source_id": allowed[0],
                                  "action": "Server changes the player's currency balance to complete a trade."}]}
+        if "action" in fields:
+            # The unstructured focused retry repeats the same 29-token
+            # failure. The host should then ask for TWO explicit effects.
+            return {"action": "Server changes the player's currency balance to complete a trade."}
         if "given_mutation" in fields:
             if self.good:
                 return {
