@@ -279,9 +279,27 @@ def author_verified_atomic_systems(
                     retained_verified[owner] = dict(system)
                 break
         else:
+            # The outer architect can fail before assigning its draft, so the
+            # failure ZIP previously contained NO authored model response.
+            # Report the failing immutable source owner and last server claim
+            # alongside the validator diagnosis. Never mislabel an exhausted
+            # child as a successful facet or discard accepted siblings.
+            diagnostics = {
+                "source_quote": action["source_quote"],
+                "source_action": action["action"][:220],
+                "issues": previous_issues,
+                "last_server_behavior": (
+                    str(system.get("server_behavior") or "")[:360]
+                    if isinstance(system, dict) else None
+                ),
+                "last_observable_result": (
+                    str(system.get("observable_result") or "")[:180]
+                    if isinstance(system, dict) else None
+                ),
+            }
             raise SourceActionBindingError(
                 "ATOMIC_LOCAL_REPAIR_EXHAUSTED: " + str(index) + ": " +
-                json.dumps(previous_issues, ensure_ascii=False)[:850]
+                json.dumps(diagnostics, ensure_ascii=False)[:1300]
             )
     validate_atomic_system_ownership(
         actions, accepted, original_prompt=original_prompt
