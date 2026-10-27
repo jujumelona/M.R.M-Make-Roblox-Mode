@@ -87,3 +87,16 @@ def test_generic_repair_leaves_sibling_and_source_ownership_unchanged():
     assert rewritten[0] == initial[0]
     assert rewritten[1]["source_id"] == initial[1]["source_id"]
     assert initial[1]["action"] == "Server changes the player's currency balance to complete a trade."
+
+
+def test_full_action_budget_can_still_repair_existing_trade():
+    router = TinyPlanner()
+    fixed = complete_source_owned_actions(
+        router, SOURCE, initial_actions=inputs(), max_actions=2,
+    )
+    assert len(fixed) == 2
+    assert fixed[0]["action"] == inputs()[0]["action"]
+    assert "deducts owned ore" in fixed[1]["action"]
+    assert "credits earned money" in fixed[1]["action"]
+    assert not _coverage_issues(SOURCE, fixed)
+    assert len(router.calls) == 1
