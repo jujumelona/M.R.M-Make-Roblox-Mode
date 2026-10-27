@@ -1689,6 +1689,13 @@ class RobloxDynamicArchitect:
                         # verified exchange. Ambiguous input is never guessed.
                         draft, named_world_refs = normalize_world_names(draft)
                         draft, swapped_indexes = canonicalize_interaction_fields(draft)
+                        # Inspect original model-authored UI/physical affordances
+                        # BEFORE host transport replaces its client description.
+                        # This prevents a real selectable object from vanishing
+                        # merely because the trusted UI compiler rewrote prose.
+                        draft, removed_logical_world = (
+                            normalize_logical_state_references(draft)
+                        )
                         # The host, not the 9B planner, selects Remote/LocalScript
                         # transport. This MUST happen before input validation
                         # and before any attempt to prompt for a protocol patch.
@@ -1698,12 +1705,6 @@ class RobloxDynamicArchitect:
                             draft, host_bound_indexes = bind_host_standard_transport(draft)
                         else:
                             host_bound_indexes = []
-                        # Logical profile fields are not Workspace Parts. This
-                        # structural correction is limited to custom input:
-                        # world prompts / physical targets remain fail-closed.
-                        draft, removed_logical_world = (
-                            normalize_logical_state_references(draft)
-                        )
                         # Production models provide only a short declarative
                         # typed input/target/effect manifest. The host owns
                         # all UI, Remotes, client argument marshaling and
