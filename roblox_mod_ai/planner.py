@@ -507,6 +507,7 @@ class RobloxGameDesignPlanner:
                     primary_genre = g_name
                     break
 
+        from .request_semantics import source_action_authorizations
         proto_proposal = RobloxProposal(
             requested_prompt=prompt,
             game_title=game_title,
@@ -528,6 +529,7 @@ class RobloxGameDesignPlanner:
                 "pre_design_research": research,
                 "dynamic_design": ({
                     "schema": "rmm/dynamic-design-v1",
+                    "source_action_authorizations": source_action_authorizations(prompt),
                     "module_requirements": dynamic_design["module_requirements"],
                     "module_behaviors": dynamic_design["module_behaviors"],
                     "module_facets": dynamic_design["module_facets"],
