@@ -130,7 +130,8 @@ def request_semantic_errors(value: Any, original_prompt: str) -> list[str]:
             "MarketplaceService or a Robux balance API."
         )
     if (not _EXPLICIT_PEER_TRADE.search(original_prompt)
-            and any(_PEER_TRADE_OUTPUT.search(text) or _BILATERAL_ASSET_EFFECT.search(text)\n                    or _COUNTERPARTY_ASSET_EFFECT.search(text)
+            and any(_PEER_TRADE_OUTPUT.search(text) or _BILATERAL_ASSET_EFFECT.search(text)
+                    or _COUNTERPARTY_ASSET_EFFECT.search(text)
                     for text in values(value))):
         errors.append(
             "UNREQUESTED_PEER_TRADE: user requested trading without authorizing "
