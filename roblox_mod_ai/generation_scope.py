@@ -15,6 +15,7 @@ from .spec import ModuleKind
 from .host_level_upgrade import eligible_rank_protocol
 from .host_ordered_assembly import eligible_ordered_assembly
 from .host_vehicle_departure import eligible_departure
+from .host_resource_market_sale import eligible_resource_market_sale
 from .host_gameplay import render_host_gameplay
 from .host_space_actions import render_host_space_action
 from .host_contextual_harvest import render_contextual_harvest
@@ -68,6 +69,8 @@ def generation_scope(
             strategy = "host_contextual_harvest"
         elif render_host_space_action(module, proposal) is not None:
             strategy = "host_space_action"
+        elif eligible_resource_market_sale(module, proposal) is not None:
+            strategy = "host_resource_market_sale"
         # Routing precedence MUST match code_generator.generate_module_code:
         # typed client and typed server are resolved before genre adapters.
         # A different strategy here invalidates checkpoint provenance and
