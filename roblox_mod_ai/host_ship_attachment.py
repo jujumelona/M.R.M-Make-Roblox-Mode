@@ -154,7 +154,13 @@ def try_ship_attachment(module: Any, proposal: Any, router: Any = None) -> str |
         ", performance = " + str(row["performance"]) +
         ", ordinal = " + str(i + 1) + "}" for i, row in enumerate(entries)
     )
-    return _SERVER.replace("__SECTIONS__", catalog)
+    result = _SERVER.replace("__SECTIONS__", catalog)
+    linked = ((proposal.game_design.get("dynamic_design") or {})
+              .get("host_flight_ready_builders") or {})
+    if linked.get(server) == "section_attachment":
+        from .host_flight_ready_attachment import render_flight_ready_attachment
+        result = render_flight_ready_attachment(result)
+    return result
 
 
 _SERVER = r'''--!strict
