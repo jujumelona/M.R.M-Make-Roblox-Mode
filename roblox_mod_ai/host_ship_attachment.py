@@ -45,7 +45,7 @@ def _source_linked_section_builder(owner: Any, proposal: Any) -> bool:
         r"\b(?:ship|spacecraft|vehicle)\b", source, re.I,
     ))
     departure = bool(re.search(
-        r"우주(?:로|에)\s*(?:나가|출발|진입|이동)|"
+        r"우주(?:로|에)\s*(?:나가|나갈|나간|나갔|출발|진입|이동)|"
         r"\b(?:launch|depart|travel|fly)\w*\b.{0,70}"
         r"\b(?:space|orbit)\b", source, re.I,
     ))
