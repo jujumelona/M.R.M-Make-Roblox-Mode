@@ -57,7 +57,9 @@ def vehicle_identity_errors(proposal: Any) -> list[str]:
         # Provider-bound transitions move the player's runtime Model returned
         # by the verified first-party builder, not any static Craft proxy.
         if spec.get("actor_identity_source") == "verified_owned_actor_provider":
-            from .host_vehicle_actor_capability import eligible_vehicle_actor_builder
+            from .host_vehicle_actor_capability import (
+                eligible_vehicle_actor_builder, has_bound_physical_actor_provider,
+            )
             from .spec import ModuleKind
             builder = next(
                 (m for m in relevant_candidates(modules, owner_name)
@@ -66,7 +68,7 @@ def vehicle_identity_errors(proposal: Any) -> list[str]:
                 spec.get("actor_provider") == "GetOwnedActor"
                 and builder is not None
                 and getattr(builder, "kind", None) == ModuleKind.SERVER_MODULE
-                and eligible_vehicle_actor_builder(builder, proposal) is not None)
+                and has_bound_physical_actor_provider(builder, proposal, spec))
             actions = design.get("host_actions") or {}
             typed = design.get("host_typed_actions") or {}
             routes = [
