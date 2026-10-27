@@ -335,7 +335,9 @@ def source_intent_conflicts(
     gatherable_origin = re.search(
         r"\b(?:node|deposit|vein|mineable|harvestable|world|ground|"
         r"rock|tree|crop|plant|pickup|resource\s+(?:source|object))\b|"
-        r"광맥|채굴지|광석|자원\s*(?:노드|지점|원천)",
+        r"광맥|채굴지|광석|자원\s*(?:노드|지점|원천)|"
+        r"\b(?:mine|mines|mined|mining|extract|extracts|extracted|extracting)\b"
+        r".{0,90}\b(?:ores?|minerals?)\b",
         text, re.I,
     )
     if (require_implementation and gathering_requested and real_gathering
