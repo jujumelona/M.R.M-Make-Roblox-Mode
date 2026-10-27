@@ -6,6 +6,7 @@ Do not substitute author descriptions for the original user's authorization.
 from tests.test_host_trading import make_trade
 from tests.test_report41_host_space_actions import fixture
 from roblox_mod_ai.host_peer_barter import render_host_peer_barter
+from roblox_mod_ai.request_semantics import source_action_authorizations
 from roblox_mod_ai.host_trading import market_templates_for_plan, render_host_trading
 
 
@@ -21,6 +22,9 @@ def _plan(space: bool):
         "Reject requests for unowned inventory.")
     plan.requested_prompt=("우주모드 인데 자원파밍 돈모으기 거래 등으로 "
         "우주선을 부위마다 만들고 다른행성의 특수 광물을 채굴")
+    plan.game_design["dynamic_design"]["source_action_authorizations"] = (
+        source_action_authorizations(plan.requested_prompt)
+    )
     actions=plan.game_design["dynamic_design"]["host_actions"]
     actions["ServerPriceTrade4533282Action"]=actions.pop("ResourceTrading0388602Action")
     actions["ServerPriceTrade4533282Action"]["service"]=server.name
