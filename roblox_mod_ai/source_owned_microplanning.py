@@ -636,15 +636,21 @@ def complete_source_owned_actions(
     failed_proposals: set[str] = set()
     rejection_evidence: list[str] = []
     while True:
+        # Consolidate an adjacent, source-authorized market income even when
+        # the model's money-only action currently fails whole-clause coverage.
+        # This prevents wasting attempts "fixing" the independent currency
+        # mint instead of routing earnings through the sale itself.
+        consolidated = _combine_derived_market_income(
+            router, source, raw, max_actions=max_actions,
+        )
+        if consolidated is not raw:
+            raw = consolidated
+            bound = verify_or_bind_actions(
+                router, source, raw,
+                require_complete=False, max_actions=max_actions,
+            )
         gaps = _coverage_issues(source, bound)
         if not gaps:
-            # The model can split "earn money" and "trade" into two writers
-            # even when the only source-authorized income is the resource sale.
-            # Merge only an adjacent source phrase, then rerun ALL original
-            # binding and semantic gates rather than accepting free money.
-            raw = _combine_derived_market_income(
-                router, source, raw, max_actions=max_actions,
-            )
             return verify_or_bind_actions(
                 router, source, raw, max_actions=max_actions,
             )
