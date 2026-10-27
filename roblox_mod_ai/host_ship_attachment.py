@@ -35,27 +35,17 @@ def _source_linked_section_builder(owner: Any, proposal: Any) -> bool:
     The actual implementation remains the host's secure add-once, resource
     debiting section builder. A decorative ship or unsourced mechanic fails.
     """
-    source = str(getattr(proposal, "requested_prompt", "") or "")
+    # The source request was already decomposed and audited into server
+    # modules, action routes and world-motion obligations. Generator routing
+    # must not inspect its raw Korean or English wording a second time.
     desc = str(getattr(owner, "description", "") or "")
-    assembly = bool(re.search(
-        r"우주선.{0,70}(?:부위|부품|부분)|"
-        r"\b(?:ship|spaceship|spacecraft|craft|vessel)\b"
-        r".{0,80}\b(?:part|section|component|module)s?\b|"
-        r"\b(?:assembl|build|construct)\w*\b.{0,80}"
-        r"\b(?:ship|spacecraft|vehicle)\b", source, re.I,
-    ))
-    departure = bool(re.search(
-        r"우주(?:로|에)\s*(?:나가|나갈|나간|나갔|출발|진입|이동)|"
-        r"\b(?:launch|depart|travel|fly)\w*\b.{0,70}"
-        r"\b(?:space|orbit)\b", source, re.I,
-    ))
     authored = all((
         re.search(r"\b(?:ship|spaceship|spacecraft|craft|vessel)\b", desc, re.I),
         re.search(r"\b(?:part|section|component|module)s?\b", desc, re.I),
         re.search(r"\b(?:attach|install|assembl|build|construct)\w*\b", desc, re.I),
         re.search(r"\bserver\b", desc, re.I),
     ))
-    if not assembly or not departure or not authored or re.search(
+    if not authored or re.search(
         r"\b(?:remov|replac|detach|uninstall|refund)\w*\b", desc, re.I,
     ):
         return False
@@ -65,8 +55,10 @@ def _source_linked_section_builder(owner: Any, proposal: Any) -> bool:
     typed = d.get("host_typed_actions") or {}
     launch_contracts = d.get("host_launch_contracts") or {}
     kinds = d.get("remotes") or {}
-    # Require the second independently source-authored physical transition
-    # with its typed host-owned Remote pair before selecting this adapter.
+    # The audited physical transition is the evidence for a launch, not
+    # the original prompt string. Require an independently owned action
+    # with its typed server/client pair; an arbitrary ship prop or UI alone
+    # cannot authorize this compiler.
     launches = [
         name for name, motion in motions.items()
         if isinstance(motion, dict)
