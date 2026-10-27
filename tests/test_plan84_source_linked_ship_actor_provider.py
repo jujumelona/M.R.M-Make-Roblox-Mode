@@ -215,3 +215,51 @@ def test_without_verified_pair_no_cross_stage_identity_success():
     assert bind_verified_vehicle_providers(p) == []
     assert any("VEHICLE_ACTOR_NOT_BUILT_OBJECT" in e
                for e in vehicle_identity_errors(p))
+
+
+def test_actual_failure_prompt_invariance_after_host_protocol_handoff():
+    """Failure (12): four host routes must never depend on raw prompt tokens."""
+    from roblox_mod_ai.generation_scope import assert_prompt_invariant_routing
+    p, builder, ui, departure, departure_ui = sample(terse=True)
+    assert bind_verified_vehicle_providers(p)
+    assert materialize_source_linked_space_arrivals(p)
+    preliminary = generation_scope(p, for_protocol_handoff=True)
+    rebase_complete_host_protocols(p, preliminary)
+    real = generation_scope(p)
+    by_name = {r["name"]: r["strategy"] for r in real["modules"]}
+    assert by_name[builder.name] == "host_declarative_ship_attachment"
+    assert by_name[ui.name] == "host_declarative_ship_attachment"
+    assert by_name[departure.name] == "host_declarative_vehicle_departure"
+    assert by_name[departure_ui.name] == "host_declarative_vehicle_departure"
+    # This assertion produced PROMPT_DEPENDENT_GENERATOR_ROUTE in the
+    # uploaded failure bundle even though the vehicle provider was valid.
+    assert_prompt_invariant_routing(p, original_scope=real)
+    previous = p.requested_prompt
+    p.requested_prompt = "[raw prompt withheld: use validated contracts]"
+    try:
+        after = generation_scope(p)
+        assert {r["module_id"]: r["strategy"] for r in real["modules"]} == {
+            r["module_id"]: r["strategy"] for r in after["modules"]}
+        assert eligible_ship_attachment(builder, p) is not None
+        assert eligible_departure(departure, p)
+    finally:
+        p.requested_prompt = previous
+
+
+def test_unverified_extra_launch_without_unique_source_contract_rejected():
+    p, builder, _ui, departure, _client = sample(terse=True)
+    d = p.game_design["dynamic_design"]
+    d["host_world_motion"]["SecondLaunchServer"] = {
+        "kind": "vehicle_world_transition",
+        "destination": "playable space",
+    }
+    d["host_actions"]["SecondLaunch"] = {
+        "service": "SecondLaunchServer", "kind": "RemoteFunction"
+    }
+    d["remotes"]["SecondLaunch"] = "RemoteFunction"
+    d["host_typed_actions"]["SecondLaunch"] = {
+        "transport_only": True, "server": "SecondLaunchServer",
+        "client": "ImaginaryLaunchClient",
+    }
+    # Multiple launch motions make a short model-authored builder ambiguous.
+    assert eligible_ship_attachment(builder, p) is None
