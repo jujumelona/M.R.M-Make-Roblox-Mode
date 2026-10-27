@@ -213,6 +213,24 @@ class LuauCodeGenerator:
         ordered_assembly = render_ordered_assembly(module, proposal, self.router)
         if ordered_assembly is not None:
             return ordered_assembly
+        # A verified builder/launcher pair must emit the exact first-party
+        # Model provider selected during preflight. A different generic ship
+        # facade must never take precedence and produce a decorative Part.
+        flight_ready = ((proposal.game_design.get("dynamic_design") or {})
+                        .get("host_flight_ready_builders") or {})
+        builder_name = (module.name if module.kind == ModuleKind.SERVER_MODULE
+                        else module.name.removesuffix("Client") + "Server")
+        mode = flight_ready.get(builder_name)
+        if mode == "section_attachment":
+            actual_builder = try_ship_attachment(module, proposal, self.router)
+            if actual_builder is None:
+                raise ValueError("FLIGHT_READY_BUILDER_NO_LONGER_ELIGIBLE: " + builder_name)
+            return actual_builder
+        if mode == "resource_ship_builder":
+            actual_builder = try_resource_ship_builder(module, proposal, self.router)
+            if actual_builder is None:
+                raise ValueError("FLIGHT_READY_BUILDER_NO_LONGER_ELIGIBLE: " + builder_name)
+            return actual_builder
         rank_protocol = render_rank_protocol(module, proposal, self.router)
         if rank_protocol is not None:
             return rank_protocol
