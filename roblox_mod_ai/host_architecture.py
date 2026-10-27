@@ -274,6 +274,11 @@ def expand_semantic_facet(
                     "world_entities must be short names, not geometry")
             clean_world.append(entity.strip())
         world = clean_world
+        from .semantic_world_entities import assert_physical_world_entities
+        try:
+            assert_physical_world_entities(world)
+        except ValueError as exc:
+            raise HostArchitectureError(str(exc)) from exc
         typed_contract = system.get("action_contract")
         if typed_contract is not None:
             if interaction not in {"event", "request_response"} or input_mode != "custom":
