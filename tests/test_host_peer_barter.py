@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from roblox_mod_ai.code_generator import LuauCodeGenerator
 from roblox_mod_ai.host_gameplay import render_host_gameplay
 from roblox_mod_ai.host_peer_barter import render_host_peer_barter
+from roblox_mod_ai.request_semantics import source_action_authorizations
 from roblox_mod_ai.luau_analyzer import LuauStaticAnalyzer
 from roblox_mod_ai.spec import ModuleKind, RobloxModuleSpec, RobloxService
 
@@ -30,6 +31,8 @@ def make_plan():
     client = mod("PlayerAssetExchangeClient", ModuleKind.CLIENT_SCRIPT,
                  "Client requests and accepts a mutually agreed trade offer.")
     design = {"world_objects": [{"name": "OreNode", "class": "Part"}],
+              "source_action_authorizations": source_action_authorizations(
+                  "Mine resources and barter items between players"),
               "host_actions": {
                   "OreMiningAction": {"service": miner.name, "kind": "RemoteFunction"},
                   "PlayerAssetExchangeAction": {
