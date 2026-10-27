@@ -125,7 +125,8 @@ def normalize_logical_state_references(
             phrase = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", name).lower()
             if phrase in physical_text and re.search(
                 r"\b(?:click\w*|touch\w*|approach\w*|interact\w*|proximity|"
-                r"walk\w*|stand\w*|open\w*|raycast\w*|collision\w*|"\n                r"distance|position|workspace)\b",
+                r"walk\w*|stand\w*|open\w*|raycast\w*|collision\w*|"
+                r"distance|position|workspace)\b",
                 physical_text,
             ):
                 accepted.append(name)
