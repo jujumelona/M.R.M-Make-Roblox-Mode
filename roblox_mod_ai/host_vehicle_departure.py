@@ -8,7 +8,7 @@ import json
 import re
 from typing import Any
 from .spec import ModuleKind
-from .host_ordered_assembly import eligible_ordered_assembly
+from .host_vehicle_actor_capability import eligible_vehicle_actor_builder
 
 _NAME=re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,90}$")
 
@@ -20,7 +20,7 @@ def eligible_departure(m:Any,p:Any)->tuple[str,str,str,str]|None:
     if not isinstance(motion,dict) or motion.get("kind")!="vehicle_world_transition":return None
     builder=next((x for x in p.modules if x.module_id==motion.get("builder_module_id")),None)
     if builder is None or not _NAME.fullmatch(builder.name):return None
-    if eligible_ordered_assembly(builder,p) is None:return None
+    if eligible_vehicle_actor_builder(builder,p) is None:return None
     routes=[(k,v) for k,v in (d.get("host_actions") or {}).items()
             if isinstance(v,dict) and v.get("service")==server]
     if len(routes)!=1:return None
