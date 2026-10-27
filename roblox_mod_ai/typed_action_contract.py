@@ -16,6 +16,23 @@ from .spec import ModuleKind, RobloxModuleSpec, RobloxProposal
 
 _ID = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,31}\Z")
 _STATE = re.compile(r"[A-Za-z][A-Za-z0-9_.]{0,79}\Z")
+
+# Names are inserted as unquoted Luau table members (args.<id> and
+# state.<field>). Lexically valid names such as "end" are still keywords.
+_LUAU_RESERVED = frozenset((
+    "and", "break", "continue", "do", "else", "elseif", "end", "export",
+    "false", "for", "function", "if", "in", "local", "nil", "not", "or",
+    "repeat", "return", "then", "true", "type", "until", "while",
+))
+
+def safe_luau_identifier(value: Any) -> bool:
+    return (isinstance(value, str) and bool(_ID.fullmatch(value))
+            and value not in _LUAU_RESERVED)
+
+def safe_luau_state_path(value: Any) -> bool:
+    return (isinstance(value, str) and bool(_STATE.fullmatch(value))
+            and all(safe_luau_identifier(part) for part in value.split(".")))
+
 SCHEMA = {
     "type": "object",
     "properties": {
@@ -74,7 +91,7 @@ def validate_contract(
         if not isinstance(field, dict):
             raise TypedActionContractError("Input must be an object")
         field_id, kind = field.get("id"), field.get("type")
-        if (not isinstance(field_id, str) or not _ID.fullmatch(field_id)
+        if (not isinstance(field_id, str) or not safe_luau_identifier(field_id)
                 or field_id in seen or not _text(field.get("label"))
                 or kind not in ("text", "integer", "choice")):
             raise TypedActionContractError("Invalid, duplicated or unsupported typed input")
@@ -105,7 +122,7 @@ def validate_contract(
                 if (not isinstance(option, dict)
                         or set(option) != {"id", "label"}
                         or not isinstance(option["id"], str)
-                        or not _ID.fullmatch(option["id"])
+                        or not safe_luau_identifier(option["id"])
                         or option["id"] in option_ids
                         or not _text(option["label"])):
                     raise TypedActionContractError("Invalid choice option")
@@ -143,7 +160,7 @@ def validate_contract(
                 or set(effect) != {"scope", "key", "operation"}
                 or effect["scope"] not in ("player", "world")
                 or not isinstance(effect["key"], str)
-                or not _STATE.fullmatch(effect["key"])
+                or not safe_luau_state_path(effect["key"])
                 or effect["operation"] not in (
                     "increment", "decrement", "set", "create", "remove")):
             raise TypedActionContractError("Invalid declarative server state change")
