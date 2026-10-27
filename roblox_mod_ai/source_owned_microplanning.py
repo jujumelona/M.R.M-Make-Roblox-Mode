@@ -425,6 +425,82 @@ def _repair_incomplete_owned_exchange(
     return None
 
 
+
+def _recover_explicit_market_exchange(
+    router: Any, source: str, raw: list[dict[str, str]],
+    gaps: list[str], max_actions: int, evidence: list[str],
+) -> list[dict[str, str]] | None:
+    """Compile an explicitly authorized resource-for-money exchange.
+
+    The source, not a weak planner response, authorizes both asset classes.
+    This generic server-market contract is only used when the original text
+    requests trading, resource gathering and earning money. It never invents
+    P2P state, Robux, a fixed price or a new asset class. A proposed action
+    is accepted only if the normal source binder and WHOLE-clause semantic
+    checks prove it strictly improves coverage without losing sibling work.
+    """
+    if not any(str(g).startswith("SOURCE_TRADE_ACTION_MISSING:")
+               for g in gaps):
+        return None
+    from .request_semantics import source_action_authorizations
+    permissions = source_action_authorizations(source)
+    if not permissions["earned_resource_market"] or permissions["peer_asset_exchange"]:
+        return None
+    market_word = re.compile(
+        r"거래|교환|판매|매매|\\b(?:trad(?:e|es|ing)|exchang(?:e|es|ing)|"
+        r"barter\\w*|sell\\w*|sold)\\b", re.I,
+    )
+    if not market_word.search(source):
+        return None
+    spans = eligible_atomic_action_spans(source)
+    source_quotes = {span["id"]: span["quote"] for span in spans}
+    action = (
+        "Server trades collected resources for money at a server-priced market: "
+        "it deducts owned resource inventory and credits earned currency "
+        "to the same player's balance."
+    )
+    # Do not replace a valid construction or upgrade action merely because
+    # its English description happens to mention a purchase or trade.
+    eligible = [
+        i for i, row in enumerate(raw)
+        if market_word.search(source_quotes.get(row.get("source_id"), ""))
+        and market_word.search(row.get("action", ""))
+    ]
+    # Start with the narrowest, source-specific existing owner, not a broad
+    # compound sentence that might also implement ship construction.
+    eligible.sort(key=lambda i: len(source_quotes.get(raw[i].get("source_id"), "")))
+    trials: list[list[dict[str, str]]] = []
+    for i in eligible:
+        next_rows = [dict(row) for row in raw]
+        next_rows[i]["action"] = action
+        trials.append(next_rows)
+    if len(raw) < max_actions:
+        occupied = {source_quotes.get(row.get("source_id")) for row in raw}
+        market_spans = [
+            span for span in spans if market_word.search(span["quote"])
+            and span["quote"] not in occupied
+        ]
+        # Exact lexical ownership: never manufacture a source ID. The shortest
+        # original market phrase is the strongest evidence of this obligation.
+        for span in sorted(market_spans, key=lambda s: (len(s["quote"]), s["start"]))[:2]:
+            trials.append([*raw, {"source_id": span["id"], "action": action}])
+    for candidate in trials:
+        try:
+            bound = verify_or_bind_actions(
+                router, source, candidate,
+                require_complete=False, max_actions=max_actions,
+            )
+        except SourceActionBindingError as exc:
+            evidence.append("SOURCE_MARKET_OWNER_INVALID: " + str(exc)[:150])
+            continue
+        after = _coverage_issues(source, bound)
+        if _coverage_improves(gaps, after):
+            return candidate
+        evidence.append("SOURCE_MARKET_NO_COVERAGE_PROGRESS: " +
+                        "; ".join(after[:2])[:150])
+    return None
+
+
 def complete_source_owned_actions(
     router: Any, source: str, *, initial_actions: Any = None,
     max_actions: int = _MAX_ACTIONS,
@@ -470,6 +546,19 @@ def complete_source_owned_actions(
             return verify_or_bind_actions(
                 router, source, raw, max_actions=max_actions,
             )
+        # Resolve explicitly source-authorized resource markets at the host
+        # contract layer before spending model retries on fabricated P2P
+        # proposals. Never soften the existing attribution/fidelity gates.
+        market_recovery = _recover_explicit_market_exchange(
+            router, source, raw, gaps, max_actions, rejection_evidence,
+        )
+        if market_recovery is not None:
+            raw = market_recovery
+            bound = verify_or_bind_actions(
+                router, source, raw,
+                require_complete=False, max_actions=max_actions,
+            )
+            continue
         # Fix a missing payment on the SAME existing upgrade, not by
         # inventing a separate payment-only action and consuming a slot.
         patched_existing = _repair_owned_purchase_effect(
