@@ -100,3 +100,19 @@ def test_ui_explicitly_clicking_object_does_not_disappear():
     fixed, notes = normalize_logical_state_references(raw)
     assert not notes
     assert fixed == raw
+
+
+def test_server_physical_access_keeps_real_target():
+    source = {"systems": [{
+        "name": "UseMachine", "interaction": "request_response",
+        "input_mode": "custom",
+        "server_behavior": (
+            "Validate the player's distance to the TradeRequest position "
+            "in workspace and execute the action only while nearby."
+        ),
+        "client_behavior": "A player presses a button to request this action.",
+        "world_entities": ["TradeRequest"],
+    }]}
+    corrected, repairs = normalize_logical_state_references(source)
+    assert corrected == source
+    assert repairs == []
