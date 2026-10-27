@@ -155,8 +155,31 @@ def assert_source_action_authorizations(proposal: Any) -> None:
     if not design:
         return
     claims = design.get("source_action_authorizations")
+    if claims is None:
+        # Legacy/diagnostic plans without a barter or market route must be
+        # allowed to reach their normal compiler/failure-recovery stages.
+        # Missing permission never authorizes a two-party exchange: the
+        # barter adapter refuses it. A legacy source claiming a bilateral
+        # service must be re-planned instead of falling into unsupervised
+        # cross-player mutations.
+        from .host_peer_barter import is_bilateral_asset_exchange
+        remote_services = {
+            row.get("service") for row in (design.get("host_actions") or {}).values()
+            if isinstance(row, dict)
+        }
+        if any(
+            m.name in remote_services and is_bilateral_asset_exchange(
+                str(getattr(m, "description", "") or "")
+            )
+            for m in getattr(proposal, "modules", [])
+        ):
+            raise ValueError(
+                "SOURCE_AUTHORIZATIONS_MISSING: source-owned peer trade needs "
+                "recompilation before generating cross-player action code"
+            )
+        return
     if not isinstance(claims, dict):
-        raise ValueError("SOURCE_AUTHORIZATIONS_MISSING: recompile architecture")
+        raise ValueError("SOURCE_AUTHORIZATIONS_INVALID")
     expected = source_action_authorizations(proposal.requested_prompt)
     if claims != expected:
         raise ValueError(
