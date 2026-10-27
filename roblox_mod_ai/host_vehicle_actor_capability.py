@@ -69,3 +69,30 @@ def matching_launch_provider(
         return False
     return (links.get(server.module_id) in (None, [remote])
             and links.get(client.module_id) in (None, [remote]))
+
+
+def has_bound_physical_actor_provider(
+    builder: Any, proposal: Any, motion: dict[str, Any],
+) -> bool:
+    """Prove that downstream codegen will export the demanded GetOwnedActor.
+
+    A forged/migrated motion dictionary is not enough. A basic attachment
+    renderer only exposes its Model after preflight registered the exact
+    server builder, whereas an eligible ordered builder always exports it.
+    """
+    if not isinstance(motion, dict):
+        return False
+    compiler = eligible_vehicle_actor_builder(builder, proposal)
+    if compiler is None:
+        return False
+    if compiler == "ordered_assembly":
+        return True
+    d = (getattr(proposal, "game_design", {}) or {}).get("dynamic_design") or {}
+    linked = d.get("host_flight_ready_builders") or {}
+    return (
+        motion.get("actor_identity_source") == "verified_owned_actor_provider"
+        and motion.get("actor_provider") == "GetOwnedActor"
+        and motion.get("builder_module_id") == getattr(builder, "module_id", None)
+        and isinstance(linked, dict)
+        and linked.get(getattr(builder, "name", "")) == compiler
+    )
