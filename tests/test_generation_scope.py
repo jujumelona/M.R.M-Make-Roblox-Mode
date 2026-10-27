@@ -116,3 +116,41 @@ def test_report45_two_phase_host_takeover_preserves_rank_protocol():
                 if entry["name"] == client.name) == "host_declarative_rank_upgrade"
     assert rebase_complete_host_protocols(plan,
         generation_scope(plan, for_protocol_handoff=True)) == []
+
+
+def test_route_priority_matches_code_generator_when_adapters_overlap(monkeypatch):
+    """A model-authored action can match several bounded adapters at once.
+
+    The manifest/receipt must identify the first ACTUAL codegen handler,
+    not the first arbitrary validator or keyword-like matcher.
+    """
+    import importlib
+    routing = importlib.import_module("roblox_mod_ai.generation_scope")
+    plan = plan_single_action()
+    server = next(m for m in plan.modules if m.kind == ModuleKind.SERVER_MODULE)
+    # Existing unrelated early adapters remain ruled out by this fixture.
+    monkeypatch.setattr(routing, "eligible_mode_unlock",
+                        lambda module, proposal: ("validated",) if module is server else None)
+    monkeypatch.setattr(routing, "eligible_mode_navigation",
+                        lambda module, proposal: ("validated",) if module is server else None)
+    monkeypatch.setattr(routing, "eligible_catalog_purchase",
+                        lambda module, proposal: ("validated",) if module is server else None)
+    monkeypatch.setattr(routing, "render_host_gameplay",
+                        lambda module, proposal: "valid host code" if module is server else None)
+    routes = {x["module_id"]: x["strategy"] for x in routing.generation_scope(plan)["modules"]}
+    assert routes[server.module_id] == "host_declarative_mode_unlock"
+
+
+def test_ship_catalog_route_precedes_generic_shop_and_gameplay(monkeypatch):
+    import importlib
+    routing = importlib.import_module("roblox_mod_ai.generation_scope")
+    plan = plan_single_action()
+    server = next(m for m in plan.modules if m.kind == ModuleKind.SERVER_MODULE)
+    monkeypatch.setattr(routing, "eligible_ship_part_catalog",
+                        lambda module, proposal: ("validated",) if module is server else None)
+    monkeypatch.setattr(routing, "eligible_catalog_purchase",
+                        lambda module, proposal: ("validated",) if module is server else None)
+    monkeypatch.setattr(routing, "render_host_gameplay",
+                        lambda module, proposal: "valid host code" if module is server else None)
+    routes = {x["module_id"]: x["strategy"] for x in routing.generation_scope(plan)["modules"]}
+    assert routes[server.module_id] == "host_declarative_ship_part_catalog"
