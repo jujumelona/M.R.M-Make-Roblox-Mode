@@ -101,3 +101,62 @@ def request_semantic_errors(value: Any, original_prompt: str) -> list[str]:
             "catalog until the source explicitly requires player-to-player trading."
         )
     return errors
+
+
+# Authorization is source-derived exactly ONCE during design compilation.
+# Code-generation adapters consume this immutable, validated data contract;
+# they must not re-read prompt wording to select market/P2P behavior.
+_RESOURCE_SOURCE = re.compile(
+    r"자원|광물|채굴|파밍|\b(?:ore|resources?|mining|mine)\b", re.I,
+)
+_CURRENCY_SOURCE = re.compile(
+    r"돈|화폐|코인|\b(?:money|coins?|credits?|currency)\b", re.I,
+)
+_EARNING_SOURCE = re.compile(
+    r"모으|벌|얻|판매|팔|거래|\b(?:earn|sell|trade|exchange)\b", re.I,
+)
+_PEER_ONLY_SOURCE = re.compile(
+    r"플레이어끼리|유저끼리|player.to.player|between players", re.I,
+)
+_MARKET_SOURCE = re.compile(
+    r"판매|팔|돈모으|earn|sell|market", re.I,
+)
+
+
+def source_action_authorizations(original_prompt: str) -> dict[str, Any]:
+    """Parse requested actor/asset capabilities before assigning code routes.
+
+    This is a source provenance claim, not a declaration of implementation.
+    Missing authorization MUST NOT be inferred from a model-generated
+    module description. All game genres use the same typed authorization API.
+    """
+    if not isinstance(original_prompt, str) or not original_prompt.strip():
+        raise ValueError("SOURCE_AUTHORIZATIONS_REQUIRE_ORIGINAL_REQUEST")
+    market = (
+        bool(_RESOURCE_SOURCE.search(original_prompt))
+        and bool(_CURRENCY_SOURCE.search(original_prompt))
+        and bool(_EARNING_SOURCE.search(original_prompt))
+        and not (bool(_PEER_ONLY_SOURCE.search(original_prompt))
+                 and not bool(_MARKET_SOURCE.search(original_prompt)))
+    )
+    return {
+        "schema": "rmm/source-action-authorizations-v1",
+        "peer_asset_exchange": bool(_EXPLICIT_PEER_TRADE.search(original_prompt)),
+        "earned_resource_market": market,
+    }
+
+
+def assert_source_action_authorizations(proposal: Any) -> None:
+    """Fail closed on stale/tampered source claims before generating Luau."""
+    design = (getattr(proposal, "game_design", {}) or {}).get("dynamic_design") or {}
+    if not design:
+        return
+    claims = design.get("source_action_authorizations")
+    if not isinstance(claims, dict):
+        raise ValueError("SOURCE_AUTHORIZATIONS_MISSING: recompile architecture")
+    expected = source_action_authorizations(proposal.requested_prompt)
+    if claims != expected:
+        raise ValueError(
+            "SOURCE_AUTHORIZATIONS_INVALID: compiled gameplay permissions "
+            "do not match the original request; rebuild the source-ledger plan"
+        )
