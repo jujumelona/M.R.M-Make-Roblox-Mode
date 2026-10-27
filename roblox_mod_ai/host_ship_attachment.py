@@ -183,6 +183,35 @@ def _catalog(proposal: Any, server: str, router: Any) -> list[dict[str, Any]]:
             return result
         except Exception as exc:
             previous = str(exc)[:300]
+    # A source-linked, verified first-party flight builder MUST not lose
+    # both sides of its server/client protocol because a tiny planner
+    # emitted malformed prices or Unicode IDs twice. For unspecified ship
+    # section design, the host may choose a small explicitly identified
+    # DEFAULT catalog. This is game design data, not a forged gameplay
+    # implementation; both endpoints share one cached validated catalog.
+    # Ordinary stand-alone builders still fail closed, preserving their
+    # existing authored price/section contract.
+    linked = ((proposal.game_design.get("dynamic_design") or {})
+              .get("host_flight_ready_builders") or {})
+    if linked.get(server) == "section_attachment":
+        owner_text = owner.description.casefold()
+        if (re.search(r"\b(?:ship|spaceship|spacecraft|vessel )\b", owner_text)
+                and re.search(r"\b(?:section|component|part)s?\\b", owner_text)):
+            defaults = {"sections": [
+                {"id": "Hull", "label": "Hull", "cost": 10, "performance": 2},
+                {"id": "Engine", "label": "Engine", "cost": 20, "performance": 3},
+                {"id": "Cabin", "label": "Cabin", "cost": 30, "performance": 4},
+            ]}
+            rows = _validated_sections(defaults)
+            store[server] = rows
+            proposal.game_design.setdefault("_host_catalog_recoveries", []).append({
+                "server": server,
+                "source": "verified_launch_assembly_host_default",
+                "not_user_specified": True,
+                "previous_data_error": previous,
+                "section_ids": [row["id"] for row in rows],
+            })
+            return rows
     raise ValueError("HOST_SHIP_ATTACHMENT_CATALOG_EXHAUSTED: " + previous)
 
 
