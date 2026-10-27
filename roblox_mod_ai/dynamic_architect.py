@@ -1978,6 +1978,21 @@ class RobloxDynamicArchitect:
                         "typed_contract_attempts": list(typed_attempts),
                         "discarded_ui_choices": list(discarded_ui_choices),
                         "normalized_logical_world_refs": list(removed_logical_world),
+                        # Atomic failures raise before `draft` is assigned.
+                        # Preserve the exact source plan and accepted siblings
+                        # so the failure bundle exposes the *actual* losing
+                        # action instead of only "unavailable_or_too_large".
+                        "source_verified_actions": list(
+                            source_verified_action_plan or []
+                        )[:6],
+                        "atomic_verified_children": [
+                            {"source_quote": owner[0],
+                             "action": owner[1],
+                             "system_name": str(spec.get("name") or "")[:80]}
+                            for owner, spec in list(
+                                atomic_verified_cache.items()
+                            )[:6]
+                        ],
                         "transport_repair_response": (
                             repair_response
                             if isinstance(repair_response, (dict, list))
