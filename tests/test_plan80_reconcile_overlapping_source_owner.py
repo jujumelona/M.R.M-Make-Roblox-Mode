@@ -121,3 +121,13 @@ def test_no_removal_when_replacement_loses_a_requested_effect():
         NoModel(), SOURCE, original, max_actions=6,
     )
     assert result == original
+
+
+def test_validator_root_cause_is_wrong_owner_not_missing_global_money():
+    from roblox_mod_ai.semantic_preservation import source_intent_conflicts
+    weak = source_intent_conflicts("자원파밍", WEAK)
+    strong = source_intent_conflicts("자원파밍", REAL_MINE)
+    overloaded = source_intent_conflicts("자원파밍 돈모으기", REAL_MINE)
+    assert "RESOURCE_GATHER_SOURCE_UNBOUND" in " ".join(weak)
+    assert not strong
+    assert "SOURCE_CURRENCY_EARNING_MISSING" in " ".join(overloaded)
