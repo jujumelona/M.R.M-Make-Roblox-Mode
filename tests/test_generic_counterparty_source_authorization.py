@@ -109,3 +109,15 @@ def test_nonphysical_state_variables_never_become_workspace_parts():
             reserved_modules=set(), reserved_remotes=set(),
             reserved_objects=set(),
         )
+
+
+def test_same_player_two_balance_bookkeeping_is_not_mistaken_for_p2p():
+    single_actor = (
+        "Validate the player's trade request against authoritative inventory "
+        "and money state, transfer resources or credits, then commit both "
+        "balances to the server-owned economy."
+    )
+    assert not request_semantic_errors(
+        {"server_behavior": single_actor},
+        "Trade earned game resources for credits",
+    )
