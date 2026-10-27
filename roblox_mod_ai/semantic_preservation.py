@@ -333,9 +333,9 @@ def source_intent_conflicts(
     # Require evidence of a world-derived source, not just a resource verb,
     # before treating a server-side inventory grant as farming gameplay.
     gatherable_origin = re.search(
-        r"\\b(?:node|deposit|vein|mineable|harvestable|world|ground|"
-        r"rock|tree|crop|plant|pickup|resource\\s+(?:source|object))\\b|"
-        r"광맥|채굴지|광석|자원\\s*(?:노드|지점|원천)",
+        r"\b(?:node|deposit|vein|mineable|harvestable|world|ground|"
+        r"rock|tree|crop|plant|pickup|resource\s+(?:source|object))\b|"
+        r"광맥|채굴지|광석|자원\s*(?:노드|지점|원천)",
         text, re.I,
     )
     if (require_implementation and gathering_requested and real_gathering
@@ -425,9 +425,9 @@ def source_intent_conflicts(
     # added the client's "requested amount" to the balance with only a daily
     # cap; that is not an earning source and is trivially exploitable.
     if (require_implementation and money_earned_requested and re.search(
-        r"\\b(?:add|credit|increase|grant|award)\\w*\\b.{0,95}"
-        r"\\b(?:requested|user[- ]supplied|client[- ]supplied)\\s+"
-        r"(?:\\w+\\s+){0,3}amount\\b",
+        r"\b(?:add|credit|increase|grant|award)\w*\b.{0,95}"
+        r"\b(?:requested|user[- ]supplied|client[- ]supplied)\s+"
+        r"(?:\w+\s+){0,3}amount\b",
         text, re.I,
     )):
         errors.append(
