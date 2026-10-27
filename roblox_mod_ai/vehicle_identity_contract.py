@@ -57,7 +57,7 @@ def vehicle_identity_errors(proposal: Any) -> list[str]:
         # Provider-bound transitions move the player's runtime Model returned
         # by the verified first-party builder, not any static Craft proxy.
         if spec.get("actor_identity_source") == "verified_owned_actor_provider":
-            from .host_ordered_assembly import eligible_ordered_assembly
+            from .host_vehicle_actor_capability import eligible_vehicle_actor_builder
             from .spec import ModuleKind
             builder = next(
                 (m for m in relevant_candidates(modules, owner_name)
@@ -66,7 +66,7 @@ def vehicle_identity_errors(proposal: Any) -> list[str]:
                 spec.get("actor_provider") == "GetOwnedActor"
                 and builder is not None
                 and getattr(builder, "kind", None) == ModuleKind.SERVER_MODULE
-                and eligible_ordered_assembly(builder, proposal) is not None)
+                and eligible_vehicle_actor_builder(builder, proposal) is not None)
             actions = design.get("host_actions") or {}
             typed = design.get("host_typed_actions") or {}
             routes = [
@@ -149,7 +149,7 @@ def vehicle_identity_errors(proposal: Any) -> list[str]:
                     "unique_host_materialized_builder_root"
                 and re.search(r"occupant|aboard|passenger|crew",
                               str(spec.get("occupant_rule") or ""), re.I)):
-            from .host_ordered_assembly import eligible_ordered_assembly
+            from .host_vehicle_actor_capability import eligible_vehicle_actor_builder
             from .spec import ModuleKind
             source_builder = next(
                 (b for b in relevant
@@ -157,7 +157,7 @@ def vehicle_identity_errors(proposal: Any) -> list[str]:
             )
             if (source_builder is None
                     or getattr(source_builder, "kind", None) != ModuleKind.SERVER_MODULE
-                    or eligible_ordered_assembly(source_builder, proposal) is None):
+                    or eligible_vehicle_actor_builder(source_builder, proposal) is None):
                 errors.append(
                     "VEHICLE_PASSENGER_MODEL_UNPROVEN: " + owner_name +
                     " requires the actual assembled, passenger-carrying Model "
