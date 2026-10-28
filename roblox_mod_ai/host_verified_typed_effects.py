@@ -277,6 +277,16 @@ def render_verified_effect(module: Any, proposal: Any) -> str | None:
         effect = _DAMAGE if role == "world_damage" else _HARVEST
         body = (_WORLD_BODY.replace("__EFFECT__", effect)
                 .replace("__WORLD__", json.dumps(world_name)))
-    return (_COMMON.replace("__GUARD__", lua_server_guard(contract).rstrip())
+    # The damage handler needs only the authenticated player and the actual
+    # world target; unlike harvesting it does not read the service registry.
+    # Declare that argument intentionally unused so Selene never reports a
+    # deterministic host-template defect after a successful 26-module build.
+    template = _COMMON
+    if role == "world_damage":
+        template = template.replace(
+            "function Service.handleAction(player, services, ...)",
+            "function Service.handleAction(player, _services, ...)",
+        )
+    return (template.replace("__GUARD__", lua_server_guard(contract).rstrip())
             .replace("__START__", start)
             .replace("__BODY__", body))
