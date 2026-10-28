@@ -183,7 +183,7 @@ def author_verified_atomic_systems(
                 and set(previous_issues) <= reparable
                 and not needs_transaction
                 and not state_repair_attempted
-                and getattr(router, "supports_host_standard_transport", False)
+                and getattr(router, "supports_atomic_state_mutation_repair", False)
             )
             if needs_transaction:
                 transaction_repair_attempts += 1
