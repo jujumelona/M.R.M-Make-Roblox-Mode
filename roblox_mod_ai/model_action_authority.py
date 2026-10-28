@@ -35,10 +35,13 @@ def _provenance_for_action(spec: dict[str, Any], design: dict[str, Any],
     changes = contract.get("state_changes")
     if not isinstance(changes, list) or not changes:
         return False
+    # A declared world target is an INPUT locator, not a mutation producer.
+    # Likewise, descriptive state_changes are obligations rather than code.
+    # A concrete executable program bound to the exact remote is necessary
+    # to discharge pre-codegen ownership; otherwise defer or block proof.
     return bool(
         (design.get("host_executable_actions") or {}).get(remote)
         or (design.get("host_effect_programs") or {}).get(remote)
-        or contract.get("target", {}).get("kind") == "world_entity"
     )
 
 
