@@ -314,6 +314,18 @@ def render_typed_client(module: RobloxModuleSpec, proposal: RobloxProposal) -> s
         spec["contract"], world_entities=spec.get("world_entities", []),
         transport_only=spec.get("transport_only") is True,
     )
+    # A verified physical-world Part has an exact server-owned identity.
+    # Prefill its typed selection instead of forcing players to guess an
+    # opaque generated Workspace name. The server still validates all fields.
+    default_selection = None
+    owner = next((m for m in getattr(proposal, "modules", ())
+                  if m.kind == ModuleKind.SERVER_MODULE
+                  and m.name == spec.get("server")), None)
+    if owner is not None:
+        from .host_verified_typed_effects import eligible_verified_effect
+        verified = eligible_verified_effect(owner, proposal)
+        if verified is not None and verified[1] == remote:
+            default_selection = verified[2]
     kind = (design.get("remotes") or {}).get(remote)
     if kind not in ("RemoteEvent", "RemoteFunction"):
         raise TypedActionContractError("Typed UI remote does not exist")
@@ -379,7 +391,10 @@ def render_typed_client(module: RobloxModuleSpec, proposal: RobloxProposal) -> s
             lines += [
                 '    local box = Instance.new("TextBox")',
                 '    box.Size = UDim2.new(1, 0, 0, 35)',
-                '    box.Text = ' + ('"1"' if field["type"] == "integer" else '""'),
+                '    box.Text = ' + ('"1"' if field["type"] == "integer"
+                                      else json.dumps(default_selection)
+                                      if field["id"] == "selection" and default_selection
+                                      else '""'),
                 '    box.PlaceholderText = ' + label,
                 '    box.ClearTextOnFocus = false',
                 '    box.Parent = panel',
