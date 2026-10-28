@@ -60,7 +60,8 @@ def author_state_mutation_repair(
     A successful reply must name a positive write to actual gameplay state,
     not an authorization check, an already-existing state, or a UI message.
     """
-    reply = router.complete_json(
+    try:
+        reply = router.complete_json(
         "Repair ONE already source-authorized server action using three "
         "SHORT independent fields. validated_input: existing authoritative "
         "input/target and its authorization precondition; state_mutation: "
@@ -79,8 +80,41 @@ def author_state_mutation_repair(
             "exact_validator_errors": diagnostics[:8],
         }, ensure_ascii=False),
         role="planner", temperature=0.0, max_tokens=325,
-        json_schema=_SCHEMA,
-    )
+            json_schema=_SCHEMA,
+        )
+    except ValueError as exc:
+        # Schema-constrained local decoders can spend their entire context
+        # predicting several required strings. On truncation, reduce the
+        # OUTPUT GRAMMAR to a single string, not just max_tokens or a new
+        # long-form request. None of these independent short fields counts
+        # as a verified action until the full semantic gate runs below.
+        if "truncat" not in str(exc).lower() and "finish_reason=length" not in str(exc):
+            raise
+        reply = {}
+        instructions = {
+            "validated_input": "Name the REAL authorized input and existing server-owned target to check before this action. No effects or UI.",
+            "state_mutation": "Name the NEW POSITIVE server-owned state write that actually implements the source action. Not a prerequisite, menu or status.",
+            "rejected_input": "Name invalid inputs rejected WITHOUT a state write. Do not replace the original action.",
+        }
+        for key in ("state_mutation", "validated_input", "rejected_input"):
+            field_schema = {"type": "object", "properties": {
+                key: _SCHEMA["properties"][key]},
+                "required": [key], "additionalProperties": False}
+            result = router.complete_json(
+                "One small JSON string named " + key + ". " + instructions[key]
+                + " Source-authorized action only. JSON only.\\n"
+                + json.dumps({
+                    "source_quote": action["source_quote"],
+                    "source_owned_action": action["action"],
+                    "already_authored": reply,
+                    "validator_errors": diagnostics[:3],
+                }, ensure_ascii=False),
+                role="planner", temperature=0.0, max_tokens=170,
+                json_schema=field_schema,
+            )
+            if not isinstance(result, dict) or set(result) != {key}:
+                raise ValueError("ATOMIC_STATE_REPAIR_SPLIT_INVALID_" + key)
+            reply[key] = result[key]
     if not isinstance(reply, dict) or set(reply) != set(_SCHEMA["required"]):
         raise ValueError("ATOMIC_STATE_REPAIR_INVALID_FIELDS")
     guard, write, reject = (
