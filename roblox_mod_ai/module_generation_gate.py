@@ -179,9 +179,11 @@ def generated_module_errors(
                           generation_scope(proposal).get("modules", [])
                           if item.get("module_id") == module.module_id), "")
             if not (isinstance(route, str) and route.startswith("host_")):
+                from .deferred_producer_evidence import has_authoritative_producer_write
                 if (not module.module_id.startswith("dyn_")
                         or "-- RMM_GAMEPLAY_BODY_BEGIN" not in code
-                        or not has_gameplay_mutation(code, routed_action=True)):
+                        or not has_gameplay_mutation(code, routed_action=True)
+                        or not has_authoritative_producer_write(code)):
                     errors.append(
                         "DEFERRED_AUTHORITY_PRODUCER_MISSING: bounded model action "
                         "did not produce real executable server-owned state "
