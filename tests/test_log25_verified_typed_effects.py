@@ -197,7 +197,13 @@ def test_log25_all_three_host_compiled_no_small_model():
         code = render_verified_effect(server, p)
         assert code and "function Service.handleAction" in code
         assert "function Service.start" in code
-        assert "local actionArgs = ..." in code
+        # The existing verified weapon-purchase ABI receives one trusted
+        # table directly; the two world effects use the generated named
+        # actionArgs guard.
+        if role == "purchase":
+            assert "local args = ..." in code
+        else:
+            assert "local actionArgs = ..." in code
         if role in ("purchase", "harvest"):
             assert "GetState(player" in code
         assert "return {success = true" in code
