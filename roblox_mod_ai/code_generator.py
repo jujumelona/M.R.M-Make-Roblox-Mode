@@ -46,6 +46,7 @@ from .server_modules import render_dynamic_server_bootstrap
 from .host_client import render_host_client
 from .typed_action_contract import render_typed_client
 from .host_atomic_effect import render_atomic_server
+from .host_verified_typed_effects import render_verified_effect
 from .host_space_actions import render_host_space_action
 from .host_contextual_harvest import render_contextual_harvest
 from .host_space_colonization import render_colony_alias
@@ -174,6 +175,9 @@ class LuauCodeGenerator:
         compiled_atomic_effect = render_atomic_server(module, proposal)
         if compiled_atomic_effect is not None:
             return compiled_atomic_effect
+        verified_effect = render_verified_effect(module, proposal)
+        if verified_effect is not None:
+            return verified_effect
         verified_colony_alias = render_colony_alias(module, proposal)
         if verified_colony_alias is not None:
             return verified_colony_alias
