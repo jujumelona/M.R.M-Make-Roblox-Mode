@@ -696,6 +696,19 @@ class RobloxProductionOrchestrator:
                         failed_ids.add(module.module_id)
                         module.code = ""
                         continue
+            # Preserve exact source-only tool invocations in BOTH successful
+            # build metadata and failure ZIPs. Never mislabel these reads as
+            # Studio playtests or as end-to-end gameplay verification.
+            research_traces = getattr(self.router, "agent_tool_traces", {})
+            if isinstance(research_traces, dict):
+                tool_results["agent_tool_calls"] = {
+                    "schema": "rmm/agent-tool-observations-v1",
+                    "scope": "read_only_not_studio_verified",
+                    "modules": research_traces,
+                }
+                (output_dir / "agent_tool_receipts.json").write_text(
+                    json.dumps(tool_results["agent_tool_calls"], ensure_ascii=False,
+                               indent=2, default=str), encoding="utf-8")
             if failures:
                 return {
                     "success": False,
