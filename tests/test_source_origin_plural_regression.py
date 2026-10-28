@@ -27,6 +27,8 @@ def test_server_mining_with_concrete_origin_accepted(origin):
     "Server credits the player's resource balance without world extraction.",
     "Server shows the resource-gathering menu but does not harvest a node.",
     "Server consumes previously owned materials and credits earned coins.",
+    "Server displays a resource-gathering menu beside world resource nodes.",
+    "Server checks a nearby world node and says resource extraction is available.",
 ])
 def test_non_mining_resource_mutation_still_rejected(fake_action):
     assert source_intent_conflicts("자원파밍", fake_action)
