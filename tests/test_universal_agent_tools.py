@@ -89,6 +89,22 @@ def test_invalid_arguments_and_unbounded_source_are_rejected():
     assert mcp.calls == []
 
 
+def test_connected_studio_can_be_inspected_but_never_controlled_by_coder():
+    plan, module = _fixture("combat")
+    mcp = FakeMCP()
+    runtime = RobloxAgentToolRuntime(module, plan, mcp)
+    assert runtime.call("roblox_studio_inspect", {
+        "tool": "get_console_output", "arguments": {}
+    })["ok"]
+    assert mcp.calls == [("roblox_studio_inspect", {
+        "tool": "get_console_output", "arguments": {}
+    })]
+    assert not runtime.call("roblox_studio_inspect", {
+        "tool": "execute_luau", "arguments": {"code": "game:Shutdown()"}
+    })["ok"]
+    assert len(mcp.calls) == 1
+
+
 def test_read_only_mcp_calls_have_observation_hashes_and_real_status():
     plan, module = _fixture("combat")
     mcp = FakeMCP()
