@@ -346,13 +346,33 @@ class RobloxProductionOrchestrator:
             # forge a state namespace. Preserve actionable per-module receipts.
             from .model_action_authority import unproven_model_actions
             authority_gaps = unproven_model_actions(proposal, scope)
+            hard_gaps = authority_gaps
+            pending_codegen: list[dict[str, Any]] = []
+            if getattr(self.router, "supports_deferred_authority_codegen", False):
+                from .model_action_authority import partition_codegen_authority
+                eligible_blockers, eligible_pending = partition_codegen_authority(
+                    authority_gaps)
+                design = proposal.game_design.get("dynamic_design") or {}
+                planned_pending = {
+                    (row.get("module"), row.get("remote"))
+                    for row in design.get("deferred_model_authority", [])
+                    if isinstance(row, dict) and row.get("verified") is False
+                }
+                pending_codegen = [row for row in eligible_pending
+                                   if (row["module"], row["remote"]) in planned_pending]
+                hard_gaps = eligible_blockers + [
+                    row for row in eligible_pending
+                    if (row["module"], row["remote"]) not in planned_pending
+                ]
             tool_results["model_action_authority"] = {
                 "schema": "rmm/model-authority-preflight-v1",
-                "passed": not authority_gaps,
-                "issues": authority_gaps,
+                "passed": not hard_gaps,
+                "issues": hard_gaps,
+                "deferred_until_verified_codegen": pending_codegen,
+                "codegen_proof_required": bool(pending_codegen),
                 "scope": "source_contract_only_not_studio_verified",
             }
-            if authority_gaps:
+            if hard_gaps:
                 trajectory.record("preflight", "model_action_authority",
                                   tool_results["model_action_authority"],
                                   passed=False)
@@ -360,10 +380,10 @@ class RobloxProductionOrchestrator:
                     "success": False,
                     "error": "UNPROVEN_MODEL_ACTION_AUTHORITY: " +
                              "; ".join(x["module"] + ": " + x["reason"]
-                                       for x in authority_gaps),
+                                       for x in hard_gaps),
                     "requires_replanning": True,
                     "implementation_blocker": "missing_source_state_producer",
-                    "authority_gaps": authority_gaps,
+                    "authority_gaps": hard_gaps,
                 }
             trajectory.record("preflight", "generation scope", {
                 "counts": scope["counts"],
