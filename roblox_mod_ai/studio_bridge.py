@@ -58,7 +58,35 @@ class StudioMCPClient:
 
     def run(self, tool_name: str, arguments: dict[str,Any] | None = None,
             allow_write: bool=False) -> dict:
+        # Fail before scheduling on Colab/Linux; a local Studio's stdio
+        # process cannot be reached from a remote notebook.
+        if tool_name not in ALLOWED_READ and tool_name not in ALLOWED_ACTIONS:
+            return {"passed":False,"executed":False,"tool":tool_name,
+                    "reason":"Unapproved Studio tool"}
+        if tool_name in ALLOWED_ACTIONS and not allow_write:
+            return {"passed":False,"executed":False,"tool":tool_name,
+                    "reason":"Explicit Studio action approval required"}
         try:
-            return asyncio.run(self.call(tool_name, arguments, allow_write))
+            studio_command()
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                return asyncio.run(self.call(tool_name, arguments, allow_write))
+            # MCP may be called by a synchronous function inside an active
+            # agent event loop. asyncio.run() there raises and can leak the
+            # coroutine; run the isolated stdio transport on a worker thread
+            # with its own loop instead. No fabricated Studio response.
+            from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+            pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="rmm-studio")
+            try:
+                future = pool.submit(
+                    lambda: asyncio.run(self.call(tool_name, arguments, allow_write))
+                )
+                return future.result(timeout=30)
+            except FutureTimeout:
+                return {"passed":False,"executed":False,"tool":tool_name,
+                        "reason":"Studio MCP did not respond within 30 seconds"}
+            finally:
+                pool.shutdown(wait=False, cancel_futures=True)
         except (RuntimeError,PermissionError,OSError,ImportError) as exc:
             return {"passed":False,"executed":False,"tool":tool_name,"reason":str(exc)}
