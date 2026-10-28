@@ -58,7 +58,20 @@ def module_contract_snapshot(module: Any, proposal: Any) -> dict[str, Any]:
         for peer in getattr(proposal, "modules", [])
         if peer.module_id in getattr(module, "depends_on", [])
     ]
+    # The research tool must report unresolved *authority*, not merely
+    # list the existence of a Remote and imply it is a complete game action.
+    from .model_action_authority import unproven_model_actions
+    action_rows = [{"name": module.name,
+                    "strategy": "bounded_typed_server_action"}]
+    authority_gaps = unproven_model_actions(
+        proposal, {"modules": action_rows}
+    )
     return {
+        "authority_provenance": {
+            "passed": not authority_gaps,
+            "unresolved": authority_gaps,
+            "scope": "architectural_evidence_not_studio_verified",
+        },
         "module_id": module_id,
         "name": module.name,
         "path": module.file_path,
@@ -178,6 +191,15 @@ class RobloxAgentToolRuntime:
             code = arguments.get("code")
             if not isinstance(code, str) or not code or len(code) > 16000:
                 raise RobloxToolPermissionError("Luau input must be 1..16000 chars")
+            # A comment-only placeholder passed the local Luau syntax tool in
+            # the real log32 trace; never present that as implementation
+            # evidence for a game mechanic.
+            from .dynamic_wiring import _without_comments, _mask_strings
+            executable = _mask_strings(_without_comments(code)).strip()
+            if len(executable) < 8:
+                raise RobloxToolPermissionError(
+                    "LUAU_NO_EXECUTABLE_SOURCE: provide actual Luau statements"
+                )
             path = arguments.get("file_path", "script.luau")
             if not isinstance(path, str) or not re.fullmatch(
                     r"[A-Za-z0-9_./-]{1,150}\.luau", path

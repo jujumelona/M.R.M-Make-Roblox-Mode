@@ -13,6 +13,8 @@ on:
       - "tests/test_universal_agent_tools.py"
       - "tests/test_log30_hud_single_writer.py"
       - "tests/test_log31_selene_codegen.py"
+      - "tests/test_log32_model_authority.py"
+      - "roblox_mod_ai/model_action_authority.py"
       - "roblox_mod_ai/host_verified_typed_effects.py"
       - "roblox_mod_ai/host_hud.py"
       - "roblox_mod_ai/project_generator.py"
@@ -31,4 +33,4 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install -e ".[dev]"
       - name: Tool permissions, native tool messages and source receipts
-        run: python -m pytest -q tests/test_universal_agent_tools.py tests/test_log25_verified_typed_effects.py tests/test_log26_real_proposal_regression.py tests/test_log27_orbit_world_abi.py tests/test_log30_hud_single_writer.py tests/test_46_host_ui_dock.py tests/test_57_host_hud.py tests/test_plan78_roblox_runtime_value_contracts.py tests/test_official_docs_studio.py tests/test_log31_selene_codegen.py
+        run: python -m pytest -q tests/test_universal_agent_tools.py tests/test_log25_verified_typed_effects.py tests/test_log26_real_proposal_regression.py tests/test_log27_orbit_world_abi.py tests/test_log30_hud_single_writer.py tests/test_46_host_ui_dock.py tests/test_57_host_hud.py tests/test_plan78_roblox_runtime_value_contracts.py tests/test_official_docs_studio.py tests/test_log31_selene_codegen.py tests/test_log32_model_authority.py

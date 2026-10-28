@@ -339,6 +339,32 @@ class RobloxProductionOrchestrator:
             scope = generation_scope(proposal)
             assert_prompt_invariant_routing(proposal, original_scope=scope)
             tool_results["generation_scope"] = scope
+            # Log32: transport-only selection/quantity contracts incorrectly
+            # authorized AI bodies that needed a nonexistent owned planet or
+            # ship upgrade catalog. Stop at the architecture boundary, before
+            # generating 24 otherwise valid files or teaching the model to
+            # forge a state namespace. Preserve actionable per-module receipts.
+            from .model_action_authority import unproven_model_actions
+            authority_gaps = unproven_model_actions(proposal, scope)
+            tool_results["model_action_authority"] = {
+                "schema": "rmm/model-authority-preflight-v1",
+                "passed": not authority_gaps,
+                "issues": authority_gaps,
+                "scope": "source_contract_only_not_studio_verified",
+            }
+            if authority_gaps:
+                trajectory.record("preflight", "model_action_authority",
+                                  tool_results["model_action_authority"],
+                                  passed=False)
+                return {
+                    "success": False,
+                    "error": "UNPROVEN_MODEL_ACTION_AUTHORITY: " +
+                             "; ".join(x["module"] + ": " + x["reason"]
+                                       for x in authority_gaps),
+                    "requires_replanning": True,
+                    "implementation_blocker": "missing_source_state_producer",
+                    "authority_gaps": authority_gaps,
+                }
             trajectory.record("preflight", "generation scope", {
                 "counts": scope["counts"],
                 "whole_file_model_risk_modules": scope["whole_file_model_risk_modules"],
