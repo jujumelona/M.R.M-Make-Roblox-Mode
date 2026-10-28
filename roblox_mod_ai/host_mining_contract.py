@@ -37,12 +37,36 @@ def _is_named_mining_service(name: str, description: str, prompt: str) -> bool:
         r".{0,65}\b(?:resource|ore|mineral)\s+(?:node|deposit)\b",
         description, re.I,
     ))
+    # Log40: the atomic source owner was a descriptive action rather than a
+    # "MiningServer" service. It explicitly acquired actual resource from a
+    # mineable WORLD source into the player's owned inventory, but the name
+    # check rejected that verified gameplay. Match the *complete* semantic
+    # world->owned-inventory transition, not a keyword in the service name.
+    # The caller still requires one genuine server RemoteFunction, a source
+    # request for mining, unique world target, and an exclusively transport-
+    # only two-field ABI before handing off to the executable host miner.
+    source_owned_extraction = bool(
+        re.search(
+            r"\b(?:mineable|harvestable|resource\s+(?:node|source)|"
+            r"ore\s+(?:node|deposit)|mineral\s+deposit)\b"
+            r".{0,170}\b(?:extract\w*|harvest\w*|mine\w*)\b",
+            description, re.I,
+        )
+        and re.search(
+            r"\b(?:extract\w*|harvest\w*|mine\w*)\b"
+            r".{0,130}\b(?:resources?|minerals?|ores?)\b"
+            r".{0,120}\b(?:player['’]?s?|owned)\b"
+            r".{0,95}\b(?:inventory|cargo)\b",
+            description, re.I,
+        )
+    )
     # Short planner-generated module names can truncate "Gathering" to
     # "Gatherin"; the fully authored behavioral contract is authoritative.
     # Require an actual source-node interaction, not merely the word "ore"
     # inside an unrelated economy module's CamelCase name.
     return bool(
-        (_SERVICE_MINE.search(service_tokens) or explicit_mining_source)
+        (_SERVICE_MINE.search(service_tokens) or explicit_mining_source
+         or source_owned_extraction)
         and _MINE.search(prompt)
         and (_RESOURCE.search(description) or _MINE.search(description))
         # Resource-only harvesting is legitimate without minting coins.
