@@ -1549,6 +1549,13 @@ class RobloxDynamicArchitect:
                                 original_prompt=prompt,
                                 json_schema=model_semantic_schema,
                                 retained_verified=atomic_verified_cache,
+                                # Unlike the outer 'task', compact per-action
+                                # authoring consumes its own short prompts.
+                                # Forward the exact SOURCE facet's authority
+                                # defects so retries can alter the semantic
+                                # producer/consumer plan, not repeat the same
+                                # accepted-but-unexecutable action wording.
+                                authority_gaps=authority_feedback,
                             )
                             atomic_systems_verified = True
                             draft = {"systems": proposed_systems}

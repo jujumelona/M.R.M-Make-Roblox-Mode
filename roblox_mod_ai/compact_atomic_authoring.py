@@ -116,6 +116,7 @@ def host_verified_resource_market(
 
 def author_compact_atomic_system(
     router: Any, action: dict[str, str], *, previous_issues: dict[str, Any],
+    authority_gaps: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """One model-owned server mutation and one model-owned visible result.
 
@@ -142,7 +143,12 @@ def author_compact_atomic_system(
         "No other fields. JSON only.\n"
         + json.dumps({"source_quote": action["source_quote"],
                       "owned_action": action["action"],
-                      "prior_issues": previous_issues}, ensure_ascii=False),
+                      "prior_issues": previous_issues,
+                      # Forward only the current SOURCE facet's previously
+                      # observed implementation authority defects; atomic
+                      # planners bypass the outer 'task' prompt entirely.
+                      "authority_replan_observations": (
+                          authority_gaps or [])[:6]}, ensure_ascii=False),
         role="planner", temperature=0.0, max_tokens=360,
         json_schema=_ATOMIC_SERVER_SCHEMA,
     )

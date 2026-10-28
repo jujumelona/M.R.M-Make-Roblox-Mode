@@ -58,12 +58,26 @@ def unproven_model_actions(
     actions = design.get("host_actions") or {}
     typed = design.get("host_typed_actions") or {}
     unresolved: list[dict[str, Any]] = []
+    # The model-action authority invariant is not coupled to a single
+    # transient source routing label. Before source normalization a typed
+    # action may be classified as bounded_server_action or legacy coding,
+    # then later become bounded_typed_server_action after a host module
+    # conversion. In log34 the planner accepted that preview and production
+    # rejected it 90ms later. Any model-owned SERVER implementation with
+    # a prior-state obligation requires proof regardless of route label.
+    from .spec import ModuleKind
     for row in scope.get("modules", []):
-        if row.get("strategy") != "bounded_typed_server_action":
+        strategy = str(row.get("strategy") or "")
+        if (strategy == "builtin_source" or strategy.startswith("host_")
+                or strategy not in {
+                    "bounded_typed_server_action", "bounded_server_action",
+                    "bounded_passive_start", "whole_file_model_legacy",
+                    "invalid_typed_server_action",
+                }):
             continue
         name = row.get("name")
         module = modules.get(name)
-        if module is None:
+        if module is None or module.kind != ModuleKind.SERVER_MODULE:
             continue
         description = str(getattr(module, "description", "") or "")
         if not _PREEXISTING_AUTHORITY.search(description):

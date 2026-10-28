@@ -42,6 +42,12 @@ def export_architecture_compilation_report(
         "attempts_included": len(selected),
         "attempts_omitted": len(entries) - len(selected),
         "architecture_attempts": selected,
+        # The 34th failure had an implementation-level authority blocker but
+        # the exported architecture report falsely looked clean: it omitted
+        # the separate bounded authority design/replan verdict. Preserve
+        # those actual checks and their exact unresolved modules for triage.
+        "authority_replan_attempts":
+            (research.get("authority_replan_attempts") or [])[-12:],
         "classification_unverified": ledger.get("classification_unverified", []),
         "unimplemented_facets": ledger.get("unimplemented_facets", []),
         "unmatched_requirements": ledger.get("unmatched_requirements", []),
