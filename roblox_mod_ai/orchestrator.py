@@ -731,16 +731,13 @@ class RobloxProductionOrchestrator:
 
         def materialize():
             created = self.project_generator.materialize_project_tree(proposal, output_dir)
-            # Dynamic clients own their action logic but not screen real estate.
-            # Inject the layout adapter before formatter, source review, Rojo,
-            # compiled Place source map, and manifest hashing. It must be an
-            # actual packaged LocalScript, not an unattested UI claim.
-            if not addon_mode:
-                from .host_hud import install_host_hud
-                if install_host_hud(output_dir):
-                    trajectory.record("materialize", "install_shared_action_hud",
-                                      {"source": "src/client/RMMHUDLayout.client.luau"},
-                                      passed=True)
+            # RobloxProjectGenerator is the sole owner of installing the
+            # source-backed action HUD. Do not independently overwrite its
+            # output here: the duplicate writers caused package failure 30.
+            if (output_dir / "src/client/RMMHUDLayout.client.luau").is_file():
+                trajectory.record("materialize", "shared_action_hud_present",
+                                  {"source": "src/client/RMMHUDLayout.client.luau",
+                                   "source_owner": "project_generator"}, passed=True)
             if proposal.game_design.get("detailed_implementation_plan"):
                 (output_dir / "detailed_implementation_plan.json").write_text(
                     json.dumps(proposal.game_design["detailed_implementation_plan"],
