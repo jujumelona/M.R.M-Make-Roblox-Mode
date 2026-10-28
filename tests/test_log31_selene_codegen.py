@@ -130,3 +130,30 @@ def test_31_local_unavailable_studio_is_not_offered_to_small_model(monkeypatch):
     assert denied["ok"] is False
     assert "TOOL_UNAVAILABLE_IN_ENVIRONMENT" in denied["error"]
     assert runtime.records[-1]["ok"] is False
+
+
+def test_31_checkpoint_restore_rejects_old_dead_state_and_host_alias():
+    # Old module checkpoints bypass the first-time model-body generator. The
+    # per-module gate must reject exactly the same useless local state reads.
+    from roblox_mod_ai.module_generation_gate import generated_module_errors
+    from roblox_mod_ai.luau_analyzer import LuauStaticAnalyzer
+    from test_log25_verified_typed_effects import _fixture
+    plan, module = _fixture("combat")
+    code = _shell(
+        'local state = services.PlayerDataManager.GetState(player, "RMMInventory")\n'
+        'local selected = actionArgs.selection\n'
+        'if selected == "" then return false end\n'
+        'workspace:SetAttribute("CombatComplete", true)\n'
+        'return true', typed_contract=_typed())
+    assert "local args = actionArgs" not in code
+    old_checkpoint = code.replace(
+        "    -- RMM_GAMEPLAY_BODY_BEGIN",
+        "    local args = actionArgs\n    -- RMM_GAMEPLAY_BODY_BEGIN",
+    )
+    errors = generated_module_errors(
+        module, plan, old_checkpoint, LuauStaticAnalyzer()
+    )
+    assert any("SCOPED_UNUSED_LOCAL: state" in error
+               for error in errors), errors
+    assert any("SCOPED_UNUSED_HOST_ALIAS" in error
+               for error in errors), errors
