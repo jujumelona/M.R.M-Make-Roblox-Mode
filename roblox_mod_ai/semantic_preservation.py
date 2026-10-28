@@ -317,39 +317,47 @@ def source_intent_conflicts(
         r".{0,70}\b(?:currency|coins?|credits?)\b",
         text, re.I,
     )
-    # Reject negated harvest claims before assessing source effects. A
-    # sentence such as "does not harvest a node" names a node but performs
-    # no resource mutation; a genuine positive extraction elsewhere remains.
+    # Separate affirmative resource acquisition from menu labels and negated
+    # action claims. An object mentioned in "does not harvest a node" does
+    # not establish a successful mineable source/effect.
     affirmative_gathering = re.sub(
         r"\b(?:does\s+not|doesn't|do\s+not|don't|never|without|"
         r"cannot|can't)\s+(?:\w+\s+){0,3}"
-        r"(?:mine|mines|mined|mining|harvest\w*|gather\w*|"
+        r"(?:min(?:e|es|ed|ing)|harvest\w*|gather\w*|"
         r"collect\w*|extract\w*)\b"
         r"(?:\s+(?:a|the|any)\s+\w+)?",
         "", text, flags=re.I,
     )
+    affirmative_gathering = re.sub(
+        r"\b(?:resources?|ores?|minerals?)[\s-]+gathering\b",
+        "resource activity", affirmative_gathering, flags=re.I,
+    )
+    # Source may occur before OR after the verb: "mines resource nodes",
+    # "validates ore deposits then extracts material", "harvests crops".
+    # A resource-gathering menu, a world node alone or the noun
+    # "extraction" is not an affirmative server harvesting action.
+    gather_verb = (
+        r"\b(?:min(?:e|es|ed|ing)|harvest(?:s|ed|ing)?|"
+        r"gather(?:s|ed|ing)?|collect(?:s|ed|ing)?|"
+        r"extract(?:s|ed|ing)?)\b"
+    )
+    gather_source = (
+        r"\b(?:nodes?|deposits?|veins?|ores?|minerals?|resources?|"
+        r"crops?|plants?|trees?|rocks?|wood|world|ground|mineable|"
+        r"harvestable)\b"
+    )
     real_gathering = re.search(
-        r"\b(?:mine|mines|mining|harvest|harvests|harvesting|"
-        r"extract|extracts|extracting|gather|gathers|gathering|"
-        r"collect|collects|collecting)\b"
-        r".{0,75}\b(?:nodes?|deposits?|veins?|ores?|world|ground|minerals?|resources?|crops?|plants?|trees?|rocks?|wood)\b|"
-        r"\b(?:resources?|ores?|minerals?|crops?|plants?|trees?|rocks?|wood)\b.{0,50}"
-        r"\b(?:node|deposit|vein|spawn|mine|harvest|gather|collect|extract)\w*\b",
+        gather_verb + r".{0,100}" + gather_source + "|" +
+        gather_source + r".{0,100}" + gather_verb,
         affirmative_gathering, re.I,
     )
-    # An abstract "resource-gathering" event is not a real harvest. The
-    # production small-model response granted resources into a balance without
-    # naming any mineable/harvestable world source. Our former lexical check
-    # incorrectly counted the noun "resource-gathering" as an interaction.
-    # Require evidence of a world-derived source, not just a resource verb,
-    # before treating a server-side inventory grant as farming gameplay.
     gatherable_origin = re.search(
         r"\b(?:nodes?|deposits?|veins?|mineable|harvestable|world|ground|"
         r"rocks?|trees?|crops?|plants?|pickups?|resource\s+(?:sources?|objects?))\b|"
         r"광맥|채굴지|광석|자원\s*(?:노드|지점|원천)|"
-        r"\b(?:mine|mines|mined|mining|extract|extracts|extracted|extracting)\b"
+        r"\b(?:min(?:e|es|ed|ing)|extract(?:s|ed|ing)?)\b"
         r".{0,90}\b(?:ores?|minerals?)\b",
-        text, re.I,
+        affirmative_gathering, re.I,
     )
     if (require_implementation and gathering_requested and real_gathering
             and not gatherable_origin):
