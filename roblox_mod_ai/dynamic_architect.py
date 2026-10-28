@@ -812,7 +812,8 @@ class RobloxDynamicArchitect:
             ).hexdigest(),
             "original_prompt": prompt, "ledger": ledger,
             "reserved_modules": sorted(reserved_modules),
-            "authority_feedback": research.get("_authority_feedback") or [],
+            # Authority repair is scoped per facet at cache admission below.
+            # Do not invalidate ALL validated sibling facets for one defect.
         }, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")).hexdigest()
         stored_parts: dict[str, Any] = {}
         if self.checkpoint_file is not None and os.environ.get(
@@ -1071,7 +1072,8 @@ class RobloxDynamicArchitect:
                 try:
                     # A previously validated feature is reused only after the
                     # SAME current source ownership and collision checks.
-                    if attempt == 0 and isinstance(stored_parts.get(facet_id), dict):
+                    if (attempt == 0 and not authority_feedback
+                            and isinstance(stored_parts.get(facet_id), dict)):
                         draft = stored_parts[facet_id]
                         cache_hit = True
                     # Repair a missing client/server role by APPENDING modules
