@@ -115,6 +115,7 @@ class LuauCodeGenerator:
             if (render_resource_market_sale(module, proposal) is not None
                     or render_owned_weapon_performance(module, proposal) is not None
                     or render_atomic_server(module, proposal) is not None
+                    or render_verified_effect(module, proposal) is not None
                     or render_colony_alias(module, proposal) is not None
                     or render_host_space_action(module, proposal) is not None
                     or render_contextual_harvest(module, proposal) is not None
