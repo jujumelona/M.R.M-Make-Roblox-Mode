@@ -163,3 +163,25 @@ def test_split_recovery_rejects_wrong_state_change():
             router, ACTION, "", original_prompt=SOURCE,
             diagnostics=["Missing durable state transition"],
         )
+
+
+def test_replan_prompts_keep_defect_contract_not_prior_long_server_prose():
+    from roblox_mod_ai.compact_atomic_authoring import bounded_authority_observations
+
+    enormous_old_design = "A failed, irrelevant server essay. " * 120
+    raw = [{
+        "source_module": "SomeGameplayService",
+        "original_server_behavior": enormous_old_design,
+        "error": "AUTHORITY_PRODUCER_NOT_DECLARED",
+        "missing_contract": "Declare a real server state producer and exact effect",
+        "observed": {
+            "transport_only": True, "state_changes": 0,
+            "target_kind": "none",
+        },
+    }]
+    clean = bounded_authority_observations(raw)
+    serialized = json.dumps(clean)
+    assert "AUTHORITY_PRODUCER_NOT_DECLARED" in serialized
+    assert "state producer" in serialized
+    assert enormous_old_design[:100] not in serialized
+    assert len(serialized) < 550
