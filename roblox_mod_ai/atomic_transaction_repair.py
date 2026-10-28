@@ -60,6 +60,7 @@ def require_transaction_repair(issues: dict[str, list[str]]) -> bool:
 
 def author_transaction_repair(
     router: Any, action: dict[str, str], previous_server: str,
+    *, prior_rejections: list[str] | None = None,
 ) -> str:
     """Compile a trade/purchase action from two model-owned effect fields.
 
@@ -85,6 +86,7 @@ def author_transaction_repair(
             "original_source_quote": source,
             "owned_action": owned,
             "rejected_server_behavior": previous_server[:450],
+            "prior_transaction_rejections": (prior_rejections or [])[-2:],
         }, ensure_ascii=False),
         role="planner", temperature=0.0, max_tokens=225,
         json_schema={
