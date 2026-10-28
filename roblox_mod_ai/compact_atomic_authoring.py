@@ -119,6 +119,7 @@ def author_compact_atomic_system(
     router: Any, action: dict[str, str], *, previous_issues: dict[str, Any],
     authority_gaps: list[dict[str, Any]] | None = None,
     original_prompt: str | None = None,
+    server_override: str | None = None,
 ) -> dict[str, Any]:
     """One model-owned server mutation and one model-owned visible result.
 
@@ -137,7 +138,21 @@ def author_compact_atomic_system(
         preserved_paid_server_behavior(action, original_prompt=original_prompt)
         if isinstance(original_prompt, str) else None
     )
-    if preserved is not None:
+    if server_override is not None:
+        # The validator has already checked a source-owned positive state
+        # mutation returned by bounded model calls. Reuse that verified
+        # semantic claim without asking the same model for a long server
+        # paragraph again. World targets are NEVER fabricated: downstream
+        # world-ownership checks still have to establish real instances.
+        if not isinstance(server_override, str) or not 24 <= len(server_override) <= 600:
+            raise ValueError("ATOMIC_COMPACT_OVERRIDE_INVALID")
+        key = action["source_quote"] + "\0" + action["action"]
+        server = {
+            "name": "SourceAtomic" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:10],
+            "server_behavior": server_override,
+            "world_entities": [],
+        }
+    elif preserved is not None:
         key = action["source_quote"] + "\0" + action["action"]
         server = {
             "name": "SourceOwnedPaid" + hashlib.sha256(
