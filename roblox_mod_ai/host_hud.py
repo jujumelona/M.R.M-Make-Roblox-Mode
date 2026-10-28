@@ -199,7 +199,20 @@ def install_host_hud(project_dir: Path) -> bool:
         except (OSError,ValueError):
             saved={}
         observed=hashlib.sha256(target.read_bytes()).hexdigest()
-        if saved.get("source_sha256")!=observed or saved.get("file")!=HUD_FILE:
+        previously_sealed = (
+            saved.get("source_sha256") == observed
+            and saved.get("file") == HUD_FILE
+        )
+        # Migrate ONLY an exact shipped first-party legacy dock. Runs
+        # interrupted before the later HUD installer produced the old dock
+        # without a receipt; it is safe to replace if its full byte hash
+        # equals our own checked-in template, never by filename alone.
+        old_dock = Path(__file__).with_name("rmm_action_dock.client.luau")
+        legacy_host_owned = (
+            old_dock.is_file()
+            and hashlib.sha256(old_dock.read_bytes()).hexdigest() == observed
+        )
+        if not previously_sealed and not legacy_host_owned:
             raise ValueError("HUD source conflicts with a preexisting project file")
     target.write_text(source,encoding="utf-8")
     receipt.write_text(json.dumps({

@@ -20,13 +20,21 @@ _ATTRIBUTE_REMOTE_METHOD = re.compile(
     r"(?:FireServer|FireClient|FireAllClients|InvokeClient|InvokeServer|Connect|Wait)\s*\("
 )
 _ATTRIBUTE_INSTANCE_COMPARISON = re.compile(
-    r"\bGetAttribute\s*\([^()\n]*\)\s*==\s*player\b(?!\s*(?:\.|\[|:))"
-    r"|\bplayer\s*==\s*[^\n]*\bGetAttribute\s*\("
+    r"\bGetAttribute\s*\([^()\n]*\)\s*(?:==|~=|!=)\s*player\b(?!\s*(?:\.|\[|:))"
+    r"|\bplayer\s*(?:==|~=|!=)\s*[^\n]*\bGetAttribute\s*\("
+)
+_ATTRIBUTE_SET_INSTANCE = re.compile(
+    r"\bSetAttribute\s*\(\s*(?:'[^'\n]+'|\"[^\"\n]+\")\s*,\s*"
+    r"(?:player\b(?!\s*(?:\.|\[|:))|player\.Character\b(?!\s*(?:\.|\[|:)))"
 )
 _TABLE_INSERT_ASSIGNED = re.compile(
     r"\b(?:local\s+[A-Za-z_]\w*\s*=\s*|"
     r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*|\[[^\]\n]+\])+\s*=\s*)"
     r"table\s*\.\s*insert\s*\(", re.I
+)
+_ATTRIBUTE_GET_LOCAL = re.compile(
+    r"\blocal\s+([A-Za-z_]\w*)\s*=\s*"
+    r"[A-Za-z_]\w*\s*:\s*GetAttribute\s*\([^()\n]*\)"
 )
 _TABLE_ATTRIBUTE_LOCAL = re.compile(
     r"\blocal\s+([A-Za-z_]\w*)\s*=\s*"
@@ -49,6 +57,8 @@ def roblox_value_contract_errors(source: str) -> list[str]:
          "GetAttribute returns a value, never a Roblox RemoteEvent/Signal"),
         (_ATTRIBUTE_INSTANCE_COMPARISON, "ATTRIBUTE_NOT_INSTANCE",
          "GetAttribute cannot return a Player Instance"),
+        (_ATTRIBUTE_SET_INSTANCE, "ATTRIBUTE_INSTANCE_UNSUPPORTED",
+         "SetAttribute cannot persist a Player or Character Instance; store UserId"),
         (_TABLE_INSERT_ASSIGNED, "TABLE_INSERT_RETURNS_NIL",
          "table.insert mutates its first argument and returns nil"),
     ):
@@ -59,6 +69,23 @@ def roblox_value_contract_errors(source: str) -> list[str]:
                         masked[probe:]):
                 errors.append(code + ": " + description)
                 break
+    # An attribute may contain a string/numeric owner ID, but it can NEVER
+    # contain a Player Instance. Catch the common two-statement variant from
+    # failure 30: local owner=part:GetAttribute(...); if owner~=player then.
+    for found in _ATTRIBUTE_GET_LOCAL.finditer(raw):
+        name = found.group(1)
+        if not re.match(r"\blocal\b", masked[found.start():]):
+            continue
+        later = masked[found.end():]
+        if (re.search(r"\b" + re.escape(name) +
+                      r"\s*(?:==|~=|!=)\s*player\b(?!\s*(?:\.|\[|:))", later)
+                or re.search(r"\bplayer\s*(?:==|~=|!=)\s*" + re.escape(name) +
+                             r"\b", later)):
+            errors.append(
+                "ATTRIBUTE_NOT_INSTANCE: A value from GetAttribute cannot "
+                "equal a Player Instance; compare the stored UserId instead"
+            )
+            break
     # An attribute fetched from an Instance cannot contain a Lua table.
     # A fallback of {} is reasonable for an absent value, but it cannot
     # describe a persisted inventory/assembly array.

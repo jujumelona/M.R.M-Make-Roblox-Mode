@@ -18,7 +18,8 @@ def make_game(panel_count=3, conflicting=False):
             file_path=f"src/client/Action{index}.client.luau",
             roblox_service=RobloxService.STARTER_PLAYER_SCRIPTS,
             code='--!strict\nlocal gui=Instance.new("ScreenGui")\ngui.Name = "' +
-                 name + '"\n',
+                 name + '"\n' +
+                 'game.ReplicatedStorage.Remotes.DoAction:InvokeServer({})\n',
         )
         for index, name in enumerate(names[:panel_count])
     ]
@@ -49,22 +50,23 @@ def test_ui_dock_generated_for_three_source_owned_actions(tmp_path: Path):
     source = dock.read_text(encoding="utf-8")
     assert "UIListLayout" in source
     assert "ChildAdded" in source
-    assert 'button.Parent=card' in source
-    assert 'result.Parent=card' in source
+    assert "child.Parent=section.frame" in source
+    assert "actionGuis[candidate.Name]==true" in source
+    assert 'gui.Name="RMMUnifiedHUD"' in source
     assert "OnServerInvoke" not in source
     assert source.count("RemoteFunction") == 0
 
 
-def test_not_added_to_small_game(tmp_path: Path):
+def test_single_action_does_not_need_an_aggregator(tmp_path: Path):
     root = tmp_path / "output"
     RobloxProjectGenerator(tmp_path).materialize_project_tree(
-        make_game(panel_count=2), root)
+        make_game(panel_count=1), root)
     assert not (root / "src/client/RMMHUDLayout.client.luau").exists()
 
 
 def test_existing_custom_hud_is_never_overwritten(tmp_path: Path):
     root = tmp_path / "output"
-    with pytest.raises(ValueError, match="RMM_HUD_LAYOUT_CONFLICT"):
+    with pytest.raises(ValueError, match="HUD source conflicts"):
         RobloxProjectGenerator(tmp_path).materialize_project_tree(
             make_game(conflicting=True), root)
     assert (root / "src/client/RMMHUDLayout.client.luau").read_text().startswith(
