@@ -124,7 +124,8 @@ def author_verified_atomic_systems(
         # Never spend all three attempts on an identical one-field repair.
         # A failed repair is locally reformulated as a fresh compact action.
         repaired_fields: set[str] = set()
-        transaction_repair_attempted = False
+        transaction_repair_attempts = 0
+        transaction_rejections: list[str] = []
         for attempt in range(max_attempts_per_action):
             # Repair the two independently failing fields in order, without
             # discarding an accepted payment just because the old visible
@@ -140,23 +141,41 @@ def author_verified_atomic_systems(
                 and set(previous_issues) <= reparable and pending
                 else None
             )
-            if (repair_field == "server_behavior"
-                    and not transaction_repair_attempted
-                    and require_transaction_repair(previous_issues)):
-                transaction_repair_attempted = True
-                repaired_fields.add(repair_field)
+            # 35th failure: the crew upgrade's ORIGINAL source quote
+            # explicitly says purchase/trade. The first unstructured reply
+            # omitted the payment, then one rejected structured repair was
+            # treated as terminal and the third attempt blindly regenerated
+            # the same free upgrade. Retry the TWO effect fields (debit and
+            # delivered upgrade) twice, preserving the already checked
+            # visible result and sibling modules throughout.
+            needs_transaction = (
+                system is not None
+                and "server_behavior" in previous_issues
+                and require_transaction_repair(previous_issues)
+                and transaction_repair_attempts < 2
+            )
+            if needs_transaction:
+                transaction_repair_attempts += 1
+                repaired_fields.add("server_behavior")
                 try:
                     transaction_server = author_transaction_repair(
                         router, action,
                         str(system.get("server_behavior") or ""),
+                        prior_rejections=transaction_rejections,
                     )
                 except (ValueError, TypeError) as exc:
-                    # Keep previously verified siblings and try one ordinary
-                    # compact server generation for this action only.
-                    previous_issues = {"format": [
-                        "ATOMIC_TYPED_TRANSACTION_REJECTED: " + str(exc)[:250],
-                    ]}
-                    system = None
+                    rejection = type(exc).__name__ + ": " + str(exc)[:230]
+                    transaction_rejections.append(rejection)
+                    # Preserve the *semantic* missing-payment diagnosis so
+                    # the final bounded attempt does not return to a generic
+                    # stat-only body. A failed typed reply supplies no
+                    # authority evidence and is never accepted.
+                    previous_issues = dict(previous_issues)
+                    previous_issues["server_behavior"] = list(dict.fromkeys(
+                        previous_issues["server_behavior"] + [
+                            "ATOMIC_TYPED_TRANSACTION_REJECTED: " + rejection
+                        ]
+                    ))
                     continue
                 system = dict(system, server_behavior=transaction_server)
             elif repair_field:
