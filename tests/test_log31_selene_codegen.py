@@ -108,3 +108,25 @@ def test_31_verified_harvest_still_receives_services():
     assert code is not None
     assert "function Service.handleAction(player, services, ...)" in code
     assert 'services.PlayerDataManager.GetState(player, "RMMInventory")' in code
+
+
+def test_31_local_unavailable_studio_is_not_offered_to_small_model(monkeypatch):
+    from roblox_mod_ai.agent_tool_runtime import RobloxAgentToolRuntime
+    from test_log25_verified_typed_effects import _fixture
+    import roblox_mod_ai.studio_bridge as studio
+    def unavailable():
+        raise RuntimeError("Windows/macOS Studio unavailable in Colab")
+    monkeypatch.setattr(studio, "studio_command", unavailable)
+    plan, module = _fixture("combat")
+    runtime = RobloxAgentToolRuntime(module, plan)
+    offered = {tool["function"]["name"] for tool in runtime.definitions()}
+    assert "roblox_official_docs_search" in offered
+    assert "roblox_api_search" in offered
+    assert "roblox_studio_status" not in offered
+    assert "roblox_studio_inspect" not in offered
+    denied = runtime.call("roblox_studio_inspect", {
+        "tool": "script_read", "arguments": {"path": module.file_path}
+    })
+    assert denied["ok"] is False
+    assert "TOOL_UNAVAILABLE_IN_ENVIRONMENT" in denied["error"]
+    assert runtime.records[-1]["ok"] is False
