@@ -22,6 +22,7 @@ from .host_space_actions import render_host_space_action
 from .host_contextual_harvest import render_contextual_harvest
 from .host_space_colonization import render_colony_alias
 from .host_action_delegate import render_verified_upgrade_alias
+from .host_ship_performance_purchase import render_ship_performance_purchase
 from .typed_action_contract import render_typed_client
 from .host_atomic_effect import render_atomic_server
 from .host_mode_navigation import eligible_mode_navigation
@@ -69,6 +70,8 @@ def generation_scope(
             strategy = "host_space_colony_alias"
         elif render_verified_upgrade_alias(module, proposal) is not None:
             strategy = "host_verified_upgrade_alias"
+        elif render_ship_performance_purchase(module, proposal) is not None:
+            strategy = "host_ship_performance_purchase"
         elif render_contextual_harvest(module, proposal) is not None:
             strategy = "host_contextual_harvest"
         elif render_host_space_action(module, proposal) is not None:
