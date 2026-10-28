@@ -20,6 +20,8 @@ on:
       - "tests/test_log35_transaction_atom.py"
       - "tests/test_log36_preserve_paid_atomic_source.py"
       - "tests/test_log37_grounded_atomic_extraction.py"
+      - "tests/test_log40_mining_source_to_host_provider.py"
+      - "roblox_mod_ai/host_mining_contract.py"
       - "roblox_mod_ai/grounded_atomic_source_effects.py"
       - "roblox_mod_ai/paid_atomic_source_contract.py"
       - "roblox_mod_ai/source_owned_microplanning.py"
@@ -50,4 +52,4 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install -e ".[dev]"
       - name: Tool permissions, native tool messages and source receipts
-        run: python -m pytest -q tests/test_universal_agent_tools.py tests/test_log25_verified_typed_effects.py tests/test_log26_real_proposal_regression.py tests/test_log27_orbit_world_abi.py tests/test_log30_hud_single_writer.py tests/test_46_host_ui_dock.py tests/test_57_host_hud.py tests/test_plan78_roblox_runtime_value_contracts.py tests/test_official_docs_studio.py tests/test_log31_selene_codegen.py tests/test_log32_model_authority.py tests/test_log33_authority_replanning.py tests/test_log34_authority_production_parity.py tests/test_log34_atomic_authority_feedback.py tests/test_log35_transaction_atom.py tests/test_log36_preserve_paid_atomic_source.py tests/test_log37_grounded_atomic_extraction.py
+        run: python -m pytest -q tests/test_universal_agent_tools.py tests/test_log25_verified_typed_effects.py tests/test_log26_real_proposal_regression.py tests/test_log27_orbit_world_abi.py tests/test_log30_hud_single_writer.py tests/test_46_host_ui_dock.py tests/test_57_host_hud.py tests/test_plan78_roblox_runtime_value_contracts.py tests/test_official_docs_studio.py tests/test_log31_selene_codegen.py tests/test_log32_model_authority.py tests/test_log33_authority_replanning.py tests/test_log34_authority_production_parity.py tests/test_log34_atomic_authority_feedback.py tests/test_log35_transaction_atom.py tests/test_log36_preserve_paid_atomic_source.py tests/test_log37_grounded_atomic_extraction.py tests/test_log40_mining_source_to_host_provider.py
