@@ -313,12 +313,43 @@ def author_verified_atomic_systems(
                             original_prompt=original_prompt,
                         )
                     except (ValueError, TypeError) as exc:
-                        # Never retry the WHOLE feature because one compact
-                        # per-action JSON field reached the GGUF length cap.
-                        previous_issues = {
-                            "format": [type(exc).__name__ + ": " + str(exc)[:210]],
-                        }
-                        continue
+                        # A malformed *first* compact server JSON has no
+                        # retained system, so the old repair path could only
+                        # retry the same too-large schema until it exhausted
+                        # the facet. Generate ONE source-checked mutation from
+                        # bounded fields, then resume the ordinary small
+                        # visible-outcome authoring stage.
+                        if (getattr(router, "supports_atomic_state_mutation_repair", False)
+                                and ("truncat" in str(exc).lower()
+                                     or "finish_reason=length" in str(exc))):
+                            try:
+                                short_server = author_state_mutation_repair(
+                                    router, action, "", original_prompt=original_prompt,
+                                    diagnostics=[type(exc).__name__ + ": "
+                                                 + str(exc)[:180]],
+                                )
+                                system = author_compact_atomic_system(
+                                    router, action, previous_issues=previous_issues,
+                                    authority_gaps=authority_gaps,
+                                    original_prompt=original_prompt,
+                                    server_override=short_server,
+                                )
+                            except (ValueError, TypeError) as recovery_exc:
+                                previous_issues = {
+                                    "format": [
+                                        "ATOMIC_SPLIT_RECOVERY_FAILED: "
+                                        + type(recovery_exc).__name__ + ": "
+                                        + str(recovery_exc)[:210]
+                                    ],
+                                }
+                                continue
+                        else:
+                            # Keep failing closed: unsupported effects and
+                            # malformed model responses are not auto-approved.
+                            previous_issues = {
+                                "format": [type(exc).__name__ + ": " + str(exc)[:210]],
+                            }
+                            continue
                 else:
                     response = router.complete_json(
                         "Describe ONLY ONE source-owned gameplay action. Return "
