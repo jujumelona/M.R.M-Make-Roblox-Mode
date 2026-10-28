@@ -23,6 +23,7 @@ from .host_contextual_harvest import render_contextual_harvest
 from .host_space_colonization import render_colony_alias
 from .typed_action_contract import render_typed_client
 from .host_atomic_effect import render_atomic_server
+from .host_verified_typed_effects import render_verified_effect
 from .host_mode_navigation import eligible_mode_navigation
 from .host_mode_unlock import eligible_mode_unlock
 from .host_catalog_purchase import eligible_catalog_purchase
@@ -64,6 +65,8 @@ def generation_scope(
             strategy = "builtin_source"
         elif render_atomic_server(module, proposal) is not None:
             strategy = "host_atomic_effect"
+        elif render_verified_effect(module, proposal) is not None:
+            strategy = "host_verified_typed_effect"
         elif render_colony_alias(module, proposal) is not None:
             strategy = "host_space_colony_alias"
         elif render_contextual_harvest(module, proposal) is not None:
