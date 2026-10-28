@@ -420,11 +420,19 @@ EFFECTS = {
     if stock==nil then stock=100 end
     local amount=state.minerals
     if amount==nil then amount=0 end
+    -- Keep the player's actual inventory in sync with planetary progress.
+    -- Verify both balances before writing either; no yield in the commit.
+    local inventory=services.PlayerDataManager.GetState(player,"RMMInventory")
+    if type(inventory)~="table" then return {success=false,reason="inventory_loading"} end
+    local carried=inventory.specialMinerals
+    if carried==nil then carried=0 end
     local refillAt=state.mineralRefillAt
     if refillAt~=nil and not integer(refillAt,4102444800) then
         return {success=false,reason="invalid_refill_state"} end
     if not integer(stock,100) or not integer(amount,2147483600)
-        or amount+args.quantity>2147483600 then
+        or not integer(carried,2147483600)
+        or amount+args.quantity>2147483600
+        or carried+args.quantity>2147483600 then
         return {success=false,reason="invalid_mineral_state"} end
     local wallNow=os.time()
     if stock==0 then
@@ -440,6 +448,7 @@ EFFECTS = {
     recent[player]=now
     state.mineralRemaining=stock-args.quantity
     state.minerals=amount+args.quantity
+    inventory.specialMinerals=carried+args.quantity
     state.mineralRefillAt=state.mineralRemaining==0 and wallNow+120 or nil
     player:SetAttribute("RMMPlanetMinerals",state.minerals)
     return {success=true,minerals=state.minerals,remaining=state.mineralRemaining,
