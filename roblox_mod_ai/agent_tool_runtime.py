@@ -87,11 +87,29 @@ class RobloxAgentToolRuntime:
         self._mcp = mcp
         self.records: list[dict[str, Any]] = []
 
+    def _available_names(self) -> frozenset[str]:
+        """Advertise only callable tools in this actual process environment.
+
+        Linux/Colab has no native Windows/macOS Studio MCP subprocess.
+        Offering it to a small model wasted the log31 budget on guaranteed
+        failures instead of inspecting the real source and official docs.
+        An explicitly injected Studio fake may be used by deterministic tests.
+        """
+        if self._mcp is not None:
+            return APPROVED_MCP_READ_TOOLS
+        from .studio_bridge import studio_command
+        try:
+            studio_command()
+        except RuntimeError:
+            return APPROVED_MCP_READ_TOOLS.difference((
+                "roblox_studio_status", "roblox_studio_inspect"))
+        return APPROVED_MCP_READ_TOOLS
+
     def definitions(self) -> list[dict[str, Any]]:
         from .mcp_server import RobloxMCPServer
         declared = RobloxMCPServer.get_tool_definitions(None)
         tools = [entry for entry in declared
-                 if entry["name"] in APPROVED_MCP_READ_TOOLS]
+                 if entry["name"] in self._available_names()]
         tools.append({
             "name": CONTRACT_TOOL,
             "description": (
@@ -171,6 +189,8 @@ class RobloxAgentToolRuntime:
         """Always return a real observation or a recorded error, never success-shaped data."""
         try:
             valid = self._validate_arguments(name, arguments)
+            if name not in self._available_names() and name != CONTRACT_TOOL:
+                raise RobloxToolPermissionError("TOOL_UNAVAILABLE_IN_ENVIRONMENT: " + name)
             if name == CONTRACT_TOOL:
                 data = module_contract_snapshot(self.module, self.proposal)
             else:

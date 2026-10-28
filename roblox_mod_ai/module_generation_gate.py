@@ -179,6 +179,19 @@ def generated_module_errors(
             from .scoped_luau_abi import (
                 typed_input_abi_errors, typed_input_fields_used,
             )
+            if "-- RMM_GAMEPLAY_BODY_BEGIN" in code:
+                # A resumed checkpoint bypasses first-time model generation.
+                # Apply the identical body-local liveness gate here so stale
+                # files from log31 cannot silently re-enter the package.
+                from .host_service_codegen import scoped_body_unused_locals
+                errors.extend(scoped_body_unused_locals(body))
+                body_executable = _mask_strings(_without_comments(body))
+                if ('local args = actionArgs' in stripped and
+                        not re.search(r"\\bargs\\b", body_executable)):
+                    errors.append(
+                        "SCOPED_UNUSED_HOST_ALIAS: obsolete args alias in "
+                        "a resumed model-authored module"
+                    )
             for typed in typed_routes:
                 contract = typed.get("contract") or {}
                 # The same schema must be enforced for fresh model snippets,

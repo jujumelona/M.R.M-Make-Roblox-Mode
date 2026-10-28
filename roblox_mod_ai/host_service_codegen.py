@@ -157,6 +157,29 @@ def normalize_verified_server_body(body: str, proposal: RobloxProposal) -> str:
     return body
 
 
+
+def scoped_body_unused_locals(body: str) -> list[str]:
+    """Detect dead model-body bindings before full-project lint.
+
+    A loaded profile or named server state that is never read is NOT proof
+    of a successful authoritative transition. Selene remains mandatory.
+    """
+    executable = _mask_strings(_without_comments(body))
+    issues: list[str] = []
+    for found in re.finditer(
+            r"\blocal\s+([A-Za-z_]\w*)\s*=(?!=)", executable):
+        symbol = found.group(1)
+        if symbol.startswith("_"):
+            continue
+        refs = list(re.finditer(r"\b" + re.escape(symbol) + r"\b", executable))
+        if len(refs) == 1:
+            issues.append(
+                "SCOPED_UNUSED_LOCAL: " + symbol +
+                " was initialized but never used by gameplay statements"
+            )
+    return issues
+
+
 def _shell(
     body: str, allowed_choices: list[str] | None = None,
     *, typed_contract: dict[str, Any] | None = None,
@@ -177,6 +200,14 @@ def _shell(
             '    if type(__rmmActionId) ~= "string" or not __rmmAllowed[__rmmActionId] then return false end\n'
             '    local args = {}\n'
         )
+    # A model may use the validated actionArgs directly instead of its
+    # optional host alias named args. Declare the alias only when used by
+    # executable gameplay; otherwise Selene would fail the whole build.
+    body_executable = _mask_strings(_without_comments(body))
+    if not re.search(r"\bargs\b", body_executable):
+        choice_guard = choice_guard.replace("    local args = actionArgs\n", "")
+        choice_guard = choice_guard.replace("    local args = {}\n", "")
+        choice_guard = choice_guard.replace("    local args = {...}\n", "")
     return (
         "--!strict\n"
         "-- Host-authored lifecycle, input validation and exported ABI.\n"
@@ -493,6 +524,9 @@ def try_scaffolded_server(
                 raise ValueError("Empty or trivially short gameplay body")
             if body.startswith("--!strict") or _FORBIDDEN.search(body):
                 raise ValueError("Body contains host-owned, unsafe or placeholder code")
+            unused_locals = scoped_body_unused_locals(body)
+            if unused_locals:
+                raise ValueError("; ".join(unused_locals))
             # Known destructive or unsupported operations are never acceptable gameplay.
             if "workspace.Workspace" in body:
                 raise ValueError("Unsafe or unsupported Luau mutation")
