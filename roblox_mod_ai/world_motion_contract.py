@@ -31,8 +31,11 @@ _LEAVES = re.compile(
     r"\b(?:player|passenger|pilot|crew|character)\b.{0,65}"
     r"\b(?:leav(?:e|es|ing)|exits?|eject\w*|disembark\w*)\b"
     r".{0,70}\b(?:ship|spacecraft|spaceship|vehicle|vessel|craft)\b|"
+    r"\b(?:ship|spacecraft|spaceship|vehicle|vessel|craft)\b"
+    r"\s+(?:(?:is|was|becomes?|ends?\s+up|will\s+be)\s+)"
+    r"(?:completely\s+)?empty\b|"
     r"\b(?:ship|spacecraft|spaceship|vehicle|vessel|craft)\b.{0,60}"
-    r"\b(?:empty|no longer carrying|abandons?|without (?:the )?player)\b|"
+    r"\b(?:no longer carrying|abandons?|without (?:the )?player)\b|"
     r"\b(?:eject\w*|disembark\w*)\b",
     re.I,
 )
