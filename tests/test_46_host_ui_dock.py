@@ -57,10 +57,10 @@ def test_ui_dock_generated_for_three_source_owned_actions(tmp_path: Path):
     assert source.count("RemoteFunction") == 0
 
 
-def test_not_added_to_small_game(tmp_path: Path):
+def test_single_action_does_not_need_an_aggregator(tmp_path: Path):
     root = tmp_path / "output"
     RobloxProjectGenerator(tmp_path).materialize_project_tree(
-        make_game(panel_count=2), root)
+        make_game(panel_count=1), root)
     assert not (root / "src/client/RMMHUDLayout.client.luau").exists()
 
 
