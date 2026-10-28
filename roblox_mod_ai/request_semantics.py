@@ -59,6 +59,13 @@ _PEER_TRADE_CONTEXT = re.compile(
 
 
 _PEER_TRADE_OUTPUT = re.compile(
+    # Actor-first wording still describes a bilateral asset transfer when
+    # an inventory/asset is traded "with each other". Do not authorize this
+    # merely because the source mentions players, chat or a market.
+    r"\bplayers?\s+(?:can\s+)?(?:trade|exchange|barter)\b.{0,150}"
+    r"\b(?:inventor(?:y|ies)|items?|assets?|equipment|resources?|"
+    r"weapons?|coins?|currency)\b.{0,100}"
+    r"\b(?:with\s+)?(?:each\s+other|one\s+another)\b|"
     r"\bplayer[- ]to[- ]player\s+(?:trade|trading|exchange)\b|"
     r"\b(?:p2p|peer[- ]to[- ]peer)\s+(?:trade|trading|exchange)\b|"
     r"\b(?:two|both|other)\s+players?'?\s*(?:inventor(?:y|ies)|trade|offers?)\b|"
