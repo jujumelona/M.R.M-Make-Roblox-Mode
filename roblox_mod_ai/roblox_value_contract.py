@@ -20,8 +20,12 @@ _ATTRIBUTE_REMOTE_METHOD = re.compile(
     r"(?:FireServer|FireClient|FireAllClients|InvokeClient|InvokeServer|Connect|Wait)\s*\("
 )
 _ATTRIBUTE_INSTANCE_COMPARISON = re.compile(
-    r"\bGetAttribute\s*\([^()\n]*\)\s*==\s*player\b(?!\s*(?:\.|\[|:))"
-    r"|\bplayer\s*==\s*[^\n]*\bGetAttribute\s*\("
+    r"\bGetAttribute\s*\([^()\n]*\)\s*[!=]=\s*player\b(?!\s*(?:\.|\[|:))"
+    r"|\bplayer\s*[!=]=\s*[^\n]*\bGetAttribute\s*\("
+)
+_ATTRIBUTE_SET_INSTANCE = re.compile(
+    r"\bSetAttribute\s*\(\s*(?:'[^'\n]+'|\"[^\"\n]+\")\s*,\s*"
+    r"(?:player\b(?!\s*(?:\.|\[|:))|player\.Character\b(?!\s*(?:\.|\[|:)))"
 )
 _TABLE_INSERT_ASSIGNED = re.compile(
     r"\b(?:local\s+[A-Za-z_]\w*\s*=\s*|"
@@ -49,6 +53,8 @@ def roblox_value_contract_errors(source: str) -> list[str]:
          "GetAttribute returns a value, never a Roblox RemoteEvent/Signal"),
         (_ATTRIBUTE_INSTANCE_COMPARISON, "ATTRIBUTE_NOT_INSTANCE",
          "GetAttribute cannot return a Player Instance"),
+        (_ATTRIBUTE_SET_INSTANCE, "ATTRIBUTE_INSTANCE_UNSUPPORTED",
+         "SetAttribute cannot persist a Player or Character Instance; store UserId"),
         (_TABLE_INSERT_ASSIGNED, "TABLE_INSERT_RETURNS_NIL",
          "table.insert mutates its first argument and returns nil"),
     ):
