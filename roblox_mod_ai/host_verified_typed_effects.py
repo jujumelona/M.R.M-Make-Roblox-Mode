@@ -38,6 +38,20 @@ def _selected_world(module: Any, design: dict, descriptions: list[str]) -> str |
     return matches[0] if len(matches) == 1 else None
 
 
+def _owned_weapon_upgrade_peer(module: Any, proposal: Any) -> Any | None:
+    """Reuse one existing verified persistent weapon-upgrade implementation.
+
+    Never fabricate a new purchase ledger, item catalog, or unrelated price.
+    """
+    from .host_owned_weapon_performance import eligible_owned_weapon_performance
+    peers = [
+        peer for peer in getattr(proposal, "modules", ())
+        if peer is not module
+        and eligible_owned_weapon_performance(peer, proposal) is not None
+    ]
+    return peers[0] if len(peers) == 1 else None
+
+
 def eligible_verified_effect(module: Any, proposal: Any) -> tuple[str, str, str | None, str | None] | None:
     """Match only typed one-remote actions with real owned runtime dependencies."""
     if (module.kind != ModuleKind.SERVER_MODULE
@@ -84,6 +98,8 @@ def eligible_verified_effect(module: Any, proposal: Any) -> tuple[str, str, str 
     description = str(module.description or "").casefold()
     if all(part in description for part in
            ("purchase record", "weapon upgrade", "currency", "upgrade state")):
+        if _owned_weapon_upgrade_peer(module, proposal) is None:
+            return None
         return ("owned_tool_purchase", remote, None, None)
     if all(part in description for part in ("alien", "combat", "target", "damage")):
         role = "world_damage"
@@ -212,45 +228,6 @@ _HARVEST = r'''    if args.quantity > 10 then
     return {success = true, owned = inventory.specialMinerals,
         remainingDeposit = stock - args.quantity}'''
 
-_PURCHASE = r'''    if args.quantity ~= 1 then
-        return {success = false, reason = "one_purchase_per_request"} end
-    local backpack = player:FindFirstChildOfClass("Backpack")
-    local character = player.Character
-    local tool = (backpack and backpack:FindFirstChild(args.selection))
-        or (character and character:FindFirstChild(args.selection))
-    if not tool or not tool:IsA("Tool")
-        or (tool.Parent ~= backpack and tool.Parent ~= character) then
-        return {success = false, reason = "weapon_not_owned"} end
-    local saved = services.PlayerDataManager.GetState(player, "RMMWeaponPurchases")
-    local licenses = services.PlayerDataManager.GetState(player, "RMMTradeEntitlements")
-    if type(saved) ~= "table" or type(licenses) ~= "table" then
-        return {success = false, reason = "profile_not_ready"} end
-    local key = "weapon/" .. tool.Name
-    if saved[tool.Name] ~= nil or licenses[key] ~= nil then
-        return {success = false, reason = "already_purchased"} end
-    -- The offer is server-authored and linked to a real owned Tool, not
-    -- a client-supplied price or a fabricated PlayerDataManager method.
-    local offer = {cost = 75, expiresAt = nil}
-    if offer.expiresAt and os.time() > offer.expiresAt then
-        return {success = false, reason = "expired_offer"} end
-    local leaderstats = player:FindFirstChild("leaderstats")
-    local coins = leaderstats and leaderstats:FindFirstChild("Coins")
-    if not coins or not coins:IsA("IntValue")
-        or coins.Value < offer.cost or coins.Value < 0 then
-        return {success = false, reason = "insufficient_currency"} end
-    local now = os.clock()
-    if recent[player] and now - recent[player] < 0.3 then
-        return {success = false, reason = "cooldown"} end
-    -- Cost deduction, persistent record and entitlement have no yield.
-    coins.Value -= offer.cost
-    saved[tool.Name] = {purchased = true, cost = offer.cost}
-    licenses[key] = {purchased = true, kind = "weapon"}
-    tool:SetAttribute("RMMWeaponUpgradeLicensed", true)
-    recent[player] = now
-    return {success = true, weapon = tool.Name, cost = offer.cost,
-        credits = coins.Value}'''
-
-
 def render_verified_effect(module: Any, proposal: Any) -> str | None:
     selected = eligible_verified_effect(module, proposal)
     if selected is None:
@@ -263,7 +240,12 @@ def render_verified_effect(module: Any, proposal: Any) -> str | None:
                                  transport_only=True)
     start = ""
     if role == "owned_tool_purchase":
-        body = _PURCHASE
+        # Reuse the existing verified, persistent purchase/upgrade route.
+        # Both actions now share the authoritative level, owned Tool,
+        # entitlement and price protocol instead of double charging.
+        from .host_owned_weapon_performance import render_owned_weapon_performance
+        peer = _owned_weapon_upgrade_peer(module, proposal)
+        return render_owned_weapon_performance(peer, proposal) if peer else None
     else:
         assert world_name is not None and destination is not None
         state_key = ("RMMAlienHealth" if role == "world_damage"
