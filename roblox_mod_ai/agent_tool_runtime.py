@@ -181,6 +181,8 @@ class RobloxAgentToolRuntime:
                       "source": "tool_dispatch_rejected"}
         receipt = {
             "tool": name[:90],
+            "arguments_preview": _preview(arguments, 360),
+            "result_preview": _preview(result, 420),
             "args_sha256": hashlib.sha256(
                 _preview(arguments, 20000).encode("utf-8")).hexdigest(),
             "ok": result["ok"], "source": result["source"],
