@@ -517,9 +517,6 @@ def try_scaffolded_server(
                 )
             body = _clean_body(raw)
             body = normalize_verified_server_body(body, proposal)
-            unused_locals = scoped_body_unused_locals(body)
-            if unused_locals:
-                raise ValueError("; ".join(unused_locals))
             input_errors = typed_input_abi_errors(body, typed)
             if input_errors:
                 raise ValueError("; ".join(input_errors))
@@ -527,6 +524,9 @@ def try_scaffolded_server(
                 raise ValueError("Empty or trivially short gameplay body")
             if body.startswith("--!strict") or _FORBIDDEN.search(body):
                 raise ValueError("Body contains host-owned, unsafe or placeholder code")
+            unused_locals = scoped_body_unused_locals(body)
+            if unused_locals:
+                raise ValueError("; ".join(unused_locals))
             # Known destructive or unsupported operations are never acceptable gameplay.
             if "workspace.Workspace" in body:
                 raise ValueError("Unsafe or unsupported Luau mutation")
