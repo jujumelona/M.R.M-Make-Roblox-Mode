@@ -46,6 +46,17 @@ _GAIN = re.compile(
     r"award\w*|deposit\w*|store\w*|gain\w*|receiv\w*)\b|"
     r"추가|증가|획득|적립", re.I,
 )
+# A harvested physical world resource can be transferred INTO owned inventory
+# without an explicit "increment" verb. Keep this narrow: "extracts" alone,
+# an inventory popup, or an unowned recipient does not constitute a gain.
+_EXTRACT_TO_OWNED_INVENTORY = re.compile(
+    r"\b(?:extract|extracts|harvest|harvests|mine|mines|gather|gathers)\b"
+    r".{0,110}\binto\s+(?:the\s+)?player['’]s\s+owned\s+"
+    r"(?:resource\s+)?(?:inventory|cargo)\b",
+    re.I,
+)
+
+
 _NEGATION = re.compile(
     r"\b(?:no|not|never|without|cannot|can't|doesn't|"
     r"unchanged|pretend|fake)\b.{0,95}\b(?:extract|mine|"
@@ -72,7 +83,9 @@ def preserved_world_inventory_extraction(
     if not quote or quote not in original_prompt or len(owned) > 260:
         return None
     if (_NEGATION.search(owned) or not all(regex.search(owned) for regex in (
-            _EXTRACT, _WORLD_ORIGIN, _RESOURCE, _OWNED_INVENTORY, _GAIN))):
+            _EXTRACT, _WORLD_ORIGIN, _RESOURCE, _OWNED_INVENTORY))
+            or not (_GAIN.search(owned)
+                    or _EXTRACT_TO_OWNED_INVENTORY.search(owned))):
         return None
     if (source_intent_conflicts(quote, owned)
             or request_semantic_errors(owned, original_prompt)):
