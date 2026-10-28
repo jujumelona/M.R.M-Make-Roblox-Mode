@@ -66,11 +66,18 @@ class LlamaCppAdapter(ModelAdapter):
         no_reasoning = (
             (request.response_format is not None and
              os.environ.get("RMM_JSON_ENABLE_THINKING", "0") != "1")
-            or (request.metadata.get("generation_role") == "coder" and
+            or (request.metadata.get("generation_role") in ("coder", "tool_research") and
                 os.environ.get("RMM_CODE_ENABLE_THINKING", "0") != "1")
         )
         if is_local_llama and no_reasoning:
             payload["chat_template_kwargs"] = {"enable_thinking": False}
+
+        # The protocol supported tool declarations in GenerationRequest
+        # but never sent them to llama.cpp. Only explicitly approved tools
+        # supplied by the caller can be offered to the model.
+        if request.tools:
+            payload["tools"] = request.tools
+            payload["tool_choice"] = "auto"
 
         if request.response_format == "json":
             payload["response_format"] = {"type": "json_object"}
@@ -165,9 +172,29 @@ class LlamaCppAdapter(ModelAdapter):
                 choice = data.get("choices", [{}])[0]
                 message = choice.get("message", {})
                 content = message.get("content", "") or ""
+                # A tool-only response has legitimately empty text. Parse
+                # the actual native calls before deciding that an answer is
+                # empty. Malformed JSON arguments are a protocol error.
+                tool_calls: list[ToolCall] = []
+                for tc in message.get("tool_calls") or []:
+                    fn = tc.get("function") or {}
+                    name = fn.get("name", "")
+                    raw_args = fn.get("arguments", "{}")
+                    try:
+                        args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+                    except (ValueError, TypeError) as exc:
+                        raise ModelBackendError(
+                            "Malformed native tool arguments for " + str(name)
+                        ) from exc
+                    if not isinstance(args, dict):
+                        raise ModelBackendError("Native tool arguments must be a JSON object")
+                    tool_calls.append(ToolCall(
+                        name=name, arguments=args,
+                        call_id=tc.get("id") or f"call_{len(tool_calls)+1}",
+                    ))
                 # Fail with real runtime metadata instead of silently turning
                 # an empty completion into a '--!strict' fake module.
-                if not str(content).strip():
+                if not str(content).strip() and not tool_calls:
                     usage = data.get("usage", {})
                     reason = choice.get("finish_reason", "unknown")
                     raise ModelBackendError(
@@ -177,16 +204,6 @@ class LlamaCppAdapter(ModelAdapter):
                         f"completion_tokens={usage.get('completion_tokens', '?')}; "
                         "check reasoning tokens, context size and model template"
                     )
-
-                tool_calls: list[ToolCall] = []
-                for tc in message.get("tool_calls", []):
-                    fn = tc.get("function", {})
-                    name = fn.get("name", "")
-                    try:
-                        args = json.loads(fn.get("arguments", "{}"))
-                    except Exception:
-                        args = {}
-                    tool_calls.append(ToolCall(name=name, arguments=args, call_id=tc.get("id", "")))
 
                 usage = data.get("usage", {})
                 return GenerationResponse(
