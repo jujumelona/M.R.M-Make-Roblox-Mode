@@ -44,7 +44,14 @@ def test_log34_authority_diagnostics_reach_actual_compact_model_call():
     assert len(planner.prompts) == 2
     payload = json.loads(planner.prompts[0].split("\n")[-1])
     assert payload["source_quote"] == action["source_quote"]
-    assert payload["authority_replan_observations"] == gaps
+    assert payload["authority_replan_observations"] == [{
+        "error": "AUTHORITY_PRODUCER_NOT_DECLARED",
+        "required_repair": "A real planet ownership producer is required",
+        "declared_effects": 0,
+        "target_kind": None,
+    }]
+    # Pass only actionable contract evidence to small models.
+    assert "source_module" not in payload["authority_replan_observations"][0]
     assert "AUTHORITY_PRODUCER_NOT_DECLARED" in planner.prompts[0]
     # These observations never become a forged authoritative effect claim.
     assert result["world_entities"] == ["OutpostPlanet"]
