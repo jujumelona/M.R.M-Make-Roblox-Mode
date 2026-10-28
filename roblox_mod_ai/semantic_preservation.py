@@ -317,6 +317,17 @@ def source_intent_conflicts(
         r".{0,70}\b(?:currency|coins?|credits?)\b",
         text, re.I,
     )
+    # Reject negated harvest claims before assessing source effects. A
+    # sentence such as "does not harvest a node" names a node but performs
+    # no resource mutation; a genuine positive extraction elsewhere remains.
+    affirmative_gathering = re.sub(
+        r"\b(?:does\s+not|doesn't|do\s+not|don't|never|without|"
+        r"cannot|can't)\s+(?:\w+\s+){0,3}"
+        r"(?:mine|mines|mined|mining|harvest\w*|gather\w*|"
+        r"collect\w*|extract\w*)\b"
+        r"(?:\s+(?:a|the|any)\s+\w+)?",
+        "", text, flags=re.I,
+    )
     real_gathering = re.search(
         r"\b(?:mine|mines|mining|harvest|harvests|harvesting|"
         r"extract|extracts|extracting|gather|gathers|gathering|"
@@ -324,7 +335,7 @@ def source_intent_conflicts(
         r".{0,75}\b(?:node|deposit|ore|world|ground|mineral|resource)\b|"
         r"\b(?:resource|ore|mineral)\b.{0,50}"
         r"\b(?:node|deposit|spawn|mine|harvest|gather|collect|extract)\w*\b",
-        text, re.I,
+        affirmative_gathering, re.I,
     )
     # An abstract "resource-gathering" event is not a real harvest. The
     # production small-model response granted resources into a balance without
