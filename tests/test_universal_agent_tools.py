@@ -141,7 +141,7 @@ def test_model_cannot_request_studio_or_project_mutation_even_if_hallucinated():
     router = ModelRouter.__new__(ModelRouter)
     router.get_adapter_for_role = lambda role: adapter
     note = router.research_for_module(module, plan)
-    assert "unapproved_tool_name" in note
+    assert "TOOL_NOT_APPROVED" in note
     assert router.agent_tool_traces[module.module_id]["native_tool_calls"] == 1
 
 
