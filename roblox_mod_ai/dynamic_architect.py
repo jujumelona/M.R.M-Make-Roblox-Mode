@@ -1035,7 +1035,12 @@ class RobloxDynamicArchitect:
                     "gameplay effect. Never invent a state or price just to "
                     "pass a validation gate. Repair only this source clause. "
                     "Observed contract gaps:\n"
-                    + json.dumps(authority_feedback, ensure_ascii=False)
+                    + json.dumps([{
+                        "source_module": item.get("source_module"),
+                        "error": str(item.get("error") or "")[:80],
+                        "missing_contract": str(item.get("missing_contract") or "")[:240],
+                        "observed": item.get("observed"),
+                    } for item in authority_feedback[:5]], ensure_ascii=False)
                 )
             previous_error = ""
             draft: dict[str, Any] | None = None
