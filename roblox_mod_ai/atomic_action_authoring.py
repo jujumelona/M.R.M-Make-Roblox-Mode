@@ -251,6 +251,7 @@ def author_verified_atomic_systems(
                         system = author_compact_atomic_system(
                             router, action, previous_issues=previous_issues,
                             authority_gaps=authority_gaps,
+                            original_prompt=original_prompt,
                         )
                     except (ValueError, TypeError) as exc:
                         # Never retry the WHOLE feature because one compact
