@@ -223,3 +223,24 @@ def test_log25_compiler_never_selects_from_original_prompt_text():
     assert render_verified_effect(source, p) == expected
     source.description = "Merely show a decorative alien planet icon"
     assert render_verified_effect(source, p) is None
+
+
+def test_log25_typed_ui_uses_bound_world_id_not_empty_guesswork():
+    from roblox_mod_ai.typed_action_contract import render_typed_client
+
+    for role, selected in (
+        ("combat", "AlienEntities1"),
+        ("harvest", "SpecialMineralDeposit1"),
+    ):
+        p, server = _fixture(role)
+        ui = next(m for m in p.modules
+                  if m.kind == ModuleKind.CLIENT_SCRIPT)
+        code = render_typed_client(ui, p)
+        assert code is not None
+        assert 'box.Text = "' + selected + '"' in code
+        assert 'remote:InvokeServer(payload)' in code
+        assert 'if type(actionArgs["selection"])' not in code
+    p, _ = _fixture("purchase")
+    ui = next(m for m in p.modules if m.kind == ModuleKind.CLIENT_SCRIPT)
+    code = render_typed_client(ui, p)
+    assert code and 'box.Text = ""' in code
