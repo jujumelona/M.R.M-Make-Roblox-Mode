@@ -103,3 +103,63 @@ def test_generic_repair_also_handles_unrelated_npc_combat():
     )
     assert "reduces the alien NPC enemy" in fixed
     assert "unauthorized" in fixed
+
+
+class TruncatingStartRouter(RepairRouter):
+    """The first 3-field server schema is too large for an actual 9B model."""
+    def complete_json(self, prompt, **kwargs):
+        if "Implement this ONE requested gameplay action" in prompt:
+            self.prompts.append(prompt)
+            raise ValueError("Model JSON completion truncated (finish_reason=length)")
+        return super().complete_json(prompt, **kwargs)
+
+
+def test_first_server_truncation_is_repaired_without_restarting_facet():
+    router = TruncatingStartRouter()
+    result = author_verified_atomic_systems(
+        router, [ACTION], source_clause=SOURCE, original_prompt=SOURCE,
+        json_schema=HOST_OWNED_SEMANTIC_FACET_SCHEMA,
+    )
+    assert len(result) == 1
+    assert GOOD["state_mutation"] in result[0]["server_behavior"]
+    assert len(router.prompts) == 3
+    assert sum("Implement this ONE" in p for p in router.prompts) == 1
+
+
+class SplitFieldsRouter(RepairRouter):
+    def complete_json(self, prompt, **kwargs):
+        self.prompts.append(prompt)
+        if "Repair ONE already source-authorized server action" in prompt:
+            raise ValueError("Model JSON completion truncated (finish_reason=length)")
+        field = (kwargs.get("json_schema") or {}).get("required", [None])[0]
+        if field in GOOD:
+            return {field: GOOD[field]}
+        raise AssertionError("Unexpected field request")
+
+
+def test_three_field_reply_truncation_uses_smaller_one_field_grammar():
+    router = SplitFieldsRouter()
+    result = author_state_mutation_repair(
+        router, ACTION, "Server checks a saved planet",
+        original_prompt=SOURCE, diagnostics=["Missing state transition"],
+    )
+    assert GOOD["state_mutation"] in result
+    assert len(router.prompts) == 4
+    assert all("One small JSON string" in p for p in router.prompts[1:])
+    assert [len(p) for p in router.prompts]  # nonempty source-bound prompts
+
+
+def test_split_recovery_rejects_wrong_state_change():
+    router = SplitFieldsRouter(patch={})
+    original = router.complete_json
+    def wrong(prompt, **kwargs):
+        ans = original(prompt, **kwargs)
+        if isinstance(ans, dict) and "state_mutation" in ans:
+            return {"state_mutation": "the server displays the colonization menu to the player"}
+        return ans
+    router.complete_json = wrong
+    with pytest.raises(ValueError, match="ATOMIC_STATE_REPAIR_"):
+        author_state_mutation_repair(
+            router, ACTION, "", original_prompt=SOURCE,
+            diagnostics=["Missing durable state transition"],
+        )
