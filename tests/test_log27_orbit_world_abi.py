@@ -89,3 +89,15 @@ def test_log27_renaming_bound_target_breaks_authorization():
     assert render_verified_effect(module, p) is None
     _, allowed = world_names(p, module)
     assert LOG27_ARRIVAL not in allowed
+
+
+def test_log27_actual_module_checkpoint_gate_accepts_bound_arrival():
+    from roblox_mod_ai.module_generation_gate import generated_module_errors
+    from roblox_mod_ai.luau_analyzer import LuauStaticAnalyzer
+
+    for role in ("combat", "harvest"):
+        p, module = _log27(role)
+        code = render_verified_effect(module, p)
+        assert code is not None
+        problems = generated_module_errors(module, p, code, LuauStaticAnalyzer())
+        assert not any("WORLD_OBJECT_NAME_UNDECLARED" in error for error in problems), problems
