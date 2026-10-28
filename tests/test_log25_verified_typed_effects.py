@@ -126,6 +126,53 @@ def _fixture(role: str) -> tuple[RobloxProposal, RobloxModuleSpec]:
         game_design={"dynamic_design": design},
         modules=[data, builder, launcher, source, ui],
     )
+    if role == "purchase":
+        # A purchase action may reuse a verified, persisted weapon-upgrade
+        # implementation, never independently mint a conflicting ledger.
+        peer_name = "VerifiedWeaponPerformanceServer"
+        peer_ui_name = "VerifiedWeaponPerformanceClient"
+        peer_remote = "VerifiedWeaponPerformanceAction"
+        peer = RobloxModuleSpec(
+            module_id="dyn_owned_weapon_peer",
+            name=peer_name,
+            kind=ModuleKind.SERVER_MODULE,
+            file_path="src/server/" + peer_name + ".luau",
+            roblox_service=RobloxService.SERVER_SCRIPT_SERVICE,
+            description=(
+                "Validate the player's owned weapon instance and reject invalid "
+                "requests. Mutate the server-owned weapon performance state and "
+                "persist upgrade levels while improving weapon damage and cooldown."
+            ),
+        )
+        peer_ui = RobloxModuleSpec(
+            module_id="dyn_owned_weapon_peer_ui",
+            name=peer_ui_name,
+            kind=ModuleKind.CLIENT_SCRIPT,
+            file_path="src/client/" + peer_ui_name + ".client.luau",
+            roblox_service=RobloxService.STARTER_PLAYER_SCRIPTS,
+        )
+        proposal.modules.extend((peer, peer_ui))
+        design["host_actions"][peer_remote] = {
+            "service": peer_name, "kind": "RemoteFunction", "max_args": 1,
+        }
+        design["remotes"][peer_remote] = "RemoteFunction"
+        design["module_remotes"][peer.module_id] = [peer_remote]
+        design["module_remotes"][peer_ui.module_id] = [peer_remote]
+        design["host_typed_actions"][peer_remote] = {
+            "server": peer_name,
+            "client": peer_ui_name,
+            "transport_only": True,
+            "world_entities": [],
+            "contract": {
+                "inputs": [
+                    {"id": "selection", "label": "Weapon", "type": "text"},
+                    {"id": "quantity", "label": "Quantity",
+                     "type": "integer", "min": 1, "max": 10000},
+                ],
+                "target": {"kind": "none"},
+                "state_changes": [],
+            },
+        }
     return proposal, source
 
 
@@ -181,17 +228,26 @@ def test_log25_world_parts_are_not_treated_as_models_and_effects_are_real():
         assert "Model" not in source
 
 
-def test_log25_purchase_checks_owned_tool_balance_and_entitlement():
+def test_log25_purchase_reuses_verified_owned_tool_upgrade_and_entitlement():
     p, server = _fixture("purchase")
     source = render_verified_effect(server, p)
     assert source
     assert 'tool:IsA("Tool")' in source
-    assert 'coins.Value < offer.cost' in source
-    assert 'saved[tool.Name] ~= nil' in source
-    assert 'licenses[key] ~= nil' in source
-    assert 'coins.Value -= offer.cost' in source
-    assert 'licenses[key] = {purchased = true, kind = "weapon"}' in source
+    assert 'coins.Value < price' in source
+    assert 'saved[tool.Name] = {level = level + 1}' in source
+    assert 'coins.Value -= price' in source
     assert 'GetState(player, "RMMTradeEntitlements")' in source
+    assert 'GetState(player, "RMMWeaponPerformance")' in source
+    assert 'setStats(tool, level + 1)' in source
+    assert 'RMMWeaponPurchases' not in source
+    assert 'cost = 75' not in source
+
+
+def test_log25_purchase_without_verified_upgrade_owner_must_fail_closed():
+    p, server = _fixture("purchase")
+    p.modules = [m for m in p.modules
+                 if not m.name.startswith("VerifiedWeaponPerformance")]
+    assert render_verified_effect(server, p) is None
 
 
 def test_log25_fails_closed_when_physical_or_action_contract_is_unbound():
