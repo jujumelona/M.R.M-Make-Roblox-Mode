@@ -28,6 +28,7 @@ GOOD = {
 
 class RepairRouter:
     supports_host_standard_transport = True
+    supports_atomic_state_mutation_repair = True
 
     def __init__(self, patch=None):
         self.patch = GOOD if patch is None else patch
