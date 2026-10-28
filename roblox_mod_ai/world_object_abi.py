@@ -64,6 +64,25 @@ def world_names(proposal: Any, module: Any = None) -> tuple[list[str], list[str]
                         ]
                         if len(valid) == 1:
                             authorized.append(valid[0])
+    # Host-compiled typed combat/mining requires the SAME exact orbit pad
+    # verified through its launcher+builder+arrival chain. The previous
+    # exception covered host_space_actions only, so newly compiled handlers
+    # passed their own eligibility gate but failed the generated-module ABI
+    # on their own legitimate arrival lookup (log 27).
+    #
+    # Do not loosen this to all known world names, word prefixes or any
+    # model-authored action. The world target must be separately owned by this
+    # module and the renderer must prove the arrival is the one in the
+    # vehicle binding. The arrival is read-only placement context.
+    if module is not None and getattr(module, "kind", None) == "server_module":
+        from .host_verified_typed_effects import eligible_verified_effect
+        match = eligible_verified_effect(module, proposal)
+        if match is not None:
+            effect, _remote, target, destination = match
+            if (effect in ("world_damage", "world_harvest")
+                    and target in authorized
+                    and destination in declared):
+                authorized.append(destination)
     return sorted(declared), sorted(set(authorized))
 
 
