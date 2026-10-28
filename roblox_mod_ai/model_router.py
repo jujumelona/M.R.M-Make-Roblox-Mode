@@ -48,6 +48,9 @@ class ModelRouter:
         # Explicit capability: short, source-checked mutation operands.
         # Host transport alone does not imply this optional authoring mode.
         self.supports_atomic_state_mutation_repair = True
+        # The bounded Luau codegen phase must prove actual server effects.
+        # No generated gameplay is accepted from transport declarations alone.
+        self.supports_deferred_authority_codegen = True
         self.adapters: dict[str, ModelAdapter] = {}
         self._init_adapters()
 
