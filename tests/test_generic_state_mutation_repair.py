@@ -84,3 +84,22 @@ def test_failed_server_field_repair_is_scoped_to_only_that_action():
     assert len(router.prompts) == 3
     assert sum("Repair ONE already source-authorized" in p
                for p in router.prompts) == 1
+
+
+def test_generic_repair_also_handles_unrelated_npc_combat():
+    class CombatRouter:
+        def complete_json(self, prompt, **kwargs):
+            return {
+                "validated_input": "the authenticated attacker and an existing server-controlled hostile NPC target",
+                "state_mutation": "reduces the alien NPC enemy's authoritative health after a validated player attack",
+                "rejected_input": "out of range, dead or unauthorized targets without applying damage",
+            }
+
+    action = {"source_quote": "외계인과 싸움",
+              "action": "Player fights hostile alien NPC enemies."}
+    fixed = author_state_mutation_repair(
+        CombatRouter(), action, "The server checks an enemy target",
+        original_prompt="외계인과 싸움", diagnostics=["No NPC health state mutation"],
+    )
+    assert "reduces the alien NPC enemy" in fixed
+    assert "unauthorized" in fixed
