@@ -30,3 +30,13 @@ def test_server_mining_with_concrete_origin_accepted(origin):
 ])
 def test_non_mining_resource_mutation_still_rejected(fake_action):
     assert source_intent_conflicts("자원파밍", fake_action)
+
+
+@pytest.mark.parametrize("description", [
+    "Server harvests crops from a real farm field and grants them to the player's inventory.",
+    "Server gathers wood from trees in the world and credits collected wood to owned inventory.",
+    "Server collects resources from resource sources and stores the yield in the player's inventory.",
+])
+def test_non_ore_world_gathering_is_not_silently_lost(description):
+    errors = source_intent_conflicts("자원파밍", description)
+    assert not any(issue.startswith("RESOURCE_GATHER_") for issue in errors)
