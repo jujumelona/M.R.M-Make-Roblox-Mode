@@ -332,9 +332,9 @@ def source_intent_conflicts(
         r"\b(?:mine|mines|mining|harvest|harvests|harvesting|"
         r"extract|extracts|extracting|gather|gathers|gathering|"
         r"collect|collects|collecting)\b"
-        r".{0,75}\b(?:node|deposit|ore|world|ground|mineral|resource)\b|"
-        r"\b(?:resource|ore|mineral)\b.{0,50}"
-        r"\b(?:node|deposit|spawn|mine|harvest|gather|collect|extract)\w*\b",
+        r".{0,75}\b(?:nodes?|deposits?|veins?|ores?|world|ground|minerals?|resources?|crops?|plants?|trees?|rocks?|wood)\b|"
+        r"\b(?:resources?|ores?|minerals?|crops?|plants?|trees?|rocks?|wood)\b.{0,50}"
+        r"\b(?:node|deposit|vein|spawn|mine|harvest|gather|collect|extract)\w*\b",
         affirmative_gathering, re.I,
     )
     # An abstract "resource-gathering" event is not a real harvest. The
@@ -345,7 +345,7 @@ def source_intent_conflicts(
     # before treating a server-side inventory grant as farming gameplay.
     gatherable_origin = re.search(
         r"\b(?:nodes?|deposits?|veins?|mineable|harvestable|world|ground|"
-        r"rock|tree|crop|plant|pickup|resource\s+(?:source|object))\b|"
+        r"rocks?|trees?|crops?|plants?|pickups?|resource\s+(?:sources?|objects?))\b|"
         r"광맥|채굴지|광석|자원\s*(?:노드|지점|원천)|"
         r"\b(?:mine|mines|mined|mining|extract|extracts|extracted|extracting)\b"
         r".{0,90}\b(?:ores?|minerals?)\b",
