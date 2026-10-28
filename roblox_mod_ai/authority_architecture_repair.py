@@ -70,6 +70,7 @@ def replan_unproven_authority(
     research: dict[str, Any],
     redesign: Callable[[], dict[str, Any]],
     max_repairs: int = 2,
+    allow_codegen_deferral: bool = False,
     inspect: Callable[[dict[str, Any], list[Any], str],
                       list[dict[str, Any]]] | None = None,
 ) -> dict[str, Any]:
@@ -87,14 +88,29 @@ def replan_unproven_authority(
                             design, existing, requested_prompt=prompt))
     try:
         for attempt in range(max_repairs + 1):
-            missing = check(design, existing_modules, requested_prompt)
+            all_missing = check(design, existing_modules, requested_prompt)
+            missing = all_missing
+            deferred: list[dict[str, Any]] = []
+            if allow_codegen_deferral:
+                from .model_action_authority import partition_codegen_authority
+                missing, deferred = partition_codegen_authority(all_missing)
             inspections.append({
                 "round": attempt + 1,
-                "passed": not missing,
-                "unproven": missing,
+                "passed": not all_missing,
+                "unproven": all_missing,
+                "deferred_until_codegen": [x["module"] for x in deferred],
                 "verified_as": "plan_source_contract_not_studio_execution",
             })
             if not missing:
+                if deferred:
+                    # Each source-owned typed input remains a strictly
+                    # unverified IMPLEMENTATION obligation. Actual emitted
+                    # Luau must pass the mandatory post-codegen effect gate.
+                    design = dict(design, deferred_model_authority=[{
+                        "module": x["module"], "remote": x["remote"],
+                        "required_repair": x.get("required_repair"),
+                        "verified": False, "verification_stage": "codegen",
+                    } for x in deferred])
                 return design
             if attempt >= max_repairs:
                 raise AuthorityArchitectureExhausted(
