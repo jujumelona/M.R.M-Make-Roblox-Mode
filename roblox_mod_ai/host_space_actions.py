@@ -5,6 +5,7 @@ Only source-matched typed RemoteFunction pairs enter this implementation.
 """
 from __future__ import annotations
 import json
+import re
 from .spec import ModuleKind
 
 RULES = {
@@ -30,6 +31,25 @@ def _role(server):
                     ("planet", "coloniz", "player", "timestamp"))
             and "server" in description):
         return "MarkPlanetColonized"
+    # The planner may choose its own names for an authored mechanic. Match the
+    # complete authoritative *behavior*, not a particular generated suffix.
+    # These predicates are intentionally conjunctive: unrelated upgrades,
+    # generic mining and decorative aliens must never claim the same adapter.
+    if (re.search(r"\\balien\\b", description)
+            and re.search(r"\\b(?:combat|attack|damage|fight)\\b", description)
+            and re.search(r"\\b(?:target|entity|enemy)\\b", description)
+            and "server-owned" in description):
+        return "AlienCombat"
+    if (re.search(r"\\bplanet\\b", description)
+            and re.search(r"\\bcoloniz\\w*\\b", description)
+            and re.search(r"\\bown(?:ed|er|ership)?\\b", description)
+            and "server" in description):
+        return "MarkPlanetColonized"
+    if (re.search(r"\\b(?:mineral|ore)\\b", description)
+            and re.search(r"\\b(?:deposit|node)\\b", description)
+            and re.search(r"\\b(?:quantity|extract|inventory)\\b", description)
+            and "server-owned" in description):
+        return "ExtractOtherPlanetMineral"
     return None
 
 
@@ -94,16 +114,21 @@ def render_host_space_action(module, proposal):
         # The physical target must exist AND be allocated to this actual
         # server module. A similarly named decor Part belonging to another
         # action is not sufficient source authority for a colony mutation.
-        target_prefixes = (("PlayerOwnedPlanet", "TargetPlanet")
-                           if role == "MarkPlanetColonized"
-                           else (RULES[role][2],))
         declared_for_module = set(
             (design.get("module_world_objects") or {}).get(server.module_id, [])
         )
+        # Prefer an explicitly owned physical target. A Part is a Part, never
+        # reinterpret the architect's world declaration as a Model/NPC.
+        def matches_target(name):
+            if role == "MarkPlanetColonized":
+                return bool(re.search(r"planet|colony|surface", name, re.I))
+            if role == "AlienCombat":
+                return bool(re.search(r"alien|enemy", name, re.I))
+            return bool(re.search(r"mineral|deposit|ore", name, re.I))
         targets = [o["name"] for o in objects if isinstance(o, dict)
                    and o.get("class") == "Part" and isinstance(o.get("name"), str)
                    and o["name"] in declared_for_module
-                   and o["name"].startswith(target_prefixes)]
+                   and matches_target(o["name"])]
         arrivals = design.get("host_arrival_materializations") or []
         binding = bindings[0]
         launch = binding.get("server")
@@ -113,11 +138,18 @@ def render_host_space_action(module, proposal):
                    and isinstance(a.get("arrival"), str)]
         # The launch service and the space action must agree on the same
         # materialized destination, not a guessed prefix.
-        if len(targets) != 1 or len(landing) != 1:
+        if len(landing) != 1:
             return None
         arrival_name = landing[0]["arrival"]
         if sum(o.get("name") == arrival_name and o.get("class") == "Part"
                for o in objects if isinstance(o, dict)) != 1:
+            return None
+        # Colonization can use the exact declared arrival surface if the
+        # authored plan has no separate planet target. Do not mutate/move
+        # that shared landing pad while placing action markers.
+        if role == "MarkPlanetColonized" and not targets:
+            targets = [arrival_name]
+        if len(targets) != 1:
             return None
         world = {"target": targets[0], "arrival": arrival_name}
     return (_client(remote, role) if module.kind == ModuleKind.CLIENT_SCRIPT
@@ -383,7 +415,7 @@ EFFECTS = {
     return {success=true,colonized=true,settlement="built"}''',
     "ExtractOtherPlanetMineral": '''    if not arrived(player,services,__ARRIVAL__) or not near(player,__TARGET__) then
         return {success=false,reason="not_on_planet"} end
-    if state.colonized~=true then return {success=false,reason="not_colonized"} end
+    -- Mining is an independent source-owned activity; colonization is optional.
     local stock=state.mineralRemaining
     if stock==nil then stock=100 end
     local amount=state.minerals
@@ -454,10 +486,19 @@ def _server(role, world, builder):
     helpers = (PLANET_WORLD_HELPERS if is_planet else "")
     if role == "MarkPlanetColonized":
         helpers += COLONY_WORLD_HELPERS
+    pad_is_target = (is_planet and world.get("target") == world.get("arrival"))
+    placement = ("-- Shared arrival surface is never relocated" if pad_is_target
+                 else "placePlanetActionTarget()" if is_planet
+                 else "-- No world action target")
+    ensure = ('if not workspace:FindFirstChild(__ARRIVAL__,true) then '
+              'return {success=false,reason="arrival_not_ready"} end'
+              if pad_is_target
+              else 'if not placePlanetActionTarget() then return {success=false,reason="target_not_ready"} end'
+              if is_planet else '-- No planet target')
     return (LUA.replace("__WORLD_HELPERS__", helpers)
             .replace("__BUILDER__", json.dumps(builder))
-            .replace("__PLACE_TARGET__", "placePlanetActionTarget()" if is_planet else "-- No world action target")
-            .replace("__ENSURE_TARGET__", 'if not placePlanetActionTarget() then return {success=false,reason="target_not_ready"} end' if is_planet else '-- No planet target')
+            .replace("__PLACE_TARGET__", placement)
+            .replace("__ENSURE_TARGET__", ensure.replace("__ARRIVAL__", json.dumps(world.get("arrival", ""))))
             .replace("__OFFSET_X__", str(x)).replace("__OFFSET_Z__", str(z))
             .replace("__TARGET__", json.dumps(world.get("target", "")))
             .replace("__ARRIVAL__", json.dumps(world.get("arrival", "")))
