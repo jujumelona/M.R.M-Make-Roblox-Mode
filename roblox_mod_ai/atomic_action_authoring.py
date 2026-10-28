@@ -259,6 +259,10 @@ def author_verified_atomic_systems(
                             },
                             "rejected_field": previous_text[:500],
                             "validator_errors": previous_issues[repair_field],
+                            # The earlier scoped-repair protocol used this
+                            # explicit name. Preserve it for model adapters
+                            # and regression fixtures across both transports.
+                            "exact_validator_errors": previous_issues[repair_field],
                             "authority_replan_observations": (
                                 authority_gaps or [])[:6],
                         }, ensure_ascii=False),
