@@ -710,6 +710,102 @@ def _replace_weak_owner_with_stronger_overlapping_action(
     return raw
 
 
+def _enforce_atomic_purchase_ownership(
+    router: Any, source: str, bound: list[dict[str, str]], *,
+    max_actions: int,
+) -> list[dict[str, str]]:
+    """Make every purchase-owned UPGRADE one paid transaction before authoring.
+
+    Log35's aggregate source coverage accepted an unpaid CREW performance
+    action because a separate WEAPON payment action mentioned purchase.
+    Per-child codegen then (correctly) refused the unpaid crew upgrade three
+    times. A different action's debit cannot discharge this action's
+    obligation. Repair just the source-bound atomic contract, not its siblings
+    or executable Luau, and check the same public provenance validator.
+    """
+    accepted = [dict(row) for row in bound]
+    baseline_gaps = set(_coverage_issues(source, accepted))
+    for index, owner in enumerate(accepted):
+        quote, action = owner["source_quote"], owner["action"]
+        # Do not turn ordinary earned currency, stand-alone world actions,
+        # or non-purchase combat into a purchasable upgrade.
+        if not (_PURCHASE_ACTION.search(quote)
+                and _OWNED_UPGRADE_ACTION.search(action)
+                and any(p.search(action)
+                        for p in _TRANSACTION_TARGETS.values())):
+            continue
+        missing = [
+            err for err in source_intent_conflicts(quote, action)
+            if err.startswith(("SOURCE_PURCHASE_PAYMENT_MISSING:",
+                               "SOURCE_TRADE_ACTION_MISSING:"))
+        ]
+        if not missing:
+            continue
+        errors = []
+        for _ in range(2):
+            try:
+                reply = router.complete_json(
+                    "Rewrite only this EXISTING, original-source-owned UPGRADE "
+                    "action as ONE atomic purchase/trade. The upgrade and its "
+                    "payment MUST be the same server transaction. Validate "
+                    "the authenticated buyer's owned money/materials, deduct "
+                    "the server-priced cost, and upgrade the SAME owned "
+                    "weapon, crew or ship target as the current action. "
+                    "The buyer does not supply the price or currency reward. "
+                    "No second player, new action, unrequested item, Luau or "
+                    "world entity. Return JSON {action:string}, 50-220 chars. "
+                    "Keep the same target and source quote. JSON only.\n"
+                    + json.dumps({
+                        "source_quote": quote, "existing_action": action,
+                        "original_clause": source,
+                        "missing_effects": missing,
+                        "prior_rejections": errors[-2:],
+                    }, ensure_ascii=False),
+                    role="planner", temperature=0.0, max_tokens=190,
+                    json_schema={
+                        "type": "object", "properties": {"action": {
+                            "type": "string", "minLength": 50,
+                            "maxLength": 220,
+                        }}, "required": ["action"],
+                        "additionalProperties": False,
+                    },
+                )
+            except (TypeError, ValueError, RuntimeError) as exc:
+                errors.append(type(exc).__name__ + ": " + str(exc)[:150])
+                continue
+            revised = reply.get("action") if isinstance(reply, dict) else None
+            if not isinstance(revised, str) or not 50 <= len(revised.strip()) <= 220:
+                errors.append("INVALID_PAID_UPGRADE_ACTION_REPLY")
+                continue
+            if any(p.search(action) and not p.search(revised)
+                   for p in _TRANSACTION_TARGETS.values()):
+                errors.append("PAID_UPGRADE_TARGET_REPLACED")
+                continue
+            if source_intent_conflicts(quote, revised):
+                errors.append("PAID_UPGRADE_STILL_LACKS_EFFECTS")
+                continue
+            trial = [dict(row) for row in accepted]
+            trial[index]["action"] = revised.strip()
+            try:
+                admitted = verify_or_bind_actions(
+                    router, source, trial, require_complete=False,
+                    max_actions=max_actions,
+                )
+            except SourceActionBindingError as exc:
+                errors.append("PAID_UPGRADE_SOURCE_REJECTED: " + str(exc)[:160])
+                continue
+            if not set(_coverage_issues(source, admitted)) <= baseline_gaps:
+                errors.append("PAID_UPGRADE_DROPPED_ANOTHER_SOURCE_EFFECT")
+                continue
+            accepted = admitted
+            break
+        else:
+            raise SourceActionBindingError(
+                "ATOMIC_PAID_UPGRADE_OWNER_UNRESOLVED: " + quote +
+                "; " + "; ".join(errors[-2:]))
+    return accepted
+
+
 def complete_source_owned_actions(
     router: Any, source: str, *, initial_actions: Any = None,
     max_actions: int = _MAX_ACTIONS,
@@ -778,8 +874,11 @@ def complete_source_owned_actions(
             )
         gaps = _coverage_issues(source, bound)
         if not gaps:
-            return verify_or_bind_actions(
+            complete = verify_or_bind_actions(
                 router, source, raw, max_actions=max_actions,
+            )
+            return _enforce_atomic_purchase_ownership(
+                router, source, complete, max_actions=max_actions,
             )
         # Resolve explicitly source-authorized resource markets at the host
         # contract layer before spending model retries on fabricated P2P
@@ -957,6 +1056,9 @@ def complete_source_owned_actions(
             "ATOMIC_SOURCE_MAX_ACTIONS_INCOMPLETE: " +
             "; ".join(remaining[:4]),
         )
-    return verify_or_bind_actions(
+    complete = verify_or_bind_actions(
         router, source, raw, max_actions=max_actions,
+    )
+    return _enforce_atomic_purchase_ownership(
+        router, source, complete, max_actions=max_actions,
     )
