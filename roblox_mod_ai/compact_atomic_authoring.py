@@ -115,6 +115,26 @@ def host_verified_resource_market(
 
 
 
+def bounded_authority_observations(gaps: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """Keep only machine-checkable deficiencies, never past long prose.
+
+    Authority replan includes past server descriptions for sibling actions.
+    Replaying those into a local GGUF field prompt needlessly expands the
+    context and causes short structured replies to truncate again.
+    """
+    if not isinstance(gaps, list):
+        return []
+    return [{
+        "error": str(item.get("error") or item.get("reason") or "")[:90],
+        "required_repair": str(item.get("missing_contract") or
+                               item.get("required_repair") or "")[:230],
+        "declared_effects": ((item.get("observed") or {})
+                             .get("state_changes")),
+        "target_kind": ((item.get("observed") or {})
+                        .get("target_kind")),
+    } for item in gaps[:4] if isinstance(item, dict)]
+
+
 def author_compact_atomic_system(
     router: Any, action: dict[str, str], *, previous_issues: dict[str, Any],
     authority_gaps: list[dict[str, Any]] | None = None,
@@ -185,7 +205,7 @@ def author_compact_atomic_system(
                           # observed implementation authority defects; atomic
                           # planners bypass the outer 'task' prompt entirely.
                           "authority_replan_observations": (
-                              authority_gaps or [])[:6]}, ensure_ascii=False),
+                              bounded_authority_observations(authority_gaps))}, ensure_ascii=False),
             role="planner", temperature=0.0, max_tokens=360,
             json_schema=_ATOMIC_SERVER_SCHEMA,
         )
