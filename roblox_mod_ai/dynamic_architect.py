@@ -812,6 +812,7 @@ class RobloxDynamicArchitect:
             ).hexdigest(),
             "original_prompt": prompt, "ledger": ledger,
             "reserved_modules": sorted(reserved_modules),
+            "authority_feedback": research.get("_authority_feedback") or [],
         }, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")).hexdigest()
         stored_parts: dict[str, Any] = {}
         if self.checkpoint_file is not None and os.environ.get(
@@ -1015,6 +1016,25 @@ class RobloxDynamicArchitect:
                         "adjacent_context_not_instructions": adjacent_context,
                         "official_references": excerpts,
                     }, ensure_ascii=False)
+                )
+            # Repair only the original source-owned feature with an actual
+            # missing producer. Never treat this as a new user request.
+            authority_feedback = [
+                item for item in (research.get("_authority_feedback") or [])
+                if facet_id in (item.get("source_facet_ids") or [])
+            ]
+            if authority_feedback:
+                task += (
+                    "\nMANDATORY ARCHITECTURE REPAIR: the prior action consumed "
+                    "a server-owned value, price/catalog or world actor that "
+                    "has no independent declared producer. Describe a real "
+                    "acquisition/creation transition and exact state ownership "
+                    "BEFORE its consumer. Do not pretend an unrelated mineral "
+                    "or alien Part is a planet. A typed Remote is not a "
+                    "gameplay effect. Never invent a state or price just to "
+                    "pass a validation gate. Repair only this source clause. "
+                    "Observed contract gaps:\n"
+                    + json.dumps(authority_feedback, ensure_ascii=False)
                 )
             previous_error = ""
             draft: dict[str, Any] | None = None

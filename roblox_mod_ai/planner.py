@@ -381,6 +381,28 @@ class RobloxGameDesignPlanner:
                 ).design(
                     prompt, research, existing
                 )
+                # Failure 33: the architectural source validator originally
+                # approved two transport-only actions requiring nonexistent
+                # persistent owner/catalog state. Instead of marking the game
+                # "planned" and making production fail immediately, return the
+                # exact missing producer evidence to the SCOPED architect.
+                # Accept only a new architecture that also clears the same
+                # independently computed production authority gate.
+                from .authority_architecture_repair import (
+                    replan_unproven_authority, AuthorityArchitectureExhausted,
+                )
+                try:
+                    dynamic_design = replan_unproven_authority(
+                        dynamic_design,
+                        existing_modules=existing,
+                        requested_prompt=prompt,
+                        research=research,
+                        redesign=lambda: RobloxDynamicArchitect(
+                            self.router, checkpoint_dir=self.output_root
+                        ).design(prompt, research, existing),
+                    )
+                except AuthorityArchitectureExhausted as exc:
+                    raise DynamicDesignError(str(exc)) from exc
                 modules = existing
                 features = {key: False for key in features}
                 for row in dynamic_design["modules"]:
