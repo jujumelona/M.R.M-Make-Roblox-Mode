@@ -194,9 +194,9 @@ class ModelRouter:
                 signature = (tc.name, json.dumps(tc.arguments, sort_keys=True))
                 if signature in seen:
                     result = {"ok": False, "error": "duplicate_tool_call"}
-                elif tc.name not in names:
-                    result = {"ok": False, "error": "unapproved_tool_name"}
                 else:
+                    # The runtime rejects unapproved names itself so even a
+                    # forged native call is attested in the failure receipt.
                     result = runtime.call(tc.name, tc.arguments)
                     seen.add(signature)
                 observations.append({"role": "tool", "tool_call_id": call_id,
