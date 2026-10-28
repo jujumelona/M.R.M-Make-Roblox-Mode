@@ -161,6 +161,24 @@ def generated_module_errors(
                     "mutation in the source-owned action. Service.start "
                     "registry setup, logging and comments are not effects")
 
+    # If architecture preflight deferred a bounded model-owned state producer,
+    # codegen must supply the actual server-side action. No Remote declaration,
+    # UI scaffold, model description or claimed status may discharge this.
+    if is_server and module.kind == ModuleKind.SERVER_MODULE:
+        design = proposal.game_design.get("dynamic_design") or {}
+        deferred = [item for item in design.get("deferred_model_authority", [])
+                    if isinstance(item, dict) and item.get("module") == module.name]
+        if deferred:
+            from .gameplay_source_evidence import has_gameplay_mutation
+            if (not module.module_id.startswith("dyn_")
+                    or "-- RMM_GAMEPLAY_BODY_BEGIN" not in code
+                    or not has_gameplay_mutation(code, routed_action=True)):
+                errors.append(
+                    "DEFERRED_AUTHORITY_PRODUCER_MISSING: bounded model action "
+                    "did not produce real executable server-owned state "
+                    "mutation; a transport-only plan is not an implementation"
+                )
+
     # Typed state contracts were checked only during FIRST generation of a
     # scaffolded action. A resumed checkpoint, imported plan, or post-review
     # patch must not be allowed to substitute an unrelated mutation while
