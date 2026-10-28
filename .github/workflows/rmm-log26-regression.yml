@@ -25,4 +25,4 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install -e ".[dev]" pytest
       - name: Replay log 25 and log 26 with static Luau analysis
-        run: python -m pytest -q tests/test_log25_verified_typed_effects.py tests/test_log26_real_proposal_regression.py tests/test_log27_orbit_world_abi.py tests/test_plan79_world_contract.py
+        run: python -m pytest -q tests/test_log25_verified_typed_effects.py tests/test_log26_real_proposal_regression.py tests/test_log27_orbit_world_abi.py tests/test_plan79_world_contract.py tests/test_56_colony_checkpoint_gate.py
