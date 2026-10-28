@@ -19,6 +19,7 @@ from .semantic_preservation import (
 from .request_semantics import request_semantic_errors
 from .compact_atomic_authoring import (
     author_compact_atomic_system, host_verified_resource_market,
+    bounded_authority_observations,
 )
 from .atomic_transaction_repair import (
     require_transaction_repair, author_transaction_repair,
@@ -263,8 +264,7 @@ def author_verified_atomic_systems(
                             # explicit name. Preserve it for model adapters
                             # and regression fixtures across both transports.
                             "exact_validator_errors": previous_issues[repair_field],
-                            "authority_replan_observations": (
-                                authority_gaps or [])[:6],
+                            "authority_replan_observations": bounded_authority_observations(authority_gaps),
                         }, ensure_ascii=False),
                         role="planner", temperature=0.0,
                         max_tokens=(280 if repair_field == "server_behavior" else 190),
@@ -326,7 +326,10 @@ def author_verified_atomic_systems(
                                 short_server = author_state_mutation_repair(
                                     router, action, "", original_prompt=original_prompt,
                                     diagnostics=[type(exc).__name__ + ": "
-                                                 + str(exc)[:180]],
+                                                 + str(exc)[:180]] + [
+                                        str(gap.get("error") or "")[:100]
+                                        for gap in bounded_authority_observations(authority_gaps)
+                                    ],
                                 )
                                 system = author_compact_atomic_system(
                                     router, action, previous_issues=previous_issues,
