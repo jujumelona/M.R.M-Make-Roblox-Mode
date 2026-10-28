@@ -50,6 +50,7 @@ from .host_space_actions import render_host_space_action
 from .host_contextual_harvest import render_contextual_harvest
 from .host_space_colonization import render_colony_alias
 from .host_action_delegate import render_verified_upgrade_alias
+from .host_ship_performance_purchase import render_ship_performance_purchase
 from .host_player_data import render_callable_player_data
 from .gameplay_round import render_arena_round_service, render_arena_round_controller
 from .implementation_blueprint import audit_implementation_blueprint
@@ -117,6 +118,7 @@ class LuauCodeGenerator:
                     or render_atomic_server(module, proposal) is not None
                     or render_colony_alias(module, proposal) is not None
                     or render_verified_upgrade_alias(module, proposal) is not None
+                    or render_ship_performance_purchase(module, proposal) is not None
                     or render_host_space_action(module, proposal) is not None
                     or render_contextual_harvest(module, proposal) is not None
                     or render_host_gameplay(module, proposal) is not None
@@ -182,6 +184,9 @@ class LuauCodeGenerator:
         verified_upgrade_alias = render_verified_upgrade_alias(module, proposal)
         if verified_upgrade_alias is not None:
             return verified_upgrade_alias
+        verified_ship_purchase = render_ship_performance_purchase(module, proposal)
+        if verified_ship_purchase is not None:
+            return verified_ship_purchase
         context_harvest = render_contextual_harvest(module, proposal)
         if context_harvest is not None:
             return context_harvest
