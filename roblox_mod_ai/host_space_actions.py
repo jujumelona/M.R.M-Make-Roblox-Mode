@@ -415,7 +415,7 @@ EFFECTS = {
     return {success=true,colonized=true,settlement="built"}''',
     "ExtractOtherPlanetMineral": '''    if not arrived(player,services,__ARRIVAL__) or not near(player,__TARGET__) then
         return {success=false,reason="not_on_planet"} end
-    -- Mining is an independent source-owned activity; colonization is optional.
+    if state.colonized~=true then return {success=false,reason="not_colonized"} end
     local stock=state.mineralRemaining
     if stock==nil then stock=100 end
     local amount=state.minerals
