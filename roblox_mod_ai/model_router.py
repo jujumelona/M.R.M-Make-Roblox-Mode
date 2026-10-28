@@ -45,6 +45,9 @@ class ModelRouter:
         self.supports_typed_action_contract = False
         # Prefer short, validated execution data over whole-file Luau when feasible.
         self.supports_declarative_effect_program = True
+        # Explicit capability: short, source-checked mutation operands.
+        # Host transport alone does not imply this optional authoring mode.
+        self.supports_atomic_state_mutation_repair = True
         self.adapters: dict[str, ModelAdapter] = {}
         self._init_adapters()
 
