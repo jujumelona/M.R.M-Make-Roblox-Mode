@@ -370,8 +370,7 @@ def author_verified_atomic_systems(
                             "this_action": action,
                             "previous_rejection": previous_issues,
                             "last_invalid_system": system,
-                            "authority_replan_observations": (
-                                authority_gaps or [])[:6],
+                            "authority_replan_observations": bounded_authority_observations(authority_gaps),
                         }, ensure_ascii=False),
                         role="planner", temperature=0.0,
                         max_tokens=600, json_schema=single_action_schema,
