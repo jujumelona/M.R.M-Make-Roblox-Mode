@@ -35,19 +35,19 @@ def _role(server):
     # complete authoritative *behavior*, not a particular generated suffix.
     # These predicates are intentionally conjunctive: unrelated upgrades,
     # generic mining and decorative aliens must never claim the same adapter.
-    if (re.search(r"\\balien\\b", description)
-            and re.search(r"\\b(?:combat|attack|damage|fight)\\b", description)
-            and re.search(r"\\b(?:target|entity|enemy)\\b", description)
+    if (re.search(r"\balien\b", description)
+            and re.search(r"\b(?:combat|attack|damage|fight)\b", description)
+            and re.search(r"\b(?:target|entity|enemy)\b", description)
             and "server-owned" in description):
         return "AlienCombat"
-    if (re.search(r"\\bplanet\\b", description)
-            and re.search(r"\\bcoloniz\\w*\\b", description)
-            and re.search(r"\\bown(?:ed|er|ership)?\\b", description)
+    if (re.search(r"\bplanet\b", description)
+            and re.search(r"\bcoloniz\w*\b", description)
+            and re.search(r"\bown(?:ed|er|ership)?\b", description)
             and "server" in description):
         return "MarkPlanetColonized"
-    if (re.search(r"\\b(?:mineral|ore)\\b", description)
-            and re.search(r"\\b(?:deposit|node)\\b", description)
-            and re.search(r"\\b(?:quantity|extract|inventory)\\b", description)
+    if (re.search(r"\b(?:mineral|ore)\b", description)
+            and re.search(r"\b(?:deposit|node)\b", description)
+            and re.search(r"\b(?:quantity|extract|inventory)\b", description)
             and "server-owned" in description):
         return "ExtractOtherPlanetMineral"
     return None
