@@ -7,6 +7,7 @@ No error is converted to a fake state change, world target or success receipt.
 from __future__ import annotations
 
 from typing import Any, Callable
+from copy import deepcopy
 
 from .spec import RobloxProposal
 
@@ -19,7 +20,22 @@ def inspect_authority_design(
     design: dict[str, Any], existing_modules: list[Any], *,
     requested_prompt: str,
 ) -> list[dict[str, Any]]:
-    """Use exactly the same host protocol handoff and scope as production."""
+    """Reproduce the actual production source transforms before classification.
+
+    The old shallow preview omitted persistence normalization, dynamic server
+    ModuleScript conversion, physical mining prerequisite materialization and
+    vehicle ownership binding. Those operations can change which compiler
+    owns a service. Its 'no blockers' verdict therefore disagreed with the
+    production resolver in 34th execution. Check a DEEP CLONE so preview
+    cannot poison the authored plan or subsequent repair checkpoints.
+    """
+    from .economy_core import normalize_economy_ledger
+    from .server_modules import normalize_dynamic_server_modules
+    from .host_mining_contract import ensure_mining_world_contract
+    from .vehicle_identity_binding import (
+        bind_verified_vehicle_providers, bind_vehicle_actors,
+        materialize_source_linked_space_arrivals,
+    )
     from .generation_scope import generation_scope
     from .host_protocol_handoff import rebase_complete_host_protocols
     from .model_action_authority import unproven_model_actions
@@ -28,9 +44,18 @@ def inspect_authority_design(
         requested_prompt=requested_prompt,
         game_title="AuthorityPreflight",
         description="Unbuilt source-level authority verification",
-        game_design={"dynamic_design": design},
-        modules=[*existing_modules, *design["modules"]],
+        game_design={"dynamic_design": deepcopy(design),
+                     "storage_backend": "builtin",
+                     "project_mode": "new_experience"},
+        modules=deepcopy([*existing_modules, *design["modules"]]),
     )
+    # These are the same source-level steps as execute() and resolve().
+    normalize_economy_ledger(preview)
+    normalize_dynamic_server_modules(preview)
+    ensure_mining_world_contract(preview)
+    bind_verified_vehicle_providers(preview)
+    bind_vehicle_actors(preview)
+    materialize_source_linked_space_arrivals(preview)
     before = generation_scope(preview, for_protocol_handoff=True)
     rebase_complete_host_protocols(preview, before)
     scope = generation_scope(preview)
