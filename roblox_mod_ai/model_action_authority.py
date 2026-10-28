@@ -101,6 +101,7 @@ def unproven_model_actions(
         unresolved.append({
             "module": name,
             "remote": remote,
+            "strategy": strategy,
             "reason": "AUTHORITY_PRODUCER_NOT_DECLARED",
             "typed_transport_only": (spec or {}).get("transport_only")
                 if isinstance(spec, dict) else None,
@@ -115,3 +116,32 @@ def unproven_model_actions(
             ),
         })
     return unresolved
+
+
+def partition_codegen_authority(
+    gaps: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Separate actionable codegen proof obligations from hard plan defects.
+
+    A typed transport carries an authenticated input ABI, *not* its eventual
+    state mutation. The bounded Luau model body can author that mutation only
+    in the later codegen phase, and module_generation_gate then checks actual
+    executable code. Deferral is NOT an authority PASS or a gameplay test.
+    Never defer a missing Remote, malformed route, or unknown model strategy.
+    """
+    blockers, deferred = [], []
+    for gap in gaps:
+        if (isinstance(gap, dict)
+                and gap.get("reason") == "AUTHORITY_PRODUCER_NOT_DECLARED"
+                and gap.get("strategy") == "bounded_typed_server_action"
+                and gap.get("typed_transport_only") is True
+                and gap.get("declared_state_changes") == 0
+                and gap.get("declared_target_kind") == "none"
+                and isinstance(gap.get("module"), str)
+                and gap.get("module")
+                and isinstance(gap.get("remote"), str)
+                and gap.get("remote")):
+            deferred.append(dict(gap))
+        else:
+            blockers.append(gap)
+    return blockers, deferred
