@@ -64,6 +64,7 @@ def author_verified_atomic_systems(
     json_schema: dict[str, Any],
     max_attempts_per_action: int = 3,
     retained_verified: dict[tuple[str, str], dict[str, Any]] | None = None,
+    authority_gaps: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Author and repair just the rejected action, never successful siblings.
 
@@ -184,6 +185,8 @@ def author_verified_atomic_systems(
                             },
                             "rejected_field": previous_text[:500],
                             "validator_errors": previous_issues[repair_field],
+                            "authority_replan_observations": (
+                                authority_gaps or [])[:6],
                         }, ensure_ascii=False),
                         role="planner", temperature=0.0,
                         max_tokens=(280 if repair_field == "server_behavior" else 190),
@@ -228,6 +231,7 @@ def author_verified_atomic_systems(
                     try:
                         system = author_compact_atomic_system(
                             router, action, previous_issues=previous_issues,
+                            authority_gaps=authority_gaps,
                         )
                     except (ValueError, TypeError) as exc:
                         # Never retry the WHOLE feature because one compact
@@ -253,6 +257,8 @@ def author_verified_atomic_systems(
                             "this_action": action,
                             "previous_rejection": previous_issues,
                             "last_invalid_system": system,
+                            "authority_replan_observations": (
+                                authority_gaps or [])[:6],
                         }, ensure_ascii=False),
                         role="planner", temperature=0.0,
                         max_tokens=600, json_schema=single_action_schema,
