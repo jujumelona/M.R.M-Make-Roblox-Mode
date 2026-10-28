@@ -1,0 +1,27 @@
+name: Universal Roblox tool-agent contract
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "roblox_mod_ai/agent_tool_runtime.py"
+      - "roblox_mod_ai/model_router.py"
+      - "roblox_mod_ai/model_adapters/llama_cpp_adapter.py"
+      - "roblox_mod_ai/host_service_codegen.py"
+      - "roblox_mod_ai/agent_loop.py"
+      - "roblox_mod_ai/orchestrator.py"
+      - "tests/test_universal_agent_tools.py"
+      - ".github/workflows/universal-agent-tools.yml"
+  workflow_dispatch:
+
+jobs:
+  agent-protocol:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e ".[dev]"
+      - name: Tool permissions, native tool messages and source receipts
+        run: python -m pytest -q tests/test_universal_agent_tools.py tests/test_log25_verified_typed_effects.py tests/test_log26_real_proposal_regression.py tests/test_log27_orbit_world_abi.py
