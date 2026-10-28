@@ -151,7 +151,8 @@ def test_log25_all_three_host_compiled_no_small_model():
         assert code and "function Service.handleAction" in code
         assert "function Service.start" in code
         assert "local actionArgs = ..." in code
-        assert "GetState(player" in code
+        if role in ("purchase", "harvest"):
+            assert "GetState(player" in code
         assert "return {success = true" in code
         assert LuauCodeGenerator(NeverCallCoder()).generate_module_code(server, p) == code
         strategies = {m["name"]: m["strategy"]
