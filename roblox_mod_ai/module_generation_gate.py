@@ -170,14 +170,23 @@ def generated_module_errors(
                     if isinstance(item, dict) and item.get("module") == module.name]
         if deferred:
             from .gameplay_source_evidence import has_gameplay_mutation
-            if (not module.module_id.startswith("dyn_")
-                    or "-- RMM_GAMEPLAY_BODY_BEGIN" not in code
-                    or not has_gameplay_mutation(code, routed_action=True)):
-                errors.append(
-                    "DEFERRED_AUTHORITY_PRODUCER_MISSING: bounded model action "
-                    "did not produce real executable server-owned state "
-                    "mutation; a transport-only plan is not an implementation"
-                )
+            from .generation_scope import generation_scope
+            # The initial plan may later resolve to a validated first-party
+            # producer in the protocol handoff. Such a producer is no longer
+            # a bounded model codegen task and must use its normal host gate;
+            # it must not be rejected for lacking the model-body marker.
+            route = next((item.get("strategy") for item in
+                          generation_scope(proposal).get("modules", [])
+                          if item.get("module_id") == module.module_id), "")
+            if not (isinstance(route, str) and route.startswith("host_")):
+                if (not module.module_id.startswith("dyn_")
+                        or "-- RMM_GAMEPLAY_BODY_BEGIN" not in code
+                        or not has_gameplay_mutation(code, routed_action=True)):
+                    errors.append(
+                        "DEFERRED_AUTHORITY_PRODUCER_MISSING: bounded model action "
+                        "did not produce real executable server-owned state "
+                        "mutation; a transport-only plan is not an implementation"
+                    )
 
     # Typed state contracts were checked only during FIRST generation of a
     # scaffolded action. A resumed checkpoint, imported plan, or post-review
