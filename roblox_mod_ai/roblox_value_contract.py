@@ -20,8 +20,8 @@ _ATTRIBUTE_REMOTE_METHOD = re.compile(
     r"(?:FireServer|FireClient|FireAllClients|InvokeClient|InvokeServer|Connect|Wait)\s*\("
 )
 _ATTRIBUTE_INSTANCE_COMPARISON = re.compile(
-    r"\bGetAttribute\s*\([^()\n]*\)\s*[!=]=\s*player\b(?!\s*(?:\.|\[|:))"
-    r"|\bplayer\s*[!=]=\s*[^\n]*\bGetAttribute\s*\("
+    r"\bGetAttribute\s*\([^()\n]*\)\s*(?:==|~=|!=)\s*player\b(?!\s*(?:\.|\[|:))"
+    r"|\bplayer\s*(?:==|~=|!=)\s*[^\n]*\bGetAttribute\s*\("
 )
 _ATTRIBUTE_SET_INSTANCE = re.compile(
     r"\bSetAttribute\s*\(\s*(?:'[^'\n]+'|\"[^\"\n]+\")\s*,\s*"
@@ -78,8 +78,8 @@ def roblox_value_contract_errors(source: str) -> list[str]:
             continue
         later = masked[found.end():]
         if (re.search(r"\b" + re.escape(name) +
-                      r"\s*[!=]=\s*player\b(?!\s*(?:\.|\[|:))", later)
-                or re.search(r"\bplayer\s*[!=]=\s*" + re.escape(name) +
+                      r"\s*(?:==|~=|!=)\s*player\b(?!\s*(?:\.|\[|:))", later)
+                or re.search(r"\bplayer\s*(?:==|~=|!=)\s*" + re.escape(name) +
                              r"\b", later)):
             errors.append(
                 "ATTRIBUTE_NOT_INSTANCE: A value from GetAttribute cannot "
