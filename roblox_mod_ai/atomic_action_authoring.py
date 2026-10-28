@@ -117,6 +117,27 @@ def author_verified_atomic_systems(
             if retained_verified is not None:
                 retained_verified[owner] = dict(host_market)
             continue
+        # A complete physical resource -> owned-inventory action is already
+        # an immutable, source-anchored semantic contract. Log37 showed its
+        # third atomic child repeatedly rewritten as the same invalid system
+        # even though the original deposit + extraction + inventory effect
+        # was present. Preserve only complete grounded effects and recheck
+        # the same public source/outcome gates; never fabricate a Workspace
+        # Part, planet, currency, inventory backend or runnable Luau.
+        from .grounded_atomic_source_effects import (
+            preserved_world_inventory_extraction,
+        )
+        grounded = preserved_world_inventory_extraction(
+            action, original_prompt=original_prompt,
+        )
+        if grounded is not None:
+            validate_atomic_system_ownership(
+                [action], [grounded], original_prompt=original_prompt,
+            )
+            accepted.append(dict(grounded))
+            if retained_verified is not None:
+                retained_verified[owner] = dict(grounded)
+            continue
         system: dict[str, Any] | None = None
         seen: set[str] = set()
         rejected_responses: set[str] = set()
@@ -308,8 +329,24 @@ def author_verified_atomic_systems(
                     system = dict(systems[0])
             signature = json.dumps(system, sort_keys=True, ensure_ascii=False)
             if signature in seen:
+                # Same structured response after a targeted fix is a local
+                # model non-progress event, not evidence that unrelated
+                # already-verified sibling gameplay should be discarded.
+                # Attach the actual rejected field diagnostics to the report.
+                repeated_issues = _field_issues(
+                    action, system, original_prompt,
+                )
                 raise SourceActionBindingError(
-                    "ATOMIC_LOCAL_REPAIR_NO_PROGRESS: " + str(index)
+                    "ATOMIC_LOCAL_REPAIR_NO_PROGRESS: " + str(index) +
+                    ": " + json.dumps({
+                        "source_quote": action["source_quote"][:120],
+                        "source_action": action["action"][:250],
+                        "repeated_field_issues": repeated_issues,
+                        "last_server_behavior": str(
+                            system.get("server_behavior") or "")[:280],
+                        "last_observable_result": str(
+                            system.get("observable_result") or "")[:180],
+                    }, ensure_ascii=False)[:1200]
                 )
             seen.add(signature)
             previous_issues = _field_issues(action, system, original_prompt)
