@@ -206,5 +206,5 @@ def test_empty_native_response_without_tools_is_error(monkeypatch):
             GenerationRequest(messages=[{"role": "user", "content": "hello"}],
                               tools=[{"type": "function", "function": {
                                   "name": CONTRACT_TOOL,
-                                  "parameters": {"type": "object"}}])
+                                  "parameters": {"type": "object"}}}])
         )
