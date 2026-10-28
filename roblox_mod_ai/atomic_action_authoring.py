@@ -23,6 +23,7 @@ from .compact_atomic_authoring import (
 from .atomic_transaction_repair import (
     require_transaction_repair, author_transaction_repair,
 )
+from .atomic_state_mutation_repair import author_state_mutation_repair
 
 
 def _field_issues(
@@ -147,6 +148,7 @@ def author_verified_atomic_systems(
         repaired_fields: set[str] = set()
         transaction_repair_attempts = 0
         transaction_rejections: list[str] = []
+        state_repair_attempted = False
         for attempt in range(max_attempts_per_action):
             # Repair the two independently failing fields in order, without
             # discarding an accepted payment just because the old visible
@@ -175,6 +177,14 @@ def author_verified_atomic_systems(
                 and require_transaction_repair(previous_issues)
                 and transaction_repair_attempts < 2
             )
+            needs_state_repair = (
+                system is not None
+                and "server_behavior" in previous_issues
+                and set(previous_issues) <= reparable
+                and not needs_transaction
+                and not state_repair_attempted
+                and getattr(router, "supports_host_standard_transport", False)
+            )
             if needs_transaction:
                 transaction_repair_attempts += 1
                 repaired_fields.add("server_behavior")
@@ -199,6 +209,30 @@ def author_verified_atomic_systems(
                     ))
                     continue
                 system = dict(system, server_behavior=transaction_server)
+            elif needs_state_repair:
+                # A single big free-form correction often drops the actual
+                # state write while repeating checks. Author three short,
+                # independent source-owned operands, then reapply the SAME
+                # semantic and request validators. No genre-specific effect
+                # is supplied by the host.
+                state_repair_attempted = True
+                try:
+                    state_server = author_state_mutation_repair(
+                        router, action, str(system.get("server_behavior") or ""),
+                        original_prompt=original_prompt,
+                        diagnostics=previous_issues["server_behavior"],
+                    )
+                except (ValueError, TypeError) as exc:
+                    previous_issues = dict(previous_issues)
+                    previous_issues["server_behavior"] = list(dict.fromkeys(
+                        previous_issues["server_behavior"] + [
+                            "ATOMIC_STRUCTURED_STATE_REPAIR_REJECTED: "
+                            + type(exc).__name__ + ": " + str(exc)[:210]
+                        ]
+                    ))
+                    continue
+                repaired_fields.add("server_behavior")
+                system = dict(system, server_behavior=state_server)
             elif repair_field:
                 repaired_fields.add(repair_field)
                 previous_text = str(system.get(repair_field) or "")
