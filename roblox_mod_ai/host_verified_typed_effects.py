@@ -12,7 +12,8 @@ import re
 from typing import Any
 
 from .spec import ModuleKind
-from .typed_action_contract import validate_contract, lua_server_guard
+from .typed_action_contract import (validate_contract, lua_server_guard,
+                                    TypedActionContractError)
 
 
 def _normalized(value: str) -> str:
@@ -59,6 +60,21 @@ def eligible_verified_effect(module: Any, proposal: Any) -> tuple[str, str, str 
             or not module.file_path.startswith("src/server/")
             or not module.file_path.endswith(".luau")):
         return None
+    # A world ABI checker asks whether *arbitrary* server modules have
+    # special placement permissions. Only inspect a candidate whose authored
+    # behavior actually describes one of the three supported host effects.
+    # Other typed actions (e.g. colony aliases with legacy field labels)
+    # must not be schema-validated or fail here.
+    description = str(getattr(module, "description", "") or "").casefold()
+    if not (
+        all(part in description for part in
+            ("purchase record", "weapon upgrade", "currency", "upgrade state"))
+        or all(part in description for part in
+               ("alien", "combat", "target", "damage"))
+        or all(part in description for part in
+               ("mineral", "deposit", "quantity", "inventory"))
+    ):
+        return None
     design = (proposal.game_design or {}).get("dynamic_design") or {}
     linked = (design.get("module_remotes") or {}).get(module.module_id)
     if not isinstance(linked, list) or len(linked) != 1:
@@ -80,9 +96,12 @@ def eligible_verified_effect(module: Any, proposal: Any) -> tuple[str, str, str 
                and m.file_path.endswith(".client.luau")]
     if len(clients) != 1:
         return None
-    contract = validate_contract(typed.get("contract"),
-                                 world_entities=typed.get("world_entities") or [],
-                                 transport_only=True)
+    try:
+        contract = validate_contract(typed.get("contract"),
+                                     world_entities=typed.get("world_entities") or [],
+                                     transport_only=True)
+    except (TypedActionContractError, TypeError, ValueError):
+        return None
     if (contract["target"] != {"kind": "none"}
             or contract["state_changes"]
             or [(field["id"], field["type"]) for field in contract["inputs"]]
