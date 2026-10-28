@@ -19,6 +19,7 @@ APPROVED_MCP_READ_TOOLS = frozenset((
     "roblox_luau_validate",
     "roblox_toolchain_status",
     "roblox_studio_status",
+    "roblox_studio_inspect",
 ))
 CONTRACT_TOOL = "roblox_module_contract_inspect"
 MAX_TOOL_RESULT_CHARS = 2400
@@ -125,6 +126,7 @@ class RobloxAgentToolRuntime:
             "roblox_luau_validate": frozenset(("code", "file_path")),
             "roblox_toolchain_status": frozenset(),
             "roblox_studio_status": frozenset(),
+            "roblox_studio_inspect": frozenset(("tool", "arguments")),
         }[name]
         if any(k not in allowed for k in arguments):
             raise RobloxToolPermissionError("Unknown tool argument")
@@ -140,6 +142,20 @@ class RobloxAgentToolRuntime:
                     type(arguments["limit"]) is not int
                     or not 1 <= arguments["limit"] <= 5):
                 raise RobloxToolPermissionError("Search limit must be 1..5")
+        if name == "roblox_studio_inspect":
+            requested = arguments.get("tool")
+            approved = {
+                "get_studio_state", "list_roblox_studios", "search_game_tree",
+                "inspect_instance", "script_read", "script_search",
+                "script_grep", "get_console_output",
+            }
+            if requested not in approved:
+                raise RobloxToolPermissionError("Unapproved Studio read capability")
+            nested = arguments.get("arguments", {})
+            if not isinstance(nested, dict) or len(nested) > 10:
+                raise RobloxToolPermissionError("Invalid Studio inspection arguments")
+            if len(_preview(nested, 2001)) > 2000:
+                raise RobloxToolPermissionError("Studio inspection arguments too large")
         if name == "roblox_luau_validate":
             code = arguments.get("code")
             if not isinstance(code, str) or not code or len(code) > 16000:
