@@ -397,6 +397,8 @@ class RobloxGameDesignPlanner:
                         existing_modules=existing,
                         requested_prompt=prompt,
                         research=research,
+                        allow_codegen_deferral=bool(getattr(
+                            self.router, "supports_deferred_authority_codegen", False)),
                         redesign=lambda: RobloxDynamicArchitect(
                             self.router, checkpoint_dir=self.output_root
                         ).design(prompt, research, existing),
