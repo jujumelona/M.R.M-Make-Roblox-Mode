@@ -318,7 +318,7 @@ def render_typed_client(module: RobloxModuleSpec, proposal: RobloxProposal) -> s
     # Prefill its typed selection instead of forcing players to guess an
     # opaque generated Workspace name. The server still validates all fields.
     default_selection = None
-    owner = next((m for m in proposal.modules
+    owner = next((m for m in getattr(proposal, "modules", ())
                   if m.kind == ModuleKind.SERVER_MODULE
                   and m.name == spec.get("server")), None)
     if owner is not None:
