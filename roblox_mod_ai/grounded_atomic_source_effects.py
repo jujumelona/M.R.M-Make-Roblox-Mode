@@ -46,6 +46,23 @@ _GAIN = re.compile(
     r"award\w*|deposit\w*|store\w*|gain\w*|receiv\w*)\b|"
     r"추가|증가|획득|적립", re.I,
 )
+# Source authoring often describes the resource transfer as a directed effect
+# rather than an "increment" verb. Log40's exact model-owned action says:
+# "... extracts the corresponding resource into the player's owned resource
+# inventory." This is a positive inventory acquisition, not a silent grant.
+# Require the extracted resource and the RECEIVING owned inventory in the
+# same short source-owned action. A generic "extract resource" alone is not
+# sufficient and the reverse inventory->source direction is not permitted.
+_EXTRACT_INTO_OWNED_INVENTORY = re.compile(
+    r"\b(?:extracts?|extracted|harvests?|harvested|"
+    r"gathers?|gathered|collects?|collected|mines?|mined)\b"
+    r".{0,110}\b(?:ores?|minerals?|resources?|materials?|wood|"
+    r"crop|item)s?\b"
+    r".{0,85}\b(?:into|to)\b"
+    r".{0,65}\b(?:player['’]?s?|owned)\b"
+    r".{0,85}\b(?:inventory|cargo|resource\s+balance)\b",
+    re.I,
+)
 _NEGATION = re.compile(
     r"\b(?:no|not|never|without|cannot|can't|doesn't|"
     r"unchanged|pretend|fake)\b.{0,95}\b(?:extract|mine|"
@@ -72,7 +89,9 @@ def preserved_world_inventory_extraction(
     if not quote or quote not in original_prompt or len(owned) > 260:
         return None
     if (_NEGATION.search(owned) or not all(regex.search(owned) for regex in (
-            _EXTRACT, _WORLD_ORIGIN, _RESOURCE, _OWNED_INVENTORY, _GAIN))):
+            _EXTRACT, _WORLD_ORIGIN, _RESOURCE, _OWNED_INVENTORY))
+            or not (_GAIN.search(owned)
+                    or _EXTRACT_INTO_OWNED_INVENTORY.search(owned))):
         return None
     if (source_intent_conflicts(quote, owned)
             or request_semantic_errors(owned, original_prompt)):
