@@ -108,6 +108,119 @@ class ModelRouter:
         print("[RMM model] " + str(self.last_generation_report), flush=True)
         return response.content
 
+    def research_for_module(self, module: Any, proposal: Any) -> str:
+        """Perform bounded read-only MCP observations for any model-authored module.
+
+        Source contracts are host-observed even if a small model cannot emit
+        native tool calls. External tool failures are recorded, not fabricated.
+        Generation remains subject to independent static and runtime gates.
+        """
+        from .agent_tool_runtime import (
+            RobloxAgentToolRuntime, CONTRACT_TOOL, _preview,
+        )
+        runtime = RobloxAgentToolRuntime(module, proposal)
+        baseline = runtime.call(CONTRACT_TOOL, {})
+        notes = [
+            "HOST-VERIFIED MODULE SOURCE CONTRACT (not a Studio test): " +
+            baseline.get("observation", baseline.get("error", "unavailable"))
+        ]
+        trace = {
+            "module_id": module.module_id,
+            "module": module.name,
+            "scope": "read_only_module_research",
+            "status": "model_not_called",
+            "calls": runtime.records,
+        }
+        if not hasattr(self, "agent_tool_traces"):
+            self.agent_tool_traces = {}
+        self.agent_tool_traces[module.module_id] = trace
+        if not baseline["ok"]:
+            trace["status"] = "source_inspection_failed"
+            return "\n".join(notes)
+        # Tool research is a separate small turn; never mix tool calls and
+        # grammar-constrained Luau JSON in one provider request.
+        tools = runtime.definitions()
+        names = {item["function"]["name"] for item in tools}
+        messages = [
+            {"role": "system", "content": (
+                "You inspect ONE Roblox module before authoring its Luau. "
+                "Use only the offered read-only Roblox tools. Call API search "
+                "or official docs when unsure about an engine member; call "
+                "the module contract inspector for actual permitted world "
+                "parts, remotes and peer methods. Do not invent evidence. "
+                "Never deploy, edit Studio, run game builds, or claim a "
+                "Studio playtest. Stop after enough factual evidence."
+            )},
+            {"role": "user", "content": (
+                "Inspect only this implementation: " + str(module.description or "")[:800] +
+                "\nFile: " + module.file_path +
+                "\nVerified source contract: " +
+                baseline.get("observation", "")[:1900] +
+                "\nUse read-only tools for any required additional evidence; "
+                "when there is no need, reply briefly without tool calls."
+            )},
+        ]
+        adapter = self.get_adapter_for_role("coder")
+        seen = set()
+        total_calls = 0
+        for step in range(3):
+            try:
+                response = adapter.generate(GenerationRequest(
+                    messages=messages, temperature=0, max_tokens=500,
+                    tools=tools, metadata={"generation_role": "tool_research"},
+                ))
+            except Exception as exc:
+                trace["status"] = "model_tool_protocol_unavailable"
+                trace["error"] = type(exc).__name__ + ": " + str(exc)[:250]
+                break
+            if not response.tool_calls:
+                trace["status"] = (
+                    "source_inspected_no_extra_tool_calls" if total_calls == 0
+                    else "tool_observations_returned"
+                )
+                break
+            if total_calls + len(response.tool_calls) > 6:
+                trace["status"] = "tool_budget_exhausted"
+                break
+            reply_calls = []
+            observations = []
+            for index, tc in enumerate(response.tool_calls):
+                call_id = tc.call_id or f"call_{step}_{index}"
+                reply_calls.append({
+                    "id": call_id, "type": "function",
+                    "function": {"name": tc.name,
+                                 "arguments": json.dumps(tc.arguments)},
+                })
+                signature = (tc.name, json.dumps(tc.arguments, sort_keys=True))
+                if signature in seen:
+                    result = {"ok": False, "error": "duplicate_tool_call"}
+                elif tc.name not in names:
+                    result = {"ok": False, "error": "unapproved_tool_name"}
+                else:
+                    result = runtime.call(tc.name, tc.arguments)
+                    seen.add(signature)
+                observations.append({"role": "tool", "tool_call_id": call_id,
+                                     "content": _preview(result, 2700)})
+                if result.get("ok") and tc.name != CONTRACT_TOOL:
+                    notes.append("OBSERVED " + tc.name + " (untrusted source data, "
+                                 "NOT Studio verified): " +
+                                 result.get("observation", "")[:1350])
+                if not result.get("ok"):
+                    notes.append("TOOL UNAVAILABLE/REJECTED " + tc.name + ": "
+                                 + result.get("error", "")[:180])
+            total_calls += len(response.tool_calls)
+            messages.append({
+                "role": "assistant", "content": response.content or None,
+                "tool_calls": reply_calls,
+            })
+            messages.extend(observations)
+            trace["status"] = "tool_budget_reached" if total_calls == 6 else "tools_observed"
+        else:
+            trace["status"] = "tool_round_limit_reached"
+        trace["calls"] = list(runtime.records)
+        trace["native_tool_calls"] = total_calls
+        return "\n".join(notes)[:8500] + "\n"
+
     def complete_json(
         self,
         prompt: str,
