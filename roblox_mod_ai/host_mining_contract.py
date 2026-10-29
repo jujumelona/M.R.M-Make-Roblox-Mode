@@ -176,7 +176,12 @@ def inspect_mining_contract_gates(proposal: RobloxProposal) -> list[dict[str, An
             module.name, module.description, proposal.requested_prompt
         ))
         traced = bool(_source_traced_extraction(module, proposal))
-        if not (named or traced):
+        role_candidate = bool(re.search(
+            r"\b(?:mine|mining|gather\w*|extract\w*|harvest\w*)\b",
+            re.sub(r"(?<=[a-z])(?=[A-Z])|(?<=[A-Za-z])(?=\\d)",
+                   " ", module.name), re.I,
+        ))
+        if not (named or traced or role_candidate):
             continue
         routed = [(key, val) for key, val in actions.items()
                   if isinstance(val, dict) and val.get("service") == module.name]
@@ -196,10 +201,16 @@ def inspect_mining_contract_gates(proposal: RobloxProposal) -> list[dict[str, An
              ]}
             for key, val in routed
         ]
-        source = render_host_mining(module, proposal)
+        renderer_error = None
+        try:
+            source = render_host_mining(module, proposal)
+        except Exception as exc:
+            source = None
+            renderer_error = type(exc).__name__ + ": " + str(exc)[:250]
         out.append({
             "service": module.name,
             "recognized_by_description": named,
+            "role_candidate_by_name": role_candidate,
             "recognized_by_source_blueprint": traced,
             "remote_routes": route_kinds,
             "world_routes": [key for key, _ in world_routed],
@@ -209,6 +220,7 @@ def inspect_mining_contract_gates(proposal: RobloxProposal) -> list[dict[str, An
                 if isinstance(x, dict) and x.get("service") == module.name
             ],
             "host_mining_renderer_eligible": source is not None,
+            "host_mining_renderer_error": renderer_error,
         })
     return out
 
