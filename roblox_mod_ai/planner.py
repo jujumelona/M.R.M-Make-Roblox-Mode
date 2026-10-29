@@ -564,6 +564,15 @@ class RobloxGameDesignPlanner:
                     "host_action_choices": dynamic_design.get("host_action_choices", {}),
                     "host_typed_actions": dynamic_design.get("host_typed_actions", {}),
                     "host_executable_actions": dynamic_design.get("host_executable_actions", {}),
+                    # Codegen is the authoritative effect proof for source-owned
+                    # transport-only model actions. Preserve the planner's
+                    # bounded, explicitly UNVERIFIED obligation list: losing
+                    # it here turns an approved deferral into a false hard
+                    # architecture error in resolve_dependencies.
+                    "deferred_model_authority": __import__(
+                        "roblox_mod_ai.authority_architecture_repair",
+                        fromlist=["carried_codegen_authority"],
+                    ).carried_codegen_authority(dynamic_design),
                     "host_world_actions": dynamic_design.get("host_world_actions", {}),
                     "host_world_motion": dynamic_design.get("host_world_motion", {}),
                     "acceptance_facets": dynamic_design["acceptance_facets"],
