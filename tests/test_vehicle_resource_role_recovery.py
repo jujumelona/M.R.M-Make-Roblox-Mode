@@ -378,3 +378,99 @@ def test_mining_to_assembled_vehicle_to_launch_is_one_host_actor():
     assert departure_source is not None
     assert "GetOwnedActor(player)" in departure_source
     assert names[1] + "Server" in departure_source
+
+
+
+def test_world_action_mining_is_recognized_without_inventing_a_second_node():
+    from roblox_mod_ai.spec import ModuleKind, RobloxModuleSpec, RobloxProposal
+    from roblox_mod_ai.host_mining_contract import (
+        ensure_mining_world_contract, inspect_mining_contract_gates,
+    )
+    from roblox_mod_ai.host_mining import render_host_mining
+
+    server = RobloxModuleSpec(
+        module_id="dyn_extract_from_world",
+        name="GatherDepositServer",
+        kind=ModuleKind.SERVER_MODULE,
+        file_path="src/server/GatherDepositServer.luau",
+        roblox_service="ServerScriptService",
+        description="Server harvests resources from a world deposit into owned inventory.",
+    )
+    design = {
+        "world_objects": [{
+            "name": "HarvestableDeposit",
+            "class": "Part",
+            "position": [14, 3, 0],
+            "size": [4, 4, 4],
+        }],
+        "host_actions": {},
+        "host_world_actions": {"HarvestableDeposit": {
+            "service": server.name, "kind": "ProximityPrompt",
+        }},
+        "module_world_objects": {server.module_id: []},
+    }
+    proposal = RobloxProposal(
+        requested_prompt="Gather resources from world deposits.",
+        game_title="GenericGatheringWorldAction", description="Test",
+        game_design={
+            "dynamic_design": design,
+            "implementation_blueprint": {"requirements": [{
+                "source": "Gather the mineral from an actual world node.",
+                "owners": [server.name],
+                "acceptance": (
+                    "The player's owned inventory receives resources "
+                    "extracted from a validated world deposit."
+                ),
+            }]},
+        },
+        modules=[server],
+    )
+    before_count = len(design["world_objects"])
+    changed = ensure_mining_world_contract(proposal)
+    assert len(changed) == 1
+    assert changed[0]["resource_node"] == "HarvestableDeposit"
+    assert changed[0]["input"] == "host_verified_world_action_Part"
+    assert len(design["world_objects"]) == before_count
+    assert design["module_world_objects"][server.module_id] == [
+        "HarvestableDeposit",
+    ]
+    source = render_host_mining(server, proposal)
+    assert source is not None and "HarvestableDeposit" in source
+    gates = inspect_mining_contract_gates(proposal)
+    assert len(gates) == 1
+    assert gates[0]["host_mining_renderer_eligible"] is True
+
+
+def test_world_mining_route_must_not_take_non_part_or_another_service():
+    from roblox_mod_ai.spec import ModuleKind, RobloxModuleSpec, RobloxProposal
+    from roblox_mod_ai.host_mining_contract import ensure_mining_world_contract
+
+    server = RobloxModuleSpec(
+        module_id="dyn_gather", name="GatherDepositServer",
+        kind=ModuleKind.SERVER_MODULE,
+        file_path="src/server/GatherDepositServer.luau",
+        roblox_service="ServerScriptService",
+        description="Server harvests resources from world nodes into owned inventory.",
+    )
+    design = {
+        "world_objects": [{
+            "name": "HarvestableDeposit", "class": "Model",
+            "position": [14, 3, 0], "size": [4, 4, 4],
+        }],
+        "host_world_actions": {
+            "HarvestableDeposit": {
+                "service": server.name, "kind": "ProximityPrompt",
+            },
+        },
+        "host_actions": {},
+        "module_world_objects": {server.module_id: []},
+    }
+    proposal = RobloxProposal(
+        requested_prompt="Harvest world resources.",
+        game_title="NegativeMiningFixture", description="Test",
+        game_design={"dynamic_design": design},
+        modules=[server],
+    )
+    assert ensure_mining_world_contract(proposal) == []
+    assert design["module_world_objects"][server.module_id] == []
+    assert len(design["world_objects"]) == 1
