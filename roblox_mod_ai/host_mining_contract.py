@@ -154,6 +154,63 @@ def _source_traced_extraction(module: Any, proposal: RobloxProposal) -> bool:
     return False
 
 
+def inspect_mining_contract_gates(proposal: RobloxProposal) -> list[dict[str, Any]]:
+    """Read-only evidence for source-owned mining routing and materialization.
+
+    Cross-system blockers must name the failed authority edge instead of
+    reporting only that the downstream assembled vehicle is absent.
+    """
+    design = (proposal.game_design.get("dynamic_design") or {})
+    if not isinstance(design, dict):
+        return []
+    from .host_mining import render_host_mining
+    out = []
+    actions = design.get("host_actions") or {}
+    worlds = design.get("host_world_actions") or {}
+    remotes = design.get("remotes") or {}
+    typed = design.get("host_typed_actions") or {}
+    for module in proposal.modules:
+        if module.kind != ModuleKind.SERVER_MODULE or not module.module_id.startswith("dyn_"):
+            continue
+        named = bool(_is_named_mining_service(
+            module.name, module.description, proposal.requested_prompt
+        ))
+        traced = bool(_source_traced_extraction(module, proposal))
+        if not (named or traced):
+            continue
+        routed = [(key, val) for key, val in actions.items()
+                  if isinstance(val, dict) and val.get("service") == module.name]
+        world_routed = [(key, val) for key, val in worlds.items()
+                        if isinstance(val, dict) and val.get("service") == module.name]
+        route_kinds = [
+            {"name": key, "kind": val.get("kind"),
+             "declared_remote_kind": remotes.get(key),
+             "transport_only": bool(isinstance(typed.get(key), dict)
+                                    and typed[key].get("transport_only") is True),
+             "input_ids": [
+                 item.get("id") for item in (
+                     (typed.get(key) or {}).get("contract", {}).get("inputs") or []
+                 ) if isinstance(item, dict)
+             ]}
+            for key, val in routed
+        ]
+        source = render_host_mining(module, proposal)
+        out.append({
+            "service": module.name,
+            "recognized_by_description": named,
+            "recognized_by_source_blueprint": traced,
+            "remote_routes": route_kinds,
+            "world_routes": [key for key, _ in world_routed],
+            "owned_world_nodes": mining_world_nodes(proposal, module),
+            "host_materialized_world": [
+                x for x in (design.get("host_materialized_world") or [])
+                if isinstance(x, dict) and x.get("service") == module.name
+            ],
+            "host_mining_renderer_eligible": source is not None,
+        })
+    return out
+
+
 def ensure_mining_world_contract(proposal: RobloxProposal) -> list[dict[str, Any]]:
     """Ensure host-owned mining has an actual declared Part, never a fake yield.
 
@@ -204,7 +261,35 @@ def ensure_mining_world_contract(proposal: RobloxProposal) -> list[dict[str, Any
         worlds = [key for key, row in
                   (design.get("host_world_actions") or {}).items()
                   if isinstance(row, dict) and row.get("service") == module.name]
-        if len(routes) != 1 or worlds or routes[0].get("kind") != "RemoteFunction":
+        # A source-owned world action is an already-authored physical ingress.
+        # The old branch skipped it entirely, then the vehicle builder saw
+        # zero mined-resource producers even though a real Part existed.
+        # Reconcile the exact Part bound to this service; never synthesize an
+        # unrelated node or redirect another service's object.
+        if worlds:
+            if len(worlds) != 1 or routes:
+                continue
+            world_name = worlds[0]
+            node_obj = next((
+                obj for obj in objects
+                if isinstance(obj, dict) and obj.get("name") == world_name
+                and obj.get("class") == "Part"
+            ), None)
+            if node_obj is None:
+                continue
+            linked = owned.setdefault(module.module_id, [])
+            if not isinstance(linked, list):
+                raise ValueError("module_world_objects rows must be lists")
+            if world_name not in linked:
+                linked.append(world_name)
+            mutations.append({
+                "service": module.name, "resource_node": world_name,
+                "transport_rebased": True,
+                "input": "host_verified_world_action_Part",
+                "basis": "existing_source_owned_world_interaction",
+            })
+            continue
+        if len(routes) != 1 or routes[0].get("kind") != "RemoteFunction":
             continue
         remote, route = routed[0]
         rebased = host_transport_only(remote)
