@@ -17,14 +17,28 @@ _VEHICLE = re.compile(
 )
 
 
+def is_authored_vehicle_builder(module: Any) -> bool:
+    """Use one builder-role predicate across launch binding and validation.
+
+    A named source action may be "AttachShipSection" while its short
+    description omits "build". Parsing CamelCase names supplements, but never
+    replaces, the verified host renderer and matching server/client protocols.
+    """
+    if (not getattr(module, "module_id", "").startswith("dyn_")
+            or not getattr(module, "file_path", "").startswith("src/server/")):
+        return False
+    name = re.sub(
+        r"(?<=[a-z])(?=[A-Z])|(?<=[A-Za-z])(?=\d)", " ",
+        str(getattr(module, "name", "")),
+    )
+    role = str(getattr(module, "description", "") or "") + " " + name
+    return bool(_BUILD.search(role) and _VEHICLE.search(role))
+
+
 def relevant_candidates(modules: dict[str, Any], launch_name: str) -> list[Any]:
     return [
         m for m in modules.values()
-        if m.name != launch_name
-        and getattr(m, "module_id", "").startswith("dyn_")
-        and getattr(m, "file_path", "").startswith("src/server/")
-        and _BUILD.search(str(getattr(m, "description", "")))
-        and _VEHICLE.search(str(getattr(m, "description", "")))
+        if m.name != launch_name and is_authored_vehicle_builder(m)
     ]
 
 
@@ -39,10 +53,7 @@ def vehicle_identity_errors(proposal: Any) -> list[str]:
     # unrelated world Part named "Vehicle" or a prompt-matching exception.
     builders = [
         m for m in modules.values()
-        if getattr(m, "module_id", "").startswith("dyn_")
-        and getattr(m, "file_path", "").startswith("src/server/")
-        and _BUILD.search(str(getattr(m, "description", "")))
-        and _VEHICLE.search(str(getattr(m, "description", "")))
+        if is_authored_vehicle_builder(m)
     ]
     errors: list[str] = []
     declared = {obj.get("name") for obj in design.get("world_objects", ())
