@@ -189,7 +189,9 @@ def inspect_mining_contract_gates(proposal: RobloxProposal) -> list[dict[str, An
                                     and typed[key].get("transport_only") is True),
              "input_ids": [
                  item.get("id") for item in (
-                     (typed.get(key) or {}).get("contract", {}).get("inputs") or []
+                     (((typed.get(key) or {}).get("contract") or {}).get("inputs") or [])
+                     if isinstance((typed.get(key) or {}).get("contract") or {}, dict)
+                     else []
                  ) if isinstance(item, dict)
              ]}
             for key, val in routed
