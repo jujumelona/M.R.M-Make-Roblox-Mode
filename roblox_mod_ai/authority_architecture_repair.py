@@ -62,6 +62,55 @@ def inspect_authority_design(
     return unproven_model_actions(preview, scope)
 
 
+
+def carried_codegen_authority(design: dict[str, Any]) -> list[dict[str, Any]]:
+    """Carry *unverified* model-effect obligations across plan serialization.
+
+    The planner used to drop deferred_model_authority when freezing its
+    dynamic_design. The architecture preview then accepted source-owned
+    transport bodies for later codegen verification, but the production
+    resolver blocked those exact actions because the signed handoff was lost.
+    This function never treats a deferred obligation as verified authority.
+    It also rejects stale or forged records detached from the active route.
+    """
+    entries = design.get("deferred_model_authority") or []
+    if not isinstance(entries, list):
+        raise ValueError("DEFERRED_AUTHORITY_ROWS_INVALID")
+    modules = {m.name: m for m in design.get("modules", [])}
+    actions = design.get("host_actions") or {}
+    typed = design.get("host_typed_actions") or {}
+    links = design.get("module_remotes") or {}
+    if not all(isinstance(x, dict) for x in (actions, typed, links)):
+        raise ValueError("DEFERRED_AUTHORITY_ROUTE_MAP_INVALID")
+    seen: set[tuple[str, str]] = set()
+    output = []
+    for row in entries:
+        if not isinstance(row, dict):
+            raise ValueError("DEFERRED_AUTHORITY_ROW_INVALID")
+        module_name, remote = row.get("module"), row.get("remote")
+        key = (module_name, remote)
+        module = modules.get(module_name)
+        wire = typed.get(remote)
+        route = actions.get(remote)
+        if (not isinstance(module_name, str)
+                or not isinstance(remote, str)
+                or not module_name or not remote
+                or key in seen or module is None
+                or getattr(module, "kind", None).value != "server_module"
+                or row.get("verified") is not False
+                or row.get("verification_stage") != "codegen"
+                or not isinstance(wire, dict)
+                or wire.get("transport_only") is not True
+                or wire.get("server") != module_name
+                or not isinstance(route, dict)
+                or route.get("service") != module_name
+                or links.get(module.module_id) != [remote]):
+            raise ValueError("DEFERRED_AUTHORITY_UNBOUND_OR_FORGED")
+        seen.add(key)
+        output.append(deepcopy(row))
+    return output
+
+
 def replan_unproven_authority(
     design: dict[str, Any],
     *,
