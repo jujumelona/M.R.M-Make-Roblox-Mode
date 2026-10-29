@@ -46,16 +46,44 @@ def inspect_vehicle_provider_preflight(proposal: Any) -> list[dict[str, Any]]:
         return []
     motions = design.get("host_world_motion") or {}
     modules = {m.name: m for m in getattr(proposal, "modules", ())}
-    miners = [
-        m.name for m in modules.values()
-        if getattr(m, "kind", None) == ModuleKind.SERVER_MODULE
-        and render_host_mining(m, proposal) is not None
-    ]
+    miners = []
+    mining_diagnostics = []
+    for module in modules.values():
+        if getattr(module, "kind", None) != ModuleKind.SERVER_MODULE:
+            continue
+        try:
+            if render_host_mining(module, proposal) is not None:
+                miners.append(module.name)
+        except Exception as exc:
+            mining_diagnostics.append({
+                "module": module.name,
+                "error": type(exc).__name__ + ": " + str(exc)[:250],
+            })
     builders = [
         m for m in modules.values()
         if getattr(m, "kind", None) == ModuleKind.SERVER_MODULE
         and is_authored_vehicle_builder(m)
     ]
+    def builder_evidence(builder: Any, launch_name: str) -> dict[str, Any]:
+        record = {"name": builder.name, "module_id": builder.module_id}
+        try:
+            record["host_actor_compiler"] = eligible_vehicle_actor_builder(
+                builder, proposal
+            )
+        except Exception as exc:
+            record["host_actor_compiler"] = None
+            record["compiler_error"] = (
+                type(exc).__name__ + ": " + str(exc)[:250]
+            )
+        try:
+            record["matching_launch_protocol"] = matching_launch_provider(
+                proposal, builder, launch_name
+            )
+        except Exception as exc:
+            record["matching_launch_protocol"] = False
+            record["route_error"] = type(exc).__name__ + ": " + str(exc)[:250]
+        return record
+
     rows = []
     for launch_name, motion in motions.items():
         if not isinstance(motion, dict) or motion.get("kind") != "vehicle_world_transition":
@@ -77,17 +105,9 @@ def inspect_vehicle_provider_preflight(proposal: Any) -> list[dict[str, Any]]:
                 typed.get("transport_only") if isinstance(typed, dict) else None
             ),
             "host_mining_producers": miners,
+            "host_mining_diagnostic_errors": mining_diagnostics,
             "builders": [
-                {
-                    "name": builder.name,
-                    "module_id": builder.module_id,
-                    "host_actor_compiler": eligible_vehicle_actor_builder(
-                        builder, proposal
-                    ),
-                    "matching_launch_protocol": matching_launch_provider(
-                        proposal, builder, launch_name
-                    ),
-                }
+                builder_evidence(builder, launch_name)
                 for builder in builders
             ],
             "source_only_not_studio_verified": True,
