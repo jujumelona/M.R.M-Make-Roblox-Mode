@@ -249,3 +249,124 @@ def test_source_owned_quantity_accounting_materializes_real_node_and_miner():
     assert remote not in design["host_typed_actions"]
     assert render_host_mining(server, proposal) is not None
     assert render_host_mining(client, proposal) is not None
+
+
+
+def test_mining_to_assembled_vehicle_to_launch_is_one_host_actor():
+    """Regression for preflight failure on disjoint Craft and assembled ship."""
+    from roblox_mod_ai.spec import ModuleKind, RobloxModuleSpec, RobloxProposal
+    from roblox_mod_ai.host_mining_contract import ensure_mining_world_contract
+    from roblox_mod_ai.host_vehicle_actor_capability import eligible_vehicle_actor_builder
+    from roblox_mod_ai.vehicle_identity_binding import (
+        bind_verified_vehicle_providers, materialize_source_linked_space_arrivals,
+    )
+    from roblox_mod_ai.vehicle_identity_contract import vehicle_identity_errors
+    from roblox_mod_ai.host_ship_attachment import try_ship_attachment
+    from roblox_mod_ai.host_vehicle_departure import eligible_departure
+
+    names = (
+        "SourceOwnedExtraction820a4533281",
+        "AttachShipSection4533283",
+        "LaunchCraftIntoSpace52E67D1",
+    )
+    modules = []
+    design = {
+        "world_objects": [
+            {"name": "Craft52E67D11", "class": "Part",
+             "position": [0, 10, 100], "size": [6, 2, 8]},
+            {"name": "Occupants52E67D12", "class": "Part",
+             "position": [0, 8, 110], "size": [3, 3, 3]},
+        ],
+        "host_actions": {}, "host_typed_actions": {}, "remotes": {},
+        "module_remotes": {}, "module_world_objects": {},
+        "host_world_motion": {},
+    }
+    for idx, stem in enumerate(names):
+        srv = stem + "Server"
+        cli = stem + "Client"
+        remote = stem + "Action"
+        desc = [
+            "Server transfers the mined resource quantity into owned inventory.",
+            "Server attaches spaceship sections using mined owned resources.",
+            "Server launches a spacecraft and keeps passengers aboard.",
+        ][idx]
+        server = RobloxModuleSpec(
+            module_id=f"dyn_feature_{idx}_server", name=srv,
+            kind=ModuleKind.SERVER_MODULE,
+            file_path=f"src/server/{srv}.luau",
+            roblox_service="ServerScriptService", description=desc,
+        )
+        client = RobloxModuleSpec(
+            module_id=f"dyn_feature_{idx}_client", name=cli,
+            kind=ModuleKind.CLIENT_SCRIPT,
+            file_path=f"src/client/{cli}.client.luau",
+            roblox_service="StarterPlayerScripts", description=desc,
+        )
+        modules.extend((server, client))
+        design["host_actions"][remote] = {
+            "service": srv, "kind": "RemoteFunction", "max_args": 2,
+        }
+        design["remotes"][remote] = "RemoteFunction"
+        design["host_typed_actions"][remote] = {
+            "server": srv, "client": cli, "transport_only": True,
+            "contract": {"inputs": [
+                {"id": "selection"}, {"id": "quantity"},
+            ], "target": {"kind": "none"}, "state_changes": []},
+        }
+        design["module_remotes"][server.module_id] = [remote]
+        design["module_remotes"][client.module_id] = [remote]
+        design["module_world_objects"][server.module_id] = (
+            ["Craft52E67D11", "Occupants52E67D12"] if idx == 2 else []
+        )
+        design["module_world_objects"][client.module_id] = (
+            ["Craft52E67D11", "Occupants52E67D12"] if idx == 2 else []
+        )
+
+    design["host_world_motion"][names[2] + "Server"] = {
+        "kind": "vehicle_world_transition",
+        "destination": "orbit",
+        "occupant_rule": "keep occupants aboard",
+    }
+    req = {
+        "source": "Mine resources and build a ship, then launch with passengers.",
+        "owners": [m.name for m in modules],
+        "acceptance": (
+            "After world-resource extraction the player's owned inventory "
+            "increases by the actually extracted quantity from a world deposit. "
+            "The owned spaceship has one additional section attached by the "
+            "server. The craft travels into space with occupants aboard."
+        ),
+    }
+    proposal = RobloxProposal(
+        requested_prompt="Mine resources, construct spacecraft sections and launch.",
+        game_title="GenericVehicleProducer",
+        description="Preflight integration fixture",
+        game_design={
+            "dynamic_design": design,
+            "implementation_blueprint": {"requirements": [req]},
+        },
+        modules=modules,
+    )
+    mining = ensure_mining_world_contract(proposal)
+    assert len(mining) == 1 and mining[0]["transport_rebased"]
+    assert eligible_vehicle_actor_builder(modules[2], proposal) == "section_attachment"
+    links = bind_verified_vehicle_providers(proposal)
+    assert len(links) == 1
+    assert links[0]["actor_provider"] == "GetOwnedActor"
+    assert vehicle_identity_errors(proposal) == []
+    arrivals = materialize_source_linked_space_arrivals(proposal)
+    assert len(arrivals) == 1
+    assert eligible_departure(modules[4], proposal) is not None
+
+    class FixedCatalog:
+        def complete_json(self, *args, **kwargs):
+            return {"sections": [
+                {"id": "Hull", "label": "Hull", "cost": 10, "performance": 2},
+                {"id": "Engine", "label": "Engine", "cost": 20, "performance": 3},
+                {"id": "Cabin", "label": "Cabin", "cost": 30, "performance": 4},
+            ]}
+    generated = try_ship_attachment(modules[2], proposal, FixedCatalog())
+    assert generated is not None
+    assert "function Service.GetOwnedActor(player)" in generated
+    assert 'seat.Name = "PilotSeat"' in generated
+    assert 'joint.Name = "SectionWeld"' in generated
