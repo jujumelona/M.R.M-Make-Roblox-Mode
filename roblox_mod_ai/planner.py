@@ -13,6 +13,7 @@ from .pre_design_research import RobloxPreDesignResearch
 from .dynamic_architect import RobloxDynamicArchitect, DynamicDesignError, dynamic_design_enabled
 from .gameplay_contract import build_gameplay_contract, arena_round_requested
 from .implementation_blueprint import build_implementation_blueprint
+from .authority_architecture_repair import carried_codegen_authority
 from .detailed_plan import build_detailed_plan, enrich_detailed_plan
 from .server_modules import normalize_dynamic_server_modules
 from .project_modes import validate_mode
@@ -569,10 +570,7 @@ class RobloxGameDesignPlanner:
                     # bounded, explicitly UNVERIFIED obligation list: losing
                     # it here turns an approved deferral into a false hard
                     # architecture error in resolve_dependencies.
-                    "deferred_model_authority": __import__(
-                        "roblox_mod_ai.authority_architecture_repair",
-                        fromlist=["carried_codegen_authority"],
-                    ).carried_codegen_authority(dynamic_design),
+                    "deferred_model_authority": carried_codegen_authority(dynamic_design),
                     "host_world_actions": dynamic_design.get("host_world_actions", {}),
                     "host_world_motion": dynamic_design.get("host_world_motion", {}),
                     "acceptance_facets": dynamic_design["acceptance_facets"],
