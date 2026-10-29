@@ -96,7 +96,8 @@ def carried_codegen_authority(design: dict[str, Any]) -> list[dict[str, Any]]:
                 or not isinstance(remote, str)
                 or not module_name or not remote
                 or key in seen or module is None
-                or getattr(module, "kind", None).value != "server_module"
+                or getattr(getattr(module, "kind", None), "value", None)
+                not in ("server_module", "server_script")
                 or row.get("verified") is not False
                 or row.get("verification_stage") != "codegen"
                 or not isinstance(wire, dict)
