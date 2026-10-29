@@ -170,6 +170,7 @@ class RobloxProductionOrchestrator:
         receipt = WorkReceipt(task_id=f"rmm_{proposal.game_title}_{int(time.time())}", overall_success=False)
         errors: list[str] = []
         tool_results: dict[str, dict] = {}
+        tool_results["mining_world_materializations"] = world_materializations
         # The original architect's errors must survive the transition from
         # source planning to resolve_dependencies. Otherwise the entire
         # failure ZIP reports only secondary unowned requirement symptoms.
@@ -294,6 +295,10 @@ class RobloxProductionOrchestrator:
                 inspect_vehicle_provider_preflight,
             )
             from .vehicle_identity_contract import vehicle_identity_errors
+            from .host_mining_contract import inspect_mining_contract_gates
+            tool_results["mining_contract_gates"] = (
+                inspect_mining_contract_gates(proposal)
+            )
             # Prefer the verified runtime Model provider over a guessed static
             # Craft Part; fall back to unique scene-root binding only when a
             # first-party provider cannot be proven.
