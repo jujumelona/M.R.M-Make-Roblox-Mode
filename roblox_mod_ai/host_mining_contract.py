@@ -347,6 +347,9 @@ def ensure_mining_world_contract(proposal: RobloxProposal) -> list[dict[str, Any
                 r"대량|한\s*번에",
                 module.description + " " + proposal.requested_prompt, re.I):
             rebased = False
+        if is_generic_event and not rebased:
+            # Genuine batch requests must retain their existing event ABI.
+            continue
         # A zero-argument mining request can be secure when the HOST selects
         # the closest planned Part by server-measured player distance.
         planned = mining_world_nodes(proposal, module)
