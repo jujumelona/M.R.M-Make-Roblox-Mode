@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-_BUILD = re.compile(r"\b(?:assembl\w*|construct\w*|build\w*|install\w*)\b", re.I)
+_BUILD = re.compile(r"\b(?:assembl\w*|construct\w*|build\w*|install\w*|attach\w*|mount\w*)\b", re.I)
 _VEHICLE = re.compile(
     r"\b(?:ship|spaceship|spacecraft|vessel|vehicle|rocket|shuttle|craft|"
     r"boat|train|aircraft)\b", re.I
