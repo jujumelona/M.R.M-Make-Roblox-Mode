@@ -105,6 +105,7 @@ def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> st
         and row.get("input") in (
             "RemoteFunction_server_selected_nearest_Part",
             "host_verified_nearest_resource",
+            "host_verified_world_action_Part",
         )
         and not row.get("vehicle_context")
     ]
