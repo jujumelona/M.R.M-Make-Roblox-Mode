@@ -575,3 +575,98 @@ def test_nontransport_resource_event_retains_its_original_contract():
     assert ensure_mining_world_contract(proposal) == []
     assert design["host_actions"]["GatherAction"]["kind"] == "RemoteEvent"
     assert design["world_objects"] == []
+
+
+
+def test_source_owned_mining_rejection_clause_does_not_cancel_valid_extraction():
+    """Rejecting bad requests is not a user prohibition of the requested action."""
+    from roblox_mod_ai.spec import ModuleKind, RobloxModuleSpec, RobloxProposal
+    from roblox_mod_ai.host_mining_contract import (
+        _source_traced_extraction, ensure_mining_world_contract,
+    )
+    from roblox_mod_ai.host_mining import render_host_mining
+
+    services = [
+        ("SourceOwnedExtraction820a4533281Server", "dyn_first"),
+        ("SourceOwnedExtraction160077D3DB3Server", "dyn_second"),
+    ]
+    modules = []
+    game_design = {
+        "dynamic_design": {
+            "world_objects": [],
+            "host_actions": {},
+            "host_typed_actions": {},
+            "remotes": {},
+            "module_world_objects": {},
+            "module_remotes": {},
+        },
+        "implementation_blueprint": {"requirements": []},
+    }
+    design = game_design["dynamic_design"]
+    for i, (name, module_id) in enumerate(services):
+        client_name = name.removesuffix("Server") + "Client"
+        client_id = module_id + "_client"
+        remote = name.removesuffix("Server") + "Action"
+        server = RobloxModuleSpec(
+            module_id=module_id, name=name, kind=ModuleKind.SERVER_MODULE,
+            file_path="src/server/" + name + ".luau",
+            roblox_service="ServerScriptService",
+            description=(
+                "Server rejects invalid resource requests: do not extract "
+                "from invalid deposits. Successful requests debit the world "
+                "deposit and increment the player's owned inventory."
+            ),
+        )
+        client = RobloxModuleSpec(
+            module_id=client_id, name=client_name,
+            kind=ModuleKind.CLIENT_SCRIPT,
+            file_path="src/client/" + client_name + ".client.luau",
+            roblox_service="StarterPlayerScripts",
+            description="Client submits a resource harvesting request.",
+        )
+        modules.extend([server, client])
+        design["host_actions"][remote] = {
+            "service": name, "kind": "RemoteFunction", "max_args": 2,
+        }
+        design["remotes"][remote] = "RemoteFunction"
+        design["host_typed_actions"][remote] = {
+            "server": name, "client": client_name,
+            "transport_only": True,
+            "contract": {
+                "inputs": [{"id": "selection"}, {"id": "quantity"}],
+                "target": {"kind": "none"},
+                "state_changes": [],
+            },
+        }
+        design["module_world_objects"][module_id] = []
+        design["module_world_objects"][client_id] = []
+        design["module_remotes"][module_id] = [remote]
+        design["module_remotes"][client_id] = [remote]
+        game_design["implementation_blueprint"]["requirements"].append({
+            "source": "Gather owned resources from a world deposit",
+            "owners": [name, client_name],
+            "acceptance": (
+                "After accepted world-resource extraction, the player's "
+                "owned inventory increases by the resource quantity actually "
+                "extracted from the validated world deposit; rejected "
+                "requests change nothing."
+            ),
+        })
+    proposal = RobloxProposal(
+        requested_prompt="자원파밍으로 우주선을 만드는 게임",
+        game_title="SourceOwnedMiningSafety",
+        description="Contract test",
+        game_design=game_design,
+        modules=modules,
+    )
+    for m in modules:
+        if m.kind == ModuleKind.SERVER_MODULE:
+            assert _source_traced_extraction(m, proposal)
+    materialized = ensure_mining_world_contract(proposal)
+    assert len(materialized) == 2
+    assert all(x["transport_rebased"] for x in materialized)
+    assert len(set(x["resource_node"] for x in materialized)) == 2
+    assert all(render_host_mining(m, proposal) is not None for m in modules)
+
+    proposal.requested_prompt = "A ship game with no mining or harvesting"
+    assert not _source_traced_extraction(modules[0], proposal)
