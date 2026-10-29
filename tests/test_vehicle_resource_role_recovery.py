@@ -116,3 +116,59 @@ def test_vehicle_builder_identity_uses_same_named_action_in_all_gates():
         file_path="src/server/DisplayVehicleStatusServer.luau",
         description="Read the current status.",
     ))
+
+
+def test_audited_world_extraction_materialization_provenance():
+    from types import SimpleNamespace
+    from roblox_mod_ai.host_mining_contract import _source_traced_extraction
+
+    owner = SimpleNamespace(
+        name="SourceOwnedExtraction820a4533281Server",
+        description="Change the player's owned resource amount after an action.",
+    )
+    requirement = {
+        "source": "Collect resources to construct and launch a vehicle.",
+        "owners": [owner.name, "OtherClient"],
+        "acceptance": (
+            "After accepted world-resource extraction, the player's owned "
+            "inventory increases by the resource quantity actually extracted "
+            "from the validated world deposit; rejected requests change nothing."
+        ),
+    }
+    proposal = SimpleNamespace(
+        requested_prompt="Collect and sell world resources to build a ship.",
+        game_design={"implementation_blueprint": {
+            "requirements": [requirement],
+        }},
+    )
+    assert _source_traced_extraction(owner, proposal)
+    requirement["owners"] = ["UnrelatedTradeServer"]
+    assert not _source_traced_extraction(owner, proposal)
+    requirement["owners"] = [owner.name]
+    requirement["acceptance"] = "Display the inventory but never alter it."
+    assert not _source_traced_extraction(owner, proposal)
+    requirement["acceptance"] = (
+        "Extract world minerals into the player's owned inventory."
+    )
+    proposal.requested_prompt = "A spaceship game without mining or harvesting"
+    assert not _source_traced_extraction(owner, proposal)
+
+
+def test_audited_mining_does_not_steal_unrelated_world_targets():
+    from types import SimpleNamespace
+    from roblox_mod_ai.host_mining_contract import _source_traced_extraction
+
+    owner = SimpleNamespace(name="OwnedResourceMarketSale4533282Server",
+                            description="Sell ore for credits.")
+    proposal = SimpleNamespace(
+        requested_prompt="Mine world ore and trade it.",
+        game_design={"implementation_blueprint": {"requirements": [{
+            "source": "Sell mining products.",
+            "owners": [owner.name],
+            "acceptance": (
+                "After the world resource extraction the player receives "
+                "owned ore inventory."
+            ),
+        }]}},
+    )
+    assert not _source_traced_extraction(owner, proposal)
