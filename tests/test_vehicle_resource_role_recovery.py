@@ -671,3 +671,139 @@ def test_source_owned_mining_rejection_clause_does_not_cancel_valid_extraction()
 
     proposal.requested_prompt = "A ship game with no mining or harvesting"
     assert not _source_traced_extraction(modules[0], proposal)
+
+
+
+def test_compiled_plan_carries_only_unverified_bound_authority_obligations():
+    """Regression: 50th run's planner/production authority metadata loss."""
+    from copy import deepcopy
+    from roblox_mod_ai.spec import ModuleKind, RobloxModuleSpec, RobloxProposal
+    from roblox_mod_ai.authority_architecture_repair import carried_codegen_authority
+    from roblox_mod_ai.model_action_authority import (
+        partition_codegen_authority, unproven_model_actions,
+    )
+    from roblox_mod_ai.planner import RobloxGameDesignPlanner
+    import inspect
+
+    server = RobloxModuleSpec(
+        module_id="dyn_paid_1",
+        name="SourceOwnedTransactionServer",
+        kind=ModuleKind.SERVER_MODULE,
+        file_path="src/server/SourceOwnedTransactionServer.luau",
+        roblox_service="ServerScriptService",
+        description="Server checks owned currency and purchase records.",
+    )
+    client = RobloxModuleSpec(
+        module_id="dyn_paid_2", name="SourceOwnedTransactionClient",
+        kind=ModuleKind.CLIENT_SCRIPT,
+        file_path="src/client/SourceOwnedTransactionClient.client.luau",
+        roblox_service="StarterPlayerScripts",
+        description="Player requests an upgrade.",
+    )
+    remote = "SourceOwnedTransactionAction"
+    design = {
+        "modules": [server, client],
+        "host_actions": {remote: {
+            "service": server.name, "kind": "RemoteFunction", "max_args": 1,
+        }},
+        "remotes": {remote: "RemoteFunction"},
+        "host_typed_actions": {remote: {
+            "server": server.name, "client": client.name,
+            "transport_only": True,
+            "contract": {"target": {"kind": "none"},
+                         "state_changes": [],
+                         "inputs": [{"id": "selection", "type": "text"},
+                                    {"id": "quantity", "type": "integer"}]},
+        }},
+        "module_remotes": {
+            server.module_id: [remote],
+            client.module_id: [remote],
+        },
+        "module_world_objects": {},
+        "deferred_model_authority": [{
+            "module": server.name, "remote": remote,
+            "required_repair": "Prove actual server-owned currency mutation",
+            "verified": False, "verification_stage": "codegen",
+        }],
+    }
+    copied = carried_codegen_authority(design)
+    assert copied == design["deferred_model_authority"]
+    assert copied is not design["deferred_model_authority"]
+    copied[0]["verified"] = True
+    assert design["deferred_model_authority"][0]["verified"] is False
+    assert "carried_codegen_authority(dynamic_design)" in inspect.getsource(
+        RobloxGameDesignPlanner.plan
+    )
+
+    proposal = RobloxProposal(
+        requested_prompt="Buy an upgrade with earned funds.",
+        game_title="AuthorityHandoff", description="Test",
+        game_design={"dynamic_design": {
+            **deepcopy(design),
+            "deferred_model_authority": carried_codegen_authority(design),
+        }},
+        modules=[server, client],
+    )
+    scope = {"modules": [{
+        "name": server.name, "strategy": "bounded_typed_server_action",
+    }]}
+    gaps = unproven_model_actions(proposal, scope)
+    assert len(gaps) == 1
+    assert gaps[0]["reason"] == "AUTHORITY_PRODUCER_NOT_DECLARED"
+    blockers, deferred = partition_codegen_authority(gaps)
+    assert not blockers and len(deferred) == 1
+    assert (deferred[0]["module"], deferred[0]["remote"]) == (
+        copied[0]["module"], copied[0]["remote"]
+    )
+
+
+def test_codegen_authority_handoff_rejects_forged_or_stale_routes():
+    from copy import deepcopy
+    import pytest
+    from roblox_mod_ai.spec import ModuleKind, RobloxModuleSpec
+    from roblox_mod_ai.authority_architecture_repair import carried_codegen_authority
+
+    server = RobloxModuleSpec(
+        module_id="dyn_purchase",
+        name="PurchaseService",
+        kind=ModuleKind.SERVER_MODULE,
+        file_path="src/server/PurchaseService.luau",
+        roblox_service="ServerScriptService",
+        description="Server handles paid transactions.",
+    )
+    original = {
+        "modules": [server],
+        "host_actions": {"Buy": {
+            "service": "PurchaseService", "kind": "RemoteFunction",
+        }},
+        "host_typed_actions": {"Buy": {
+            "server": "PurchaseService", "transport_only": True,
+        }},
+        "module_remotes": {"dyn_purchase": ["Buy"]},
+        "deferred_model_authority": [{
+            "module": "PurchaseService", "remote": "Buy",
+            "verified": False, "verification_stage": "codegen",
+        }],
+    }
+    assert len(carried_codegen_authority(original)) == 1
+    for change in (
+        {"verified": True},
+        {"verification_stage": "passed"},
+        {"remote": "Other"},
+        {"module": "OtherServer"},
+    ):
+        broken = deepcopy(original)
+        broken["deferred_model_authority"][0].update(change)
+        with pytest.raises(ValueError, match="DEFERRED_AUTHORITY"):
+            carried_codegen_authority(broken)
+
+    duplicate = deepcopy(original)
+    duplicate["deferred_model_authority"].append(
+        deepcopy(duplicate["deferred_model_authority"][0])
+    )
+    with pytest.raises(ValueError, match="DEFERRED_AUTHORITY"):
+        carried_codegen_authority(duplicate)
+    unbound = deepcopy(original)
+    unbound["module_remotes"] = {"dyn_purchase": []}
+    with pytest.raises(ValueError, match="DEFERRED_AUTHORITY"):
+        carried_codegen_authority(unbound)
