@@ -107,6 +107,53 @@ def _is_named_mining_service(name: str, description: str, prompt: str) -> bool:
     )
 
 
+def _source_traced_extraction(module: Any, proposal: RobloxProposal) -> bool:
+    """Recover a world-resource producer using audited source ownership.
+
+    Model-authored service descriptions may omit the words "mine" and
+    "harvest" even while the audited requirement explicitly assigns that
+    exact service an extraction from a validated deposit into owned inventory.
+    This is *not* permission to invent a reward: the actual host miner still
+    requires one authenticated Remote and an owned, materialized world Part.
+    """
+    if _FORBID_MINE.search(proposal.requested_prompt):
+        return False
+    name = re.sub(
+        r"(?<=[a-z])(?=[A-Z])|(?<=[A-Za-z])(?=\d)",
+        " ", str(getattr(module, "name", "")),
+    )
+    description = str(getattr(module, "description", "") or "")
+    if _NEGATED_EXTRACT.search(description):
+        return False
+    role = name + " " + description
+    if not re.search(r"\b(?:extract\w*|harvest\w*|mining|mine|gather\w*)\b",
+                     role, re.I):
+        return False
+    ledger = (proposal.game_design.get("implementation_blueprint") or {})
+    requirements = ledger.get("requirements") or []
+    if not isinstance(requirements, list):
+        return False
+    for item in requirements:
+        if (not isinstance(item, dict)
+                or module.name not in (item.get("owners") or [])
+                or not isinstance(item.get("source"), str)
+                or not item["source"].strip()):
+            continue
+        acceptance = str(item.get("acceptance") or "")
+        if (re.search(r"\b(?:extract\w*|harvest\w*|mine|gather\w*)\b",
+                      acceptance, re.I)
+                and re.search(r"\b(?:resource\w*|mineral\w*|ores?)\b",
+                              acceptance, re.I)
+                and re.search(r"\b(?:world|deposit|node|mineable)\b",
+                              acceptance, re.I)
+                and re.search(r"\b(?:owned|player['’]?s?)\b",
+                              acceptance, re.I)
+                and re.search(r"\b(?:inventory|cargo)\b",
+                              acceptance, re.I)):
+            return True
+    return False
+
+
 def ensure_mining_world_contract(proposal: RobloxProposal) -> list[dict[str, Any]]:
     """Ensure host-owned mining has an actual declared Part, never a fake yield.
 
@@ -148,7 +195,8 @@ def ensure_mining_world_contract(proposal: RobloxProposal) -> list[dict[str, Any
     for module in proposal.modules:
         if module.kind != ModuleKind.SERVER_MODULE or not module.module_id.startswith("dyn_"):
             continue
-        if not _is_named_mining_service(module.name, module.description, proposal.requested_prompt):
+        if not (_is_named_mining_service(module.name, module.description, proposal.requested_prompt)
+                or _source_traced_extraction(module, proposal)):
             continue
         routed = [(name, row) for name, row in actions.items()
                   if isinstance(row, dict) and row.get("service") == module.name]
