@@ -172,3 +172,80 @@ def test_audited_mining_does_not_steal_unrelated_world_targets():
         }]}},
     )
     assert not _source_traced_extraction(owner, proposal)
+
+
+
+def test_source_owned_quantity_accounting_materializes_real_node_and_miner():
+    from roblox_mod_ai.spec import (
+        ModuleKind, RobloxModuleSpec, RobloxProposal,
+    )
+    from roblox_mod_ai.host_mining_contract import ensure_mining_world_contract
+    from roblox_mod_ai.host_mining import render_host_mining
+
+    server_name = "SourceOwnedExtraction820a4533281Server"
+    client_name = "SourceOwnedExtraction820a4533281Client"
+    remote = "SourceOwnedExtraction820a4533281Action"
+    server = RobloxModuleSpec(
+        module_id="dyn_extract_s", name=server_name,
+        kind=ModuleKind.SERVER_MODULE,
+        file_path="src/server/SourceOwnedExtraction820a4533281Server.luau",
+        roblox_service="ServerScriptService",
+        description="Server transfers the resource quantity to owned inventory.",
+    )
+    client = RobloxModuleSpec(
+        module_id="dyn_extract_c", name=client_name,
+        kind=ModuleKind.CLIENT_SCRIPT,
+        file_path="src/client/SourceOwnedExtraction820a4533281Client.client.luau",
+        roblox_service="StarterPlayerScripts",
+        description="Client requests a resource extraction.",
+    )
+    design = {
+        "world_objects": [],
+        "host_actions": {
+            remote: {"service": server_name, "kind": "RemoteFunction",
+                     "max_args": 2}
+        },
+        "remotes": {remote: "RemoteFunction"},
+        "host_typed_actions": {remote: {
+            "server": server_name,
+            "client": client_name,
+            "transport_only": True,
+            "contract": {
+                "inputs": [{"id": "selection"}, {"id": "quantity"}],
+                "target": {"kind": "none"},
+                "state_changes": [],
+            },
+        }},
+        "module_world_objects": {
+            server.module_id: [], client.module_id: [],
+        },
+        "module_remotes": {
+            server.module_id: [remote], client.module_id: [remote],
+        },
+    }
+    proposal = RobloxProposal(
+        requested_prompt="Extract resources from world deposits to construct a ship.",
+        game_title="GenericResourceVehicle",
+        description="Test",
+        game_design={
+            "dynamic_design": design,
+            "implementation_blueprint": {"requirements": [{
+                "source": "Gather world resources.",
+                "owners": [server_name, client_name],
+                "acceptance": (
+                    "Accepted world-resource extraction adds the actually "
+                    "extracted mineral quantity to the player's owned inventory "
+                    "from a validated deposit."
+                ),
+            }]},
+        },
+        modules=[server, client],
+    )
+    changes = ensure_mining_world_contract(proposal)
+    assert len(changes) == 1
+    assert changes[0]["transport_rebased"] is True
+    assert changes[0]["resource_node"] in design["module_world_objects"][server.module_id]
+    assert design["host_actions"][remote]["max_args"] == 0
+    assert remote not in design["host_typed_actions"]
+    assert render_host_mining(server, proposal) is not None
+    assert render_host_mining(client, proposal) is not None
