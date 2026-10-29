@@ -52,3 +52,37 @@ def test_source_prohibition_overrides_role_words():
         "ResourceOwnershipTransferServer", description,
         "A spaceship shop with no mining or harvesting allowed."
     )
+
+def test_blueprint_owned_attachment_requires_exact_provenance():
+    from types import SimpleNamespace
+    from roblox_mod_ai.host_ship_attachment import _source_linked_section_builder
+
+    owner = SimpleNamespace(
+        name="AttachVehicleSectionServer",
+        description="Create one owned spacecraft section.",
+    )
+    trace = {
+        "source": "Construct a spacecraft from separately attached sections.",
+        "owners": [owner.name],
+        "acceptance": "The owned spacecraft has one additional section attached.",
+    }
+    design = {
+        "host_world_motion": {
+            "DepartVehicleServer": {"kind": "vehicle_world_transition"}
+        },
+        "host_actions": {
+            "DepartRemote": {
+                "service": "DepartVehicleServer",
+                "kind": "RemoteFunction",
+            }
+        },
+        "host_typed_actions": {"DepartRemote": {"transport_only": True}},
+        "remotes": {"DepartRemote": "RemoteFunction"},
+    }
+    proposal = SimpleNamespace(game_design={
+        "implementation_blueprint": {"requirements": [trace]},
+        "dynamic_design": design,
+    })
+    assert _source_linked_section_builder(owner, proposal)
+    trace["owners"] = ["UnrelatedShopServer"]
+    assert not _source_linked_section_builder(owner, proposal)
