@@ -123,8 +123,14 @@ def _source_traced_extraction(module: Any, proposal: RobloxProposal) -> bool:
         " ", str(getattr(module, "name", "")),
     )
     description = str(getattr(module, "description", "") or "")
-    if _NEGATED_EXTRACT.search(description):
-        return False
+    # A safe server action often documents what it must NOT do on rejection:
+    # "do not extract from an invalid node". The old broad negation regex
+    # treated that security clause as a denial of the entire resource action,
+    # even when the independently audited source contract REQUIRED extraction.
+    # Enforce the user's explicit prohibition above; use actual source-owned
+    # acceptance, not a description's negative rejection sentence, for this
+    # narrow model -> host capability handoff. Gameplay and transport remain
+    # checked by ensure_mining_world_contract and render_host_mining.
     role = name + " " + description
     if not re.search(r"\b(?:extract\w*|harvest\w*|mining|mine|gather\w*)\b",
                      role, re.I):
@@ -212,6 +218,9 @@ def inspect_mining_contract_gates(proposal: RobloxProposal) -> list[dict[str, An
             "recognized_by_description": named,
             "role_candidate_by_name": role_candidate,
             "recognized_by_source_blueprint": traced,
+            "description_mentions_rejected_extraction": bool(
+                _NEGATED_EXTRACT.search(module.description)
+            ),
             "remote_routes": route_kinds,
             "world_routes": [key for key, _ in world_routed],
             "owned_world_nodes": mining_world_nodes(proposal, module),
