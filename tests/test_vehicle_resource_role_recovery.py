@@ -370,3 +370,11 @@ def test_mining_to_assembled_vehicle_to_launch_is_one_host_actor():
     assert "function Service.GetOwnedActor(player)" in generated
     assert 'seat.Name = "PilotSeat"' in generated
     assert 'joint.Name = "SectionWeld"' in generated
+    client_source = try_ship_attachment(modules[3], proposal, FixedCatalog())
+    assert client_source is not None
+    assert names[1] + "Action" in client_source
+    from roblox_mod_ai.host_vehicle_departure import render_departure
+    departure_source = render_departure(modules[4], proposal)
+    assert departure_source is not None
+    assert "GetOwnedActor(player)" in departure_source
+    assert names[1] + "Server" in departure_source
