@@ -178,7 +178,7 @@ def inspect_mining_contract_gates(proposal: RobloxProposal) -> list[dict[str, An
         traced = bool(_source_traced_extraction(module, proposal))
         role_candidate = bool(re.search(
             r"\b(?:mine|mining|gather\w*|extract\w*|harvest\w*)\b",
-            re.sub(r"(?<=[a-z])(?=[A-Z])|(?<=[A-Za-z])(?=\\d)",
+            re.sub(r"(?<=[a-z])(?=[A-Z])|(?<=[A-Za-z])(?=\d)",
                    " ", module.name), re.I,
         ))
         if not (named or traced or role_candidate):
