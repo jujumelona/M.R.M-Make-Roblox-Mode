@@ -210,9 +210,13 @@ def ensure_mining_world_contract(proposal: RobloxProposal) -> list[dict[str, Any
         rebased = host_transport_only(remote)
         # Preserve source-requested batch/multi-item mining semantics; only
         # replace an ungrounded generic host transport shell.
+        # "quantity" and "수량" describe ordinary transaction accounting
+        # too; they do not request batch mining. Reject host one-at-a-time
+        # normalization only for an explicit multi-item *single request*.
         if rebased and re.search(
-                r"\b(?:batch(?:es)?|bulk|quantity|multiple\s+at\s+once)\b|"
-                r"대량|수량|한\s*번에",
+                r"\b(?:batch(?:es)?|bulk|multiple\s+at\s+once|"
+                r"multiple\s+(?:items?|ores?|resources?)\s+per\s+(?:action|click))\b|"
+                r"대량|한\s*번에",
                 module.description + " " + proposal.requested_prompt, re.I):
             rebased = False
         # A zero-argument mining request can be secure when the HOST selects
