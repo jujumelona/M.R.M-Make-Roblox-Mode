@@ -303,10 +303,39 @@ def ensure_mining_world_contract(proposal: RobloxProposal) -> list[dict[str, Any
                 "basis": "existing_source_owned_world_interaction",
             })
             continue
-        if len(routes) != 1 or routes[0].get("kind") != "RemoteFunction":
+        if len(routes) != 1:
             continue
         remote, route = routed[0]
         rebased = host_transport_only(remote)
+        # A transport-only RemoteEvent has no authored gameplay semantics.
+        # A verified resource gatherer needs a request/response API because
+        # the server returns accepted quantity and remaining inventory.
+        # Change both declarations together, but ONLY for one source-owned
+        # server/client pair with the exact empty generic transport schema.
+        is_generic_event = False
+        if (route.get("kind") == "RemoteEvent"
+                and (design.get("remotes") or {}).get(remote) == "RemoteEvent"
+                and rebased):
+            wire = (design.get("host_typed_actions") or {}).get(remote) or {}
+            client_name = module.name.removesuffix("Server") + "Client"
+            peers = [p for p in proposal.modules
+                     if p.name == client_name and p.kind == ModuleKind.CLIENT_SCRIPT]
+            refs = design.get("module_remotes") or {}
+            legal_modules = {module.module_id} | {p.module_id for p in peers}
+            is_generic_event = bool(
+                len(peers) == 1
+                and wire.get("server") == module.name
+                and wire.get("client") == client_name
+                and refs.get(module.module_id) == [remote]
+                and refs.get(peers[0].module_id) == [remote]
+                and all(
+                    remote not in remote_list
+                    for mid, remote_list in refs.items()
+                    if mid not in legal_modules and isinstance(remote_list, list)
+                )
+            )
+        if route.get("kind") != "RemoteFunction" and not is_generic_event:
+            continue
         # Preserve source-requested batch/multi-item mining semantics; only
         # replace an ungrounded generic host transport shell.
         # "quantity" and "수량" describe ordinary transaction accounting
@@ -326,6 +355,9 @@ def ensure_mining_world_contract(proposal: RobloxProposal) -> list[dict[str, Any
             # unsupported transport-only input when an actual server node can
             # safely satisfy the requested one-action mining effect.
             if rebased:
+                if is_generic_event:
+                    route["kind"] = "RemoteFunction"
+                    design["remotes"][remote] = "RemoteFunction"
                 route["max_args"] = 0
                 design["host_typed_actions"].pop(remote, None)
                 mutations.append({
@@ -373,6 +405,9 @@ def ensure_mining_world_contract(proposal: RobloxProposal) -> list[dict[str, Any
         if rebased:
             # Both the UI and gateway read the SAME mutable design route.
             # They now call a deterministic host template, not 9B Luau.
+            if is_generic_event:
+                route["kind"] = "RemoteFunction"
+                design["remotes"][remote] = "RemoteFunction"
             route["max_args"] = 0
             design["host_typed_actions"].pop(remote, None)
         mutations.append({
