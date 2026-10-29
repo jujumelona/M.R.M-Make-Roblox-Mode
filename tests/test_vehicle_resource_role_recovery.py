@@ -474,3 +474,104 @@ def test_world_mining_route_must_not_take_non_part_or_another_service():
     assert ensure_mining_world_contract(proposal) == []
     assert design["module_world_objects"][server.module_id] == []
     assert len(design["world_objects"]) == 1
+
+
+
+def test_source_traced_generic_resource_event_can_use_host_mining():
+    from roblox_mod_ai.spec import ModuleKind, RobloxModuleSpec, RobloxProposal
+    from roblox_mod_ai.host_mining_contract import ensure_mining_world_contract
+    from roblox_mod_ai.host_mining import render_host_mining
+
+    stem = "SourceOwnedExtraction"
+    server = RobloxModuleSpec(
+        module_id="dyn_s", name=stem + "Server",
+        kind=ModuleKind.SERVER_MODULE,
+        file_path="src/server/SourceOwnedExtractionServer.luau",
+        roblox_service="ServerScriptService",
+        description="Server transfers extracted resources into owned inventory.",
+    )
+    client = RobloxModuleSpec(
+        module_id="dyn_c", name=stem + "Client",
+        kind=ModuleKind.CLIENT_SCRIPT,
+        file_path="src/client/SourceOwnedExtractionClient.client.luau",
+        roblox_service="StarterPlayerScripts",
+        description="Client requests a harvest.",
+    )
+    remote = "ExtractResourceAction"
+    design = {
+        "world_objects": [], "host_actions": {remote: {
+            "service": server.name, "kind": "RemoteEvent",
+            "max_args": 2,
+        }},
+        "host_typed_actions": {remote: {
+            "server": server.name, "client": client.name,
+            "transport_only": True,
+            "contract": {
+                "target": {"kind": "none"}, "state_changes": [],
+                "inputs": [{"id": "selection"}, {"id": "quantity"}],
+            },
+        }},
+        "remotes": {remote: "RemoteEvent"},
+        "module_world_objects": {
+            server.module_id: [], client.module_id: [],
+        },
+        "module_remotes": {
+            server.module_id: [remote], client.module_id: [remote],
+        },
+    }
+    proposal = RobloxProposal(
+        requested_prompt="Gather world resources and use them to build vehicles.",
+        game_title="GenericGatherer", description="Test",
+        game_design={
+            "dynamic_design": design,
+            "implementation_blueprint": {"requirements": [{
+                "source": "Gather world resources into the inventory.",
+                "owners": [server.name, client.name],
+                "acceptance": (
+                    "Extracted world resources increase the player's owned "
+                    "inventory only after the server validates a deposit."
+                ),
+            }]},
+        },
+        modules=[server, client],
+    )
+    changes = ensure_mining_world_contract(proposal)
+    assert len(changes) == 1 and changes[0]["transport_rebased"]
+    assert design["host_actions"][remote]["kind"] == "RemoteFunction"
+    assert design["remotes"][remote] == "RemoteFunction"
+    assert design["host_actions"][remote]["max_args"] == 0
+    assert remote not in design["host_typed_actions"]
+    assert render_host_mining(server, proposal) is not None
+    assert render_host_mining(client, proposal) is not None
+
+
+def test_nontransport_resource_event_retains_its_original_contract():
+    from roblox_mod_ai.spec import ModuleKind, RobloxModuleSpec, RobloxProposal
+    from roblox_mod_ai.host_mining_contract import ensure_mining_world_contract
+
+    server = RobloxModuleSpec(
+        module_id="dyn_server", name="GatherResourceServer",
+        kind=ModuleKind.SERVER_MODULE,
+        file_path="src/server/GatherResourceServer.luau",
+        roblox_service="ServerScriptService",
+        description="Server gathers owned ore from world deposits.",
+    )
+    design = {
+        "world_objects": [], "host_actions": {"GatherAction": {
+            "service": server.name, "kind": "RemoteEvent",
+        }},
+        "host_typed_actions": {"GatherAction": {
+            "server": server.name, "transport_only": False,
+            "contract": {"inputs": [{"id": "resourceId"}]},
+        }},
+        "remotes": {"GatherAction": "RemoteEvent"},
+        "module_world_objects": {server.module_id: []},
+    }
+    proposal = RobloxProposal(
+        requested_prompt="Gather resources from world deposits.",
+        game_title="ActualEventContract", description="Test",
+        game_design={"dynamic_design": design}, modules=[server],
+    )
+    assert ensure_mining_world_contract(proposal) == []
+    assert design["host_actions"]["GatherAction"]["kind"] == "RemoteEvent"
+    assert design["world_objects"] == []
