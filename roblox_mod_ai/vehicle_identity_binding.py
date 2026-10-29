@@ -28,6 +28,73 @@ _AUXILIARY = re.compile(
 _VALID_CLASS = {"Part", "MeshPart", "Model", "UnionOperation"}
 
 
+
+def inspect_vehicle_provider_preflight(proposal: Any) -> list[dict[str, Any]]:
+    """Explain why a source-linked vehicle could not be bound.
+
+    Read-only diagnostics: never create objects, claim physics verification,
+    or turn an invalid provider into a valid one.
+    """
+    from .host_vehicle_actor_capability import (
+        eligible_vehicle_actor_builder, matching_launch_provider,
+    )
+    from .host_mining import render_host_mining
+    from .spec import ModuleKind
+
+    design = (getattr(proposal, "game_design", {}) or {}).get("dynamic_design")
+    if not isinstance(design, dict):
+        return []
+    motions = design.get("host_world_motion") or {}
+    modules = {m.name: m for m in getattr(proposal, "modules", ())}
+    miners = [
+        m.name for m in modules.values()
+        if getattr(m, "kind", None) == ModuleKind.SERVER_MODULE
+        and render_host_mining(m, proposal) is not None
+    ]
+    builders = [
+        m for m in modules.values()
+        if getattr(m, "kind", None) == ModuleKind.SERVER_MODULE
+        and is_authored_vehicle_builder(m)
+    ]
+    rows = []
+    for launch_name, motion in motions.items():
+        if not isinstance(motion, dict) or motion.get("kind") != "vehicle_world_transition":
+            continue
+        routes = [
+            (remote, row) for remote, row in
+            (design.get("host_actions") or {}).items()
+            if isinstance(row, dict) and row.get("service") == launch_name
+        ]
+        route = routes[0][0] if len(routes) == 1 else None
+        typed = ((design.get("host_typed_actions") or {}).get(route)
+                 if route is not None else None)
+        rows.append({
+            "launch": launch_name,
+            "actor_identity_source": motion.get("actor_identity_source"),
+            "launch_remote_count": len(routes),
+            "launch_remote": route,
+            "launch_transport_only": (
+                typed.get("transport_only") if isinstance(typed, dict) else None
+            ),
+            "host_mining_producers": miners,
+            "builders": [
+                {
+                    "name": builder.name,
+                    "module_id": builder.module_id,
+                    "host_actor_compiler": eligible_vehicle_actor_builder(
+                        builder, proposal
+                    ),
+                    "matching_launch_protocol": matching_launch_provider(
+                        proposal, builder, launch_name
+                    ),
+                }
+                for builder in builders
+            ],
+            "source_only_not_studio_verified": True,
+        })
+    return rows
+
+
 def bind_verified_vehicle_providers(proposal: Any) -> list[dict[str, Any]]:
     """Bind a launch to the unique first-party assembled Model provider.
 
