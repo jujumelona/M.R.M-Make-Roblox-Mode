@@ -286,7 +286,8 @@ def test_mining_to_assembled_vehicle_to_launch_is_one_host_actor():
         cli = stem + "Client"
         remote = stem + "Action"
         desc = [
-            "Server transfers the mined resource quantity into owned inventory.",
+            "Server transfers the mined resource quantity into owned inventory. "
+            "When the request is invalid, do not extract from the world node.",
             "Server attaches spaceship sections using mined owned resources.",
             "Server launches a spacecraft and keeps passengers aboard.",
         ][idx]
