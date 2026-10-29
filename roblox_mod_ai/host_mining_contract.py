@@ -75,7 +75,7 @@ def _is_named_mining_service(name: str, description: str, prompt: str) -> bool:
         return any(abs(a.start() - b.start()) <= maximum
                    for a in lhs for b in rhs)
 
-    extraction = r"\b(?:extract\w*|harvest\w*|mine\w*)\b"
+    extraction = r"\b(?:extract\w*|harvest\w*|mine|mines|mined|mining)\b"
     physical_source = (
         r"\b(?:mineable|harvestable|resource\s+(?:node|source)|"
         r"ore\s+(?:node|deposit)|mineral\s+deposit)\b"
