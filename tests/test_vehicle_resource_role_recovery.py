@@ -86,3 +86,33 @@ def test_blueprint_owned_attachment_requires_exact_provenance():
     assert _source_linked_section_builder(owner, proposal)
     trace["owners"] = ["UnrelatedShopServer"]
     assert not _source_linked_section_builder(owner, proposal)
+
+
+def test_vehicle_builder_identity_uses_same_named_action_in_all_gates():
+    from types import SimpleNamespace
+    from roblox_mod_ai.vehicle_identity_contract import (
+        is_authored_vehicle_builder, relevant_candidates,
+    )
+
+    builder = SimpleNamespace(
+        name="AttachVehicleSectionServer",
+        module_id="dyn_attach_vehicle",
+        file_path="src/server/AttachVehicleSectionServer.luau",
+        description="Create one owned spacecraft section.",
+    )
+    consumer = SimpleNamespace(
+        name="DepartVehicleServer",
+        module_id="dyn_launch_vehicle",
+        file_path="src/server/DepartVehicleServer.luau",
+        description="Launch the player's spacecraft.",
+    )
+    assert is_authored_vehicle_builder(builder)
+    assert relevant_candidates(
+        {builder.name: builder, consumer.name: consumer}, consumer.name
+    ) == [builder]
+    assert not is_authored_vehicle_builder(SimpleNamespace(
+        name="DisplayVehicleStatusServer",
+        module_id="dyn_status",
+        file_path="src/server/DisplayVehicleStatusServer.luau",
+        description="Read the current status.",
+    ))
