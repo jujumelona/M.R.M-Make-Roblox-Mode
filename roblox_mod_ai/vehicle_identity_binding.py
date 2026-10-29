@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .vehicle_identity_contract import _BUILD, _VEHICLE
+from .vehicle_identity_contract import is_authored_vehicle_builder
 
 _VEHICLE_NAME = re.compile(
     r"ship|spacecraft|craft|vehicle|vessel|rocket|shuttle|"
@@ -52,8 +52,7 @@ def bind_verified_vehicle_providers(proposal: Any) -> list[dict[str, Any]]:
     builders = [
         m for m in modules.values()
         if getattr(m, "kind", None) == ModuleKind.SERVER_MODULE
-        and _BUILD.search(str(getattr(m, "description", "")))
-        and _VEHICLE.search(str(getattr(m, "description", "")))
+        and is_authored_vehicle_builder(m)
         and eligible_vehicle_actor_builder(m, proposal) is not None
     ]
     # Refuse ambiguous builders: only an actual host compiled builder can
@@ -152,10 +151,7 @@ def bind_vehicle_actors(proposal: Any) -> list[dict[str, Any]]:
     modules = {m.name: m for m in getattr(proposal, "modules", ())}
     builders = [
         m for m in modules.values()
-        if str(getattr(m, "module_id", "")).startswith("dyn_")
-        and str(getattr(m, "file_path", "")).startswith("src/server/")
-        and _BUILD.search(str(getattr(m, "description", "")))
-        and _VEHICLE.search(str(getattr(m, "description", "")))
+        if is_authored_vehicle_builder(m)
     ]
     if not builders:
         return []
