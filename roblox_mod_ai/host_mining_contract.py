@@ -75,18 +75,18 @@ def _is_named_mining_service(name: str, description: str, prompt: str) -> bool:
         return any(abs(a.start() - b.start()) <= maximum
                    for a in lhs for b in rhs)
 
-    extraction = r"\\b(?:extract\\w*|harvest\\w*|mine\\w*)\\b"
+    extraction = r"\b(?:extract\\w*|harvest\\w*|mine\\w*)\b"
     physical_source = (
-        r"\\b(?:mineable|harvestable|resource\\s+(?:node|source)|"
-        r"ore\\s+(?:node|deposit)|mineral\\s+deposit)\\b"
+        r"\b(?:mineable|harvestable|resource\s+(?:node|source)|"
+        r"ore\s+(?:node|deposit)|mineral\s+deposit)\b"
     )
     owned_inventory = (
-        r"\\b(?:player['’]?s?|owned)\\b.{0,95}\\b(?:inventory|cargo)\\b"
+        r"\b(?:player['’]?s?|owned)\b.{0,95}\b(?:inventory|cargo)\b"
     )
     source_owned_extraction = bool(
         not _NEGATED_EXTRACT.search(description)
         and nearby(extraction, physical_source, 190)
-        and nearby(extraction, r"\\b(?:resources?|minerals?|ores?)\\b", 160)
+        and nearby(extraction, r"\b(?:resources?|minerals?|ores?)\b", 160)
         and nearby(extraction, owned_inventory, 250)
     )
     # Short planner-generated module names can truncate "Gathering" to
