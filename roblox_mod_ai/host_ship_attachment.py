@@ -52,24 +52,24 @@ def _source_linked_section_builder(owner: Any, proposal: Any) -> bool:
     # Never infer assembly from a shared "ship" keyword or a sale catalog.
     if not authored:
         words = re.sub(
-            r"(?<=[a-z])(?=[A-Z])|(?<=[A-Za-z])(?=\\d)", " ",
+            r"(?<=[a-z])(?=[A-Z])|(?<=[A-Za-z])(?=\d)", " ",
             str(getattr(owner, "name", "")),
         )
         expected = (
-            re.search(r"\\b(?:attach|install|assembl|construct|build)\\w*\\b", words, re.I)
-            and re.search(r"\\b(?:ship|spaceship|spacecraft|vessel|craft)\\b", words, re.I)
-            and re.search(r"\\b(?:part|section|component|module)s?\\b", words, re.I)
+            re.search(r"\b(?:attach|install|assembl|construct|build)\w*\b", words, re.I)
+            and re.search(r"\b(?:ship|spaceship|spacecraft|vessel|craft)\b", words, re.I)
+            and re.search(r"\b(?:part|section|component|module)s?\b", words, re.I)
         )
         blueprint = (proposal.game_design or {}).get("implementation_blueprint") or {}
         traced = any(
             isinstance(row, dict)
             and owner.name in (row.get("owners") or [])
             and isinstance(row.get("source"), str) and bool(row["source"].strip())
-            and re.search(r"\\b(?:ship|spaceship|spacecraft|vessel|craft)\\b",
+            and re.search(r"\b(?:ship|spaceship|spacecraft|vessel|craft)\b",
                           str(row.get("acceptance", "")), re.I)
-            and re.search(r"\\b(?:part|section|component|module)s?\\b",
+            and re.search(r"\b(?:part|section|component|module)s?\b",
                           str(row.get("acceptance", "")), re.I)
-            and re.search(r"\\b(?:attach|install|assembl|construct|build)\\w*\\b",
+            and re.search(r"\b(?:attach|install|assembl|construct|build)\w*\b",
                           str(row.get("acceptance", "")), re.I)
             for row in (blueprint.get("requirements") or [])
         )
