@@ -64,21 +64,30 @@ def _is_named_mining_service(name: str, description: str, prompt: str) -> bool:
     # The caller still requires one genuine server RemoteFunction, a source
     # request for mining, unique world target, and an exclusively transport-
     # only two-field ABI before handing off to the executable host miner.
+    # A resource transition remains the same gameplay action when a small
+    # model mentions the player's inventory BEFORE the mineable world source.
+    # Require a local connection from the extraction verb to all three
+    # independently relevant facts; matching the word "resource" alone would
+    # incorrectly turn a shop or inventory reader into a mine.
+    def nearby(left: str, right: str, maximum: int) -> bool:
+        lhs = list(re.finditer(left, description, re.I))
+        rhs = list(re.finditer(right, description, re.I))
+        return any(abs(a.start() - b.start()) <= maximum
+                   for a in lhs for b in rhs)
+
+    extraction = r"\\b(?:extract\\w*|harvest\\w*|mine\\w*)\\b"
+    physical_source = (
+        r"\\b(?:mineable|harvestable|resource\\s+(?:node|source)|"
+        r"ore\\s+(?:node|deposit)|mineral\\s+deposit)\\b"
+    )
+    owned_inventory = (
+        r"\\b(?:player['’]?s?|owned)\\b.{0,95}\\b(?:inventory|cargo)\\b"
+    )
     source_owned_extraction = bool(
         not _NEGATED_EXTRACT.search(description)
-        and re.search(
-            r"\b(?:mineable|harvestable|resource\s+(?:node|source)|"
-            r"ore\s+(?:node|deposit)|mineral\s+deposit)\b"
-            r".{0,170}\b(?:extract\w*|harvest\w*|mine\w*)\b",
-            description, re.I,
-        )
-        and re.search(
-            r"\b(?:extract\w*|harvest\w*|mine\w*)\b"
-            r".{0,130}\b(?:resources?|minerals?|ores?)\b"
-            r".{0,120}\b(?:player['’]?s?|owned)\b"
-            r".{0,95}\b(?:inventory|cargo)\b",
-            description, re.I,
-        )
+        and nearby(extraction, physical_source, 190)
+        and nearby(extraction, r"\\b(?:resources?|minerals?|ores?)\\b", 160)
+        and nearby(extraction, owned_inventory, 250)
     )
     # Short planner-generated module names can truncate "Gathering" to
     # "Gatherin"; the fully authored behavioral contract is authoritative.
