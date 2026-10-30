@@ -105,9 +105,8 @@ def _effect_consumer(code: str, namespace: str, target: str) -> bool:
         if engine and not line.lstrip().startswith("--"):
             # SetAttribute is cosmetic/metadata and cannot prove a gameplay
             # effect on its own (the target may simply be UI rank display).
-            if ":SetAttribute" in line:
-                continue
-            if any(_ident(engine.group(1), t) for t in variables):
+            if ":SetAttribute" not in line and any(
+                    _ident(engine.group(1), t) for t in variables):
                 return True
         # Some Roblox gameplay state (e.g. damageable world entities) is
         # held in an authoritative world Part Attribute rather than in a
