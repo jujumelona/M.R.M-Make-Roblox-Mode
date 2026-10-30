@@ -899,7 +899,7 @@ def test_seven_unparseable_effects_are_all_reported_not_silently_approved(tmp_pa
         "effect-%02d" % i for i in range(1, 8)
     }
     assert "cannot prove 7 independent effects" in report["reason"]
-    assert model.calls >= 21  # 2 old-schema calls + one witness per effect
+    assert model.calls >= 14  # two bounded witness attempts per effect; no old JSON calls
 
 
 def test_host_witness_zero_is_missing_not_implemented(tmp_path):
