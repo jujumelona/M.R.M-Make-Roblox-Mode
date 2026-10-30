@@ -102,13 +102,18 @@ def _real_source_quote(root: Path, path: str, quote: str) -> int:
     source = (root / path).read_text(encoding="utf-8")
     if quote not in source:
         return 0
-    # A claim based solely on a Luau comment is not executable evidence.
-    before = source[:source.index(quote)]
-    first_line = before.count("\n") + 1
-    evidence_line = source.splitlines()[first_line - 1].lstrip()
-    if evidence_line.startswith("--"):
-        return 0
-    return first_line
+    # Do not reject a real later occurrence just because an earlier comment
+    # contained the same words. The host locates executable physical lines.
+    offset = 0
+    while True:
+        index = source.find(quote, offset)
+        if index < 0:
+            return 0
+        line = source.count("\n", 0, index) + 1
+        current = source.splitlines()[line - 1].lstrip()
+        if not current.startswith("--"):
+            return line
+        offset = index + 1
 
 
 
@@ -178,6 +183,7 @@ def _source_scopes_for_effect(
 
 def _normalize_single_effect_answer(
     raw: Any, ranked: list[str], sources: dict[str, str],
+    numbered: dict[str, str] | None = None,
 ) -> dict[str, str] | None:
     """Require a real, executable physical line, even for model index output."""
     if not isinstance(raw, dict):
@@ -205,6 +211,16 @@ def _normalize_single_effect_answer(
         lines = sources[file_path].splitlines()
         if type(number) is not int or not 1 <= number <= len(lines):
             return None
+        if numbered is not None:
+            # The model must cite a line it actually saw; guessing a physical
+            # number outside the bounded source window is not evidence.
+            visible = set()
+            for record in numbered.get(file_path, "").splitlines():
+                label = record.partition(":")[0]
+                if label.isdigit():
+                    visible.add(int(label))
+            if number not in visible:
+                return None
         quote = lines[number - 1].strip()
     if (not 6 <= len(quote) <= 320
             or quote.lstrip().startswith("--")
@@ -514,6 +530,7 @@ def audit_whole_requirement_completion(
                         })
                     normalized = _normalize_single_effect_answer(
                         raw, scope, scoped_sources,
+                        {path: numbered[path] for path in scope},
                     )
                     if normalized is not None:
                         scoped_answer = normalized
