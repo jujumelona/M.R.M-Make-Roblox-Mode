@@ -24,6 +24,24 @@ def normalize_dynamic_server_modules(proposal: RobloxProposal) -> bool:
     if not proposal.game_design.get("dynamic_design"):
         return False
     changed = False
+    # A small imported/constructed dynamic plan can omit the mandatory
+    # persistence service. Codegen nevertheless promises its GetState API.
+    # Materialize the real first-party service instead of exempting a
+    # nonexistent dependency from peer ABI verification or encouraging the
+    # small model to manufacture a DataStore replacement.
+    if not any(module.name == "PlayerDataManager" for module in proposal.modules):
+        if any(module.module_id == "mod_player_data" for module in proposal.modules):
+            raise ValueError("PLAYER_DATA_SERVICE_ID_CONFLICT")
+        proposal.modules.insert(0, RobloxModuleSpec(
+            module_id="mod_player_data",
+            name="PlayerDataManager",
+            kind=ModuleKind.DATA_STORE,
+            file_path="src/server/PlayerDataManager.server.luau",
+            roblox_service=RobloxService.SERVER_SCRIPT_SERVICE,
+            description="Host-owned persistent player state and GetState API.",
+            depends_on=[],
+        ))
+        changed = True
     names = set()
     for module in proposal.modules:
         host_data = (module.module_id == "mod_player_data"
