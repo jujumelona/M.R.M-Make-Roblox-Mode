@@ -57,7 +57,7 @@ def _real_source_quote(root: Path, path: str, quote: str) -> int:
         return 0
     # A claim based solely on a Luau comment is not executable evidence.
     before = source[:source.index(quote)]
-    first_line = len(before.splitlines()) + 1
+    first_line = before.count("\n") + 1
     evidence_line = source.splitlines()[first_line - 1].lstrip()
     if evidence_line.startswith("--"):
         return 0
