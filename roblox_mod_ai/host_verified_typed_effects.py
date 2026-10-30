@@ -393,61 +393,6 @@ _HARVEST = r'''    if args.quantity > 10 then
         remainingDeposit = stock - args.quantity}'''
 
 
-def _requires_damage_currency_reward(module: Any, proposal: Any) -> bool:
-    """Only a damage-and-currency owner contract enables a combat payout."""
-    detail = (proposal.game_design or {}).get("detailed_implementation_plan") or {}
-    for req in detail.get("required_functions") or []:
-        if not isinstance(req, dict):
-            continue
-        owners = req.get("owner_files") or []
-        modules = req.get("owner_modules") or []
-        if module.file_path not in owners and module.name not in modules:
-            continue
-        changes = req.get("server_state_changes") or []
-        nested = req.get("ai_implementation_steps") or {}
-        if not changes and isinstance(nested, dict):
-            changes = nested.get("server_state_changes") or []
-        if not isinstance(changes, list):
-            continue
-        for statement in changes:
-            if not isinstance(statement, str):
-                continue
-            sentences = re.split(r"(?<=[.!?])\s+|;\s*", statement.casefold())
-            if any(
-                re.search(r"\b(?:damage|attack|combat)\b", clause)
-                and re.search(r"\b(?:currency|money|coins?|credits?)\b", clause)
-                and re.search(r"\b(?:gain|earn|award|credit|receiv)\w*\b", clause)
-                for clause in sentences
-            ):
-                return True
-    return False
-
-
-def _inject_damage_currency_reward(effect: str) -> str:
-    """Validate wallet before damage/ammo mutations, then credit actual hit."""
-    marker = '    target:SetAttribute("RMMAlienHealth", remaining)'
-    if effect.count(marker) != 1:
-        raise ValueError("DAMAGE_REWARD_REQUIRES_SINGLE_HP_COMMIT")
-    hit = re.search(
-        r"(?m)^    local remaining = math\.max\(0, hp - (?:damage|20)\)$",
-        effect,
-    )
-    if hit is None:
-        raise ValueError("DAMAGE_REWARD_REQUIRES_RESOLVED_DAMAGE")
-    guard = (
-        '\n    local actualReward = hp - remaining\n'
-        '    local stats = player:FindFirstChild("leaderstats")\n'
-        '    local coins = stats and stats:FindFirstChild("Coins")\n'
-        '    if not coins or not coins:IsA("IntValue") then\n'
-        '        return {success = false, reason = "wallet_unavailable"} end\n'
-        '    if coins.Value < 0 or coins.Value > 2147483647 - actualReward then\n'
-        '        return {success = false, reason = "wallet_capacity"} end'
-    )
-    effect = effect[:hit.end()] + guard + effect[hit.end():]
-    return effect.replace(
-        marker, marker + '\n    coins.Value += actualReward', 1,
-    )
-
 def render_verified_effect(module: Any, proposal: Any) -> str | None:
     selected = eligible_verified_effect(module, proposal)
     if selected is None:
@@ -531,9 +476,6 @@ def render_verified_effect(module: Any, proposal: Any) -> str | None:
             effect = _COLONY_DAMAGE
         else:
             effect = _DAMAGE
-        if role == "world_damage" and _requires_damage_currency_reward(
-                module, proposal):
-            effect = _inject_damage_currency_reward(effect)
         if role == "world_damage":
             # A real enemy state transition is reversible only after a
             # server-chosen delay. No client-supplied reset, health or time.
