@@ -131,8 +131,7 @@ _CURRENCY_EFFECT = re.compile(
 )
 _CURRENCY_WRITE = re.compile(
     r"(?:\b(?:coins?|currency|currencies|money|wallet|balance|credits?|"
-    r"cash|funds?|payout|gold)\b(?:\s*\.\s*\w+|"
-    r"\s*\[\s*['\\"]\w+['\\"]\s*\])*"
+    r"cash|funds?|payout|gold)\b(?:\s*\.\s*\w+|\s*\[[^\]\n]+\])*"
     r"\s*(?:\+=|-=|=(?!=))|"
     r"\b(?:Credit|Debit|AddMoney|AwardCoins|EarnCoins|SpendCoins|"
     r"AddCurrency|TransferFunds|SetBalance|UpdateBalance|GiveReward)"
