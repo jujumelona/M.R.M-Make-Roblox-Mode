@@ -985,3 +985,49 @@ def test_source_owner_allocation_does_not_starve_other_services():
         sources, [], limit=24,
     )
     assert {row["file"] for row in witnesses} == set(sources)
+
+
+
+def test_production_host_witness_mode_also_applies_to_short_requirements(tmp_path):
+    """Production never uses the brittle all-effects/file_id/quote AI schema."""
+    import json
+    proposal = fixture(tmp_path)
+    req = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
+    req["server_state_changes"] = [
+        "The server decrements the first saved resource",
+        "The server increments the second saved property",
+    ]
+    (tmp_path / TRADE).write_text(
+        SOURCE_TRADE + "stock.property += 1\n", encoding="utf-8",
+    )
+
+    class OneIntegerOnly:
+        def __init__(self):
+            self.prompts = []
+        def complete_json(self, **kwargs):
+            prompt = kwargs["prompt"]
+            self.prompts.append(prompt)
+            if prompt.startswith("Find user-requested"):
+                return {"missing_actions": []}
+            assert prompt.startswith("Check ONE promised"), prompt[:90]
+            data = json.loads(prompt[prompt.index('{"effect":'):])
+            needle = (
+                "stock.resources -= 1" if "first" in data["effect"]
+                else "stock.property += 1"
+            )
+            choices = [row["id"] for row in data["candidates"]
+                       if row["statement"] == needle]
+            assert len(choices) == 1
+            return {"choice": choices[0]}
+
+    router = OneIntegerOnly()
+    report = audit_whole_requirement_completion(
+        proposal, tmp_path, router, host_witness_only=True,
+    )
+    assert report["fully_covered"], report
+    assert report["status"] == "reviewed_no_blockers", report
+    assert len(report["checks"]) == 2
+    assert len([x for x in router.prompts
+                if x.startswith("Check ONE promised")]) == 2
+    assert not any(p.startswith(("Post-generation", "Audit exactly ONE"))
+                   for p in router.prompts)
