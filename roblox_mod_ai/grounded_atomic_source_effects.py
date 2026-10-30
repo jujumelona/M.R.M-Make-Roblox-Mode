@@ -27,7 +27,8 @@ _EXTRACT = re.compile(
 _WORLD_ORIGIN = re.compile(
     r"\b(?:deposits?|veins?|nodes?|mineable|harvestable|"
     r"source[- ]owned\s+(?:resource|mineral|ore)|"
-    r"world[- ](?:owned|resource))\b|광맥|광산|채굴지|자원\s*노드",
+    r"world[- ](?:owned|resource)|real\s+resource\s+source)\b|"
+    r"광맥|광산|채굴지|자원\s*노드",
     re.I,
 )
 _RESOURCE = re.compile(
@@ -43,7 +44,7 @@ _OWNED_INVENTORY = re.compile(
 )
 _GAIN = re.compile(
     r"\b(?:increment\w*|increas\w*|add\w*|credit\w*|"
-    r"award\w*|deposit\w*|store\w*|gain\w*|receiv\w*)\b|"
+    r"award\w*|grant\w*|deposit\w*|store\w*|gain\w*|receiv\w*)\b|"
     r"추가|증가|획득|적립", re.I,
 )
 # Source authoring often describes the resource transfer as a directed effect
@@ -92,6 +93,15 @@ def preserved_world_inventory_extraction(
             _EXTRACT, _WORLD_ORIGIN, _RESOURCE, _OWNED_INVENTORY))
             or not (_GAIN.search(owned)
                     or _EXTRACT_INTO_OWNED_INVENTORY.search(owned))):
+        return None
+    # A "real resource source" is a physical claim only when the author
+    # also gives a server-authoritative/physical owner. Never convert a
+    # client-side reward button into harvesting through this preservation.
+    if (re.search(r"\breal\s+resource\s+source\b", owned, re.I)
+            and not re.search(
+                r"\b(?:server[- ]owned|world[- ]owned|authoritative|physical|mineable)\b",
+                owned, re.I,
+            )):
         return None
     if (source_intent_conflicts(quote, owned)
             or request_semantic_errors(owned, original_prompt)):
