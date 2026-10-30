@@ -1012,3 +1012,6 @@ def test_string_containing_fake_currency_code_is_not_executed():
     masked = _mask_noncode_luau_strings(original)
     assert len(masked) == len(original)
     assert _has_currency_state_write(effect, original)
+    non_mutation = 'print(profile["coins.Value += 999"])\n'
+    assert not _has_currency_state_write(effect, non_mutation)
+    assert not _is_effectful_source_line(non_mutation, 1)
