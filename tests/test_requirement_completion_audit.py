@@ -912,3 +912,56 @@ def test_comment_only_quote_cannot_prove_mutation_with_long_comment(tmp_path):
     with path.open("a", encoding="utf-8") as handle:
         handle.write("stock.money += 9\n")
     assert _real_source_quote(tmp_path, TRADE, "stock.money += 9") == 6
+
+
+def test_host_combat_compiler_credits_actual_damage_only_after_prevalidation():
+    from roblox_mod_ai.host_verified_typed_effects import (
+        _inject_damage_currency_reward, _RANKED_DAMAGE,
+        _COLONY_DAMAGE, _DAMAGE,
+    )
+    for base in (_RANKED_DAMAGE, _COLONY_DAMAGE, _DAMAGE):
+        output = _inject_damage_currency_reward(base)
+        assert output.count('target:SetAttribute("RMMAlienHealth", remaining)') == 1
+        assert output.count("coins.Value += actualReward") == 1
+        guard = output.index('reason = "wallet_capacity"')
+        state = output.index('target:SetAttribute("RMMAlienHealth", remaining)')
+        credit = output.index("coins.Value += actualReward")
+        assert guard < state < credit
+        assert "local actualReward = hp - remaining" in output
+        assert "2147483647 - actualReward" in output
+
+
+def test_damage_payout_requires_explicit_owner_requirement():
+    from types import SimpleNamespace
+    from roblox_mod_ai.host_verified_typed_effects import (
+        _requires_damage_currency_reward,
+    )
+    module = SimpleNamespace(
+        name="GenericDamageServer",
+        file_path="src/server/GenericDamageServer.luau",
+    )
+    requirement = {
+        "id": "req-x",
+        "owner_files": [module.file_path],
+        "server_state_changes": [
+            "The alien entity's health decreases by player damage, "
+            "and the player gains the resulting damage amount as currency"
+        ],
+    }
+    proposal = SimpleNamespace(game_design={
+        "detailed_implementation_plan": {"required_functions": [requirement]}
+    })
+    assert _requires_damage_currency_reward(module, proposal)
+    requirement["server_state_changes"] = [
+        "The alien entity's health decreases from player damage"
+    ]
+    assert not _requires_damage_currency_reward(module, proposal)
+    requirement["server_state_changes"] = [
+        "Alien takes damage. Player earns currency by selling resources."
+    ]
+    assert not _requires_damage_currency_reward(module, proposal)
+    requirement["owner_files"] = ["src/server/UnrelatedServer.luau"]
+    requirement["server_state_changes"] = [
+        "The alien takes damage and the player gains money"
+    ]
+    assert not _requires_damage_currency_reward(module, proposal)
