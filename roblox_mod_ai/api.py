@@ -46,7 +46,7 @@ class CompleteChatReply:
         # An original intent may be saved for later implementation. A revision
         # of an already approved plan must not silently promote NEW unsupported
         # requirements as though all existing gameplay still covered them.
-        if (self.authored_plan.revision_count > 0
+        if (getattr(self.authored_plan, "revision_count", 0) > 0
                 and blockers and not proposal.game_design.get("dynamic_design")):
             return False
         if (not any(proposal.game_design.get("features", {}).values())
