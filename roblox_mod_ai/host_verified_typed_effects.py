@@ -325,6 +325,24 @@ _COLONY_DAMAGE = r'''    if args.quantity ~= 1 then
         defeated = remaining == 0, planetOwned = progress.planetOwned == true}'''
 
 
+# Defeated shared-world enemies must become eligible again. Otherwise the
+# first player's victory permanently prevents every later player's combat
+# reward and downstream colony unlock until the whole server restarts.
+# The closure is bound to the same server-owned part; a removed/replaced
+# target is never resurrected by a stale timer.
+_DEFEATED_WORLD_RESPAWN = r'''    if remaining == 0 then
+        local defeated = target
+        task.delay(25, function()
+            if defeated.Parent ~= nil and defeated:IsDescendantOf(workspace)
+                and workspace:FindFirstChild(__WORLD__, true) == defeated
+                and defeated:GetAttribute("RMMAlienHealth") == 0 then
+                defeated:SetAttribute("RMMAlienHealth", 100)
+            end
+        end)
+    end
+'''
+
+
 _HARVEST = r'''    if args.quantity > 10 then
         return {success = false, reason = "max_ten_per_action"} end
     local stock = target:GetAttribute("RMMSpecialMineralStock")
@@ -426,6 +444,21 @@ def render_verified_effect(module: Any, proposal: Any) -> str | None:
             effect = _COLONY_DAMAGE
         else:
             effect = _DAMAGE
+        if role == "world_damage":
+            # A real enemy state transition is reversible only after a
+            # server-chosen delay. No client-supplied reset, health or time.
+            respawn = _DEFEATED_WORLD_RESPAWN.replace(
+                "__WORLD__", json.dumps(world_name))
+            for cooldown_line in (
+                "    recent[player] = now",
+                "    recent[player] = os.clock()",
+            ):
+                if cooldown_line in effect:
+                    effect = effect.replace(
+                        cooldown_line, respawn + cooldown_line, 1)
+                    break
+            else:
+                raise ValueError("Verified combat effect lacks success commit")
         body = (_WORLD_BODY.replace("__EFFECT__", effect)
                 .replace("__WORLD__", json.dumps(world_name)))
         if weapon_performance_combat:
