@@ -233,22 +233,181 @@ def audit_whole_requirement_completion(
                     "additionalProperties": False,
                 },
             )
+        except ValueError as exc:
+            # Small local models can truncate an all-effects JSON response.
+            # This is a transport/output failure, never proof of implementation.
+            result = {}
+            report.setdefault("recovery", []).append({
+                "requirement_id": req_id, "stage": "batch_output",
+                "error": (type(exc).__name__ + ": " + str(exc))[:300],
+            })
         except Exception as exc:
             report["reason"] = req_id + ": audit unavailable: " + (
                 type(exc).__name__ + ": " + str(exc))[:300]
             return report
         if not isinstance(result, dict):
-            report["reason"] = req_id + ": invalid completed-action audit JSON"
-            return report
+            result = {}
         checks = result.get("checks")
         extras = result.get("extra_missing")
         expected_ids = {row["id"] for row in obligations}
-        if (not isinstance(checks, list)
-                or len(checks) != len(expected_ids)
-                or {row.get("id") for row in checks
-                    if isinstance(row, dict)} != expected_ids
-                or not isinstance(extras, list) or len(extras) > 12):
-            report["reason"] = req_id + ": incomplete or duplicate independent effect checks"
+        supplied = checks if isinstance(checks, list) else []
+        occurrences: dict[str, list[dict[str, Any]]] = {
+            effect_id: [] for effect_id in expected_ids
+        }
+        unexpected = []
+        for entry in supplied:
+            if not isinstance(entry, dict):
+                unexpected.append("<malformed>")
+                continue
+            effect_id = entry.get("id")
+            if effect_id in occurrences:
+                occurrences[effect_id].append(entry)
+            else:
+                unexpected.append(str(effect_id)[:80])
+        # Only unambiguously identified answers can be reused. The host owns
+        # the obligation IDs; no model answer may silently replace an effect.
+        recover_ids = [
+            row["id"] for row in obligations
+            if len(occurrences[row["id"]]) != 1
+        ]
+        if recover_ids or unexpected:
+            report.setdefault("recovery", []).append({
+                "requirement_id": req_id, "stage": "batch_cardinality",
+                "expected": [o["id"] for o in obligations],
+                "missing_or_duplicate": recover_ids,
+                "unexpected": unexpected[:20],
+                "received_count": len(supplied),
+            })
+        for effect in obligations:
+            effect_id = effect["id"]
+            if effect_id not in recover_ids:
+                continue
+            # Crucially, this response does NOT ask the small model to copy an
+            # effect ID or generate an N-element array. The host attaches the
+            # canonical ID to precisely one reviewed obligation.
+            single_prompt = (
+                "Audit exactly ONE promised Roblox gameplay state change. "
+                "SOURCE ONLY; do not claim Roblox Studio execution. "
+                "Original user request is authoritative. Check the candidate "
+                "effect against complete server owners and producer/consumer "
+                "state keys. A UI/Remote alone cannot prove a server mutation. "
+                "Return exactly one JSON object with verdict implemented, "
+                "missing or out_of_scope; file; an EXACT non-comment source "
+                "quote; issue; repair. If missing, quote the defective "
+                "substitute or incomplete action and provide a concrete fix. "
+                "Only use out_of_scope if clearly NOT requested by user. "
+                "Do not emit lists or effect IDs.\\n"
+                + json.dumps({
+                    "original_user_request": original[:2400],
+                    "candidate_effect": effect["behavior"],
+                    "complete_server_sources": actual_sources,
+                }, ensure_ascii=False)
+            )
+            single_schema = {
+                "type": "object",
+                "properties": {
+                    "verdict": {"type": "string", "enum": [
+                        "implemented", "missing", "out_of_scope",
+                    ]},
+                    "file": {"type": "string"},
+                    "quote": {"type": "string"},
+                    "issue": {"type": "string"},
+                    "repair": {"type": "string"},
+                },
+                "required": ["verdict", "file", "quote", "issue", "repair"],
+                "additionalProperties": False,
+            }
+            try:
+                one = router.complete_json(
+                    prompt=single_prompt, role="analyzer", temperature=0,
+                    max_tokens=640, json_schema=single_schema,
+                )
+            except Exception as exc:
+                report.setdefault("recovery", []).append({
+                    "requirement_id": req_id, "effect_id": effect_id,
+                    "stage": "single_effect", "status": "failed",
+                    "error": (type(exc).__name__ + ": " + str(exc))[:250],
+                })
+                report["reason"] = (
+                    req_id + ": incomplete independent effect checks; "
+                    + effect_id + " could not be reviewed"
+                )
+                return report
+            if (not isinstance(one, dict)
+                    or one.get("verdict") not in (
+                        "implemented", "missing", "out_of_scope")
+                    or not all(isinstance(one.get(k), str) for k in (
+                        "file", "quote", "issue", "repair"))):
+                report["reason"] = (
+                    req_id + ": incomplete independent effect checks; "
+                    + effect_id + " returned invalid single-effect evidence"
+                )
+                return report
+            occurrences[effect_id] = [{"id": effect_id, **one}]
+            report.setdefault("recovery", []).append({
+                "requirement_id": req_id, "effect_id": effect_id,
+                "stage": "single_effect", "status": "recovered",
+            })
+        checks = [
+            occurrences[o["id"]][0] for o in obligations
+            if len(occurrences[o["id"]]) == 1
+        ]
+        if len(checks) != len(obligations):
+            report["reason"] = (
+                req_id + ": incomplete independent effect checks after recovery"
+            )
+            return report
+        if not isinstance(extras, list):
+            # A malformed batch must not cause the original user request to
+            # lose the separate omitted-from-plan check.
+            try:
+                extra_result = router.complete_json(
+                    prompt=(
+                        "Find original user-requested gameplay state changes "
+                        "OMITTED FROM the candidate list, not defects already "
+                        "covered by it. Read ALL server owners; source only. "
+                        "Every extra_missing item must include behavior, exact "
+                        "server file, exact non-comment defective quote, "
+                        "issue and concrete repair. Return ONLY "
+                        "{extra_missing:[...]}; [] when none.\\n"
+                        + json.dumps({
+                            "original_user_request": original[:2400],
+                            "candidate_effects": obligations,
+                            "complete_server_sources": actual_sources,
+                        }, ensure_ascii=False)
+                    ),
+                    role="analyzer", temperature=0, max_tokens=1100,
+                    json_schema={
+                        "type": "object",
+                        "properties": {"extra_missing": {
+                            "type": "array", "maxItems": 12,
+                            "items": {"type": "object", "properties": {
+                                "behavior": {"type": "string"},
+                                "file": {"type": "string"},
+                                "quote": {"type": "string"},
+                                "issue": {"type": "string"},
+                                "repair": {"type": "string"},
+                            }, "required": [
+                                "behavior", "file", "quote", "issue", "repair",
+                            ], "additionalProperties": False},
+                        }},
+                        "required": ["extra_missing"],
+                        "additionalProperties": False,
+                    },
+                )
+                extras = extra_result.get("extra_missing") if isinstance(
+                    extra_result, dict) else None
+            except Exception as exc:
+                report.setdefault("recovery", []).append({
+                    "requirement_id": req_id, "stage": "omitted_effects",
+                    "status": "failed",
+                    "error": (type(exc).__name__ + ": " + str(exc))[:250],
+                })
+                extras = None
+        if not isinstance(extras, list) or len(extras) > 12:
+            report["reason"] = (
+                req_id + ": incomplete original-request omitted-effect audit"
+            )
             return report
         for entry in checks + extras:
             if not isinstance(entry, dict):
