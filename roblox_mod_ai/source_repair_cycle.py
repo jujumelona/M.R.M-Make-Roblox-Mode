@@ -67,6 +67,7 @@ def _plan_change(module: Any, issues: list[dict[str, Any]], router: Any,
                 "Independently re-review the new source against the same requirement",
             ],
             "plan_origin": "grounded_requirement_effect_findings",
+            "previous_failed_attempts": previous_failures[-3:],
         }
     # For older model-authored diagnostics without a complete source-grounded
     # repair recommendation, retain the existing planner and strict checks.
@@ -199,6 +200,7 @@ def _repair_host_action_scoped(
                 "file": path, "issues": issues[:4],
                 "root_cause": plan["root_cause"],
                 "change_strategy": plan["change_strategy"],
+                "previous_failed_attempts": plan.get("previous_failed_attempts", []),
                 "source_windows": windows,
             }, ensure_ascii=False)[:23000]
         ),
