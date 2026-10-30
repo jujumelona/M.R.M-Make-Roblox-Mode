@@ -395,3 +395,17 @@ def test_unrelated_list_order_never_invents_cross_requirement_dependency():
     result = build_implementation_blueprint(game)
     assert not any(row["id"].startswith("source_transition.")
                    for row in result["integration_contracts"])
+
+
+def test_source_condition_uses_same_prior_action_despite_conjugation():
+    from roblox_mod_ai.implementation_blueprint import (
+        _source_sequence_prerequisites,
+    )
+    requirements = [
+        {"id": "a", "statement": "도구와 재료를 준비한다"},
+        {"id": "b", "statement": "그렇게 해서 우주로 나갈 수 있다"},
+        {"id": "c", "statement": "우주로 나가면 다른 지역을 탐험한다"},
+    ]
+    assert _source_sequence_prerequisites(requirements) == [
+        ("a", "b"), ("b", "c")
+    ]
