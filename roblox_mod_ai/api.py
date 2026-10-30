@@ -44,12 +44,12 @@ class CompleteChatReply:
         }:
             return False
         if (not any(proposal.game_design.get("features", {}).values())
-                and not proposal.game_design.get("dynamic_design")):
-            from .dynamic_architect import dynamic_design_enabled
-            if not dynamic_design_enabled():
-                # No builtin implementation and no enabled custom-game
-                # compiler: source integrity is not executable ownership.
-                return False
+                and not proposal.game_design.get("dynamic_design")
+                and os.environ.get("RMM_ENABLE_DYNAMIC_DESIGN", "auto").strip() == "0"):
+            # Distinguish EXPLICITLY disabled dynamic compilation from the
+            # default deferred-intent flow. In auto mode an unsolved genre is
+            # allowed to remain a draft for a later configured compiler.
+            return False
         is_complete = (ledger_complete(proposal.requested_prompt, ledger)
                        and (any(proposal.game_design.get("features", {}).values())
                             or bool(proposal.game_design.get("dynamic_design"))))
