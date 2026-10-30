@@ -331,7 +331,9 @@ def test_incomplete_batch_recovers_each_missing_effect_without_false_pass(tmp_pa
     assert len(report["findings"]) == 1
     assert [x["effect_id"] for x in report["recovery"]
             if x["stage"] == "single_effect"] == ["effect-02", "effect-03"]
-    assert len(router.prompts) == 3
+    assert len(router.prompts) == 4
+    assert any(p["prompt"].startswith("Find original user-requested")
+               for p in router.prompts)
 
 
 def test_duplicate_effect_is_reaudited_not_double_counted(tmp_path):
