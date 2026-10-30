@@ -1211,6 +1211,23 @@ class RobloxProductionOrchestrator:
                     "count": len(ai_review.get("unverified_host_claims", [])),
                     "reason": "Host template claims require independent evidence",
                 }
+            # Source review repairs may alter compiled action files. Repeat
+            # contract-to-source attestation on FINAL reviewed bytes, rather
+            # than trusting the pre-review snapshot as a release gate.
+            final_effect_review = verify_compiled_effect_sources(
+                proposal, output_dir,
+            )
+            tool_results["compiled_effect_sources_final"] = final_effect_review
+            (output_dir / "compiled_effect_sources_final.json").write_text(
+                json.dumps(final_effect_review, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            if not final_effect_review["passed"]:
+                return {
+                    "passed": False,
+                    "error": "POST_REPAIR_COMPILED_EFFECT_MISMATCH",
+                    "diagnostic": final_effect_review,
+                }
             return {"passed": True, "static_checks": len(acceptance["checks"]),
                     "ai_source_review": ai_review["status"]}
 
@@ -1252,6 +1269,18 @@ class RobloxProductionOrchestrator:
                         tool_results["rojo"] = result
                 if not result.get("success") or not place.is_file() or place.stat().st_size == 0:
                     return {"passed": False, "error": f"Rojo build failed after repair: {result}"}
+            # The Rojo recovery path can also rewrite source after static
+            # verification. Never package a stale compiled transaction.
+            packaged_effects = verify_compiled_effect_sources(
+                proposal, output_dir,
+            )
+            tool_results["compiled_effect_sources_packaging"] = packaged_effects
+            if not packaged_effects["passed"]:
+                return {
+                    "passed": False,
+                    "error": "PACKAGE_COMPILED_EFFECT_MISMATCH",
+                    "diagnostic": packaged_effects,
+                }
             structural = inspect_compiled_place(proposal, place, source_root=output_dir)
             tool_results["compiled_structure"] = structural
             if not structural["passed"]:
