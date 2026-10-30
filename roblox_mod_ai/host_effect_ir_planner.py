@@ -139,7 +139,28 @@ def try_plan_effect_data(router: Any, system: dict[str, Any],
         )
         if not isinstance(response, dict) or response.get("supported") is not True:
             return None
-        return compile_effect_data(response)
+        compiled_contract, program = compile_effect_data(response)
+        # An AI-proposed numeric program may not omit, rename or reorder an
+        # already declared effect. This is purely typed-IR equivalence; no
+        # keyword interpretation, genre condition, or prompt-specific path.
+        predeclared = system.get("action_contract")
+        if isinstance(predeclared, dict):
+            declared = predeclared.get("state_changes")
+            if declared is not None:
+                if not isinstance(declared, list):
+                    return None
+                if declared:
+                    expected = [
+                        (row.get("scope"), row.get("key"), row.get("operation"))
+                        for row in declared if isinstance(row, dict)
+                    ]
+                    actual = [
+                        (row["scope"], row["key"], row["operation"])
+                        for row in compiled_contract["state_changes"]
+                    ]
+                    if len(expected) != len(declared) or expected != actual:
+                        return None
+        return compiled_contract, program
     except (TypeError, ValueError, KeyError, AttributeError, RuntimeError):
         # An unverified interpretation is NEVER materialized as gameplay.
         # The ordinary bounded action coder still owns unsupported mechanics.
