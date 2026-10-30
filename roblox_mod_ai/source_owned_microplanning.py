@@ -831,6 +831,100 @@ def _enforce_atomic_purchase_ownership(
     return accepted
 
 
+
+def _realign_misattributed_source_effects(
+    router: Any, source: str, raw: list[dict[str, str]], *,
+    max_actions: int,
+) -> list[dict[str, str]]:
+    """Move an ALREADY authored effect to its true original-source owner.
+
+    A whole-clause coverage pass is insufficient: the model can describe a
+    legitimate harvest, then assign it to an unrelated construction phrase
+    while leaving the harvest's actual source quote with an inventory grant.
+    Do not accept the count of covered actions as proof of source ownership.
+
+    Only move a demonstrably better authored action to a weaker owner's
+    immutable source ID. The donor must NOT be anchored to that same required
+    effect, and removing the donor must not lose any whole-clause obligations.
+    No genre-specific new effect, invented quote, or model-issued grant.
+    """
+    spans = {row["id"]: row["quote"] for row in
+             eligible_atomic_action_spans(source)}
+    current = [dict(row) for row in raw]
+    for _ in range(len(current)):
+        if len(current) < 3:
+            break
+        try:
+            baseline = verify_or_bind_actions(
+                router, source, current, require_complete=False,
+                max_actions=max_actions,
+            )
+        except SourceActionBindingError:
+            return current
+        baseline_gaps = set(_coverage_issues(source, baseline))
+        replacements: list[list[dict[str, str]]] = []
+        for old_i, old in enumerate(current):
+            quote = spans.get(old.get("source_id"), old.get("source_quote", ""))
+            if not quote:
+                continue
+            old_issues = set(source_intent_conflicts(
+                quote, str(old.get("action") or ""),
+                require_implementation=True,
+            ))
+            # Only a specific proven semantic contract may authorize a
+            # cross-owner realignment. General stylistic objections cannot.
+            missing = {
+                issue.split(":", 1)[0]
+                for issue in old_issues
+                if issue.split(":", 1)[0] in _GAP_QUOTE_PATTERNS
+                and re.search(
+                    _GAP_QUOTE_PATTERNS[issue.split(":", 1)[0]], quote,
+                    re.I,
+                )
+            }
+            if not missing:
+                continue
+            for donor_i, donor in enumerate(current):
+                if old_i == donor_i:
+                    continue
+                donor_quote = spans.get(
+                    donor.get("source_id"), donor.get("source_quote", ""),
+                )
+                proposed_effect = str(donor.get("action") or "")
+                if (not donor_quote or not proposed_effect
+                        or any(re.search(_GAP_QUOTE_PATTERNS[issue],
+                                         donor_quote, re.I)
+                               for issue in missing)):
+                    # A donor with an independently matching original quote
+                    # is a legitimate separate action, NOT a spare to steal.
+                    continue
+                new_issues = set(source_intent_conflicts(
+                    quote, proposed_effect, require_implementation=True,
+                ))
+                if not new_issues < old_issues:
+                    continue
+                candidate = [
+                    dict(row) for i, row in enumerate(current)
+                    if i != donor_i
+                ]
+                recipient_i = old_i - (1 if donor_i < old_i else 0)
+                candidate[recipient_i]["action"] = proposed_effect
+                try:
+                    verified = verify_or_bind_actions(
+                        router, source, candidate,
+                        require_complete=False, max_actions=max_actions,
+                    )
+                except SourceActionBindingError:
+                    continue
+                if set(_coverage_issues(source, verified)) <= baseline_gaps:
+                    replacements.append(candidate)
+        # If two different donor operations both look acceptable, do not
+        # arbitrarily redirect an action or silently drop other mechanics.
+        if len(replacements) != 1:
+            break
+        current = replacements[0]
+    return current
+
 def complete_source_owned_actions(
     router: Any, source: str, *, initial_actions: Any = None,
     max_actions: int = _MAX_ACTIONS,
@@ -864,7 +958,9 @@ def complete_source_owned_actions(
             }, ensure_ascii=False),
             candidate_ids=list(by_id), minimum=2, maximum=3, tokens=340,
         )
-    raw = list(initial_actions)
+    raw = _realign_misattributed_source_effects(
+        router, source, list(initial_actions), max_actions=max_actions,
+    )
     bound = verify_or_bind_actions(
         router, source, raw, require_complete=False, max_actions=max_actions,
     )
