@@ -103,6 +103,116 @@ def _real_source_quote(root: Path, path: str, quote: str) -> int:
     return first_line
 
 
+
+
+def _source_scopes_for_effect(
+    behavior: str, sources: dict[str, str], modules: list[Any],
+) -> tuple[list[str], dict[str, str]]:
+    """Host-select small, numbered, *real* source scopes; never fabricate code.
+
+    Module responsibility comes from the authored architecture, but the actual
+    on-disk file (not the plan) supplies every evidence line. All server owners
+    stay in the catalog, while the two likeliest files get full readable
+    context. This keeps local-model input bounded regardless of project size.
+    """
+    stop = {
+        "after", "before", "player", "players", "owned", "server", "state",
+        "change", "changes", "accepted", "request", "requests", "successful",
+        "actual", "world", "real", "valid", "validated", "quantity", "the",
+        "then", "their", "which", "with", "from", "into", "nothing", "does",
+        "this", "that", "when", "only", "each", "rejected", "persisted",
+    }
+    terms = {
+        w.rstrip("seding") for w in re.findall(r"[a-z]{4,}", behavior.lower())
+        if w not in stop
+    }
+    descriptions = {
+        m.file_path: (str(getattr(m, "name", "")) + " "
+                      + str(getattr(m, "description", ""))).lower()
+        for m in modules if getattr(m, "file_path", None) in sources
+    }
+
+    def score(path: str) -> tuple[int, int]:
+        description = descriptions.get(path, path.lower())
+        name = path.rsplit("/", 1)[-1].lower()
+        return (sum(3 for term in terms if term in name)
+                + sum(1 for term in terms if term in description),
+                -len(sources[path]))
+
+    ranked = sorted(sources, key=lambda path: (score(path), path), reverse=True)
+    chosen = ranked[:2]
+    # Numbered lines are extracted from actual bytes and checked again on
+    # return. The path/id catalog prevents AI-generated filenames.
+    numbered = {}
+    for path in chosen:
+        lines = sources[path].splitlines()
+        if len(sources[path]) <= 11000:
+            selected = range(len(lines))
+        else:
+            # Preserve physical line IDs; make windows around original source
+            # identifiers and writes, not around model-authored quotes.
+            scored = []
+            for i, line in enumerate(lines):
+                line_lower = line.lower()
+                value = sum(1 for term in terms if term in line_lower)
+                if re.search(r"(?:\\+=|-=|\\.[A-Za-z_]+\\s*=|SetAttribute|GetState|UpdateAsync)", line):
+                    value += 1
+                scored.append((value, i))
+            centers = [i for value, i in sorted(scored, reverse=True)
+                       if value > 0][:45]
+            selected = sorted({i for center in centers
+                               for i in range(max(0, center - 2),
+                                              min(len(lines), center + 3))})
+        sample = "\\n".join(f"{i + 1}: {lines[i]}" for i in selected)
+        numbered[path] = sample[:14000]
+    return ranked, numbered
+
+
+def _normalize_single_effect_answer(
+    raw: Any, ranked: list[str], sources: dict[str, str],
+) -> dict[str, str] | None:
+    """Require a real, executable physical line, even for model index output."""
+    if not isinstance(raw, dict):
+        return None
+    verdict = raw.get("verdict")
+    if verdict not in ("implemented", "missing", "out_of_scope"):
+        return None
+    if verdict == "out_of_scope":
+        issue = raw.get("issue")
+        if not isinstance(issue, str) or len(issue.strip()) < 12:
+            return None
+        return {"verdict": verdict, "file": "", "quote": "",
+                "issue": issue[:350], "repair": ""}
+    file_path = raw.get("file")
+    if file_path is None:
+        file_id = raw.get("file_id")
+        if type(file_id) is not int or not 0 <= file_id < len(ranked):
+            return None
+        file_path = ranked[file_id]
+    if file_path not in sources:
+        return None
+    quote = raw.get("quote")
+    if not isinstance(quote, str):
+        number = raw.get("line")
+        lines = sources[file_path].splitlines()
+        if type(number) is not int or not 1 <= number <= len(lines):
+            return None
+        quote = lines[number - 1].strip()
+    if (not 6 <= len(quote) <= 320
+            or quote.lstrip().startswith("--")
+            or quote.strip() in ("end", "else", "return false", "return nil")
+            or quote not in sources[file_path]):
+        return None
+    issue = raw.get("issue", "none")
+    repair = raw.get("repair", "none")
+    if not isinstance(issue, str) or not isinstance(repair, str):
+        return None
+    if verdict == "missing" and (len(issue.strip()) < 8
+                                  or len(repair.strip()) < 8):
+        return None
+    return {"verdict": verdict, "file": file_path,
+            "quote": quote, "issue": issue, "repair": repair}
+
 def audit_whole_requirement_completion(
     proposal: Any, root: Path, router: Any,
 ) -> dict[str, Any]:
@@ -293,22 +403,29 @@ def audit_whole_requirement_completion(
             # Crucially, this response does NOT ask the small model to copy an
             # effect ID or generate an N-element array. The host attaches the
             # canonical ID to precisely one reviewed obligation.
+            ranked, numbered = _source_scopes_for_effect(
+                effect["behavior"], actual_sources, proposal.modules,
+            )
+            path_ids = {path: i for i, path in enumerate(ranked)}
+            focused_sources = {
+                str(path_ids[path]): {
+                    "path": path, "numbered_actual_source": content,
+                } for path, content in numbered.items()
+            }
             single_prompt = (
-                "Audit exactly ONE promised Roblox gameplay state change. "
-                "SOURCE ONLY; do not claim Roblox Studio execution. "
-                "Original user request is authoritative. Check the candidate "
-                "effect against complete server owners and producer/consumer "
-                "state keys. A UI/Remote alone cannot prove a server mutation. "
-                "Return exactly one JSON object with verdict implemented, "
-                "missing or out_of_scope; file; an EXACT non-comment source "
-                "quote; issue; repair. If missing, quote the defective "
-                "substitute or incomplete action and provide a concrete fix. "
-                "Only use out_of_scope if clearly NOT requested by user. "
-                "Do not emit lists or effect IDs.\\n"
+                "Source audit of ONE Roblox effect. Return compact JSON. "
+                "Use a file_id from this catalog and the physical line number "
+                "from numbered_actual_source. NEVER copy source lines or paths. "
+                "Judge implemented only when server-side effects are actually "
+                "proved; a UI/Remote or level display alone is not proof. "
+                "A missing effect requires a concrete issue and repair. "
+                "For absent proof use missing, not implemented. "
+                "Never claim Studio was run.\\n"
                 + json.dumps({
-                    "original_user_request": original[:2400],
-                    "candidate_effect": effect["behavior"],
-                    "complete_server_sources": actual_sources,
+                    "effect": effect["behavior"],
+                    "original_request": original[:900],
+                    "owner_catalog": path_ids,
+                    "complete_server_sources": focused_sources,
                 }, ensure_ascii=False)
             )
             single_schema = {
@@ -317,38 +434,60 @@ def audit_whole_requirement_completion(
                     "verdict": {"type": "string", "enum": [
                         "implemented", "missing", "out_of_scope",
                     ]},
-                    "file": {"type": "string"},
-                    "quote": {"type": "string"},
+                    "file_id": {"type": "integer"},
+                    "line": {"type": "integer"},
                     "issue": {"type": "string"},
                     "repair": {"type": "string"},
                 },
-                "required": ["verdict", "file", "quote", "issue", "repair"],
+                "required": ["verdict", "file_id", "line"],
                 "additionalProperties": False,
             }
-            try:
-                one = router.complete_json(
-                    prompt=single_prompt, role="analyzer", temperature=0,
-                    max_tokens=640, json_schema=single_schema,
+            one = None
+            # Do not require small models to generate code quotes or paths.
+            # Failed or malformed replies receive one shorter reinspection,
+            # never a fabricated success.
+            for attempt in range(2):
+                try:
+                    raw = router.complete_json(
+                        prompt=(single_prompt if attempt == 0 else
+                                "Recheck ONE effect; respond with ONLY JSON "
+                                "{verdict,file_id,line,issue,repair}. "
+                                "file_id and line must identify real code.\\n"
+                                + json.dumps({
+                                    "effect": effect["behavior"],
+                                    "owner_catalog": path_ids,
+                                    "complete_server_sources": focused_sources,
+                                }, ensure_ascii=False)),
+                        role="analyzer", temperature=0,
+                        max_tokens=300 if attempt == 0 else 550,
+                        json_schema=single_schema,
+                    )
+                except Exception as exc:
+                    raw = None
+                    report.setdefault("recovery", []).append({
+                        "requirement_id": req_id, "effect_id": effect_id,
+                        "stage": "single_effect", "attempt": attempt + 1,
+                        "status": "model_error",
+                        "error": (type(exc).__name__ + ": " + str(exc))[:250],
+                    })
+                normalized = _normalize_single_effect_answer(
+                    raw, ranked, actual_sources,
                 )
-            except Exception as exc:
+                if normalized is not None:
+                    one = normalized
+                    break
                 report.setdefault("recovery", []).append({
                     "requirement_id": req_id, "effect_id": effect_id,
-                    "stage": "single_effect", "status": "failed",
-                    "error": (type(exc).__name__ + ": " + str(exc))[:250],
+                    "stage": "single_effect", "attempt": attempt + 1,
+                    "status": "invalid_evidence",
+                    "response_type": type(raw).__name__,
+                    "response_keys": sorted(map(str, raw.keys()))
+                                     if isinstance(raw, dict) else [],
                 })
+            if one is None:
                 report["reason"] = (
                     req_id + ": incomplete independent effect checks; "
-                    + effect_id + " could not be reviewed"
-                )
-                return report
-            if (not isinstance(one, dict)
-                    or one.get("verdict") not in (
-                        "implemented", "missing", "out_of_scope")
-                    or not all(isinstance(one.get(k), str) for k in (
-                        "file", "quote", "issue", "repair"))):
-                report["reason"] = (
-                    req_id + ": incomplete independent effect checks; "
-                    + effect_id + " returned invalid single-effect evidence"
+                    + effect_id + " could not provide grounded compact evidence"
                 )
                 return report
             occurrences[effect_id] = [{"id": effect_id, **one}]
