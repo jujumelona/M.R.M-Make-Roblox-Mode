@@ -215,6 +215,7 @@ def _repair_host_action_scoped(
                 "before": {"type": "string", "maxLength": 1500},
                 "after": {"type": "string", "maxLength": 3500},
             },
+            "required": ["edits"],
             "additionalProperties": False,
         },
     )
