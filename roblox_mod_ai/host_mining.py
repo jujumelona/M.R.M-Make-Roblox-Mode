@@ -63,6 +63,46 @@ def _bind_verified_mined_income(
     return source.replace(after, after + post)
 
 
+def _mined_resource_field(owner: RobloxModuleSpec, proposal: RobloxProposal) -> str:
+    """Derive resource identity from this module's ORIGINAL requirement.
+
+    The first common mineable resource cannot be the same inventory ledger
+    entry as explicitly requested special minerals on a different planet.
+    Do not infer item identity from generated names, guessed genre, or
+    neighboring unrelated requirement text.
+    """
+    design = proposal.game_design
+    dynamic = design.get("dynamic_design") or {}
+    bound = (dynamic.get("module_requirements") or {}).get(owner.module_id) or []
+    if not isinstance(bound, list):
+        return "resources"
+    ledger = (design.get("pre_design_research") or {}).get("ledger") or {}
+    requirements = ledger.get("requirements") or []
+    owned_source = " ".join(
+        str(entry.get("statement") or "")
+        for entry in requirements
+        if isinstance(entry, dict) and entry.get("id") in bound
+    )
+    if re.search(r"특수\s*광물|special\s+minerals?", owned_source, re.I):
+        return "specialMinerals"
+    return "resources"
+
+
+def _render_resource_field(code: str, field: str) -> str:
+    """Rename the *specific* inventory credit and matching client receipt."""
+    if field == "resources":
+        return code
+    if field != "specialMinerals":
+        raise ValueError("Unsupported source-derived mining inventory field")
+    code = code.replace("progress.resources", "progress.specialMinerals")
+    code = code.replace("resources = progress.specialMinerals",
+                        "specialMinerals = progress.specialMinerals")
+    code = code.replace("result.resources", "result.specialMinerals")
+    code = code.replace('"Resources: "', '"Special minerals: "')
+    code = code.replace('" | Ore: "', '" | Special minerals: "')
+    return code
+
+
 def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> str | None:
     if not module.module_id.startswith("dyn_"):
         return None
@@ -150,6 +190,7 @@ def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> st
         if isinstance(linked, list) and routes and routes[0][0] not in linked:
             return None
     reward_currency = mining_rewards_currency(owner or module, proposal)
+    resource_field = _mined_resource_field(owner or module, proposal)
     if world_routes:
         world_name = world_routes[0][0]
         if (module.kind != ModuleKind.SERVER_MODULE
@@ -161,7 +202,10 @@ def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> st
         # Do not create a client or Remote for this mode.
         template = _SERVER if reward_currency else _SERVER_RESOURCES_ONLY
         code = template.replace("__NODES__", "{" + json.dumps(world_name) + "}")
-        return _bind_verified_mined_income(code, proposal, reward_currency)
+        return _render_resource_field(
+            _bind_verified_mined_income(code, proposal, reward_currency),
+            resource_field,
+        )
     if routes[0][1].get("kind") != "RemoteFunction":
         return None
     remote = routes[0][0]
@@ -170,13 +214,19 @@ def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> st
     if module.kind == ModuleKind.SERVER_MODULE:
         template = (_SERVER_NEAREST if no_args else _SERVER) if reward_currency else (_SERVER_RESOURCES_NEAREST if no_args else _SERVER_RESOURCES_ONLY)
         code = template.replace("__NODES__", lua_nodes)
-        return _bind_verified_mined_income(code, proposal, reward_currency)
+        return _render_resource_field(
+            _bind_verified_mined_income(code, proposal, reward_currency),
+            resource_field,
+        )
     if not module.file_path.startswith("src/client/"):
         return None
     ui = _CLIENT_NEAREST if no_args else _CLIENT
     if not reward_currency:
         ui = _CLIENT_RESOURCES_NEAREST if no_args else _CLIENT_RESOURCES_ONLY
-    return ui.replace("__NODES__", lua_nodes).replace("__REMOTE__", json.dumps(remote))
+    return _render_resource_field(
+        ui.replace("__NODES__", lua_nodes).replace("__REMOTE__", json.dumps(remote)),
+        resource_field,
+    )
 
 
 _SERVER = r'''--!strict
