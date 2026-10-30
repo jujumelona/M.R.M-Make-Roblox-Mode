@@ -1071,14 +1071,13 @@ def audit_whole_requirement_completion(
                 if isinstance(extra_result, dict):
                     if ("missing_actions" not in extra_result
                             and "extra_missing" not in extra_result):
-                        report["reason"] = (
-                            req_id + ": missing original-request scope review"
+                        raise ValueError(
+                            "missing_original_request_scope_fields"
                         )
-                        return report
                     omissions = extra_result.get("missing_actions", [])
                     if not isinstance(omissions, list) or any(
                             not isinstance(item, str) for item in omissions):
-                        omissions = None
+                        raise ValueError("invalid_missing_actions")
                     if omissions:
                         report["unplanned_actions"] = omissions[:12]
                         report["reason"] = (
@@ -1090,7 +1089,7 @@ def audit_whole_requirement_completion(
                     if fresh_extras is None and omissions == []:
                         fresh_extras = []
                 else:
-                    fresh_extras = None
+                    raise ValueError("invalid_scope_review_response")
                 if isinstance(fresh_extras, list):
                     extras = list(retained_extras)
                     existing = {(e.get("file"), e.get("quote"), e.get("behavior"))
@@ -1105,14 +1104,64 @@ def audit_whole_requirement_completion(
                             extras.append(entry)
                             existing.add(key)
                 else:
-                    extras = None
+                    raise ValueError("invalid_extra_missing_list")
             except Exception as exc:
                 report.setdefault("recovery", []).append({
                     "requirement_id": req_id, "stage": "omitted_effects",
-                    "status": "failed",
+                    "status": "structured_failed",
                     "error": (type(exc).__name__ + ": " + str(exc))[:250],
                 })
                 extras = None
+                if callable(getattr(router, "complete", None)):
+                    # Recovery output cannot silently authorize completeness:
+                    # only the exact NONE token or ONE explicitly named
+                    # missing action is accepted. Any other text stays failed.
+                    try:
+                        raw = router.complete(
+                            prompt=(
+                                "Check original request versus complete "
+                                "candidate action list. Reply exactly NONE "
+                                "if all original actions are represented, "
+                                "or exactly MISSING: followed by ONE "
+                                "omitted user-requested action. No other "
+                                "text.\\n" + json.dumps({
+                                    "original_user_request": original[:2400],
+                                    "candidate_effects": [
+                                        row["behavior"] for row in obligations
+                                    ],
+                                }, ensure_ascii=False)
+                            ),
+                            role="analyzer", temperature=0, max_tokens=160,
+                        )
+                        answer = raw.strip() if isinstance(raw, str) else ""
+                        if answer == "NONE":
+                            extras = list(retained_extras)
+                            report.setdefault("recovery", []).append({
+                                "requirement_id": req_id,
+                                "stage": "omitted_effects",
+                                "status": "recovered_plain_none",
+                            })
+                        elif re.fullmatch(r"MISSING: .{12,300}", answer):
+                            missing = answer[len("MISSING: "):]
+                            report["unplanned_actions"] = [missing]
+                            report["reason"] = (
+                                req_id + ": original request omitted by "
+                                "authored effect plan: " + missing[:300]
+                            )
+                            return report
+                        else:
+                            report.setdefault("recovery", []).append({
+                                "requirement_id": req_id,
+                                "stage": "omitted_effects",
+                                "status": "plain_invalid",
+                            })
+                    except Exception as recover_exc:
+                        report.setdefault("recovery", []).append({
+                            "requirement_id": req_id,
+                            "stage": "omitted_effects",
+                            "status": "plain_failed",
+                            "error": type(recover_exc).__name__,
+                        })
         if not isinstance(extras, list) or len(extras) > 12:
             report["reason"] = (
                 req_id + ": incomplete original-request omitted-effect audit"
