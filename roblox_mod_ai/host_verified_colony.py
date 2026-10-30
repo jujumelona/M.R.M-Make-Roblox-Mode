@@ -131,7 +131,7 @@ function Service.start(services)
     services.PlayerDataManager.OnReady(function(player)
         local state = services.PlayerDataManager.GetState(player,"RMMPlanetProgress")
         if type(state) ~= "table" then return end
-        if state.colonized == true then
+        if state.colonized == true and state.planetOwned == true then
             local stamp = state.colonizedAt
             if type(stamp) == "number" and stamp%1 == 0
                 and stamp >= 1 and stamp <= 4102444800 then
@@ -166,6 +166,10 @@ function Service.handleAction(player, services, ...)
     local state=services.PlayerDataManager.GetState(player,"RMMPlanetProgress")
     if type(state) ~= "table" then
         return {success=false,reason="profile_unavailable"} end
+    -- Combat victory is the server-owned permission to found a colony.
+    -- A nearby alien prop or an arrived ship alone cannot grant the planet.
+    if state.planetOwned ~= true then
+        return {success=false,reason="planet_not_owned"} end
     local stamp
     local already=state.colonized == true
     if already then
