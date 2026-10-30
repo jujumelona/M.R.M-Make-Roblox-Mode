@@ -872,3 +872,43 @@ def test_planned_spaceflight_cannot_pass_from_duration_arithmetic(tmp_path):
         [path], {path: source},
         {path: "4: craft:PivotTo(destination)"},
     ) is not None
+
+
+def test_luau_inline_and_multiline_comments_never_certify_wallet_writes():
+    from roblox_mod_ai.requirement_completion_audit import (
+        _mask_luau_comments, _has_currency_state_write,
+    )
+    code = (
+        'local text = "-- this string is not a comment"\n'
+        '-- coins.Value += 100\n'
+        '--[=[\n'
+        'coins.Value += 200\n'
+        ']=]\n'
+        'target:SetAttribute("RMMAlienHealth", 0) -- coins.Value += 300\n'
+    )
+    masked = _mask_luau_comments(code)
+    assert masked.count("\n") == code.count("\n")
+    assert len(masked) == len(code)
+    assert "coins.Value" not in masked
+    effect = "The player gains earned currency"
+    assert not _has_currency_state_write(effect, code)
+    assert _has_currency_state_write(
+        effect, code + "\ncoins.Value += 1\n"
+    )
+
+
+def test_comment_only_quote_cannot_prove_mutation_with_long_comment(tmp_path):
+    from roblox_mod_ai.requirement_completion_audit import _real_source_quote
+    path = tmp_path / TRADE
+    path.write_text(
+        '--[=[\n'
+        'stock.money += 9\n'
+        ']=]\n'
+        '-- stock.money += 9\n'
+        'local x = 1 -- stock.money += 9\n',
+        encoding="utf-8",
+    )
+    assert _real_source_quote(tmp_path, TRADE, "stock.money += 9") == 0
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write("stock.money += 9\n")
+    assert _real_source_quote(tmp_path, TRADE, "stock.money += 9") == 6
