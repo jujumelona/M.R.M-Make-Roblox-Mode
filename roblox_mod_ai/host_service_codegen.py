@@ -95,6 +95,17 @@ def normalize_verified_server_body(body: str, proposal: RobloxProposal) -> str:
     arbitrary invented methods and unknown peer ABIs still fail validation.
     """
     body = normalize_trusted_player_aliases(body)
+    # The generated typed shell ALREADY defines 'local args = actionArgs'.
+    # An identical declaration in a model body only shadows that immutable
+    # validated alias. Remove this exact redundant line without touching
+    # other assignments, scopes, or game-side state changes.
+    body = "".join(
+        line for line in body.splitlines(keepends=True)
+        if not re.fullmatch(
+            r"\\s*local\\s+args\\s*=\\s*actionArgs\\s*;?\\s*",
+            line.rstrip("\\r\\n"),
+        )
+    )
     body = normalize_verified_peer_abi(body, proposal)
     if _MODEL_PROTOCOL.search(body):
         raise ValueError(
