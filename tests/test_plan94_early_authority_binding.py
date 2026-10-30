@@ -11,6 +11,7 @@ from roblox_mod_ai.request_semantics import source_action_authorizations
 from roblox_mod_ai.generation_scope import generation_scope
 from roblox_mod_ai.host_resource_market_sale import eligible_resource_market_sale
 from roblox_mod_ai.model_action_authority import unproven_model_actions
+from roblox_mod_ai.spec import RobloxModuleSpec, ModuleKind, RobloxService
 from test_plan86_market_sale_and_ship_catalog import with_sale
 
 SOURCE = ("우주모드 인데 자원파밍 돈모으기 거래 등으로 우주선을 "
@@ -21,7 +22,16 @@ def _plan_without_early_permissions():
     proposal, sale, client = with_sale()
     raw = deepcopy(proposal.game_design["dynamic_design"])
     raw.pop("source_action_authorizations", None)
-    raw["modules"] = list(proposal.modules)
+    raw["modules"] = [
+        RobloxModuleSpec(
+            module_id=m.module_id, name=m.name,
+            kind=m.kind, file_path=m.file_path,
+            roblox_service=(RobloxService.STARTER_PLAYER_SCRIPTS
+                            if m.kind == ModuleKind.CLIENT_SCRIPT
+                            else RobloxService.SERVER_SCRIPT_SERVICE),
+            description=m.description,
+        ) for m in proposal.modules
+    ]
     return raw, sale, client
 
 
