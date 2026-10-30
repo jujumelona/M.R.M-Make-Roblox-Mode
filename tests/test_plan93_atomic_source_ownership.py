@@ -68,3 +68,31 @@ def test_do_not_steal_from_another_valid_source_mining_owner():
     assert _realign_misattributed_source_effects(
         NoCalls(), SOURCE, source_rows, max_actions=6
     ) == source_rows
+
+
+def test_realign_after_the_model_appends_a_misbound_harvest():
+    """The same owner inversion can arise after initial decomposition."""
+    initial = rows([("자원파밍", WEAK), ("돈모으기 거래", TRADE),
+                    ("우주선을 부위마다", BUILD)])
+    donor_id = rows([("부위마다", HARVEST)])[0]["source_id"]
+
+    class OneAppend:
+        def __init__(self):
+            self.calls = 0
+
+        def complete_json(self, *args, **kwargs):
+            self.calls += 1
+            if self.calls > 1:
+                raise AssertionError("Source realignment must stop retrying")
+            return {"actions": [{"source_id": donor_id, "action": HARVEST}]}
+
+    model = OneAppend()
+    accepted = complete_source_owned_actions(
+        model, SOURCE, initial_actions=initial,
+    )
+    assert model.calls == 1
+    assert len(accepted) == 3
+    assert {(x["source_quote"], x["action"]) for x in accepted} == {
+        ("자원파밍", HARVEST), ("돈모으기 거래", TRADE),
+        ("우주선을 부위마다", BUILD),
+    }
