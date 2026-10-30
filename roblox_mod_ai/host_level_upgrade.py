@@ -114,7 +114,8 @@ def render_rank_protocol(m:Any,p:Any,router:Any)->str|None:
         "@COST@":str(data["cost"]),"@STEP@":str(data["increment"]),
         "@MAX@":str(data["max_level"]),"@OWNED@":"true" if owned else "false",
         "@ATTR@":json.dumps("RMMRank_"+target),
-        "@ACQUIRE_FIRST@":"true" if acquire else "false"}
+        "@ACQUIRE_FIRST@":"true" if acquire else "false",
+        "@GRANT_TOOL@":"true" if acquire else "false"}
     result=_SERVER if m.kind==ModuleKind.SERVER_MODULE else _CLIENT
     for key,val in replacements.items():result=result.replace(key,val)
     return result
@@ -128,16 +129,47 @@ local STEP=@STEP@
 local MAX=@MAX@
 local OWNED=@OWNED@
 local ACQUIRE_FIRST=@ACQUIRE_FIRST@
+local GRANT_TOOL=@GRANT_TOOL@
 local ATTR=@ATTR@
 local last={}
 local function good(v)
     return type(v)=="number" and v==v and v%1==0 and v>=0 and v<=2147483647
+end
+-- An explicit first paid weapon acquisition must deliver an actual usable
+-- owned Tool, not just increment an inventory number. Subsequent upgrade
+-- services resolve this Tool in the authenticated player's containers.
+local function ensureOwnedTool(player)
+    if not GRANT_TOOL then return true end
+    local backpack=player:FindFirstChildOfClass("Backpack")
+    if not backpack then return false end
+    local character=player.Character
+    local owned=backpack:FindFirstChild(TARGET)
+    if not owned and character then owned=character:FindFirstChild(TARGET) end
+    if owned then return owned:IsA("Tool") end
+    local tool=Instance.new("Tool")
+    tool.Name=TARGET
+    tool.RequiresHandle=false
+    tool.CanBeDropped=false
+    tool:SetAttribute("RMMOwnedWeapon",true)
+    tool.Parent=backpack
+    return true
 end
 function Service.start(services)
     assert(services.PlayerDataManager and type(services.PlayerDataManager.GetState)=="function", "Rank upgrade requires PlayerDataManager.GetState")
     services.PlayerDataManager.OnReady(function(player)
         local saved=services.PlayerDataManager.GetState(player,"RMMRankProgress")
         if saved and good(saved[TARGET] or 0) then player:SetAttribute(ATTR,saved[TARGET] or 0) end
+        if GRANT_TOOL then
+            local inventory=services.PlayerDataManager.GetState(player,"RMMInventory")
+            if type(inventory)=="table" and type(inventory.items)=="table"
+                and good(inventory.items[TARGET] or 0) and inventory.items[TARGET]>=1 then
+                -- Rebuild the physical owned Tool on rejoin and respawn.
+                task.defer(function() ensureOwnedTool(player) end)
+                player.CharacterAdded:Connect(function()
+                    task.defer(function() ensureOwnedTool(player) end)
+                end)
+            end
+        end
     end)
     Players.PlayerRemoving:Connect(function(player) last[player]=nil end)
 end
@@ -158,6 +190,12 @@ function Service.handleAction(player,services,...)
             return {success=false,reason="not_owned"} end
     end
     local acquiring=OWNED and ACQUIRE_FIRST and not acquired
+    local entitlements=nil
+    if acquiring and GRANT_TOOL then
+        entitlements=services.PlayerDataManager.GetState(player,"RMMTradeEntitlements")
+        if type(entitlements)~="table" or not player:FindFirstChildOfClass("Backpack") then
+            return {success=false,reason="weapon_inventory_not_ready"} end
+    end
     local rank=ranks[TARGET] or 0
     if not good(rank) or (not acquiring and rank>=MAX) then
         return {success=false,reason="max"} end
@@ -175,8 +213,16 @@ function Service.handleAction(player,services,...)
     if acquiring then
         if inventory.items==nil then inventory.items={} end
         inventory.items[TARGET]=1
+        if GRANT_TOOL then
+            -- The only price debit above precedes inventory, entitlement and
+            -- physical Tool creation with no yield. Price is never client data.
+            entitlements[script.Name.."/"..TARGET]={
+                purchased=true,kind="weapon",bonus=0}
+            assert(ensureOwnedTool(player), "Verified Backpack disappeared")
+        end
+        ranks[TARGET]=1
         player:SetAttribute("RMMWeaponOwned",true)
-        return {success=true,acquired=true,level=rank,coins=coins.Value}
+        return {success=true,acquired=true,level=1,coins=coins.Value}
     end
     ranks[TARGET]=nextRank
     player:SetAttribute(ATTR,nextRank)
