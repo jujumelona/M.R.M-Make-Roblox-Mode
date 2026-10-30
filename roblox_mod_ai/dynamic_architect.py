@@ -207,6 +207,42 @@ def _ground_source_fidelity_review(
     return ""
 
 
+def _review_with_host_semantic_fallback(
+    review: Any, source_requirement: Any, server_text: str, outcome_text: str,
+) -> tuple[str, bool]:
+    """Distinguish malformed reviewer citations from real gameplay defects.
+
+    The reviewer is another response from the SAME model, not executable
+    evidence. When it says 'covered' but cannot copy text literally, re-run
+    the independent source-preservation predicates instead of throwing away
+    an otherwise already validated architecture. A substantive reviewer
+    rejection (covered=false) remains an error. Never use unsupported quotes
+    as accepted evidence; report the downgrade to deterministic checks.
+    """
+    issue = _ground_source_fidelity_review(review, server_text, outcome_text)
+    if not issue or not issue.startswith("Unsupported "):
+        return issue, False
+    if not isinstance(review, dict) or review.get("covered") is not True:
+        return issue, False
+    statement = (
+        str(source_requirement.get("statement") or "")
+        if isinstance(source_requirement, dict)
+        else str(source_requirement or "")
+    )
+    from .semantic_preservation import (
+        source_intent_conflicts, source_outcome_conflicts,
+    )
+    # Both server transition and observable effect must pass; otherwise this
+    # is a REAL missing-action defect, not a reviewer output-format issue.
+    missing = (
+        source_intent_conflicts(statement, server_text)
+        + source_outcome_conflicts(statement, outcome_text)
+    )
+    if missing:
+        return "SEMANTIC_SOURCE_CONTRACT: " + "; ".join(missing[:6]), False
+    return "", True
+
+
 # These are inspected first-party *code templates*, not third-party libraries.
 # A candidate can be reused only when its behavior is an exact request match.
 _BUILTIN_CONTRACTS = {
@@ -1898,8 +1934,19 @@ class RobloxDynamicArchitect:
                                     max_tokens=360,
                                     json_schema=_SOURCE_FIDELITY_REVIEW_SCHEMA,
                                 )
-                                issue = _ground_source_fidelity_review(
-                                    review, server_text, outcome_text)
+                                issue, unquoted = _review_with_host_semantic_fallback(
+                                    review, original_source,
+                                    server_text, outcome_text)
+                                if unquoted:
+                                    # Do not claim the model's unsupported
+                                    # quotation was a grounded review. Preserve
+                                    # an explicit audit record instead.
+                                    research.setdefault(
+                                        "source_fidelity_quote_fallbacks", []).append({
+                                            "facet_id": facet_id,
+                                            "reason": "unquoted_positive_review",
+                                            "verification": "source_intent_and_outcome",
+                                        })
                                 if issue:
                                     raise DynamicDesignError(
                                         "SEMANTIC_FIDELITY_CONTRACT: " + issue)
