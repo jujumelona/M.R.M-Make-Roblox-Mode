@@ -396,6 +396,16 @@ def source_intent_conflicts(
         r"(?:ship|spacecraft|craft).{0,70}(?:part|section|module)",
         source, re.I,
     )
+    # A negated installation is not evidence of construction. The earlier
+    # lexical check could approve "purchases a component but does not attach
+    # it to the ship" because it searched the word "attach" without polarity.
+    # Strip only the negated clause, not unrelated positive sentences.
+    construction_claims = re.sub(
+        r"\b(?:does|do|did|will|would|can|is|are)\s+not\b[^.!?;]{0,200}|"
+        r"\b(?:never|without)\s+(?:\w+\s+){0,10}"
+        r"(?:attach|install|build|assembl|construct)\w*[^.!?;]{0,160}",
+        " ", text, flags=re.I,
+    )
     sectional_build_effect = re.search(
         r"\b(?:build\w*|construct\w*|assembl\w*|creat\w*|"
         r"attach\w*|install\w*|fabricat\w*)\b"
@@ -406,8 +416,14 @@ def source_intent_conflicts(
         r"\b(?:section|part|module)\b.{0,90}"
         r"\b(?:to|onto|into|on)\b.{0,35}"
         r"\b(?:craft|ship|spacecraft|hull)\b|"
+        # A model can correctly attach a COMPONENT to a SPACEship without
+        # saying "section" or "spacecraft". Keep the positive attachment
+        # verb mandatory: merely purchasing a component stays insufficient.
+        r"\b(?:attach\w*|install\w*|assembl\w*|construct\w*|build\w*)\b"
+        r".{0,100}\b(?:component|components)\b"
+        r".{0,100}\b(?:spacecraft|spaceship|ship|craft|hull)\b|"
         r"(?:우주선|선체).{0,65}(?:제작|조립|장착|생성|건설)",
-        text, re.I,
+        construction_claims, re.I,
     )
     if (require_implementation and sectional_build_requested
             and not sectional_build_effect):
