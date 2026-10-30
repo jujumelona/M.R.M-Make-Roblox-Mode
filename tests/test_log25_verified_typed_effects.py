@@ -332,3 +332,35 @@ def test_mineral_harvest_does_not_gain_an_unrelated_enemy_respawn():
     code = render_verified_effect(server, p)
     assert code
     assert 'task.delay(25, function()' not in code
+
+
+def test_verified_combat_target_is_hostile_not_only_a_static_health_prop():
+    p, server = _fixture("combat")
+    source = render_verified_effect(server, p)
+    assert source is not None
+    assert "task.spawn(function()" in source
+    assert "victim:GetAttribute(\"RMMFlightState\") == \"arrived\"" in source
+    assert "humanoid.Health > 0" in source
+    assert "(root.Position - marker.Position).Magnitude <= 24" in source
+    assert "humanoid:TakeDamage(6)" in source
+    assert "task.wait(1.5)" in source
+    assert "type(hp) == \"number\" and hp > 0" in source
+    # Attack strength, range, victims and timer are all server-chosen.
+    assert "args.damage" not in source
+    assert "args.victim" not in source
+    assert "args.timer" not in source
+    analyzer = LuauStaticAnalyzer()
+    errors = [
+        diagnostic for diagnostic in analyzer.analyze_source(
+            source, server.file_path,
+        ) if diagnostic.severity == "ERROR"
+    ]
+    assert errors == [], [(e.rule, e.message) for e in errors]
+
+
+def test_verified_world_harvest_does_not_spawn_hostile_damage():
+    p, server = _fixture("harvest")
+    source = render_verified_effect(server, p)
+    assert source
+    assert "humanoid:TakeDamage(" not in source
+    assert "task.spawn(function()" not in source
