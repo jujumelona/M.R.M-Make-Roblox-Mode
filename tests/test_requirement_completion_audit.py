@@ -535,3 +535,38 @@ def test_realistic_multipart_requirement_recovers_compact_first_effect(tmp_path)
     assert any(r.get("status") == "invalid_evidence"
                for r in report["recovery"])
     assert len(model.calls) == 7  # five effects + retry + scope review
+
+
+def test_fabricated_batch_citation_recovers_only_that_effect(tmp_path):
+    """A valid cardinality batch with one fake quote must not fail unscoped."""
+    proposal = fixture(tmp_path)
+    class BadCitationThenCompact:
+        def __init__(self):
+            self.calls = []
+        def complete_json(self, **kwargs):
+            prompt = kwargs["prompt"]
+            self.calls.append(prompt)
+            if prompt.startswith("Post-generation"):
+                answer = response(first="implemented")
+                answer["checks"][1]["quote"] = "fictionalCoins.Value += 999"
+                return answer
+            if prompt.startswith("Find user-requested"):
+                return {"missing_actions": []}
+            assert prompt.startswith("Audit exactly ONE")
+            assert "increases earned currency" in prompt
+            return {
+                "verdict": "missing", "file": TRADE,
+                "quote": "stock.resources -= 1",
+                "issue": "The server never credits the earned currency",
+                "repair": "Credit the authoritative wallet after validated resource debit",
+            }
+    model = BadCitationThenCompact()
+    report = audit_whole_requirement_completion(proposal, tmp_path, model)
+    assert report["fully_covered"], report
+    assert report["status"] == "issues_found"
+    assert len(report["findings"]) == 1
+    assert len(report["checks"]) == 3
+    assert [r["effect_id"] for r in report["recovery"]
+            if r.get("stage") == "single_effect" and r.get("status") == "recovered"] == [
+                "effect-02"
+            ]
