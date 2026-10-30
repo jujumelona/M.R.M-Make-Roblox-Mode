@@ -98,7 +98,7 @@ def verify_compiled_effect_sources(
         return report
     modules = list(getattr(proposal, "modules", ()) or ())
     seen_servers: set[str] = set()
-    for remote, program in sorted(actions.items()):
+    for remote, program in sorted(actions.items(), key=lambda item: str(item[0])):
         if not isinstance(remote, str) or not isinstance(program, dict):
             report["failures"].append("invalid_action_entry")
             continue
@@ -114,7 +114,12 @@ def verify_compiled_effect_sources(
             report["failures"].append("multiple_programs_same_owner:" + path)
             continue
         seen_servers.add(path)
-        if not isinstance(path, str) or not path.startswith("src/server/"):
+        if (not isinstance(path, str)
+                or not path.startswith("src/server/")
+                or "\\" in path
+                or ".." in Path(path).parts
+                or Path(path).is_absolute()
+                or not path.endswith(".luau")):
             report["failures"].append("invalid_server_path:" + remote)
             continue
         try:
@@ -150,4 +155,9 @@ def verify_compiled_effect_sources(
         if not matching:
             report["failures"].append("compiled_effect_source_mismatch:" + path)
     report["passed"] = not report["failures"]
+    report["declared_action_count"] = len(actions)
+    report["status"] = (
+        "failed" if report["failures"]
+        else "verified" if actions else "not_applicable"
+    )
     return report
