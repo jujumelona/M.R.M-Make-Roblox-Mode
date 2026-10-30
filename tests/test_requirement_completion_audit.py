@@ -302,7 +302,7 @@ class RecoveringRouter:
         if prompt.startswith("Find user-requested"):
             return {"extra_missing": []}
         assert prompt.startswith("Audit exactly ONE"), prompt[:120]
-        assert "complete_server_sources" in prompt
+        assert "current_owner_sources" in prompt
         if self.fail_single:
             return {"verdict": "implemented", "file": TRADE,
                     "quote": "invented imaginary server code"}
@@ -511,7 +511,10 @@ def test_realistic_multipart_requirement_recovers_compact_first_effect(tmp_path)
                 return {"missing_actions": []}
             assert prompt.startswith(("Audit exactly ONE", "Recheck ONE"))
             data = json.loads(prompt[prompt.index('{"effect":'):])
-            catalog = data["owner_catalog"]
+            catalog = {
+                row["path"]: int(index)
+                for index, row in data["current_owner_sources"].items()
+            }
             if self.first_invalid:
                 self.first_invalid = False
                 return {}
