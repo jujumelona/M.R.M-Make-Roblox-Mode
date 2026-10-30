@@ -228,7 +228,8 @@ def test_two_source_owned_mining_intents_never_merge_ordinary_and_special_invent
 
 def test_unrelated_prompt_cannot_turn_plain_mining_into_special_currency():
     proposal = mining_plan()
-    proposal.requested_prompt = "There is also a quest for special minerals elsewhere"
+    proposal.requested_prompt = ("Harvest ordinary ore and trade it; "
+                                 "there is also a quest for special minerals elsewhere")
     proposal.game_design["dynamic_design"]["module_requirements"] = {
         proposal.modules[0].module_id: ["r"],
     }
