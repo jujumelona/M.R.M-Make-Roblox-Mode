@@ -80,6 +80,12 @@ class RobloxGameDesignPlanner:
         code generation and engine verification retain their strict gates.
         """
         validate_mode(project_mode)
+        # The legacy full-architecture protocol explicitly requests a
+        # compiled model design during PLAN, including direct planner calls.
+        # Default modern planning remains an intent-only draft.
+        if (os.environ.get("RMM_LEGACY_ARCHITECTURE_PROTOCOL", "0") == "1"
+                and os.environ.get("RMM_ENABLE_DYNAMIC_DESIGN", "auto") == "1"):
+            compile_architecture = True
         # MMM request-first contract: retrieve before selecting mechanics/modules.
         research = self.researcher.research(prompt)
         # 1. Generate Game Title
@@ -640,6 +646,13 @@ class RobloxGameDesignPlanner:
         updated = self.plan(
             plan.proposal.requested_prompt + "\n" + feedback,
             project_mode=plan.proposal.game_design.get("project_mode", "new_experience"),
+            # Preserve the caller-selected architectural phase across a
+            # revision. Otherwise every verified dynamic subsystem disappears
+            # when an implementation contract is revised as an intent draft.
+            compile_architecture=(
+                plan.proposal.game_design.get("planning_phase")
+                == "implementation_contract"
+            ),
         )
         revised = updated.proposal
         research = revised.game_design.get("pre_design_research") or {}
