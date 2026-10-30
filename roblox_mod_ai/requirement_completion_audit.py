@@ -123,7 +123,7 @@ def _source_scopes_for_effect(
         "this", "that", "when", "only", "each", "rejected", "persisted",
     }
     terms = {
-        w.rstrip("seding") for w in re.findall(r"[a-z]{4,}", behavior.lower())
+        w for w in re.findall(r"[a-z]{4,}", behavior.lower())
         if w not in stop
     }
     descriptions = {
@@ -155,7 +155,7 @@ def _source_scopes_for_effect(
             for i, line in enumerate(lines):
                 line_lower = line.lower()
                 value = sum(1 for term in terms if term in line_lower)
-                if re.search(r"(?:\\+=|-=|\\.[A-Za-z_]+\\s*=|SetAttribute|GetState|UpdateAsync)", line):
+                if re.search(r"(?:\+=|-=|\.[A-Za-z_]+\s*=|SetAttribute|GetState|UpdateAsync)", line):
                     value += 1
                 scored.append((value, i))
             centers = [i for value, i in sorted(scored, reverse=True)
@@ -163,7 +163,7 @@ def _source_scopes_for_effect(
             selected = sorted({i for center in centers
                                for i in range(max(0, center - 2),
                                               min(len(lines), center + 3))})
-        sample = "\\n".join(f"{i + 1}: {lines[i]}" for i in selected)
+        sample = "\n".join(f"{i + 1}: {lines[i]}" for i in selected)
         numbered[path] = sample[:14000]
     return ranked, numbered
 
@@ -186,7 +186,7 @@ def _normalize_single_effect_answer(
     file_path = raw.get("file")
     if file_path is None:
         file_id = raw.get("file_id")
-        if type(file_id) is not int or not 0 <= file_id < len(ranked):
+        if type(file_id) is not int or not 0 <= file_id < min(2, len(ranked)):
             return None
         file_path = ranked[file_id]
     if file_path not in sources:
@@ -413,7 +413,7 @@ def audit_whole_requirement_completion(
                 } for path, content in numbered.items()
             }
             single_prompt = (
-                "Source audit of ONE Roblox effect. Return compact JSON. "
+                "Audit exactly ONE Roblox effect. Return compact JSON. "
                 "Use a file_id from this catalog and the physical line number "
                 "from numbered_actual_source. NEVER copy source lines or paths. "
                 "Judge implemented only when server-side effects are actually "
