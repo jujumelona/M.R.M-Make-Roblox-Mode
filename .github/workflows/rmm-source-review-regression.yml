@@ -5,6 +5,9 @@ on:
     paths:
       - 'roblox_mod_ai/host_verified_typed_effects.py'
       - 'tests/test_log25_verified_typed_effects.py'
+      - 'roblox_mod_ai/host_atomic_effect.py'
+      - 'roblox_mod_ai/host_effect_ir_planner.py'
+      - 'tests/test_generic_transaction_effect.py'
       - 'roblox_mod_ai/compiled_effect_verification.py'
       - 'tests/test_compiled_effect_verification.py'
       - 'roblox_mod_ai/orchestrator.py'
