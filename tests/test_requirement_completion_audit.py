@@ -276,3 +276,99 @@ def test_rejected_obligation_repair_restores_previous_gameplay_source(
     )
     assert not outcome["passed"]
     assert (tmp_path / TRADE).read_text() == original
+
+
+class RecoveringRouter:
+    """Simulate the small model's short/malformed batch and bounded replies."""
+
+    def __init__(self, *, initial="partial", fail_single=False):
+        self.initial = initial
+        self.fail_single = fail_single
+        self.prompts = []
+
+    def complete_json(self, **kwargs):
+        prompt = kwargs["prompt"]
+        self.prompts.append(kwargs)
+        if prompt.startswith("Post-generation"):
+            if self.initial == "length":
+                raise ValueError("finish_reason=length: completion truncated")
+            if self.initial == "duplicates":
+                items = response(first="implemented")["checks"]
+                return {"checks": [items[0], items[0], *items[1:]],
+                        "extra_missing": []}
+            if self.initial == "no_extras":
+                return {"checks": [], "extra_missing": None}
+            return {"checks": response()["checks"][:1], "extra_missing": []}
+        if prompt.startswith("Find original user-requested"):
+            return {"extra_missing": []}
+        assert prompt.startswith("Audit exactly ONE"), prompt[:120]
+        assert "complete_server_sources" in prompt
+        if self.fail_single:
+            return {"verdict": "implemented", "file": TRADE,
+                    "quote": "invented imaginary server code"}
+        if "increases earned currency" in prompt:
+            return {"verdict": "missing", "file": TRADE,
+                    "quote": "stock.resources -= 1",
+                    "issue": "Currency balance is never increased in the authoritative wallet",
+                    "repair": "Credit the server-owned wallet after successful inventory debit"}
+        if "Purchasing a ship section" in prompt:
+            return {"verdict": "implemented", "file": SHIP,
+                    "quote": "ship.Sections += 1", "issue": "none", "repair": "none"}
+        if "Successful trade reduces" in prompt:
+            return {"verdict": "implemented", "file": TRADE,
+                    "quote": "stock.resources -= 1", "issue": "none", "repair": "none"}
+        raise AssertionError("Unknown independent effect")
+
+
+def test_incomplete_batch_recovers_each_missing_effect_without_false_pass(tmp_path):
+    router = RecoveringRouter(initial="partial")
+    report = audit_whole_requirement_completion(fixture(tmp_path), tmp_path, router)
+    assert report["status"] == "issues_found", report
+    assert report["fully_covered"]
+    assert {v["id"] for v in report["checks"]} == {
+        "effect-01", "effect-02", "effect-03"
+    }
+    assert len(report["findings"]) == 1
+    assert [x["effect_id"] for x in report["recovery"]
+            if x["stage"] == "single_effect"] == ["effect-02", "effect-03"]
+    assert len(router.prompts) == 3
+
+
+def test_duplicate_effect_is_reaudited_not_double_counted(tmp_path):
+    router = RecoveringRouter(initial="duplicates")
+    report = audit_whole_requirement_completion(fixture(tmp_path), tmp_path, router)
+    assert report["status"] == "reviewed_no_blockers", report
+    assert report["fully_covered"]
+    assert len(report["checks"]) == 3
+    assert [x["effect_id"] for x in report["recovery"]
+            if x["stage"] == "single_effect"] == ["effect-01"]
+
+
+def test_truncated_model_output_recovers_all_effects_and_original_scope(tmp_path):
+    router = RecoveringRouter(initial="length")
+    report = audit_whole_requirement_completion(fixture(tmp_path), tmp_path, router)
+    assert report["status"] == "issues_found", report
+    assert len(report["checks"]) == 3
+    assert len(report["findings"]) == 1
+    assert any(x["stage"] == "batch_output" for x in report["recovery"])
+    assert any(p["prompt"].startswith("Find original user-requested")
+               for p in router.prompts)
+
+
+def test_invalid_single_evidence_cannot_be_accepted_on_recovery(tmp_path):
+    router = RecoveringRouter(initial="partial", fail_single=True)
+    report = audit_whole_requirement_completion(fixture(tmp_path), tmp_path, router)
+    assert report["status"] == "failed", report
+    assert not report["fully_covered"]
+    assert report["checks"] == [] or all(
+        x.get("verdict") != "implemented" or x.get("line") for x in report["checks"]
+    )
+
+
+def test_missing_extra_audit_is_repeated_instead_of_skipped(tmp_path):
+    router = RecoveringRouter(initial="no_extras")
+    report = audit_whole_requirement_completion(fixture(tmp_path), tmp_path, router)
+    assert report["status"] == "issues_found", report
+    assert report["fully_covered"]
+    assert any(p["prompt"].startswith("Find original user-requested")
+               for p in router.prompts)
