@@ -190,6 +190,17 @@ def test_two_source_owned_mining_intents_never_merge_ordinary_and_special_invent
             source_server.module_id: ["r"], source_client.module_id: ["r"],
         }
         ensure_mining_world_contract(proposal)
+        if proposal is special:
+            dynamic = proposal.game_design["dynamic_design"]
+            dynamic["world_objects"].append({
+                "name": "VerifiedOrbitArrival", "class": "Part",
+                "position": [0, 8000, 0],
+            })
+            dynamic["host_arrival_materializations"] = [{
+                "server": "VerifiedSpaceLaunchServer",
+                "arrival": "VerifiedOrbitArrival",
+                "builder": "OwnedVehicleBuilderServer",
+            }]
         server = render_host_mining(source_server, proposal)
         client = render_host_mining(source_client, proposal)
         assert server is not None and client is not None
@@ -199,6 +210,9 @@ def test_two_source_owned_mining_intents_never_merge_ordinary_and_special_invent
             assert "specialMinerals = progress.specialMinerals" in server
             assert "result.specialMinerals" in client
             assert "result.resources" not in client
+            assert 'workspace:FindFirstChild("VerifiedOrbitArrival", true)' in server
+            assert 'part.CFrame = arrival.CFrame * CFrame.new(' in server
+            assert 'player:GetAttribute("RMMFlightState") ~= "arrived"' in server
         else:
             assert "progress.resources = balance + 1" in server
             assert "progress.specialMinerals" not in server
@@ -225,3 +239,17 @@ def test_unrelated_prompt_cannot_turn_plain_mining_into_special_currency():
     source = render_host_mining(proposal.modules[0], proposal)
     assert source and "progress.resources = balance + 1" in source
     assert "progress.specialMinerals" not in source
+
+
+def test_offworld_special_mineral_without_real_destination_is_not_host_certified():
+    proposal = mining_plan()
+    statement = "Mine special minerals on another planet"
+    proposal.game_design["pre_design_research"] = {
+        "ledger": {"requirements": [{"id": "req", "statement": statement}]}
+    }
+    proposal.game_design["dynamic_design"]["module_requirements"] = {
+        m.module_id: ["req"] for m in proposal.modules
+    }
+    ensure_mining_world_contract(proposal)
+    assert render_host_mining(proposal.modules[0], proposal) is None
+    assert render_host_mining(proposal.modules[1], proposal) is None
