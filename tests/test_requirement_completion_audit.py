@@ -951,3 +951,37 @@ def test_source_witnesses_never_include_comment_or_arithmetic_only_evidence():
     assert found[0]["file"] == path
     assert found[0]["line"] == 4
     assert found[0]["quote"] == "state.resource += 1"
+
+
+
+def test_persistent_owner_write_survives_decorative_statement_noise():
+    """Rank verified GetState-derived fields, never a named game mechanic."""
+    from roblox_mod_ai.requirement_completion_audit import _host_effect_witnesses
+    path = "src/server/DynamicOwner.luau"
+    source = (
+        'local profile = services.PlayerDataManager.GetState(player, "GenericState")\n'
+        + "".join("widget.Property%d = %d\n" % (i, i) for i in range(80))
+        + "profile.savedCounter += 1\n"
+    )
+    witnesses = _host_effect_witnesses(
+        "The authoritative player state is persisted after success",
+        {path: source}, [], limit=24,
+    )
+    assert any(row["quote"] == "profile.savedCounter += 1"
+               for row in witnesses), witnesses
+
+
+def test_source_owner_allocation_does_not_starve_other_services():
+    from roblox_mod_ai.requirement_completion_audit import _host_effect_witnesses
+    sources = {
+        "src/server/A.luau": "".join(
+            "prop.Attribute%d = %d\n" % (i, i) for i in range(90)
+        ),
+        "src/server/B.luau": "state.second += 1\n",
+        "src/server/C.luau": "state.third += 1\n",
+    }
+    witnesses = _host_effect_witnesses(
+        "The server processes the requested state transition",
+        sources, [], limit=24,
+    )
+    assert {row["file"] for row in witnesses} == set(sources)
