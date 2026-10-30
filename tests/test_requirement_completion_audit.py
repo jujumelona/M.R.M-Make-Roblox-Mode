@@ -405,8 +405,8 @@ def test_large_requirement_never_requests_unbounded_batch(tmp_path):
 
     router = BoundedModel()
     report = audit_whole_requirement_completion(proposal, tmp_path, router)
-    assert report["fully_covered"], report
-    assert len(report["checks"]) == 4
+    assert not report["fully_covered"], report
+    assert "shared evidence" in report["reason"], report
     assert any(x["stage"] == "batch_skipped" for x in report["recovery"])
     assert sum(x.startswith("Audit exactly ONE") for x in router.prompts) == 4
 
@@ -528,10 +528,11 @@ def test_realistic_multipart_requirement_recovers_compact_first_effect(tmp_path)
 
     model = TinyModel()
     report = audit_whole_requirement_completion(proposal, tmp_path, model)
-    assert report["fully_covered"], report
-    assert report["status"] == "issues_found", report
-    assert len(report["checks"]) == 5
-    assert len(report["findings"]) == 1
+    # The tiny model recovered a malformed reply, but incorrectly used the
+    # same real code line to assert multiple unrelated successful effects.
+    # This must be rejected, not counted as proof of a working game.
+    assert not report["fully_covered"], report
+    assert "shared evidence" in report["reason"], report
     assert any(r.get("status") == "invalid_evidence"
                for r in report["recovery"])
     assert len(model.calls) == 7  # five effects + retry + scope review
@@ -570,3 +571,34 @@ def test_fabricated_batch_citation_recovers_only_that_effect(tmp_path):
             if r.get("stage") == "single_effect" and r.get("status") == "recovered"] == [
                 "effect-02"
             ]
+
+
+def test_false_positive_same_source_proves_two_different_acts_is_blocked(tmp_path):
+    proposal = fixture(tmp_path)
+    output = response(first="implemented")
+    # Both 'resource decrease' and 'money increase' wrongly cite only debit.
+    output["checks"][1]["quote"] = output["checks"][0]["quote"]
+    output["checks"][1]["file"] = output["checks"][0]["file"]
+    report = audit_whole_requirement_completion(
+        proposal, tmp_path, Router(output),
+    )
+    assert report["status"] == "failed", report
+    assert not report["fully_covered"]
+    assert "shared evidence" in report["reason"]
+
+
+def test_model_cannot_discard_original_effect_as_out_of_scope(tmp_path):
+    proposal = fixture(tmp_path)
+    output = response()
+    output["checks"][0].update({
+        "verdict": "out_of_scope",
+        "file": "",
+        "quote": "",
+        "issue": "The model thinks original requested mining is unrelated",
+        "repair": "",
+    })
+    report = audit_whole_requirement_completion(
+        proposal, tmp_path, Router(output),
+    )
+    assert not report["fully_covered"]
+    assert "scope conflict" in report["reason"]
