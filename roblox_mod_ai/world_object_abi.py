@@ -103,6 +103,7 @@ def world_lookup_guidance(proposal: Any, module: Any) -> str:
     return (
         "AUTHORIZED MATERIALIZED WORLD INSTANCES (exact name and class): "
         + json.dumps(objects, ensure_ascii=False) + ". "
+        "Objects NOT listed here must not be accessed by this action. "
         "Only these exact workspace objects may be accessed by this action. "
         "These are NOT injected server services. Use the Roblox APIs for "
         "each declared class; a Part is not a Model. If the intended effect "
