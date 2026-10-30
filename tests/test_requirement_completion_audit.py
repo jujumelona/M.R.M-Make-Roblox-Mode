@@ -215,7 +215,7 @@ def test_missing_obligation_is_repaired_in_place_then_all_effects_reaudited(
     assert initial["status"] == "issues_found"
     initial["source_sha256"] = {
         module.file_path: sha256(
-            (tmp_path / module.file_path).read_bytes()
+            (tmp_path / module.file_path).read_text(encoding="utf-8").encode("utf-8")
         ).hexdigest()
         for module in proposal.modules
     }
@@ -262,7 +262,7 @@ def test_rejected_obligation_repair_restores_previous_gameplay_source(
     original = (tmp_path / TRADE).read_text()
     initial = audit_whole_requirement_completion(proposal, tmp_path, router)
     initial["source_sha256"] = {
-        module.file_path: sha256((tmp_path / module.file_path).read_bytes()).hexdigest()
+        module.file_path: sha256((tmp_path / module.file_path).read_text(encoding="utf-8").encode("utf-8")).hexdigest()
         for module in proposal.modules
     }
     outcome = cycle.run_source_repair_cycle(
