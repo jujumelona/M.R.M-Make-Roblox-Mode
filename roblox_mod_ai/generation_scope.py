@@ -21,6 +21,7 @@ from .host_gameplay import render_host_gameplay
 from .host_space_actions import render_host_space_action
 from .host_contextual_harvest import render_contextual_harvest
 from .host_space_colonization import render_colony_alias
+from .host_verified_colony import render_colony
 from .typed_action_contract import render_typed_client
 from .host_atomic_effect import render_atomic_server
 from .host_verified_typed_effects import render_verified_effect
@@ -67,6 +68,8 @@ def generation_scope(
             strategy = "host_atomic_effect"
         elif render_verified_effect(module, proposal) is not None:
             strategy = "host_verified_typed_effect"
+        elif render_colony(module, proposal) is not None:
+            strategy = "host_verified_planet_colony"
         elif render_colony_alias(module, proposal) is not None:
             strategy = "host_space_colony_alias"
         elif render_contextual_harvest(module, proposal) is not None:

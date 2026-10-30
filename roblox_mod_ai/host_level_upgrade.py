@@ -36,12 +36,25 @@ def eligible_rank_protocol(m:Any,p:Any)->tuple[str,str,str,bool]|None:
     if not isinstance(spec,dict) or spec.get("transport_only") is not True:return None
     if spec.get("server")!=server or spec.get("client")!=server.removesuffix("Server")+"Client":return None
     targets=[x for x in spec.get("world_entities",[]) if isinstance(x,str) and _NAME.fullmatch(x) and not _WALLET.search(x)]
+    if not targets:
+        # A transport-only manifest has no semantic target. Recover ONLY an
+        # unambiguous target with an already implemented persistent ABI. This
+        # happens before Luau generation, never by inventing fields in code.
+        desc=owner.description.casefold()
+        semantic=[]
+        if re.search(r"\bcrew['’]?s?\s+performance\s+state\b",desc):
+            semantic.append("crew_performance_state")
+        if re.search(r"\bspaceship['’]?s?\s+performance\s+state\b",desc):
+            semantic.append("Spaceship")
+        if re.search(r"\bweapon\s+upgrade\s+purchase\b",desc):
+            semantic.append("owned_weapon")
+        targets=semantic
     if len(targets)!=1:return None
     if m.kind==ModuleKind.CLIENT_SCRIPT and not m.file_path.endswith(".client.luau"):return None
     if m.kind==ModuleKind.SERVER_MODULE and not m.file_path.startswith("src/server/"):return None
     links=(d.get("module_remotes") or {}).get(m.module_id)
     if links is not None and links!=[remote]:return None
-    return server,remote,targets[0],bool(_OWNED.search(owner.description))
+    return server,remote,targets[0],bool(_OWNED.search(owner.description) or targets[0]=="owned_weapon")
 
 def _allows_paid_first_ownership(proposal: Any, target: str,
                                  owner_description: str, owned: bool) -> bool:
