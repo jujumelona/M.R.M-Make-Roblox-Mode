@@ -313,6 +313,22 @@ def _downstream_effect_evidence(
     )
     target = target_match.group(1) if target_match else ""
     hints = {target} if target else set()
+    # Some verified producers persist a per-item record (e.g.
+    # saved[tool.Name] = {level=...}) instead of a literal TARGET scalar.
+    # The consumer must read the SAME persisted namespace before it can
+    # provide evidence of a gameplay effect. Never infer an item from the
+    # module name or an unrelated shared inventory.
+    authored_namespaces: set[str] = set()
+    for namespace in namespaces:
+        owned = re.search(
+            r'\blocal\s+(\w+)\s*=\s*\w+\.GetState\s*\(\s*player\s*,\s*"'
+            + re.escape(namespace) + r'"\s*\)', source,
+        )
+        if owned and re.search(
+            r'\b' + re.escape(owned.group(1))
+            + r'\s*\[[^\]\n]+\]\s*=(?!=)', source,
+        ):
+            authored_namespaces.add(namespace)
     if "RMMWeaponProgress" in namespaces:
         hints.update(("weapon.tier", "state.tier"))
     if "RMMShipSections" in namespaces:
@@ -326,6 +342,10 @@ def _downstream_effect_evidence(
         shared = [ns for ns in namespaces if ns in content]
         if not shared or (target and target not in content):
             continue
+        if not target and authored_namespaces:
+            shared = [ns for ns in shared if ns in authored_namespaces]
+            if not shared:
+                continue
         # Inventory is a common shared namespace across unrelated actions.
         # An ownership or GetOwnedActor mention alone does not prove that
         # the specific RMMRankProgress/RMMShipSections record is consumed.
@@ -338,13 +358,25 @@ def _downstream_effect_evidence(
         if "RMMWeaponProgress" in namespaces and (
                 "RMMWeaponProgress" not in shared):
             continue
-        if not any(hint and hint in content for hint in hints):
+        if hints and not any(hint and hint in content for hint in hints):
+            continue
+        if not hints and not authored_namespaces:
+            continue
+        # The consumer must actually access the producer's namespace via
+        # a player-profile GetState call, not merely mention it in comments.
+        if not target and not any(
+            re.search(r'GetState\s*\(\s*player\s*,\s*"' + re.escape(ns)
+                      + r'"\s*\)', content) for ns in shared
+        ):
             continue
         lines = content.splitlines()
         indices = [
             i for i, line in enumerate(lines)
             if any(hint and hint in line for hint in hints)
         ]
+        if not hints and authored_namespaces:
+            indices = [i for i, line in enumerate(lines)
+                       if any(ns in line for ns in shared)]
         # Prefer a calculation adjacent to the shared-state read, not a
         # distant GetOwnedActor call at the top of a large launch service.
         if "RMMShipSections" in shared:
@@ -361,9 +393,28 @@ def _downstream_effect_evidence(
              if any(ns in line for ns in shared)), indices[0])
         begin = max(0, min(indices[0], read_index) - 5)
         end = min(len(lines), max(indices[0] + 28, read_index + 28))
-        excerpt = "\n".join(
-            f"{i + 1}: {lines[i]}" for i in range(begin, end)
-        )
+        if not hints and authored_namespaces:
+            # Deliver the real producer-consumer read plus compact relevant
+            # state arithmetic and mutation lines. Large generated server
+            # handlers often place the actual damage/physics sink 60+ lines
+            # after the GetState call; a fixed 28-line excerpt hides it.
+            relevant = [i for i, line in enumerate(lines)
+                        if i >= read_index and i <= read_index + 140
+                        and re.search(
+                            r'GetState\s*\(|\.(?:level|damage|remaining|capacity)'
+                            r'|\b(?:SetAttribute|PivotTo|TakeDamage|ApplyImpulse)'
+                            r'\b|\b(?:damage|interval|ammo|upgradedLevel)\b',
+                            line, re.I)]
+            selected = sorted(set(
+                [i for i in range(max(0, read_index - 2),
+                                  min(len(lines), read_index + 8))]
+                + relevant
+            ))[:100]
+            excerpt = "\n".join(f"{i + 1}: {lines[i]}" for i in selected)
+        else:
+            excerpt = "\n".join(
+                f"{i + 1}: {lines[i]}" for i in range(begin, end)
+            )
         found.append({
             "file": other,
             "shared_persisted_state": ", ".join(sorted(shared)),
