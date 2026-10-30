@@ -263,6 +263,7 @@ _RANKED_DAMAGE = r'''    if args.quantity ~= 1 then
 _OWNED_WEAPON_ATTACK = r'''    local equipped = character and character:FindFirstChildOfClass("Tool")
     local upgradedLevel = 0
     local weaponAmmo = nil
+    local weaponAmmoStore = nil
     if equipped then
         local savedWeapons = services.PlayerDataManager.GetState(player, "RMMWeaponPerformance")
         if type(savedWeapons) ~= "table" then
@@ -283,7 +284,6 @@ _OWNED_WEAPON_ATTACK = r'''    local equipped = character and character:FindFirs
             if existing == nil or type(existing) ~= "table"
                 or existing.capacity ~= size then
                 existing = {capacity = size, remaining = size, lastShotUTC = 0}
-                rounds[equipped.Name] = existing
             end
             if type(existing.remaining) ~= "number"
                 or existing.remaining % 1 ~= 0 or existing.remaining < 0
@@ -293,9 +293,10 @@ _OWNED_WEAPON_ATTACK = r'''    local equipped = character and character:FindFirs
             if existing.remaining == 0 then
                 if os.time() - existing.lastShotUTC < 2 then
                     return {success = false, reason = "reloading"} end
-                existing.remaining = size
+                existing = {capacity = size, remaining = size, lastShotUTC = existing.lastShotUTC}
             end
             weaponAmmo = existing
+            weaponAmmoStore = rounds
         end
     end
     -- The interval is derived from persisted server rank, never from a
@@ -394,20 +395,6 @@ def render_verified_effect(module: Any, proposal: Any) -> str | None:
             effect = _HARVEST
         elif ranked_combat:
             effect = _RANKED_DAMAGE
-            if weapon_performance_combat:
-                effect = effect.replace(
-                    '    local damage = math.min(70, 20 + 2 * crew + 3 * weapon)',
-                    _OWNED_WEAPON_ATTACK
-                    + '    local damage = math.min(70, 20 + 2 * crew + 3 * weapon'
-                      ' + 4 * upgradedLevel)',
-                ).replace(
-                    '    target:SetAttribute("RMMAlienHealth", remaining)',
-                    '    if weaponAmmo then\n'
-                    '        weaponAmmo.remaining -= 1\n'
-                    '        weaponAmmo.lastShotUTC = os.time()\n'
-                    '    end\n'
-                    '    target:SetAttribute("RMMAlienHealth", remaining)',
-                )
             if colony_combat:
                 effect = effect.replace(
                     '    target:SetAttribute("RMMAlienHealth", remaining)',
@@ -420,6 +407,21 @@ def render_verified_effect(module: Any, proposal: Any) -> str | None:
                     '        player:SetAttribute("RMMPlanetOwned", true)\n'
                     '    end',
                 )
+            if weapon_performance_combat:
+                effect = effect.replace(
+                    '    local damage = math.min(70, 20 + 2 * crew + 3 * weapon)',
+                    _OWNED_WEAPON_ATTACK
+                    + '    local damage = math.min(70, 20 + 2 * crew + 3 * weapon'
+                      ' + 4 * upgradedLevel)',
+                ).replace(
+                    '    target:SetAttribute("RMMAlienHealth", remaining)',
+                    '    if weaponAmmo then\n'
+                    '        weaponAmmo.remaining -= 1\n'
+                    '        weaponAmmo.lastShotUTC = os.time()\n'
+                    '        weaponAmmoStore[equipped.Name] = weaponAmmo\n'
+                    '    end\n'
+                    '    target:SetAttribute("RMMAlienHealth", remaining)',
+                )
         elif colony_combat:
             effect = _COLONY_DAMAGE
         else:
@@ -430,8 +432,8 @@ def render_verified_effect(module: Any, proposal: Any) -> str | None:
             # The integrated ranged-weapon handler performs its own dynamic
             # fire-rate gate, including the unupgraded base cooldown.
             body = body.replace(
-                '    if recent[player] and now - recent[player] < 0.3 then\\n'
-                '        return {success = false, reason = "cooldown"} end\\n',
+                '    if recent[player] and now - recent[player] < 0.3 then\n'
+                '        return {success = false, reason = "cooldown"} end\n',
                 '',
             )
     # The damage handler needs only the authenticated player and the actual
