@@ -803,3 +803,46 @@ def test_planned_currency_reward_requires_a_real_server_writer(tmp_path):
     assert report["status"] == "failed", report
     assert not report["fully_covered"]
     assert "currency state writer" in report["reason"]
+
+
+def test_one_physical_line_can_contain_two_independent_state_writes(tmp_path):
+    from roblox_mod_ai.requirement_completion_audit import _distinct_state_writes
+    assert _distinct_state_writes(
+        "stock.resources -= 1; stock.money += 1"
+    ) == 2
+    assert _distinct_state_writes(
+        "stock.resources -= 1; stock.resources -= 1"
+    ) == 1
+    assert _distinct_state_writes(
+        "local balance = 10; local duration = 4"
+    ) == 0
+    assert _distinct_state_writes(
+        "-- stock.money += 1; stock.resources -= 1"
+    ) == 0
+
+
+def test_combined_resource_debit_and_wallet_credit_is_not_false_rejected(tmp_path):
+    proposal = fixture(tmp_path)
+    requirement = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
+    requirement["server_state_changes"] = [
+        "Successful trade reduces owned resources",
+        "Successful sale increases earned currency",
+    ]
+    line = "stock.resources -= 1; stock.money += 1"
+    (tmp_path / TRADE).write_text(
+        "--!strict\nlocal function sale()\n    " + line + "\nend\n",
+        encoding="utf-8",
+    )
+    class SameLineModel:
+        def complete_json(self, **kwargs):
+            return {"checks": [
+                {"id": "effect-01", "verdict": "implemented",
+                 "file": TRADE, "quote": line, "issue": "none", "repair": "none"},
+                {"id": "effect-02", "verdict": "implemented",
+                 "file": TRADE, "quote": line, "issue": "none", "repair": "none"},
+            ], "extra_missing": []}
+    report = audit_whole_requirement_completion(
+        proposal, tmp_path, SameLineModel(),
+    )
+    assert report["fully_covered"], report
+    assert report["status"] == "reviewed_no_blockers", report
