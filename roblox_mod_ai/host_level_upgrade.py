@@ -42,11 +42,11 @@ def eligible_rank_protocol(m:Any,p:Any)->tuple[str,str,str,bool]|None:
         # happens before Luau generation, never by inventing fields in code.
         desc=owner.description.casefold()
         semantic=[]
-        if re.search(r"\\bcrew['’]?s?\\s+performance\\s+state\\b",desc):
+        if re.search(r"\bcrew['’]?s?\s+performance\s+state\b",desc):
             semantic.append("crew_performance_state")
-        if re.search(r"\\bspaceship['’]?s?\\s+performance\\s+state\\b",desc):
+        if re.search(r"\bspaceship['’]?s?\s+performance\s+state\b",desc):
             semantic.append("Spaceship")
-        if re.search(r"\\bweapon\\s+upgrade\\s+purchase\\b",desc):
+        if re.search(r"\bweapon\s+upgrade\s+purchase\b",desc):
             semantic.append("owned_weapon")
         targets=semantic
     if len(targets)!=1:return None
