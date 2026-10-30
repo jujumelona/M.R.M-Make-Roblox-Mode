@@ -364,3 +364,34 @@ def test_verified_world_harvest_does_not_spawn_hostile_damage():
     assert source
     assert "humanoid:TakeDamage(" not in source
     assert "task.spawn(function()" not in source
+
+
+def test_verified_weapon_tool_activation_reaches_real_server_combat():
+    from roblox_mod_ai.typed_action_contract import render_typed_client
+
+    proposal, _ = _fixture("combat")
+    client = next(m for m in proposal.modules if m.kind == ModuleKind.CLIENT_SCRIPT)
+    source = render_typed_client(client, proposal)
+    assert source is not None
+    assert 'tool:GetAttribute("RMMOwnedWeapon") ~= true' in source
+    assert 'tool.Activated:Connect(function()' in source
+    assert 'tool.Parent ~= player.Character' in source
+    assert 'player.CharacterAdded:Connect(observeCharacter)' in source
+    assert 'return remote:InvokeServer({selection = "AlienEntities1", quantity = 1})' in source
+    assert 'connectedWeapons[tool]' in source
+    analyzer = LuauStaticAnalyzer()
+    errors = [d for d in analyzer.analyze_source(source, client.file_path)
+              if d.severity == "ERROR"]
+    assert not errors, [(x.rule, x.message) for x in errors]
+
+
+def test_mining_and_purchase_do_not_inherit_weapon_click_attack():
+    from roblox_mod_ai.typed_action_contract import render_typed_client
+
+    for role in ("harvest", "purchase"):
+        proposal, _ = _fixture(role)
+        client = next(m for m in proposal.modules if m.kind == ModuleKind.CLIENT_SCRIPT)
+        source = render_typed_client(client, proposal)
+        assert source is not None
+        assert 'tool.Activated:Connect(function()' not in source
+        assert 'connectedWeapons[tool]' not in source
