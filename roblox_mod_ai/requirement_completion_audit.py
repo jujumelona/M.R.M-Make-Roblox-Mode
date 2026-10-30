@@ -444,6 +444,13 @@ def _host_effect_witnesses(
     for path, source in sorted(sources.items()):
         lines = source.splitlines()
         masked = _mask_luau_comments(source).splitlines()
+        # Provenance, not variable naming: the owner of a server profile is
+        # found by its assignment from the authoritative GetState API.
+        persistent_roots = set(re.findall(
+            r"\blocal\s+([A-Za-z_]\w*)\s*=\s*"
+            r"[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*\.GetState\s*\(",
+            _mask_luau_comments(source),
+        ))
         for i, (line, visible) in enumerate(zip(lines, masked), 1):
             # This is a linear-time pass: do not split/mask the entire source
             # again for every line of every independently promised effect.
@@ -466,6 +473,16 @@ def _host_effect_witnesses(
             # Owner metadata and the actual implementation are only ranking
             # hints; neither is treated as proof of semantic equivalence.
             score = 10 * overlap + 2 * len(words & module_tokens)
+            # A write to an actual GetState-derived profile is stronger
+            # evidence for a player-state requirement than arbitrary UI or
+            # decorative Part property changes. This remains a generic
+            # structural ranking preference, not semantic proof.
+            write_targets = [
+                m.group(1) for m in _WRITE_TARGETS.finditer(code)
+            ]
+            if any(target.split(".", 1)[0].split("[", 1)[0]
+                   in persistent_roots for target in write_targets):
+                score += 45
             candidates.append((score, path, i, visible.strip()))
     candidates.sort(key=lambda item: (-item[0], item[1], item[2]))
     # Reserve at least one candidate per independently owned module. Without
