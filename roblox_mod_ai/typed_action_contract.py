@@ -318,6 +318,7 @@ def render_typed_client(module: RobloxModuleSpec, proposal: RobloxProposal) -> s
     # Prefill its typed selection instead of forcing players to guess an
     # opaque generated Workspace name. The server still validates all fields.
     default_selection = None
+    verified_role = None
     owner = next((m for m in getattr(proposal, "modules", ())
                   if m.kind == ModuleKind.SERVER_MODULE
                   and m.name == spec.get("server")), None)
@@ -326,6 +327,7 @@ def render_typed_client(module: RobloxModuleSpec, proposal: RobloxProposal) -> s
         verified = eligible_verified_effect(owner, proposal)
         if verified is not None and verified[1] == remote:
             default_selection = verified[2]
+            verified_role = verified[0]
     kind = (design.get("remotes") or {}).get(remote)
     if kind not in ("RemoteEvent", "RemoteFunction"):
         raise TypedActionContractError("Typed UI remote does not exist")
@@ -427,6 +429,47 @@ def render_typed_client(module: RobloxModuleSpec, proposal: RobloxProposal) -> s
             '    status.Text = ok and "Request sent" or "Request unavailable"',
         ]
     lines += ['    busy = false', 'end)']
+    # Only a precisely verified world-combat typed action may attach the
+    # physical, SERVER-OWNED weapon Tool to this combat Remote. This is not
+    # a global hook for every Tool or for arbitrary model-authored Remotes.
+    verified_weapon_use = (
+        verified_role == "world_damage"
+        and kind == "RemoteFunction"
+        and isinstance(default_selection, str)
+        and len(contract["inputs"]) == 2
+        and any(row["id"] == "selection" and row["type"] == "text"
+                for row in contract["inputs"])
+        and any(row["id"] == "quantity" and row["type"] == "integer"
+                for row in contract["inputs"])
+    )
+    if verified_weapon_use:
+        lines += [
+            '-- Physical purchased weapon attack uses the SAME authenticated combat route.',
+            '-- No client-selected opponent, damage, cooldown, or equipment ownership.',
+            'local connectedWeapons = setmetatable({}, {__mode = "k"})',
+            'local function bindEquippedWeapon(tool)',
+            '    if not tool:IsA("Tool") or tool:GetAttribute("RMMOwnedWeapon") ~= true',
+            '        or connectedWeapons[tool] then return end',
+            '    connectedWeapons[tool] = true',
+            '    tool.Activated:Connect(function()',
+            '        if busy or tool.Parent ~= player.Character then return end',
+            '        busy = true',
+            '        local ok, result = pcall(function()',
+            '            return remote:InvokeServer({selection = '
+            + json.dumps(default_selection) + ', quantity = 1})',
+            '        end)',
+            '        status.Text = ok and type(result) == "table" and result.success == true',
+            '            and "Weapon hit confirmed" or "Weapon attack rejected"',
+            '        busy = false',
+            '    end)',
+            'end',
+            'local function observeCharacter(character)',
+            '    character.ChildAdded:Connect(bindEquippedWeapon)',
+            '    for _, child in character:GetChildren() do bindEquippedWeapon(child) end',
+            'end',
+            'player.CharacterAdded:Connect(observeCharacter)',
+            'if player.Character then observeCharacter(player.Character) end',
+        ]
     return "\n".join(lines) + "\n"
 
 
