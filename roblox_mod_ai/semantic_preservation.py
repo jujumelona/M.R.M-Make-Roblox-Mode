@@ -333,7 +333,7 @@ def source_intent_conflicts(
     # Require evidence of a world-derived source, not just a resource verb,
     # before treating a server-side inventory grant as farming gameplay.
     gatherable_origin = re.search(
-        r"\b(?:node|deposit|vein|mineable|harvestable|world|ground|"
+        r"\b(?:nodes?|deposits?|veins?|mineable|harvestable|world|ground|"
         r"rock|tree|crop|plant|pickup|resource\s+(?:source|object))\b|"
         r"광맥|채굴지|광석|자원\s*(?:노드|지점|원천)|"
         r"\b(?:mine|mines|mined|mining|extract|extracts|extracted|extracting)\b"
