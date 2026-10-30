@@ -11,6 +11,7 @@ import re
 from typing import Any
 
 from .code_output_guard import LiveCodeRepetitionGuard
+from .scoped_action_recovery import scoped_action_retry_prompt
 from .dynamic_wiring import _mask_strings, _without_comments
 from .host_mining import render_host_mining
 from .host_ship_attachment import eligible_ship_attachment
@@ -94,6 +95,17 @@ def normalize_verified_server_body(body: str, proposal: RobloxProposal) -> str:
     arbitrary invented methods and unknown peer ABIs still fail validation.
     """
     body = normalize_trusted_player_aliases(body)
+    # The generated typed shell ALREADY defines 'local args = actionArgs'.
+    # An identical declaration in a model body only shadows that immutable
+    # validated alias. Remove this exact redundant line without touching
+    # other assignments, scopes, or game-side state changes.
+    body = "".join(
+        line for line in body.splitlines(keepends=True)
+        if not re.fullmatch(
+            r"\s*local\s+args\s*=\s*actionArgs\s*;?\s*",
+            line.rstrip("\r\n"),
+        )
+    )
     body = normalize_verified_peer_abi(body, proposal)
     if _MODEL_PROTOCOL.search(body):
         raise ValueError(
@@ -474,16 +486,10 @@ def try_scaffolded_server(
             # observed truncation; do not ask the same 9B model to repeat the
             # same impossible maximum length on every attempt.
             body_budget = scoped_body_completion_budget(attempt, previous)
-            feedback = (
-                "\nLAST REJECTED BODY (NOT VALID CODE; DO NOT COPY):\n"
-                + previous["candidate"][:1300]
-                + "\nEXACT VALIDATOR ERRORS:\n"
-                + "; ".join(previous["diagnostics"])[:1100]
-                + "\nRewrite ONLY the game-action body from scratch. "
-                "Do not include function declarations, Service methods, "
-                "Remote event wiring, explanations, or final end."
-                if previous else ""
-            )
+            # Retry from the full observed error history. Earlier code sliced
+            # this feedback to its last 650 bytes, dropping decisive world
+            # class / missing peer API errors before the small model saw them.
+            feedback = scoped_action_retry_prompt(attempts)
             if use_json_body or attempt == 2:
                 recovered = router.complete_json(
                     prompt + "\nOnly JSON {body:string} containing short action statements. "
@@ -493,7 +499,7 @@ def try_scaffolded_server(
                     + ("The previous response ended before JSON closed; "
                        "finish the JSON response in the new output budget. "
                        if overlength else "")
-                    + feedback[-650:],
+                    + feedback,
                     role="coder", temperature=0.0, max_tokens=body_budget,
                     json_schema={
                         "type": "object", "properties": {"body": {"type": "string"}},

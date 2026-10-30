@@ -333,7 +333,7 @@ def source_intent_conflicts(
     # Require evidence of a world-derived source, not just a resource verb,
     # before treating a server-side inventory grant as farming gameplay.
     gatherable_origin = re.search(
-        r"\b(?:node|deposit|vein|mineable|harvestable|world|ground|"
+        r"\b(?:nodes?|deposits?|veins?|mineable|harvestable|world|ground|"
         r"rock|tree|crop|plant|pickup|resource\s+(?:source|object))\b|"
         r"광맥|채굴지|광석|자원\s*(?:노드|지점|원천)|"
         r"\b(?:mine|mines|mined|mining|extract|extracts|extracted|extracting)\b"
@@ -486,14 +486,19 @@ def source_intent_conflicts(
     # "debits owned resource, credits earned currency". Requiring the
     # thematic verb rather than this concrete asset transfer rejected valid
     # actions, causing repeated small-model replanning.
+    # This is a general *asset-for-currency* transfer, not just ore sales.
+    # Selling an owned crafted part also debits the item and credits its
+    # verified value. Requiring the literal word 'sell' in server code caused
+    # legitimate state transitions to be rejected and endlessly regenerated.
     resource_debit = re.compile(
-        r"\b(?:debit\w*|deduct\w*|consum\w*|subtract\w*|decreas\w*)\b"
-        r".{0,100}\b(?:resources?|ores?|materials?|items?|inventory)\b",
+        r"\b(?:debit\w*|deduct\w*|consum\w*|subtract\w*|decreas\w*|remov\w*)\b"
+        r".{0,100}\b(?:resources?|ores?|materials?|items?|inventory|"
+        r"sections?|parts?|assets?)\b",
         re.I,
     )
     currency_credit = re.compile(
-        r"\b(?:credit\w*|award\w*|add\w*|increas\w*|pay\w*)\b"
-        r".{0,100}\b(?:currency|coins?|credits?|money|balance)\b",
+        r"\b(?:credit\w*|award\w*|add\w*|increas\w*|pay\w*|transfer\w*)\b"
+        r".{0,120}\b(?:currency|coins?|credits?|money|balance)\b",
         re.I,
     )
     paid_resource_exchange = any(

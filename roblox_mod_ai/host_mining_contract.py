@@ -292,6 +292,13 @@ def ensure_mining_world_contract(proposal: RobloxProposal) -> list[dict[str, Any
         if worlds:
             if len(worlds) != 1 or routes:
                 continue
+            # Naming an existing world prompt "mining" is insufficient to
+            # authorize its inventory effect. Bind a preexisting world node
+            # only when the independently audited source blueprint already
+            # assigns this handler the world->player extraction transition.
+            # Otherwise leave another module's physical Part untouched.
+            if not _source_traced_extraction(module, proposal):
+                continue
             world_name = worlds[0]
             node_obj = next((
                 obj for obj in objects
@@ -305,6 +312,10 @@ def ensure_mining_world_contract(proposal: RobloxProposal) -> list[dict[str, Any
                 raise ValueError("module_world_objects rows must be lists")
             if world_name not in linked:
                 linked.append(world_name)
+            # This existing Part was not newly created. It still changed
+            # the executable owner manifest and thus needs a binding receipt.
+            # Source-traced ownership above prevents unrelated world nodes
+            # from being counted as newly provisioned mining producers.
             mutations.append({
                 "service": module.name, "resource_node": world_name,
                 "transport_rebased": True,

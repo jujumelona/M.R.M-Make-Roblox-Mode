@@ -2078,11 +2078,13 @@ class RobloxDynamicArchitect:
                         ]
                         semantic_repair = None
                     if "SOURCE_ACTION_COVERAGE:" in previous_error:
-                        # Missing actions are separate source-owned obligations,
-                        # not an opportunity to polish an unrelated accepted
-                        # mechanic. The next scoped pass can decompose each
-                        # missing action independently when the router supports
-                        # atomic decomposition.
+                        # A coverage failure can mean TWO different things:
+                        # (1) an entire user-requested action is absent, which
+                        # requires source-owned replanning; or (2) the action
+                        # is present but omits its effect/visible consequence,
+                        # which must be repaired locally without deleting
+                        # independently accepted gameplay. Never route both
+                        # through a whole-facet regeneration.
                         semantic_replan = [
                             item.strip()
                             for item in previous_error.split(
@@ -2090,6 +2092,53 @@ class RobloxDynamicArchitect:
                             if item.strip()
                         ]
                         semantic_repair = None
+                        if (isinstance(draft, dict)
+                                and isinstance(draft.get("systems"), list)
+                                and len(draft["systems"]) == 1
+                                and isinstance(draft["systems"][0], dict)):
+                            present = draft["systems"][0]
+                            source_only_gaps = []
+                            field_gaps: dict[str, list[str]] = {}
+                            for src in subset:
+                                statement = str(src.get("statement") or "")
+                                source_only_gaps.extend(source_intent_conflicts(
+                                    statement,
+                                    str(present.get("server_behavior") or "")
+                                    + " " + str(present.get("observable_result")
+                                                or present.get("client_behavior") or ""),
+                                    require_implementation=False,
+                                ))
+                                for field, found in (
+                                    ("server_behavior", source_intent_conflicts(
+                                        statement,
+                                        str(present.get("server_behavior") or ""))),
+                                    ("observable_result", source_outcome_conflicts(
+                                        statement,
+                                        str(present.get("observable_result")
+                                            or present.get("client_behavior") or ""))),
+                                ):
+                                    if found:
+                                        field_gaps.setdefault(field, []).extend(found)
+                            missing_action_classes = {
+                                str(item).split(":", 1)[0]
+                                for item in semantic_replan
+                                if isinstance(item, str)
+                            }
+                            # A missing independent action (resource harvest,
+                            # income, transaction, etc.) cannot be repaired by
+                            # appending a state sentence to an unrelated
+                            # builder. Reserve the local field repair for
+                            # an already-present action missing only an
+                            # effect/commit/result. The distinction is based
+                            # on generic diagnostic *kinds*, not genre names.
+                            distinct_action_missing = any(
+                                kind.endswith(("_ACTION_MISSING", "_EARNING_MISSING"))
+                                for kind in missing_action_classes
+                            )
+                            if (not source_only_gaps and field_gaps
+                                    and not distinct_action_missing):
+                                semantic_repair = (draft, field_gaps)
+                                semantic_replan = None
                     if "SOURCE_WORLD_TRANSITION:" in previous_error:
                         # A reversed vehicle/occupant relationship is not
                         # repairable by appending more prose to the bad action.

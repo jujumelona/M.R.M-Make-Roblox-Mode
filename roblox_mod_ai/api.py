@@ -33,6 +33,23 @@ class CompleteChatReply:
         research = self.authored_plan.proposal.game_design.get("pre_design_research", {})
         ledger = research.get("ledger", {})
         proposal = self.authored_plan.proposal
+        # A saved intent draft can enter the compiler only if its source
+        # requirements are still implementable. Earlier this property tested
+        # a SHA alone and admitted requests *already known* to exceed safe
+        # world limits or to have failed their architecture compilation.
+        blockers = set(ledger.get("unimplemented_facets") or [])
+        if blockers & {
+            "requested_count_exceeds_safe_build_limit",
+            "dynamic_architecture_failed",
+        }:
+            return False
+        if (not any(proposal.game_design.get("features", {}).values())
+                and not proposal.game_design.get("dynamic_design")
+                and os.environ.get("RMM_ENABLE_DYNAMIC_DESIGN", "auto").strip() == "0"):
+            # Distinguish EXPLICITLY disabled dynamic compilation from the
+            # default deferred-intent flow. In auto mode an unsolved genre is
+            # allowed to remain a draft for a later configured compiler.
+            return False
         is_complete = (ledger_complete(proposal.requested_prompt, ledger)
                        and (any(proposal.game_design.get("features", {}).values())
                             or bool(proposal.game_design.get("dynamic_design"))))

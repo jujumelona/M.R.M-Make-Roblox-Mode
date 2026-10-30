@@ -90,20 +90,26 @@ def world_lookup_guidance(proposal: Any, module: Any) -> str:
     declared, authorized = world_names(proposal, module)
     if not declared:
         return ""
-    # A prompt containing EVERY object in the game encouraged the 9B coder
-    # to mutate sellers, NPCs and destination planets in an unrelated action.
-    # Show only this module's independently authored and linked world targets.
+    design = getattr(proposal, "game_design", {}).get("dynamic_design") or {}
+    # Supply exact declared class, not just a set of names. For any action,
+    # this prevents an LLM from treating a Part as a Model (or vice versa).
+    classes = {
+        row.get("name"): row.get("class")
+        for row in design.get("world_objects", [])
+        if isinstance(row, dict) and isinstance(row.get("name"), str)
+    }
+    objects = [{"name": name, "class": classes.get(name, "Instance")}
+               for name in authorized]
     return (
-        "ACTUAL MATERIALIZED WORLD ABI: ONLY the following objects are "
-        "linked to this action: " +
-        json.dumps(authorized, ensure_ascii=False) + ". "
-        "These names are Part/Model instances in workspace, NEVER entries "
-        "in the injected services table. Objects NOT listed here must not "
-        "be accessed or mutated by this action. Use their exact case. "
-        "Never guess "
-        "workspace:FindFirstChild('Spaceship') or a thematic name "
-        "that is NOT in the declared list; such a lookup returns nil. "
-        "Do not treat Instance Attributes as objects or Lua tables.\n"
+        "AUTHORIZED MATERIALIZED WORLD INSTANCES (exact name and class): "
+        + json.dumps(objects, ensure_ascii=False) + ". "
+        "Objects NOT listed here must not be accessed by this action. "
+        "Only these exact workspace objects may be accessed by this action. "
+        "These are NOT injected server services. Use the Roblox APIs for "
+        "each declared class; a Part is not a Model. If the intended effect "
+        "needs an absent actor or object, it requires a verified architectural "
+        "producer, NOT an invented workspace name or an unrelated replacement. "
+        "Do not treat Instance Attributes as objects or Lua tables.\\n"
     )
 
 

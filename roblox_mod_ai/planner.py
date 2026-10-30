@@ -398,8 +398,12 @@ class RobloxGameDesignPlanner:
                         existing_modules=existing,
                         requested_prompt=prompt,
                         research=research,
-                        allow_codegen_deferral=bool(getattr(
-                            self.router, "supports_deferred_authority_codegen", False)),
+                        # Never defer an unproven state producer to a BODY
+                        # generator. A transport-only Remote cannot prove
+                        # gameplay ownership, catalog, world actor or effect.
+                        # This requires a SOURCE-OWNED architecture replan
+                        # before spending tokens on unrelated Lua modules.
+                        allow_codegen_deferral=False,
                         redesign=lambda: RobloxDynamicArchitect(
                             self.router, checkpoint_dir=self.output_root
                         ).design(prompt, research, existing),
