@@ -659,6 +659,28 @@ def _combine_derived_market_income(
 
 
 
+def _resolves_actual_owned_action(
+    original_errors: set[str], revised_errors: set[str],
+) -> bool:
+    """An improvement must resolve the requested action, not a side warning.
+
+    Error-count minimization alone can steal a ship construction action to
+    replace a resource gathering action: removing SOURCE_UNBOUND reduces two
+    diagnostic messages to one even though RESOURCE_GATHER_ACTION_MISSING
+    remains. Never permit a new source owner when the primary gameplay
+    obligation is still missing. Applies independently of genre or text.
+    """
+    if not original_errors or not revised_errors < original_errors:
+        return False
+    original_codes = {item.split(":", 1)[0] for item in original_errors}
+    revised_codes = {item.split(":", 1)[0] for item in revised_errors}
+    core = {code for code in original_codes
+            if (code.endswith("_ACTION_MISSING")
+                or code.endswith("_BUILD_MISSING")
+                or code.endswith("_MECHANIC_DROPPED"))}
+    return not bool(core & revised_codes)
+
+
 def _replace_weak_owner_with_stronger_overlapping_action(
     router: Any, source: str, raw: list[dict[str, str]], *,
     max_actions: int,
@@ -715,7 +737,7 @@ def _replace_weak_owner_with_stronger_overlapping_action(
             new_errors = set(source_intent_conflicts(
                 narrower, replacement, require_implementation=True,
             ))
-            if not old_errors or not new_errors < old_errors:
+            if not _resolves_actual_owned_action(old_errors, new_errors):
                 continue
             proposed = [dict(row) for i, row in enumerate(raw) if i != new_i]
             remapped = old_i - (1 if new_i < old_i else 0)
@@ -901,7 +923,7 @@ def _realign_misattributed_source_effects(
                 new_issues = set(source_intent_conflicts(
                     quote, proposed_effect, require_implementation=True,
                 ))
-                if not new_issues < old_issues:
+                if not _resolves_actual_owned_action(old_issues, new_issues):
                     continue
                 candidate = [
                     dict(row) for i, row in enumerate(current)
