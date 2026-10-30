@@ -106,3 +106,14 @@ def test_tokenizer_does_not_confuse_comment_with_code():
     assert _luau_tokens(a) == _luau_tokens(b)
     assert _luau_tokens(a) != _luau_tokens(c)
     assert _luau_tokens("local ab = 5") != _luau_tokens("local a b = 5")
+
+
+def test_packaging_stage_can_resolve_compiled_verifier_from_module_scope():
+    """Regression for the real CI package-stage NameError."""
+    import roblox_mod_ai.orchestrator as orchestrator
+    from roblox_mod_ai.compiled_effect_verification import (
+        verify_compiled_effect_sources,
+    )
+    assert orchestrator.verify_compiled_effect_sources is (
+        verify_compiled_effect_sources
+    )
