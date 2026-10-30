@@ -1122,3 +1122,50 @@ def test_unverified_model_replies_report_all_requirements_in_one_run(tmp_path):
     }
     assert model.count == 2, report
     assert "cannot prove 2 independent effects" in report["reason"]
+
+
+def test_original_scope_json_failure_can_recover_only_from_exact_plain_none(tmp_path):
+    proposal = fixture(tmp_path)
+    req = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
+    req["server_state_changes"] = [
+        "The server decrements a real persistent resource count"
+    ]
+
+    class ScopeFailsJson:
+        def __init__(self, text):
+            self.text = text
+            self.plain_calls = 0
+        def complete_json(self, **kwargs):
+            if kwargs["prompt"].startswith("Check ONE promised"):
+                return {"choice": 1}
+            raise ValueError("json_schema invalid")
+        def complete(self, **kwargs):
+            self.plain_calls += 1
+            return self.text
+
+    approved = ScopeFailsJson("NONE")
+    report = audit_whole_requirement_completion(
+        proposal, tmp_path, approved, host_witness_only=True,
+    )
+    assert report["fully_covered"], report
+    assert approved.plain_calls == 1
+    assert any(row["status"] == "recovered_plain_none"
+               for row in report["recovery"])
+
+    omitted = ScopeFailsJson(
+        "MISSING: An additional server-owned state change from the original request"
+    )
+    other = audit_whole_requirement_completion(
+        proposal, tmp_path, omitted, host_witness_only=True,
+    )
+    assert other["status"] == "failed", other
+    assert other["unplanned_actions"], other
+    assert "original request omitted" in other["reason"]
+
+    ambiguous = ScopeFailsJson("NONE, probably, or missing something")
+    bad = audit_whole_requirement_completion(
+        proposal, tmp_path, ambiguous, host_witness_only=True,
+    )
+    assert not bad["fully_covered"], bad
+    assert bad["status"] == "failed"
+    assert "omitted-effect audit" in bad["reason"]
