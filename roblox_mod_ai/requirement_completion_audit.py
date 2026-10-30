@@ -407,6 +407,24 @@ def _real_source_quote_in_text(source: str, quote: str) -> int:
 
 
 
+
+def _generic_identifier_terms(value: str) -> set[str]:
+    """Lexical ranking only; never maps game genres to canned behaviors.
+
+    Split snake_case, CamelCase, dotted state paths and simple plural forms.
+    A candidate still needs independently checked executable source.
+    """
+    value = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", value)
+    words = re.findall(r"[a-zA-Z]{3,}", value.casefold())
+    normalized: set[str] = set()
+    for word in words:
+        normalized.add(word)
+        if word.endswith("ies") and len(word) > 5:
+            normalized.add(word[:-3] + "y")
+        if word.endswith("s") and not word.endswith(("ss", "us")) and len(word) > 4:
+            normalized.add(word[:-1])
+    return normalized
+
 def _host_effect_witnesses(
     behavior: str, sources: dict[str, str], modules: list[Any],
     limit: int = 24,
@@ -417,7 +435,7 @@ def _host_effect_witnesses(
     but its file and line are authoritative and mechanically checkable.
     Candidate selection is genre independent and covers all owner files.
     """
-    words = set(re.findall(r"[a-zA-Z_][a-zA-Z_0-9]{2,}", behavior.casefold()))
+    words = _generic_identifier_terms(behavior)
     descriptions = {
         m.file_path: str(getattr(m, "description", "")).casefold()
         for m in modules if getattr(m, "file_path", None) in sources
@@ -440,14 +458,11 @@ def _host_effect_witnesses(
             if len(visible.strip()) < 6 or len(visible.strip()) > 320:
                 continue
             contextual = " ".join(masked[max(0, i - 3):min(len(masked), i + 2)])
-            line_tokens = set(re.findall(
-                r"[a-zA-Z_][a-zA-Z_0-9]{2,}", contextual.casefold()
-            ))
+            line_tokens = _generic_identifier_terms(contextual)
             overlap = len(words & line_tokens)
-            module_tokens = set(re.findall(
-                r"[a-zA-Z_][a-zA-Z_0-9]{2,}",
-                (path + " " + descriptions.get(path, "")).casefold()
-            ))
+            module_tokens = _generic_identifier_terms(
+                path + " " + descriptions.get(path, "")
+            )
             # Owner metadata and the actual implementation are only ranking
             # hints; neither is treated as proof of semantic equivalence.
             score = 10 * overlap + 2 * len(words & module_tokens)
