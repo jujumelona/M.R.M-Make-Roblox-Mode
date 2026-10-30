@@ -409,3 +409,70 @@ def test_large_requirement_never_requests_unbounded_batch(tmp_path):
     assert len(report["checks"]) == 4
     assert any(x["stage"] == "batch_skipped" for x in report["recovery"])
     assert sum(x.startswith("Audit exactly ONE") for x in router.prompts) == 4
+
+
+
+def test_host_numbered_compact_evidence_requires_real_line(tmp_path):
+    from roblox_mod_ai.requirement_completion_audit import (
+        _normalize_single_effect_answer, _source_scopes_for_effect,
+    )
+    proposal = fixture(tmp_path)
+    sources = {
+        SHIP: (tmp_path / SHIP).read_text(encoding="utf-8"),
+        TRADE: (tmp_path / TRADE).read_text(encoding="utf-8"),
+    }
+    ranked, indexed = _source_scopes_for_effect(
+        "Successful sale reduces resources and increases currency",
+        sources, proposal.modules,
+    )
+    assert indexed and all("1:" in v for v in indexed.values())
+    index = ranked.index(TRADE)
+    line = sources[TRADE].splitlines().index("    stock.resources -= 1") + 1
+    result = _normalize_single_effect_answer(
+        {"verdict": "implemented", "file_id": index, "line": line},
+        ranked, sources,
+    )
+    assert result is not None and result["quote"] == "stock.resources -= 1"
+    assert result["file"] == TRADE
+    assert _normalize_single_effect_answer(
+        {"verdict": "implemented", "file_id": index, "line": 9999},
+        ranked, sources,
+    ) is None
+
+
+def test_original_negative_rejection_clause_kept_with_its_operation():
+    from roblox_mod_ai.requirement_completion_audit import _obligations
+    requirements = {"server_state_changes": [
+        "Mining increases owned inventory; rejected requests change nothing. "
+        "Selling reduces inventory and increases earned currency; "
+        "rejected requests change neither displayed balance."
+    ]}
+    effects = _obligations(requirements)
+    assert len(effects) == 4, effects
+    assert "rejected requests" in effects[0]["behavior"]
+    assert "rejected requests" in effects[2]["behavior"]
+
+
+def test_unplanned_original_action_blocks_without_source_hallucination(tmp_path):
+    proposal = fixture(tmp_path)
+    class Reporter:
+        def complete_json(self, **kwargs):
+            if kwargs["prompt"].startswith("Post-generation"):
+                raise ValueError("finish_reason=length")
+            if kwargs["prompt"].startswith("Find user-requested"):
+                assert "complete_server_sources" not in kwargs["prompt"]
+                return {"missing_actions": [
+                    "A requested physical resource deposit must exist in the world"
+                ]}
+            assert kwargs["prompt"].startswith("Audit exactly ONE")
+            if "Successful trade reduces" in kwargs["prompt"]:
+                return {"verdict": "implemented", "file": TRADE,
+                        "quote": "stock.resources -= 1"}
+            return {"verdict": "implemented", "file": SHIP,
+                    "quote": "ship.Sections += 1"}
+
+    report = audit_whole_requirement_completion(proposal, tmp_path, Reporter())
+    assert report["status"] == "failed"
+    assert not report["fully_covered"]
+    assert "original request omitted" in report["reason"]
+    assert report["unplanned_actions"]
