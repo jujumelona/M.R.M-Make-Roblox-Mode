@@ -149,17 +149,18 @@ def try_plan_effect_data(router: Any, system: dict[str, Any],
             if declared is not None:
                 if not isinstance(declared, list):
                     return None
-                if declared:
-                    expected = [
-                        (row.get("scope"), row.get("key"), row.get("operation"))
-                        for row in declared if isinstance(row, dict)
-                    ]
-                    actual = [
-                        (row["scope"], row["key"], row["operation"])
-                        for row in compiled_contract["state_changes"]
-                    ]
-                    if len(expected) != len(declared) or expected != actual:
-                        return None
+                expected = [
+                    (row.get("scope"), row.get("key"), row.get("operation"))
+                    for row in declared if isinstance(row, dict)
+                ]
+                actual = [
+                    (row["scope"], row["key"], row["operation"])
+                    for row in compiled_contract["state_changes"]
+                ]
+                # An explicitly empty typed contract is also binding: a
+                # data-only planner must not create unrequested writes.
+                if len(expected) != len(declared) or expected != actual:
+                    return None
         return compiled_contract, program
     except (TypeError, ValueError, KeyError, AttributeError, RuntimeError):
         # An unverified interpretation is NEVER materialized as gameplay.
