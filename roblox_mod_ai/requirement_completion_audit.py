@@ -750,6 +750,29 @@ def audit_whole_requirement_completion(
             effect_id = effect["id"]
             if effect_id not in recover_ids:
                 continue
+            if len(obligations) > 3:
+                # For long requirements never ask a small model to invent
+                # file IDs, source line numbers, quotes or many JSON fields.
+                # The host owns all candidate evidence; the only model
+                # output is an integer referring to a real executable line.
+                choice, diagnostic = _fallback_effect_witness_review(
+                    router, effect, actual_sources, proposal.modules,
+                )
+                report.setdefault("recovery", []).append({
+                    "requirement_id": req_id, **diagnostic,
+                })
+                if choice is None:
+                    unverified_effects.append({
+                        "requirement_id": req_id,
+                        "effect_id": effect_id,
+                        "behavior": effect["behavior"],
+                        "reason": diagnostic.get(
+                            "reason", "unverifiable_source_witness"
+                        ),
+                    })
+                else:
+                    occurrences[effect_id] = [{"id": effect_id, **choice}]
+                continue
             # Crucially, this response does NOT ask the small model to copy an
             # effect ID or generate an N-element array. The host attaches the
             # canonical ID to precisely one reviewed obligation.
