@@ -899,11 +899,10 @@ def test_seven_unparseable_effects_are_all_reported_not_silently_approved(tmp_pa
         "effect-%02d" % i for i in range(1, 8)
     }
     assert "cannot prove 7 independent effects" in report["reason"]
-    assert model.calls >= 14  # two bounded witness attempts per effect; no old JSON calls
+    assert model.calls >= 7  # one bounded structured call per effect, no old schema
 
 
-def test_host_witness_zero_is_missing_not_implemented(tmp_path):
-    import json
+def test_host_witness_zero_is_unverified_not_a_fabricated_repair(tmp_path):
     proposal = fixture(tmp_path)
     req = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
     req["server_state_changes"] = [
@@ -918,21 +917,18 @@ def test_host_witness_zero_is_missing_not_implemented(tmp_path):
             if p.startswith(("Audit exactly ONE", "Recheck ONE")):
                 return {}
             if p.startswith("Check ONE promised"):
-                obj = json.loads(p[p.index('{"effect":'):])
-                assert obj["candidates"]
                 return {"choice": 0}
-            if p.startswith("Find user-requested"):
-                return {"missing_actions": []}
             raise AssertionError(p[:80])
 
     report = audit_whole_requirement_completion(
         proposal, tmp_path, RejectsProof(),
     )
-    assert report["fully_covered"], report
-    assert report["status"] == "issues_found", report
-    assert len(report["findings"]) == 1
-    assert report["findings"][0]["severity"] == "blocking"
-    assert "not independently evidenced" in report["findings"][0]["issue"]
+    assert report["status"] == "failed", report
+    assert not report["fully_covered"]
+    assert len(report["unverified_effects"]) == 1
+    assert report.get("findings", []) == []
+    assert any(r.get("reason") == "no_conclusive_source_witness"
+               for r in report["recovery"])
 
 
 def test_source_witnesses_never_include_comment_or_arithmetic_only_evidence():
@@ -1031,3 +1027,59 @@ def test_production_host_witness_mode_also_applies_to_short_requirements(tmp_pat
                 if x.startswith("Check ONE promised")]) == 2
     assert not any(p.startswith(("Post-generation", "Audit exactly ONE"))
                    for p in router.prompts)
+
+
+def test_plain_integer_recovers_small_model_json_failure(tmp_path):
+    proposal = fixture(tmp_path)
+    req = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
+    req["server_state_changes"] = [
+        "The server updates one authoritative player state field"
+    ]
+
+    class BrokenJsonButValidPlain:
+        def __init__(self):
+            self.plain_calls = 0
+        def complete_json(self, **kwargs):
+            if kwargs["prompt"].startswith("Check ONE promised"):
+                raise ValueError("json_schema completion invalid")
+            if kwargs["prompt"].startswith("Find user-requested"):
+                return {"missing_actions": []}
+            raise AssertionError(kwargs["prompt"][:50])
+        def complete(self, **kwargs):
+            self.plain_calls += 1
+            assert kwargs["max_tokens"] <= 12
+            assert "Return" not in kwargs["prompt"]
+            return "1"
+
+    router = BrokenJsonButValidPlain()
+    report = audit_whole_requirement_completion(
+        proposal, tmp_path, router, host_witness_only=True,
+    )
+    assert report["fully_covered"], report
+    assert router.plain_calls == 1
+    assert any(x.get("recovered_from") == "plain_integer"
+               for x in report.get("recovery", []))
+
+
+def test_plain_integer_with_multiple_choices_never_passes(tmp_path):
+    proposal = fixture(tmp_path)
+    req = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
+    req["server_state_changes"] = [
+        "The server updates one authoritative player state field"
+    ]
+
+    class AmbiguousPlain:
+        def complete_json(self, **kwargs):
+            if kwargs["prompt"].startswith("Find user-requested"):
+                return {"missing_actions": []}
+            return {"invalid": True}
+        def complete(self, **kwargs):
+            return "1 or 2"
+
+    report = audit_whole_requirement_completion(
+        proposal, tmp_path, AmbiguousPlain(), host_witness_only=True,
+    )
+    assert not report["fully_covered"]
+    assert report["status"] == "failed"
+    assert len(report["unverified_effects"]) == 1
+    assert report.get("findings", []) == []
