@@ -338,6 +338,7 @@ def test_incomplete_batch_recovers_each_missing_effect_without_false_pass(tmp_pa
 
 
 def test_duplicate_effect_is_reaudited_not_double_counted(tmp_path):
+    fixture(tmp_path)
     (tmp_path / TRADE).write_text(
         (tmp_path / TRADE).read_text(encoding="utf-8")
         + "\nstock.money += 1\n",
@@ -724,6 +725,7 @@ def test_all_owner_code_larger_than_old_budget_is_scoped_not_rejected(tmp_path):
 
 
 def test_numbered_source_must_include_the_cited_line(tmp_path):
+    fixture(tmp_path)
     from roblox_mod_ai.requirement_completion_audit import (
         _normalize_single_effect_answer,
     )
@@ -740,6 +742,7 @@ def test_numbered_source_must_include_the_cited_line(tmp_path):
 
 
 def test_comment_before_real_source_quote_does_not_hide_real_evidence(tmp_path):
+    fixture(tmp_path)
     from roblox_mod_ai.requirement_completion_audit import _real_source_quote
     file = tmp_path / TRADE
     file.write_text(
@@ -821,6 +824,7 @@ def test_planned_spaceflight_cannot_pass_from_duration_arithmetic(tmp_path):
 
 
 def test_comment_only_quote_cannot_prove_mutation_with_long_comment(tmp_path):
+    (tmp_path / TRADE).parent.mkdir(parents=True, exist_ok=True)
     from roblox_mod_ai.requirement_completion_audit import _real_source_quote
     path = tmp_path / TRADE
     path.write_text(
