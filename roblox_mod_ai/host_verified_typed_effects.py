@@ -31,10 +31,17 @@ def _selected_world(module: Any, design: dict, descriptions: list[str]) -> str |
         if not isinstance(name, str) or name not in owned:
             continue
         normalized = _normalized(name)
-        if any(len(_normalized(alias)) >= 12
-               and (normalized.startswith(_normalized(alias)[:12])
-                    or _normalized(alias).startswith(normalized[:12]))
-               for alias in descriptions):
+        # Semantic names can be shorter OR longer than physical Part IDs:
+        # "AlienEntity" -> "AlienEntity<id>", but also "alien entities on
+        # planet" -> "AlienEntities1". Compare their grounded shared stem,
+        # not a fixed 12-character substring that rejects short actors.
+        # An ambiguous stem is never enough: exactly one source-owned Part
+        # must match before a host server handler can be selected.
+        aliases = [_normalized(alias) for alias in descriptions
+                   if isinstance(alias, str)]
+        if any((shared := min(12, len(alias), len(normalized))) >= 8
+               and normalized[:shared] == alias[:shared]
+               for alias in aliases):
             matches.append(name)
     return matches[0] if len(matches) == 1 else None
 
@@ -70,7 +77,7 @@ def eligible_verified_effect(module: Any, proposal: Any) -> tuple[str, str, str 
         all(part in description for part in
             ("purchase record", "weapon upgrade", "currency", "upgrade state"))
         or all(part in description for part in
-               ("alien", "combat", "target", "damage"))
+               ("alien", "target", "damage"))
         or all(part in description for part in
                ("mineral", "deposit", "quantity", "inventory"))
     ):
@@ -120,7 +127,7 @@ def eligible_verified_effect(module: Any, proposal: Any) -> tuple[str, str, str 
         if _owned_weapon_upgrade_peer(module, proposal) is None:
             return None
         return ("owned_tool_purchase", remote, None, None)
-    if all(part in description for part in ("alien", "combat", "target", "damage")):
+    if all(part in description for part in ("alien", "target", "damage")):
         role = "world_damage"
     elif all(part in description for part in
              ("mineral", "deposit", "quantity", "inventory")):
