@@ -1,0 +1,24 @@
+name: RMM plan94 semantic source preservation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "roblox_mod_ai/semantic_preservation.py"
+      - "roblox_mod_ai/grounded_atomic_source_effects.py"
+      - "tests/test_plan94_grounded_atomic_and_construction.py"
+      - ".github/workflows/rmm-plan94-source-preservation.yml"
+  workflow_dispatch:
+
+jobs:
+  preservation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e ".[dev]" pytest
+      - name: Replay source semantics and earlier regressions
+        run: python -m pytest -q tests/test_plan94_grounded_atomic_and_construction.py tests/test_plan92_reviewer_and_world_harvest.py tests/test_plan93_atomic_source_ownership.py tests/test_semantic_preservation.py tests/test_log33_authority_replanning.py
