@@ -349,6 +349,22 @@ def source_intent_conflicts(
             r"inventory|stock)\b",
             harvest_text, re.I,
         )
+    # Treat a completed world-node reduction plus a granted inventory
+    # resource as a physical harvest even when the model uses passive prose
+    # ("records the gathered resource after reducing node health"). This
+    # must contain BOTH the world-source effect and the acquired inventory
+    # result, so a mere resource-gathering label cannot pass.
+    if not real_gathering and (
+        re.search(r"\b(?:nodes?|deposits?|veins?)\b", harvest_text)
+        and re.search(r"\b(?:reduc\w*|deplet\w*|decreas\w*|harvest\w*)\b"
+                      r".{0,50}\b(?:nodes?|deposits?|health|stock|remaining)\b",
+                      harvest_text)
+        and re.search(r"\b(?:gathered|harvested|mined|extracted|collected)\b"
+                      r".{0,50}\b(?:resources?|minerals?|ores?)\b",
+                      harvest_text)
+        and re.search(r"\b(?:inventory|cargo)\b", harvest_text)
+    ):
+        real_gathering = True
     # An abstract "resource-gathering" event is not a real harvest. The
     # production small-model response granted resources into a balance without
     # naming any mineable/harvestable world source. Our former lexical check
@@ -363,7 +379,10 @@ def source_intent_conflicts(
         r".{0,90}\b(?:ores?|minerals?)\b",
         harvest_text, re.I,
     )
-    if (require_implementation and gathering_requested and real_gathering
+    if (require_implementation and gathering_requested
+            and (real_gathering or re.search(
+                r"\b(?:resource[- ]gathering|resource[- ]farming|"
+                r"resource[- ]mining)\b", harvest_text))
             and not gatherable_origin):
         errors.append(
             "RESOURCE_GATHER_SOURCE_UNBOUND: a resource-gathering label or "
