@@ -256,6 +256,26 @@ _RANKED_DAMAGE = r'''    if args.quantity ~= 1 then
         defeated = remaining == 0}'''
 
 
+_COLONY_DAMAGE = r'''    if args.quantity ~= 1 then
+        return {success = false, reason = "one_attack_per_request"} end
+    local hp = target:GetAttribute("RMMAlienHealth")
+    if type(hp) ~= "number" or hp % 1 ~= 0 or hp <= 0
+        or hp > 100 then return {success = false, reason = "target_defeated"} end
+    local progress = services.PlayerDataManager.GetState(player, "RMMPlanetProgress")
+    if type(progress) ~= "table" then
+        return {success = false, reason = "planet_progress_unavailable"} end
+    local remaining = math.max(0, hp - 20)
+    -- No yielding between world damage and authoritative player progress.
+    target:SetAttribute("RMMAlienHealth", remaining)
+    if remaining == 0 then
+        progress.planetOwned = true
+        player:SetAttribute("RMMPlanetOwned", true)
+    end
+    recent[player] = now
+    return {success = true, remainingHealth = remaining,
+        defeated = remaining == 0, planetOwned = progress.planetOwned == true}'''
+
+
 _HARVEST = r'''    if args.quantity > 10 then
         return {success = false, reason = "max_ten_per_action"} end
     local stock = target:GetAttribute("RMMSpecialMineralStock")
@@ -304,8 +324,10 @@ def render_verified_effect(module: Any, proposal: Any) -> str | None:
                  .replace("__STATE_KEY__", json.dumps(state_key))
                  .replace("__OFFSET__", "28" if role == "world_damage" else "-28"))
         ranked_combat = False
+        colony_combat = False
         if role == "world_damage":
             from .host_level_upgrade import eligible_rank_protocol
+            from .host_verified_colony import eligible_colony
             targets = set()
             for peer in proposal.modules:
                 if peer.kind != ModuleKind.SERVER_MODULE or peer is module:
@@ -313,8 +335,29 @@ def render_verified_effect(module: Any, proposal: Any) -> str | None:
                 rank = eligible_rank_protocol(peer, proposal)
                 if rank is not None:
                     targets.add(rank[2])
+                if eligible_colony(peer, proposal) is not None:
+                    colony_combat = True
             ranked_combat = bool({"crew_performance_state", "owned_weapon"} & targets)
-        effect = (_RANKED_DAMAGE if ranked_combat else _DAMAGE) if role == "world_damage" else _HARVEST
+        if role != "world_damage":
+            effect = _HARVEST
+        elif ranked_combat:
+            effect = _RANKED_DAMAGE
+            if colony_combat:
+                effect = effect.replace(
+                    '    target:SetAttribute("RMMAlienHealth", remaining)',
+                    '    local progress = services.PlayerDataManager.GetState(player, "RMMPlanetProgress")\n'
+                    '    if type(progress) ~= "table" then\n'
+                    '        return {success = false, reason = "planet_progress_unavailable"} end\n'
+                    '    target:SetAttribute("RMMAlienHealth", remaining)\n'
+                    '    if remaining == 0 then\n'
+                    '        progress.planetOwned = true\n'
+                    '        player:SetAttribute("RMMPlanetOwned", true)\n'
+                    '    end',
+                )
+        elif colony_combat:
+            effect = _COLONY_DAMAGE
+        else:
+            effect = _DAMAGE
         body = (_WORLD_BODY.replace("__EFFECT__", effect)
                 .replace("__WORLD__", json.dumps(world_name)))
     # The damage handler needs only the authenticated player and the actual
@@ -322,7 +365,7 @@ def render_verified_effect(module: Any, proposal: Any) -> str | None:
     # Declare that argument intentionally unused so Selene never reports a
     # deterministic host-template defect after a successful 26-module build.
     template = _COMMON
-    if role == "world_damage" and not ranked_combat:
+    if role == "world_damage" and not ranked_combat and not colony_combat:
         template = template.replace(
             "function Service.handleAction(player, services, ...)",
             "function Service.handleAction(player, _services, ...)",
