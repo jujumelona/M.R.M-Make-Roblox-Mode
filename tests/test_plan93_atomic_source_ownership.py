@@ -53,7 +53,12 @@ def test_no_harvest_created_when_missing_from_model_output():
     ) == source_rows
     bound = verify_or_bind_actions(NoCalls(), SOURCE, source_rows,
                                    require_complete=False, max_actions=6)
-    assert any("RESOURCE_GATHER_ACTION_MISSING" in x for x in _coverage_issues(SOURCE, bound))
+    # Either absence of a harvest effect OR absence of a grounded physical
+    # origin is a blocking failure. A phrase like "resource-gathering"
+    # can reach the stronger SOURCE_UNBOUND diagnostic.
+    assert any(x.startswith(("RESOURCE_GATHER_ACTION_MISSING:",
+                             "RESOURCE_GATHER_SOURCE_UNBOUND:"))
+               for x in _coverage_issues(SOURCE, bound))
 
 
 def test_do_not_steal_from_another_valid_source_mining_owner():
