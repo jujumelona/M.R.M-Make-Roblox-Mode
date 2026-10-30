@@ -287,7 +287,9 @@ def author_verified_atomic_systems(
                     response.get(repair_field)
                     if isinstance(response, dict) else None
                 )
-                if isinstance(patched, str) and patched.strip() == previous_text.strip():
+                if (repair_field == "observable_result"
+                        and isinstance(patched, str)
+                        and patched.strip() == previous_text.strip()):
                     # A failed one-field correction that repeats the exact
                     # rejected text is proven non-progress. Retrying a whole
                     # atomic system would spend another model call while
