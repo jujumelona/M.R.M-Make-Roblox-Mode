@@ -21,6 +21,7 @@ from .local_studio import install_local_studio_checks
 from .verification_selector import make_verification_report
 from .source_review import review_generated_sources
 from .requirement_effect_review import review_requirement_effects
+from .requirement_completion_audit import audit_whole_requirement_completion
 from .source_repair_cycle import run_source_repair_cycle
 from .gameplay_contract import make_studio_playtest_scenarios
 from .rbxlx_inspector import inspect_compiled_place
@@ -990,12 +991,32 @@ class RobloxProductionOrchestrator:
                         "Requirement effect review incomplete: " +
                         effects.get("reason", "unknown"))
                     return line_review
+                # A positive citation for ONE server action is not proof
+                # that the complete, multi-action original requirement works.
+                # Reinspect the assembled server-side producer/consumer graph
+                # one independent expected effect at a time. Feed missing
+                # effects to the SAME transactional repair-and-re-review loop.
+                whole = audit_whole_requirement_completion(
+                    proposal, output_dir, self.router)
+                tool_results["requirement_completion_audit"] = whole
+                (output_dir / "requirement_completion_audit.json").write_text(
+                    json.dumps(whole, indent=2, ensure_ascii=False),
+                    encoding="utf-8")
+                if whole.get("status") == "failed" or not whole.get("fully_covered"):
+                    line_review["status"] = "failed"
+                    line_review["reason"] = (
+                        "Whole-requirement effect audit incomplete: " +
+                        str(whole.get("reason", "unknown")))
+                    return line_review
                 line_review["requirement_effects"] = {
                     "status": effects["status"],
                     "requirements": effects["requirements"],
+                    "whole_requirement_audit": whole["status"],
+                    "independent_effects": whole["checks"],
                 }
                 line_review["findings"].extend(effects["findings"])
-                if effects["status"] == "issues_found":
+                line_review["findings"].extend(whole["findings"])
+                if effects["status"] == "issues_found" or whole["status"] == "issues_found":
                     line_review["status"] = "issues_found"
                     line_review["reason"] = (
                         "Original requirement is not demonstrated by actual "
