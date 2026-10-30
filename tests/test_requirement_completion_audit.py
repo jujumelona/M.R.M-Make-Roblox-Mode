@@ -338,14 +338,14 @@ def test_incomplete_batch_recovers_each_missing_effect_without_false_pass(tmp_pa
 
 
 def test_duplicate_effect_is_reaudited_not_double_counted(tmp_path):
-    fixture(tmp_path)
+    proposal = fixture(tmp_path)
     (tmp_path / TRADE).write_text(
         (tmp_path / TRADE).read_text(encoding="utf-8")
         + "\nstock.money += 1\n",
         encoding="utf-8",
     )
     router = RecoveringRouter(initial="duplicates")
-    report = audit_whole_requirement_completion(fixture(tmp_path), tmp_path, router)
+    report = audit_whole_requirement_completion(proposal, tmp_path, router)
     assert report["status"] == "reviewed_no_blockers", report
     assert report["fully_covered"]
     assert len(report["checks"]) == 3
