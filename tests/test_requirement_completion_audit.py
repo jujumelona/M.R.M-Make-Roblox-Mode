@@ -476,3 +476,62 @@ def test_unplanned_original_action_blocks_without_source_hallucination(tmp_path)
     assert not report["fully_covered"]
     assert "original request omitted" in report["reason"]
     assert report["unplanned_actions"]
+
+
+def test_realistic_multipart_requirement_recovers_compact_first_effect(tmp_path):
+    """Regression for a semicolon-joined extract/sell/assemble contract."""
+    import json
+    proposal = fixture(tmp_path)
+    req = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
+    req["server_state_changes"] = [
+        "After accepted world-resource extraction, the player's owned inventory "
+        "increases by the resource quantity actually extracted from the validated "
+        "world deposit; rejected requests change nothing. After a successful "
+        "trade, the player's owned resource inventory decreases by the sold "
+        "quantity and the earned money balance increases by the server-priced "
+        "payout; rejected requests change neither displayed balance. "
+        "The player's owned spaceship now has one additional ship section "
+        "attached, and the server-owned ship assembly state is persisted "
+        "as a completed piece-by-piece construction."
+    ]
+    assert len(_obligations(req)) == 5
+
+    class TinyModel:
+        def __init__(self):
+            self.calls = []
+            self.first_invalid = True
+
+        def complete_json(self, **kwargs):
+            prompt = kwargs["prompt"]
+            self.calls.append(prompt)
+            assert not prompt.startswith("Post-generation")
+            assert len(prompt) < 15000, "Reviewer still received a giant prompt"
+            if prompt.startswith("Find user-requested"):
+                assert "complete_server_sources" not in prompt
+                return {"missing_actions": []}
+            assert prompt.startswith(("Audit exactly ONE", "Recheck ONE"))
+            data = json.loads(prompt[prompt.index('{"effect":'):])
+            catalog = data["owner_catalog"]
+            if self.first_invalid:
+                self.first_invalid = False
+                return {}
+            target = SHIP if "ship section" in data["effect"] else TRADE
+            # The model returns ONLY a physical source coordinate, never code.
+            return {
+                "verdict": "missing" if "world-resource extraction"
+                            in data["effect"] else "implemented",
+                "file_id": catalog[target],
+                "line": 3,
+                "issue": "The authoritative resource source has no mining transaction",
+                "repair": "Implement validated deposit extraction and inventory credit",
+            }
+
+    model = TinyModel()
+    report = audit_whole_requirement_completion(proposal, tmp_path, model)
+    assert report["fully_covered"], report
+    assert report["status"] == "issues_found", report
+    assert len(report["checks"]) == 5
+    assert len(report["findings"]) == 1
+    assert any(r.get("status") == "invalid_evidence"
+               for r in report["recovery"])
+    assert len(model.calls) == 7  # five effects + retry + scope review
