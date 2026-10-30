@@ -846,3 +846,29 @@ def test_combined_resource_debit_and_wallet_credit_is_not_false_rejected(tmp_pat
     )
     assert report["fully_covered"], report
     assert report["status"] == "reviewed_no_blockers", report
+
+
+def test_planned_spaceflight_cannot_pass_from_duration_arithmetic(tmp_path):
+    from roblox_mod_ai.requirement_completion_audit import (
+        _is_effectful_source_line, _normalize_single_effect_answer,
+    )
+    path = SHIP
+    source = (
+        "--!strict\n"
+        "local duration = math.max(3, 7 - 0.4 * rank)\n"
+        "local craft = workspace:FindFirstChild('Ship')\n"
+        "craft:PivotTo(destination)\n"
+    )
+    assert not _is_effectful_source_line(source, 2)
+    assert not _is_effectful_source_line(source, 3)
+    assert _is_effectful_source_line(source, 4)
+    assert _normalize_single_effect_answer(
+        {"verdict": "implemented", "file_id": 0, "line": 2},
+        [path], {path: source},
+        {path: "2: local duration = math.max(3, 7 - 0.4 * rank)"},
+    ) is None
+    assert _normalize_single_effect_answer(
+        {"verdict": "implemented", "file_id": 0, "line": 4},
+        [path], {path: source},
+        {path: "4: craft:PivotTo(destination)"},
+    ) is not None
