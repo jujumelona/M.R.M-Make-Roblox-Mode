@@ -545,10 +545,15 @@ def audit_whole_requirement_completion(
                                          if isinstance(raw, dict) else [],
                     })
                 if scoped_answer is None:
+                    evidence_reason = (
+                        "ungrounded batch evidence; "
+                        if effect_id in bad_batch_evidence_ids else ""
+                    )
                     report["reason"] = (
                         req_id + ": incomplete independent effect checks; "
-                        + effect_id + " could not provide grounded evidence "
-                        + "in owner window " + str(scope_start // 2 + 1)
+                        + evidence_reason + effect_id
+                        + " could not provide grounded evidence in owner window "
+                        + str(scope_start // 2 + 1)
                     )
                     return report
                 if scoped_answer["verdict"] == "missing":
