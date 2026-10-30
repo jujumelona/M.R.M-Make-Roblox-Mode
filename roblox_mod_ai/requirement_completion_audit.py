@@ -445,9 +445,35 @@ def _host_effect_witnesses(
             score = 10 * overlap + 2 * len(words & module_tokens)
             candidates.append((score, path, i, visible.strip()))
     candidates.sort(key=lambda item: (-item[0], item[1], item[2]))
+    # Reserve at least one candidate per independently owned module. Without
+    # this, a large construction server can fill the entire top-N list and
+    # starve the extraction/market owners of any selectable evidence.
+    owners = sorted(sources)
+    owner_quota = max(1, min(6, limit // max(1, len(owners))))
+    chosen: list[tuple[int, str, int, str]] = []
+    present: set[tuple[str, int]] = set()
+    for path in owners:
+        for row in (item for item in candidates if item[1] == path):
+            key = (row[1], row[2])
+            if key in present:
+                continue
+            chosen.append(row)
+            present.add(key)
+            if sum(item[1] == path for item in chosen) >= owner_quota:
+                break
+            if len(chosen) >= limit:
+                break
+    for row in candidates:
+        if len(chosen) >= limit:
+            break
+        key = (row[1], row[2])
+        if key not in present:
+            chosen.append(row)
+            present.add(key)
+    chosen.sort(key=lambda item: (-item[0], item[1], item[2]))
     return [
         {"id": i, "file": path, "line": line_number, "quote": quote}
-        for i, (_, path, line_number, quote) in enumerate(candidates[:limit], 1)
+        for i, (_, path, line_number, quote) in enumerate(chosen[:limit], 1)
     ]
 
 
