@@ -427,9 +427,17 @@ def _host_effect_witnesses(
         lines = source.splitlines()
         masked = _mask_luau_comments(source).splitlines()
         for i, (line, visible) in enumerate(zip(lines, masked), 1):
-            if not _is_effectful_source_line(source, i):
+            # This is a linear-time pass: do not split/mask the entire source
+            # again for every line of every independently promised effect.
+            code = _mask_noncode_luau_strings(visible).strip()
+            if (not code or code.startswith((
+                    "local ", "if ", "elseif ", "while ", "for ", "return "
+                )) or not (
+                    _distinct_state_writes(code) > 0
+                    or _EFFECTFUL_CALL.search(code)
+                )):
                 continue
-            if len(line.strip()) < 6 or len(line.strip()) > 320:
+            if len(visible.strip()) < 6 or len(visible.strip()) > 320:
                 continue
             contextual = " ".join(masked[max(0, i - 3):min(len(masked), i + 2)])
             line_tokens = set(re.findall(
