@@ -1,0 +1,24 @@
+name: RMM plan92 semantic-contract regression
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "roblox_mod_ai/semantic_preservation.py"
+      - "roblox_mod_ai/dynamic_architect.py"
+      - "tests/test_plan92_reviewer_and_world_harvest.py"
+      - ".github/workflows/rmm-plan92-semantic-regression.yml"
+  workflow_dispatch:
+
+jobs:
+  source-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e ".[dev]" pytest
+      - name: Test real harvest, missing effects and source reviewer
+        run: python -m pytest -q tests/test_plan92_reviewer_and_world_harvest.py tests/test_semantic_preservation.py tests/test_plan65_architecture_coverage.py
