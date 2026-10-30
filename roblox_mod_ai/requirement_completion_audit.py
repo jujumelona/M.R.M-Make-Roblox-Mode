@@ -572,6 +572,7 @@ def audit_whole_requirement_completion(
                                 "items": {"type": "object"},
                             },
                         },
+                        "required": ["missing_actions"],
                         "additionalProperties": False,
                     },
                 )
