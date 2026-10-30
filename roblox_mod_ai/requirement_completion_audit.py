@@ -260,6 +260,9 @@ def _normalize_single_effect_answer(
             if number not in visible:
                 return None
         quote = lines[number - 1].strip()
+        if verdict == "implemented" and not _is_effectful_source_line(
+                sources[file_path], number):
+            return None
     if (not 6 <= len(quote) <= 320
             or quote.lstrip().startswith("--")
             or quote.strip() in ("end", "else", "return false", "return nil")
@@ -268,6 +271,10 @@ def _normalize_single_effect_answer(
     issue = raw.get("issue", "none")
     repair = raw.get("repair", "none")
     if not isinstance(issue, str) or not isinstance(repair, str):
+        return None
+    if verdict == "implemented" and not _is_effectful_source_line(
+            sources[file_path], _real_source_quote_in_text(
+                sources[file_path], quote)):
         return None
     if verdict == "missing" and (len(issue.strip()) < 8
                                   or len(repair.strip()) < 8):
@@ -302,6 +309,48 @@ def _distinct_state_writes(line: str) -> int:
             if "." in m.group(1) or "[" in m.group(1)
         )
     return len(targets)
+
+
+_EFFECTFUL_CALL = re.compile(
+    r"(?:[:.])(?:SetAttribute|PivotTo|MoveTo|TakeDamage|Destroy|"
+    r"UpdateAsync|SetAsync|Save|Persist|Credit|Debit|Award|"
+    r"Grant|Transfer|Attach|Spawn|Insert|Remove|ApplyUpgrade)"
+    r"\s*\(", re.I,
+)
+
+
+def _is_effectful_source_line(source: str, line_number: int) -> bool:
+    """An executed mutation is required to certify a gameplay state effect.
+
+    Arithmetic assignments to local temporaries, getters, and boolean
+    comparisons do NOT prove world/player changes. An executable setter,
+    mutator call, or non-local attribute/index assignment can be source
+    evidence. It remains a necessary, not sufficient, semantic condition.
+    """
+    lines = source.splitlines()
+    if not 1 <= line_number <= len(lines):
+        return False
+    line = lines[line_number - 1].strip()
+    if not line or line.startswith(("--", "local ", "if ", "elseif ",
+                                    "while ", "for ", "return ")):
+        return False
+    return _distinct_state_writes(line) > 0 or bool(
+        _EFFECTFUL_CALL.search(line)
+    )
+
+
+def _real_source_quote_in_text(source: str, quote: str) -> int:
+    if not isinstance(quote, str) or quote not in source:
+        return 0
+    offset = 0
+    while True:
+        i = source.find(quote, offset)
+        if i < 0:
+            return 0
+        n = source.count("\n", 0, i) + 1
+        if not source.splitlines()[n - 1].lstrip().startswith("--"):
+            return n
+        offset = i + 1
 
 def audit_whole_requirement_completion(
     proposal: Any, root: Path, router: Any,
@@ -493,6 +542,10 @@ def audit_whole_requirement_completion(
                         or not _real_source_quote(
                             root, file_path, entry.get("quote")
                         )):
+                    bad_batch_evidence_ids.add(effect_id)
+                elif verdict == "implemented" and not _is_effectful_source_line(
+                        actual_sources[file_path],
+                        _real_source_quote(root, file_path, entry["quote"])):
                     bad_batch_evidence_ids.add(effect_id)
             else:
                 bad_batch_evidence_ids.add(effect_id)
@@ -768,6 +821,12 @@ def audit_whole_requirement_completion(
                 report["reason"] = req_id + ": ungrounded effect quote in " + file_path
                 return report
             if verdict == "implemented":
+                if not _is_effectful_source_line(actual_sources[file_path], line):
+                    report["reason"] = (
+                        req_id + ": non-mutating evidence for "
+                        + str(entry.get("id")) + " at " + file_path
+                    )
+                    return report
                 behavior = next((
                     o["behavior"] for o in obligations
                     if o["id"] == entry.get("id")
