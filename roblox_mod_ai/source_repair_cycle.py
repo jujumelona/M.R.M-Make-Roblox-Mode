@@ -134,6 +134,8 @@ def _apply_scoped_hunks(
         if (not isinstance(before, str) or not isinstance(after, str)
                 or len(before) < 8 or len(before) > 1500
                 or not after.strip() or len(after) > 3500
+                or all(not line.strip() or line.lstrip().startswith("--")
+                       for line in after.splitlines())
                 or before.strip() == after.strip()
                 or source.count(before) != 1
                 or not any(before in window for window in windows)):
