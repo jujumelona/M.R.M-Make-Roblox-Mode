@@ -1020,14 +1020,13 @@ def audit_whole_requirement_completion(
             if len(occurrences[o["id"]]) == 1
         ]
         if unverified_effects:
-            report["unverified_effects"] = unverified_effects
-            report["reason"] = (
-                req_id + ": incomplete independent effect checks; ungrounded evidence; cannot prove " + str(len(unverified_effects))
-                + " independent effects; host witness and owner reviews exhausted"
+            report.setdefault("unverified_effects", []).extend(
+                unverified_effects
             )
-            # The build still fails closed, but never blocks at the first
-            # malformed model answer or manufactures a missing implementation.
-            return report
+            # Continue to the next independent requirement, so one failed
+            # model answer cannot hide all later defects. The final result
+            # remains FAIL-CLOSED and cannot claim complete source coverage.
+            continue
         if len(checks) != len(obligations):
             report["reason"] = (
                 req_id + ": incomplete independent effect checks after recovery"
@@ -1185,6 +1184,13 @@ def audit_whole_requirement_completion(
                     ),
                     "evidence": "requirement_effect_review_source_quote",
                 })
+    if report.get("unverified_effects"):
+        report["reason"] = (
+            "incomplete independent effect checks; ungrounded evidence; "
+            "cannot prove " + str(len(report["unverified_effects"]))
+            + " independent effects across requirements"
+        )
+        return report
     report["fully_covered"] = True
     report["status"] = "issues_found" if report["findings"] else "reviewed_no_blockers"
     report["reason"] = (
