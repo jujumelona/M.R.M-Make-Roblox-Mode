@@ -986,6 +986,25 @@ class RobloxProductionOrchestrator:
                 "success": True, "semantic_review_passed": False,
                 **pre_review_checkpoint,
             }
+            # Prompt-invariant compiled-program gate: a declarative effect
+            # contract is NOT evidence unless the actual source contains the
+            # complete deterministic host implementation. Check after StyLua
+            # and diagnostics repair, before model semantic review or packaging.
+            from .compiled_effect_verification import verify_compiled_effect_sources
+            compiled_effect_review = verify_compiled_effect_sources(
+                proposal, output_dir,
+            )
+            tool_results["compiled_effect_sources"] = compiled_effect_review
+            (output_dir / "compiled_effect_sources.json").write_text(
+                json.dumps(compiled_effect_review, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            if not compiled_effect_review["passed"]:
+                return {
+                    "passed": False,
+                    "error": "DECLARED_COMPILED_EFFECT_SOURCE_MISMATCH",
+                    "diagnostic": compiled_effect_review,
+                }
             # A second pass compares the actually written, formatted source
             # against each original requirement. It can run in Colab using
             # the already loaded local GGUF; Roblox Studio is NOT invoked.
