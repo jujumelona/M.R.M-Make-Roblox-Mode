@@ -704,3 +704,31 @@ def test_all_owner_code_larger_than_old_budget_is_scoped_not_rejected(tmp_path):
     assert report["fully_covered"], report
     assert report["status"] == "issues_found", report
     assert "72" not in report["reason"]
+
+
+def test_numbered_source_must_include_the_cited_line(tmp_path):
+    from roblox_mod_ai.requirement_completion_audit import (
+        _normalize_single_effect_answer,
+    )
+    source = (tmp_path / TRADE).read_text(encoding="utf-8")
+    valid = {"verdict": "implemented", "file_id": 0, "line": 3}
+    assert _normalize_single_effect_answer(
+        valid, [TRADE], {TRADE: source},
+        {TRADE: "1: --!strict\n2: local function sale()"},
+    ) is None
+    assert _normalize_single_effect_answer(
+        valid, [TRADE], {TRADE: source},
+        {TRADE: "3:     stock.resources -= 1"},
+    ) is not None
+
+
+def test_comment_before_real_source_quote_does_not_hide_real_evidence(tmp_path):
+    from roblox_mod_ai.requirement_completion_audit import _real_source_quote
+    file = tmp_path / TRADE
+    file.write_text(
+        "-- stock.resources -= 1\n" + file.read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    assert _real_source_quote(
+        tmp_path, TRADE, "stock.resources -= 1"
+    ) == 4
