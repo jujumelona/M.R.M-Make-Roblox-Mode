@@ -103,6 +103,87 @@ def _render_resource_field(code: str, field: str) -> str:
     return code
 
 
+def _offworld_resource_destination(
+    owner: RobloxModuleSpec, proposal: RobloxProposal,
+) -> tuple[bool, str | None]:
+    """Resolve a mine's planetary location from the same original source.
+
+    A unique host-verified physical destination is required for a mine whose
+    source explicitly places it on another planet. A generated Part near the
+    spawn cannot silently stand in for that remote world.
+    """
+    design = proposal.game_design
+    dynamic = design.get("dynamic_design") or {}
+    bound = (dynamic.get("module_requirements") or {}).get(owner.module_id) or []
+    ledger = (design.get("pre_design_research") or {}).get("ledger") or {}
+    statement = " ".join(
+        str(row.get("statement") or "")
+        for row in (ledger.get("requirements") or [])
+        if isinstance(row, dict) and row.get("id") in bound
+    )
+    offworld = bool(
+        re.search(r"특수\s*광물|special\s+minerals?", statement, re.I)
+        and re.search(
+            r"다른\s*행성|외계\s*행성|other\s+planets?|"
+            r"another\s+planet|alien\s+planet", statement, re.I,
+        )
+    )
+    if not offworld:
+        return False, None
+    arrivals = {
+        row.get("arrival") for row in
+        (dynamic.get("host_arrival_materializations") or [])
+        if isinstance(row, dict) and isinstance(row.get("arrival"), str)
+    }
+    if len(arrivals) != 1:
+        return True, None
+    arrival = next(iter(arrivals))
+    # Validate the exact agreed world instance; a name with no physical
+    # materialization is not enough for server-side placement.
+    objects = [
+        obj for obj in (dynamic.get("world_objects") or [])
+        if isinstance(obj, dict) and obj.get("name") == arrival
+        and obj.get("class") == "Part"
+    ]
+    return True, arrival if len(objects) == 1 else None
+
+
+def _place_mine_at_verified_destination(code: str, arrival: str) -> str:
+    """Move the server-owned mining source to the real flight destination."""
+    original = '''    for _, name in NODE_NAMES do
+        local part = workspace:FindFirstChild(name, true)
+        if part and part:IsA("BasePart") then getNode(part) end
+    end
+end'''
+    placement = (
+        '    local arrival = workspace:FindFirstChild('
+        + json.dumps(arrival) + ''', true)
+    assert(arrival and arrival:IsA("BasePart"),
+        "Offworld mining requires its verified flight destination")
+    for index, name in NODE_NAMES do
+        local part = workspace:FindFirstChild(name, true)
+        if part and part:IsA("BasePart") then
+            part.Anchored = true
+            part.CFrame = arrival.CFrame * CFrame.new(-20 - (index - 1) * 8, 6, 0)
+            getNode(part)
+        end
+    end
+end'''
+    )
+    if code.count(original) != 1:
+        raise ValueError("Mining startup world binding changed")
+    code = code.replace(original, placement, 1)
+    action = '''    if select("#", ...) ~= 1 then return false end'''
+    zero_action = '''    if select("#", ...) ~= 0 then return false end'''
+    gate = '''    if player:GetAttribute("RMMFlightState") ~= "arrived" then
+        return {success = false, reason = "not_at_planet"} end
+'''
+    marker = action if action in code else zero_action
+    if marker not in code:
+        raise ValueError("Mining ingress guard changed")
+    return code.replace(marker, gate + marker, 1)
+
+
 def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> str | None:
     if not module.module_id.startswith("dyn_"):
         return None
@@ -191,6 +272,11 @@ def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> st
             return None
     reward_currency = mining_rewards_currency(owner or module, proposal)
     resource_field = _mined_resource_field(owner or module, proposal)
+    offworld_requested, arrival_name = _offworld_resource_destination(
+        owner or module, proposal)
+    if offworld_requested and not arrival_name:
+        # A nearby spawn Part is not an offworld resource. Fail closed.
+        return None
     if world_routes:
         world_name = world_routes[0][0]
         if (module.kind != ModuleKind.SERVER_MODULE
@@ -202,6 +288,8 @@ def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> st
         # Do not create a client or Remote for this mode.
         template = _SERVER if reward_currency else _SERVER_RESOURCES_ONLY
         code = template.replace("__NODES__", "{" + json.dumps(world_name) + "}")
+        if offworld_requested:
+            code = _place_mine_at_verified_destination(code, arrival_name)
         return _render_resource_field(
             _bind_verified_mined_income(code, proposal, reward_currency),
             resource_field,
@@ -214,6 +302,8 @@ def render_host_mining(module: RobloxModuleSpec, proposal: RobloxProposal) -> st
     if module.kind == ModuleKind.SERVER_MODULE:
         template = (_SERVER_NEAREST if no_args else _SERVER) if reward_currency else (_SERVER_RESOURCES_NEAREST if no_args else _SERVER_RESOURCES_ONLY)
         code = template.replace("__NODES__", lua_nodes)
+        if offworld_requested:
+            code = _place_mine_at_verified_destination(code, arrival_name)
         return _render_resource_field(
             _bind_verified_mined_income(code, proposal, reward_currency),
             resource_field,
