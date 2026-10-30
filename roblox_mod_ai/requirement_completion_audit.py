@@ -275,6 +275,34 @@ def _normalize_single_effect_answer(
     return {"verdict": verdict, "file": file_path,
             "quote": quote, "issue": issue, "repair": repair}
 
+
+_WRITE_TARGETS = re.compile(
+    r"(?<!\w)([A-Za-z_]\w*(?:\.[A-Za-z_]\w*|\[[^\]\n]+\])*)"
+    r"\s*(?:\+=|-=|(?<![!<>=])=(?!=))"
+)
+
+
+def _distinct_state_writes(line: str) -> int:
+    """Count distinct non-local assignments for a shared source line.
+
+    Two promised effects may legitimately be implemented on one physical
+    line if it actually writes two independent state targets. Repeated
+    writes to one value never certify two different player effects.
+    """
+    if line.lstrip().startswith("--"):
+        return 0
+    statements = line.split(";")
+    targets: set[str] = set()
+    for statement in statements:
+        stmt = statement.strip()
+        if stmt.startswith(("local ", "for ", "if ", "elseif ")):
+            continue
+        targets.update(
+            m.group(1) for m in _WRITE_TARGETS.finditer(stmt)
+            if "." in m.group(1) or "[" in m.group(1)
+        )
+    return len(targets)
+
 def audit_whole_requirement_completion(
     proposal: Any, root: Path, router: Any,
 ) -> dict[str, Any]:
@@ -714,7 +742,7 @@ def audit_whole_requirement_completion(
                 req_id + ": incomplete original-request omitted-effect audit"
             )
             return report
-        implemented_evidence: dict[tuple[str, int], str] = {}
+        implemented_evidence: dict[tuple[str, int], set[str]] = {}
         for entry in checks + extras:
             if not isinstance(entry, dict):
                 report["reason"] = req_id + ": malformed effect evidence"
@@ -756,15 +784,17 @@ def audit_whole_requirement_completion(
                 # by an identical single source line. Reusing an inventory
                 # debit as proof of a currency credit is a false positive.
                 key = (file_path, line)
-                previous_id = implemented_evidence.get(key)
-                if previous_id is not None and previous_id != entry.get("id"):
-                    report["reason"] = (
-                        req_id + ": shared evidence for independent effects: "
-                        + str(previous_id) + " and " + str(entry.get("id"))
-                        + " in " + file_path + ":" + str(line)
-                    )
-                    return report
-                implemented_evidence[key] = str(entry.get("id"))
+                bound_ids = implemented_evidence.setdefault(key, set())
+                bound_ids.add(str(entry.get("id")))
+                if len(bound_ids) > 1:
+                    actual_line = actual_sources[file_path].splitlines()[line - 1]
+                    if _distinct_state_writes(actual_line) < len(bound_ids):
+                        report["reason"] = (
+                            req_id + ": shared evidence for independent effects: "
+                            + ", ".join(sorted(bound_ids))
+                            + " in " + file_path + ":" + str(line)
+                        )
+                        return report
             evidence = {"requirement_id": req_id, **entry, "line": line}
             report["checks"].append(evidence)
             if verdict == "missing":
