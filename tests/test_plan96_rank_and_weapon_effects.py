@@ -124,3 +124,52 @@ def test_tool_mirrors_are_not_the_server_authority_source():
     assert 'saved[tool.Name] = {level = level + 1}' in WEAPON_SERVER
     assert 'tool:SetAttribute("RMMMagazineSize", 6 + 2 * level)' in WEAPON_SERVER
     assert 'tool:SetAttribute("RMMFireInterval", 0.3 / (1 + 0.1 * level))' in WEAPON_SERVER
+
+
+def test_source_reviewer_sees_true_per_item_weapon_effect_consumer(tmp_path):
+    from roblox_mod_ai.requirement_effect_review import _downstream_effect_evidence
+    proposal, combat = effect_fixture("combat")
+    _add_weapon_upgrade_peer(proposal)
+    code = render_verified_effect(combat, proposal)
+    assert code
+    upgrade = next(m for m in proposal.modules
+                   if m.name == "VerifiedWeaponPerformanceServer")
+    files = {upgrade.file_path: upgrade, combat.file_path: combat}
+    for path, source in ((upgrade.file_path, WEAPON_SERVER),
+                         (combat.file_path, code)):
+        dest = tmp_path / path
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(source, encoding="utf-8")
+    evidence = _downstream_effect_evidence(
+        upgrade.file_path, WEAPON_SERVER, files, tmp_path)
+    consumer = next((e for e in evidence
+                     if e["file"] == combat.file_path), None)
+    assert consumer is not None
+    assert "RMMWeaponPerformance" in consumer["shared_persisted_state"]
+    assert "upgradedLevel" in consumer["source_excerpt"]
+    assert "damage" in consumer["source_excerpt"]
+    assert "fireInterval" in consumer["source_excerpt"]
+    assert "weaponAmmo" in consumer["source_excerpt"]
+
+
+def test_consumer_hint_never_uses_unrelated_read_only_inventory(tmp_path):
+    from roblox_mod_ai.requirement_effect_review import _downstream_effect_evidence
+    producer = "src/server/Purchase.luau"
+    consumer = "src/server/Decorative.luau"
+    source = '''
+local inventory = manager.GetState(player, "RMMInventory")
+local upgraded = manager.GetState(player, "RMMGearRank")
+upgraded[item] = {level = 2}
+'''
+    other = '''
+local inventory = manager.GetState(player, "RMMInventory")
+player:SetAttribute("DisplayRank", 8)
+'''
+    for name, code in ((producer, source), (consumer, other)):
+        out = tmp_path / name
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(code)
+    class File:
+        pass
+    modules = {producer: File(), consumer: File()}
+    assert _downstream_effect_evidence(producer, source, modules, tmp_path) == []
