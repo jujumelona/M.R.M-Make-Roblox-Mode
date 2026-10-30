@@ -256,6 +256,54 @@ _RANKED_DAMAGE = r'''    if args.quantity ~= 1 then
         defeated = remaining == 0}'''
 
 
+# This source-verified extension connects a persisted, paid weapon level to
+# the real server combat handler. A cosmetic Tool attribute is not gameplay.
+# Damage, cooldown and server-owned magazine changes use the exact profile
+# that the weapon upgrade service writes. The client supplies only a target.
+_OWNED_WEAPON_ATTACK = r'''    local equipped = character and character:FindFirstChildOfClass("Tool")
+    local upgradedLevel = 0
+    local weaponAmmo = nil
+    if equipped then
+        local savedWeapons = services.PlayerDataManager.GetState(player, "RMMWeaponPerformance")
+        if type(savedWeapons) ~= "table" then
+            return {success = false, reason = "weapon_profile_not_ready"} end
+        local purchase = savedWeapons[equipped.Name]
+        if purchase ~= nil and type(purchase) ~= "table" then
+            return {success = false, reason = "invalid_weapon_state"} end
+        if purchase ~= nil or equipped:GetAttribute("RMMOwnedWeapon") == true then
+            upgradedLevel = purchase and purchase.level or 0
+            if type(upgradedLevel) ~= "number" or upgradedLevel % 1 ~= 0
+                or upgradedLevel < 0 or upgradedLevel > 5 then
+                return {success = false, reason = "invalid_weapon_rank"} end
+            local rounds = services.PlayerDataManager.GetState(player, "RMMWeaponAmmo")
+            if type(rounds) ~= "table" then
+                return {success = false, reason = "ammo_profile_not_ready"} end
+            local size = 6 + 2 * upgradedLevel
+            local existing = rounds[equipped.Name]
+            if existing == nil or type(existing) ~= "table"
+                or existing.capacity ~= size then
+                existing = {capacity = size, remaining = size, lastShotUTC = 0}
+                rounds[equipped.Name] = existing
+            end
+            if type(existing.remaining) ~= "number"
+                or existing.remaining % 1 ~= 0 or existing.remaining < 0
+                or existing.remaining > size
+                or type(existing.lastShotUTC) ~= "number" then
+                return {success = false, reason = "invalid_ammo_state"} end
+            if existing.remaining == 0 then
+                if os.time() - existing.lastShotUTC < 2 then
+                    return {success = false, reason = "reloading"} end
+                existing.remaining = size
+            end
+            weaponAmmo = existing
+        end
+    end
+    -- The interval is derived from persisted server rank, never from a
+    -- client-provided multiplier. Unarmed attacks retain the base interval.
+    local fireInterval = 0.3 / (1 + 0.1 * upgradedLevel)
+    if recent[player] and now - recent[player] < fireInterval then
+        return {success = false, reason = "cooldown"} end
+'''
 _COLONY_DAMAGE = r'''    if args.quantity ~= 1 then
         return {success = false, reason = "one_attack_per_request"} end
     local hp = target:GetAttribute("RMMAlienHealth")
@@ -325,8 +373,10 @@ def render_verified_effect(module: Any, proposal: Any) -> str | None:
                  .replace("__OFFSET__", "28" if role == "world_damage" else "-28"))
         ranked_combat = False
         colony_combat = False
+        weapon_performance_combat = False
         if role == "world_damage":
             from .host_level_upgrade import eligible_rank_protocol
+            from .host_owned_weapon_performance import eligible_owned_weapon_performance
             from .host_verified_colony import eligible_colony
             targets = set()
             for peer in proposal.modules:
@@ -335,13 +385,29 @@ def render_verified_effect(module: Any, proposal: Any) -> str | None:
                 rank = eligible_rank_protocol(peer, proposal)
                 if rank is not None:
                     targets.add(rank[2])
+                if eligible_owned_weapon_performance(peer, proposal) is not None:
+                    weapon_performance_combat = True
                 if eligible_colony(peer, proposal) is not None:
                     colony_combat = True
-            ranked_combat = bool({"crew_performance_state", "owned_weapon"} & targets)
+            ranked_combat = bool({"crew_performance_state", "owned_weapon"} & targets) or weapon_performance_combat
         if role != "world_damage":
             effect = _HARVEST
         elif ranked_combat:
             effect = _RANKED_DAMAGE
+            if weapon_performance_combat:
+                effect = effect.replace(
+                    '    local damage = math.min(70, 20 + 2 * crew + 3 * weapon)',
+                    _OWNED_WEAPON_ATTACK
+                    + '    local damage = math.min(70, 20 + 2 * crew + 3 * weapon'
+                      ' + 4 * upgradedLevel)',
+                ).replace(
+                    '    target:SetAttribute("RMMAlienHealth", remaining)',
+                    '    if weaponAmmo then\n'
+                    '        weaponAmmo.remaining -= 1\n'
+                    '        weaponAmmo.lastShotUTC = os.time()\n'
+                    '    end\n'
+                    '    target:SetAttribute("RMMAlienHealth", remaining)',
+                )
             if colony_combat:
                 effect = effect.replace(
                     '    target:SetAttribute("RMMAlienHealth", remaining)',
@@ -360,6 +426,14 @@ def render_verified_effect(module: Any, proposal: Any) -> str | None:
             effect = _DAMAGE
         body = (_WORLD_BODY.replace("__EFFECT__", effect)
                 .replace("__WORLD__", json.dumps(world_name)))
+        if weapon_performance_combat:
+            # The integrated ranged-weapon handler performs its own dynamic
+            # fire-rate gate, including the unupgraded base cooldown.
+            body = body.replace(
+                '    if recent[player] and now - recent[player] < 0.3 then\\n'
+                '        return {success = false, reason = "cooldown"} end\\n',
+                '',
+            )
     # The damage handler needs only the authenticated player and the actual
     # world target; unlike harvesting it does not read the service registry.
     # Declare that argument intentionally unused so Selene never reports a
