@@ -750,10 +750,6 @@ def audit_whole_requirement_completion(
                 ),
             })
             occurrences[effect_id] = [{"id": effect_id, **one}]
-            report.setdefault("recovery", []).append({
-                "requirement_id": req_id, "effect_id": effect_id,
-                "stage": "single_effect", "status": "recovered",
-            })
         checks = [
             occurrences[o["id"]][0] for o in obligations
             if len(occurrences[o["id"]]) == 1
