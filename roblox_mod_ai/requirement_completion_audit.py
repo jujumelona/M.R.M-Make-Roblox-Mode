@@ -180,6 +180,59 @@ _CURRENCY_WRITE = re.compile(
 )
 
 
+
+def _mask_noncode_luau_strings(source: str) -> str:
+    """Hide string literals but retain quoted table keys in assignments.
+
+    A diagnostic string containing currency code is not execution evidence.
+    Keep offsets and line numbers unchanged for precise citations.
+    """
+    output = list(source)
+    length = len(source)
+    position = 0
+    while position < length:
+        ch = source[position]
+        if ch in ("'", '"'):
+            quote = ch
+            start = position
+            position += 1
+            while position < length:
+                if source[position] == "\\":
+                    position = min(length, position + 2)
+                elif source[position] == quote:
+                    position += 1
+                    break
+                else:
+                    position += 1
+            prev = start - 1
+            while prev >= 0 and source[prev].isspace():
+                prev -= 1
+            after = position
+            while after < length and source[after].isspace():
+                after += 1
+            is_index_key = (
+                prev >= 0 and source[prev] == "["
+                and after < length and source[after] == "]"
+            )
+            if not is_index_key:
+                for i in range(start, position):
+                    if source[i] != "\n":
+                        output[i] = " "
+            continue
+        if ch == "[":
+            opening = re.match(r"\[(=*)\[", source[position:])
+            if opening:
+                closing = "]" + opening.group(1) + "]"
+                stop = source.find(closing, position + opening.end())
+                end = length if stop < 0 else stop + len(closing)
+                for i in range(position, end):
+                    if source[i] != "\n":
+                        output[i] = " "
+                position = end
+                continue
+        position += 1
+    return "".join(output)
+
 def _has_currency_state_write(behavior: str, source: str) -> bool:
     """Verify a money-changing obligation has a real money writer.
 
@@ -190,7 +243,7 @@ def _has_currency_state_write(behavior: str, source: str) -> bool:
     if not (_CURRENCY_STATE.search(behavior) and
             _CURRENCY_EFFECT.search(behavior)):
         return True
-    executable = _mask_luau_comments(source)
+    executable = _mask_noncode_luau_strings(_mask_luau_comments(source))
     return any(
         bool(_CURRENCY_WRITE.search(line))
         for line in executable.splitlines()
@@ -371,7 +424,9 @@ def _is_effectful_source_line(source: str, line_number: int) -> bool:
     lines = source.splitlines()
     if not 1 <= line_number <= len(lines):
         return False
-    line = lines[line_number - 1].strip()
+    line = _mask_noncode_luau_strings(
+        _mask_luau_comments(lines[line_number - 1])
+    ).strip()
     if not line or line.startswith(("--", "local ", "if ", "elseif ",
                                     "while ", "for ", "return ")):
         return False
