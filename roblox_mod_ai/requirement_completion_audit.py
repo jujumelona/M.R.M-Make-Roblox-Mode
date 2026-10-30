@@ -232,7 +232,15 @@ def audit_whole_requirement_completion(
                     "required": ["checks", "extra_missing"],
                     "additionalProperties": False,
                 },
-            )
+            ) if len(obligations) <= 3 else {}
+            if len(obligations) > 3:
+                # Prevent an overlong multi-effect output on local small models.
+                # Host-owned IDs are bound to individual result objects below.
+                report.setdefault("recovery", []).append({
+                    "requirement_id": req_id, "stage": "batch_skipped",
+                    "reason": "More than three independent effects",
+                    "effect_count": len(obligations),
+                })
         except ValueError as exc:
             # Small local models can truncate an all-effects JSON response.
             # This is a transport/output failure, never proof of implementation.
