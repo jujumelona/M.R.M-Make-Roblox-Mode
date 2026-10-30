@@ -605,3 +605,102 @@ def test_model_cannot_discard_original_effect_as_out_of_scope(tmp_path):
     )
     assert not report["fully_covered"]
     assert "scope conflict" in report["reason"]
+
+
+def test_lower_ranked_server_owner_is_checked_before_missing_verdict(tmp_path):
+    """An effect implemented by owner #3 cannot be declared missing by #1/#2."""
+    import json
+    from types import SimpleNamespace
+
+    proposal = fixture(tmp_path)
+    extra = "src/server/LowRankOtherServer.luau"
+    source = ("--!strict\nlocal function supporting()\n"
+              "    local unrelated = 1\n"
+              "    unrelated += 1\nend\n" + ("-- padding\n" * 30)
+              + "actualProgress.special_state = true\n")
+    dest = tmp_path / extra
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(source, encoding="utf-8")
+    proposal.modules.append(SimpleNamespace(name="LowRankOther", file_path=extra))
+    req = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
+    req["owner_files"] = [SHIP, TRADE, extra]
+    req["server_state_changes"] = [
+        "Game records the custom player ship state mutation"
+    ]
+    assert len(_obligations(req)) == 1
+
+    class OwnerWindowModel:
+        def __init__(self):
+            self.scopes = []
+        def complete_json(self, **kwargs):
+            prompt = kwargs["prompt"]
+            if prompt.startswith("Post-generation"):
+                raise ValueError("finish_reason=length")
+            if prompt.startswith("Find user-requested"):
+                return {"missing_actions": []}
+            assert prompt.startswith("Audit exactly ONE"), prompt[:110]
+            data = json.loads(prompt[prompt.index('{"effect":'):])
+            scope = data["current_owner_sources"]
+            paths = {v["path"]: int(k) for k,v in scope.items()}
+            self.scopes.append(list(paths))
+            if extra not in paths:
+                selected = next(iter(paths))
+                return {
+                    "verdict": "missing", "file_id": paths[selected],
+                    "line": 3,
+                    "issue": "No authoritative ship state writer in this window",
+                    "repair": "Inspect the remaining owner and validate its state mutation",
+                }
+            line = source.splitlines().index(
+                "actualProgress.special_state = true"
+            ) + 1
+            return {"verdict": "implemented", "file_id": paths[extra],
+                    "line": line}
+    model = OwnerWindowModel()
+    report = audit_whole_requirement_completion(proposal, tmp_path, model)
+    assert report["fully_covered"], report
+    assert report["status"] == "reviewed_no_blockers", report
+    assert len(model.scopes) == 2
+    assert any(extra in paths for paths in model.scopes)
+
+
+def test_all_owner_code_larger_than_old_budget_is_scoped_not_rejected(tmp_path):
+    """Only the AI request is bounded; large total project source is allowed."""
+    import json
+    proposal = fixture(tmp_path)
+    for path in (SHIP, TRADE):
+        source = (tmp_path / path).read_text(encoding="utf-8")
+        (tmp_path / path).write_text(
+            source + ("-- many independent source comments\n" * 1600),
+            encoding="utf-8",
+        )
+    assert sum(len((tmp_path / path).read_text())
+               for path in (SHIP, TRADE)) > 72000
+
+    class TinyStructured:
+        def complete_json(self, **kwargs):
+            p = kwargs["prompt"]
+            if p.startswith("Post-generation"):
+                raise ValueError("finish_reason=length")
+            if p.startswith("Find user-requested"):
+                return {"missing_actions": []}
+            assert p.startswith("Audit exactly ONE"), p[:120]
+            data = json.loads(p[p.index('{"effect":'):])
+            paths = {v["path"]: int(k)
+                     for k,v in data["current_owner_sources"].items()}
+            if "Purchasing" in data["effect"]:
+                return {"verdict": "implemented", "file_id": paths[SHIP],
+                        "line": 3}
+            if "increases earned currency" in data["effect"]:
+                return {"verdict": "missing", "file_id": paths[TRADE],
+                        "line": 3,
+                        "issue": "Currency credit is not implemented",
+                        "repair": "Credit the authoritative balance"}
+            return {"verdict": "implemented", "file_id": paths[TRADE],
+                    "line": 3}
+    report = audit_whole_requirement_completion(
+        proposal, tmp_path, TinyStructured(),
+    )
+    assert report["fully_covered"], report
+    assert report["status"] == "issues_found", report
+    assert "72" not in report["reason"]
