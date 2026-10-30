@@ -406,6 +406,135 @@ def _real_source_quote_in_text(source: str, quote: str) -> int:
     return visible.count("\n", 0, index) + 1 if index >= 0 else 0
 
 
+
+def _host_effect_witnesses(
+    behavior: str, sources: dict[str, str], modules: list[Any],
+    limit: int = 24,
+) -> list[dict[str, Any]]:
+    """Build evidence IDs from real executable source, not model-written quotes.
+
+    One write/call cannot establish the entire semantics of a game action,
+    but its file and line are authoritative and mechanically checkable.
+    Candidate selection is genre independent and covers all owner files.
+    """
+    words = set(re.findall(r"[a-zA-Z_][a-zA-Z_0-9]{2,}", behavior.casefold()))
+    descriptions = {
+        m.file_path: str(getattr(m, "description", "")).casefold()
+        for m in modules if getattr(m, "file_path", None) in sources
+    }
+    candidates: list[tuple[int, str, int, str]] = []
+    for path, source in sorted(sources.items()):
+        lines = source.splitlines()
+        masked = _mask_luau_comments(source).splitlines()
+        for i, (line, visible) in enumerate(zip(lines, masked), 1):
+            if not _is_effectful_source_line(source, i):
+                continue
+            if len(line.strip()) < 6 or len(line.strip()) > 320:
+                continue
+            contextual = " ".join(masked[max(0, i - 3):min(len(masked), i + 2)])
+            line_tokens = set(re.findall(
+                r"[a-zA-Z_][a-zA-Z_0-9]{2,}", contextual.casefold()
+            ))
+            overlap = len(words & line_tokens)
+            module_tokens = set(re.findall(
+                r"[a-zA-Z_][a-zA-Z_0-9]{2,}",
+                (path + " " + descriptions.get(path, "")).casefold()
+            ))
+            # Owner metadata and the actual implementation are only ranking
+            # hints; neither is treated as proof of semantic equivalence.
+            score = 10 * overlap + 2 * len(words & module_tokens)
+            candidates.append((score, path, i, line.strip()))
+    candidates.sort(key=lambda item: (-item[0], item[1], item[2]))
+    return [
+        {"id": i, "file": path, "line": line_number, "quote": quote}
+        for i, (_, path, line_number, quote) in enumerate(candidates[:limit], 1)
+    ]
+
+
+def _fallback_effect_witness_review(
+    router: Any, effect: dict[str, str], sources: dict[str, str],
+    modules: list[Any],
+) -> tuple[dict[str, str] | None, dict[str, Any]]:
+    """Small model chooses ONE host-owned witness ID; never fabricates paths.
+
+    Choice zero means missing. Invalid responses are UNVERIFIED, not a
+    successful source audit. This path is used only when the older verbose
+    evidence contract has already failed.
+    """
+    witnesses = _host_effect_witnesses(effect["behavior"], sources, modules)
+    diagnostics: dict[str, Any] = {
+        "stage": "host_witness_fallback", "effect_id": effect["id"],
+        "candidate_count": len(witnesses), "status": "unverified",
+    }
+    if not witnesses:
+        diagnostics["reason"] = "no_executable_owner_witness"
+        return None, diagnostics
+    # Show the local source around each candidate, but the reply contains
+    # only a number, never a file name, line number, quote, or repeated ID.
+    prompt = (
+        "Check ONE promised server-side gameplay state transition. "
+        "Choose its independently supporting executable statement from "
+        "the HOST-EXTRACTED candidates. Return {choice:N} only, where "
+        "N is one candidate ID, or 0 if none fully supports the effect. "
+        "A random write, UI, math computation, or unrelated state change "
+        "is NOT proof. Return 0 when uncertain. No code generation.\n"
+        + json.dumps({
+            "effect": effect["behavior"],
+            "candidates": [
+                {"id": row["id"], "statement": row["quote"],
+                 "owner": row["file"]}
+                for row in witnesses
+            ],
+        }, ensure_ascii=False)
+    )
+    for attempt in range(2):
+        try:
+            raw = router.complete_json(
+                prompt=prompt, role="analyzer", temperature=0,
+                max_tokens=80,
+                json_schema={
+                    "type": "object",
+                    "properties": {"choice": {"type": "integer",
+                                               "minimum": 0,
+                                               "maximum": len(witnesses)}},
+                    "required": ["choice"], "additionalProperties": False,
+                },
+            )
+            raw_choice = raw.get("choice") if isinstance(raw, dict) else None
+            if isinstance(raw_choice, str) and raw_choice.isdecimal():
+                raw_choice = int(raw_choice)
+            if type(raw_choice) is not int or not 0 <= raw_choice <= len(witnesses):
+                diagnostics["reason"] = "invalid_choice"
+                continue
+            if raw_choice == 0:
+                diagnostics["status"] = "missing"
+                # A missing effect has no positive proof. Anchor a possible
+                # repair at an actual executable owner statement, without
+                # pretending that this proves absence.
+                row = witnesses[0]
+                return {
+                    "verdict": "missing",
+                    "file": row["file"],
+                    "quote": row["quote"],
+                    "issue": "Requested state change is not independently evidenced: "
+                             + effect["behavior"][:230],
+                    "repair": "Implement and verify the specified authoritative "
+                              "state change without modifying unrelated gameplay",
+                }, diagnostics
+            selected = witnesses[raw_choice - 1]
+            diagnostics["status"] = "source_witness_selected"
+            diagnostics["candidate_id"] = raw_choice
+            return {
+                "verdict": "implemented",
+                "file": selected["file"],
+                "quote": selected["quote"],
+                "issue": "none",
+                "repair": "none",
+            }, diagnostics
+        except Exception as exc:
+            diagnostics["reason"] = type(exc).__name__ + ": " + str(exc)[:170]
+    return None, diagnostics
+
 def audit_whole_requirement_completion(
     proposal: Any, root: Path, router: Any,
 ) -> dict[str, Any]:
