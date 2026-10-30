@@ -993,6 +993,18 @@ def complete_source_owned_actions(
                 router, source, raw,
                 require_complete=False, max_actions=max_actions,
             )
+        # Append/repair calls can produce another source-crosswired effect,
+        # even if the INITIAL action list had valid owners. Reconcile again
+        # after each local action update before whole-source coverage passes.
+        realigned = _realign_misattributed_source_effects(
+            router, source, raw, max_actions=max_actions,
+        )
+        if realigned != raw:
+            raw = realigned
+            bound = verify_or_bind_actions(
+                router, source, raw, require_complete=False,
+                max_actions=max_actions,
+            )
         gaps = _coverage_issues(source, bound)
         if not gaps:
             complete = verify_or_bind_actions(
