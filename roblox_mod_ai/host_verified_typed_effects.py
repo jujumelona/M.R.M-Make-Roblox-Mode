@@ -208,6 +208,35 @@ _WORLD_START = r'''    local arrival = workspace:FindFirstChild(__DESTINATION__,
         marker:SetAttribute(__STATE_KEY__, 100)
     end'''
 
+# A combat target must be able to oppose a living player, not merely serve
+# as a damageable decorative Part. The server applies bounded reciprocal
+# damage using the ACTUAL humanoid and distance. The client cannot submit
+# damage, proximity, victim, or a timer. This is intentionally limited to the
+# verified world_damage role, never generic world-object harvesting.
+_WORLD_HOSTILE_AI = r'''
+    marker.Material = Enum.Material.Neon
+    marker.Color = Color3.fromRGB(196, 72, 95)
+    task.spawn(function()
+        while marker.Parent ~= nil and marker:IsDescendantOf(workspace) do
+            task.wait(1.5)
+            local hp = marker:GetAttribute("RMMAlienHealth")
+            if type(hp) == "number" and hp > 0 and hp <= 100 then
+                for _, victim in Players:GetPlayers() do
+                    if victim:GetAttribute("RMMFlightState") == "arrived" then
+                        local character = victim.Character
+                        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+                        local root = character and character:FindFirstChild("HumanoidRootPart")
+                        if humanoid and humanoid.Health > 0 and root and root:IsA("BasePart")
+                            and (root.Position - marker.Position).Magnitude <= 24 then
+                            humanoid:TakeDamage(6)
+                        end
+                    end
+                end
+            end
+        end
+    end)
+'''
+
 _WORLD_BODY = r'''    if player:GetAttribute("RMMFlightState") ~= "arrived" then
         return {success = false, reason = "not_in_space"} end
     if args.selection ~= __WORLD__ then
@@ -390,6 +419,8 @@ def render_verified_effect(module: Any, proposal: Any) -> str | None:
                  .replace("__WORLD__", json.dumps(world_name))
                  .replace("__STATE_KEY__", json.dumps(state_key))
                  .replace("__OFFSET__", "28" if role == "world_damage" else "-28"))
+        if role == "world_damage":
+            start += _WORLD_HOSTILE_AI
         ranked_combat = False
         colony_combat = False
         weapon_performance_combat = False
