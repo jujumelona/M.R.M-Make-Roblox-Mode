@@ -22,6 +22,7 @@ from .verification_selector import make_verification_report
 from .source_review import review_generated_sources
 from .requirement_effect_review import review_requirement_effects
 from .requirement_completion_audit import audit_whole_requirement_completion
+from .compiled_effect_verification import verify_compiled_effect_sources
 from .source_repair_cycle import run_source_repair_cycle
 from .gameplay_contract import make_studio_playtest_scenarios
 from .rbxlx_inspector import inspect_compiled_place
@@ -990,7 +991,6 @@ class RobloxProductionOrchestrator:
             # contract is NOT evidence unless the actual source contains the
             # complete deterministic host implementation. Check after StyLua
             # and diagnostics repair, before model semantic review or packaging.
-            from .compiled_effect_verification import verify_compiled_effect_sources
             compiled_effect_review = verify_compiled_effect_sources(
                 proposal, output_dir,
             )
