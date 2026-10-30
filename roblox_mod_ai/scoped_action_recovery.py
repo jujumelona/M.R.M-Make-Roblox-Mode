@@ -95,9 +95,9 @@ def scoped_action_retry_prompt(attempts: list[dict[str, Any]]) -> str:
         "\n\nDIAGNOSTIC-DIRECTED RECOVERY (the preceding code was rejected):\n"
         + "\n".join("- " + rule for rule in rules)
         + "\nObserved error categories: " + (", ".join(codes) or "(uncategorized)")
-        + "\nACTUAL VALIDATOR ERRORS (chronological):\n"
+        + "\nEXACT VALIDATOR ERRORS (chronological):\n"
         + "\n".join(f"- {item[:950]}" for item in raw_errors[-6:])
-        + "\nLAST REJECTED ACTION BODY (diagnostic context, not authorized code):\n"
+        + "\nLAST REJECTED BODY (diagnostic context, not authorized code):\n"
         + previous[:2400]
         + "\nReturn ONLY corrected executable BODY statements.\n"
     )
