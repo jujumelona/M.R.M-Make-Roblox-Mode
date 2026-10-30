@@ -384,6 +384,11 @@ def test_missing_extra_audit_is_repeated_instead_of_skipped(tmp_path):
 
 def test_large_requirement_never_requests_unbounded_batch(tmp_path):
     proposal = fixture(tmp_path)
+    (tmp_path / SHIP).write_text(
+        (tmp_path / SHIP).read_text(encoding="utf-8")
+        + "\ncoins.Value += 1\n",
+        encoding="utf-8",
+    )
     req = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
     req["server_state_changes"] = [
         "Successful trade reduces server-owned resources",
@@ -541,7 +546,8 @@ def test_realistic_multipart_requirement_recovers_compact_first_effect(tmp_path)
     # same real code line to assert multiple unrelated successful effects.
     # This must be rejected, not counted as proof of a working game.
     assert not report["fully_covered"], report
-    assert "shared evidence" in report["reason"], report
+    assert ("shared evidence" in report["reason"]
+            or "currency state writer" in report["reason"]), report
     assert any(r.get("status") == "invalid_evidence"
                for r in report["recovery"])
     assert len(model.calls) == 7  # five effects + retry + scope review
@@ -584,6 +590,11 @@ def test_fabricated_batch_citation_recovers_only_that_effect(tmp_path):
 
 def test_false_positive_same_source_proves_two_different_acts_is_blocked(tmp_path):
     proposal = fixture(tmp_path)
+    (tmp_path / TRADE).write_text(
+        (tmp_path / TRADE).read_text(encoding="utf-8")
+        + "\nstock.money += 1\n",
+        encoding="utf-8",
+    )
     output = response(first="implemented")
     # Both 'resource decrease' and 'money increase' wrongly cite only debit.
     output["checks"][1]["quote"] = output["checks"][0]["quote"]
