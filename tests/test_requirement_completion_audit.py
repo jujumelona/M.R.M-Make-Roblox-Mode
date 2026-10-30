@@ -294,6 +294,7 @@ class RecoveringRouter:
                 raise ValueError("finish_reason=length: completion truncated")
             if self.initial == "duplicates":
                 items = response(first="implemented")["checks"]
+                items[1]["quote"] = "stock.money += 1"
                 return {"checks": [items[0], items[0], *items[1:]],
                         "extra_missing": []}
             if self.initial == "no_extras":
@@ -337,6 +338,11 @@ def test_incomplete_batch_recovers_each_missing_effect_without_false_pass(tmp_pa
 
 
 def test_duplicate_effect_is_reaudited_not_double_counted(tmp_path):
+    (tmp_path / TRADE).write_text(
+        (tmp_path / TRADE).read_text(encoding="utf-8")
+        + "\nstock.money += 1\n",
+        encoding="utf-8",
+    )
     router = RecoveringRouter(initial="duplicates")
     report = audit_whole_requirement_completion(fixture(tmp_path), tmp_path, router)
     assert report["status"] == "reviewed_no_blockers", report
