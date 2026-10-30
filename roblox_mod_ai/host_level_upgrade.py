@@ -162,7 +162,8 @@ function Service.start(services)
         if GRANT_TOOL then
             local inventory=services.PlayerDataManager.GetState(player,"RMMInventory")
             if type(inventory)=="table" and type(inventory.items)=="table"
-                and good(inventory.items[TARGET] or 0) and inventory.items[TARGET]>=1 then
+                and good(inventory.items[TARGET] or 0)
+                and (inventory.items[TARGET] or 0)>=1 then
                 -- Rebuild the physical owned Tool on rejoin and respawn.
                 task.defer(function() ensureOwnedTool(player) end)
                 player.CharacterAdded:Connect(function()
@@ -193,8 +194,14 @@ function Service.handleAction(player,services,...)
     local entitlements=nil
     if acquiring and GRANT_TOOL then
         entitlements=services.PlayerDataManager.GetState(player,"RMMTradeEntitlements")
-        if type(entitlements)~="table" or not player:FindFirstChildOfClass("Backpack") then
+        local backpack=player:FindFirstChildOfClass("Backpack")
+        if type(entitlements)~="table" or not backpack then
             return {success=false,reason="weapon_inventory_not_ready"} end
+        local existing=backpack:FindFirstChild(TARGET)
+        local character=player.Character
+        if not existing and character then existing=character:FindFirstChild(TARGET) end
+        if existing and not existing:IsA("Tool") then
+            return {success=false,reason="invalid_owned_weapon_instance"} end
     end
     local rank=ranks[TARGET] or 0
     if not good(rank) or (not acquiring and rank>=MAX) then
