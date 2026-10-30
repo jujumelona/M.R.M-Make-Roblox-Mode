@@ -548,6 +548,12 @@ def audit_whole_requirement_completion(
                     },
                 )
                 if isinstance(extra_result, dict):
+                    if ("missing_actions" not in extra_result
+                            and "extra_missing" not in extra_result):
+                        report["reason"] = (
+                            req_id + ": missing original-request scope review"
+                        )
+                        return report
                     omissions = extra_result.get("missing_actions", [])
                     if not isinstance(omissions, list) or any(
                             not isinstance(item, str) for item in omissions):
