@@ -151,3 +151,29 @@ def test_55_unmaterialized_colony_surface_never_passes(monkeypatch):
     ]
     assert eligible_colony(server, p) is None
     assert eligible_colony(client, p) is None
+
+
+def test_55_verified_paid_crew_and_weapon_changes_affect_real_combat():
+    from test_log25_verified_typed_effects import _fixture
+    from roblox_mod_ai.host_verified_typed_effects import render_verified_effect
+    from roblox_mod_ai.luau_analyzer import LuauStaticAnalyzer
+
+    plan, combat = _fixture("combat")
+    pay, crew_server, crew_client = pair(
+        "PaidCrew", PAID_CASES["crew_performance_state"]
+    )
+    for field in ("host_actions", "remotes", "module_remotes", "host_typed_actions"):
+        plan.game_design["dynamic_design"][field].update(
+            pay.game_design["dynamic_design"][field]
+        )
+    plan.modules.extend((crew_server, crew_client))
+    source = render_verified_effect(combat, plan)
+    assert source is not None
+    assert 'GetState(player, "RMMRankProgress")' in source
+    assert "crew_performance_state" in source
+    assert "2 * crew" in source
+    assert "math.min(70" in source
+    assert "_services" not in source
+    errors = [e for e in LuauStaticAnalyzer().analyze_source(
+        source, combat.file_path) if e.severity == "ERROR"]
+    assert errors == [], [(e.rule, e.message) for e in errors]
