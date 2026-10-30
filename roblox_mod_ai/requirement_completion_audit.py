@@ -118,6 +118,45 @@ def _real_source_quote(root: Path, path: str, quote: str) -> int:
 
 
 
+
+_CURRENCY_STATE = re.compile(
+    r"\\b(?:coins?|currency|currencies|money|wallet|balance|credits?|"
+    r"cash|funds?|payout|gold)\\b", re.I,
+)
+_CURRENCY_EFFECT = re.compile(
+    r"\\b(?:increas\\w*|decreas\\w*|credit\\w*|debit\\w*|"
+    r"gain\\w*|earn\\w*|award\\w*|deduct\\w*|"
+    r"spend\\w*|receiv\\w*|pay\\w*|transferr?\\w*)\\b",
+    re.I,
+)
+_CURRENCY_WRITE = re.compile(
+    r"(?:\\b(?:coins?|currency|currencies|money|wallet|balance|credits?|"
+    r"cash|funds?|payout|gold)\\b(?:\\s*\\.\\s*\\w+|"
+    r"\\s*\\[\\s*['\\\"]\\w+['\\\"]\\s*\\])*"
+    r"\\s*(?:\\+=|-=|=(?!=))|"
+    r"\\b(?:Credit|Debit|AddMoney|AwardCoins|EarnCoins|SpendCoins|"
+    r"AddCurrency|TransferFunds|SetBalance|UpdateBalance|GiveReward)"
+    r"\\s*\\()",
+    re.I,
+)
+
+
+def _has_currency_state_write(behavior: str, source: str) -> bool:
+    """Verify a money-changing obligation has a real money writer.
+
+    A health mutation or upgrade-rank increment is not evidence of a
+    currency credit/debit. This is a necessary source condition, not a
+    sufficient gameplay proof. Do not search Luau comments for evidence.
+    """
+    if not (_CURRENCY_STATE.search(behavior) and
+            _CURRENCY_EFFECT.search(behavior)):
+        return True
+    executable = "\\n".join(
+        line for line in source.splitlines()
+        if not line.lstrip().startswith("--")
+    )
+    return bool(_CURRENCY_WRITE.search(executable))
+
 def _source_scopes_for_effect(
     behavior: str, sources: dict[str, str], modules: list[Any],
 ) -> tuple[list[str], dict[str, str]]:
@@ -702,6 +741,18 @@ def audit_whole_requirement_completion(
                 report["reason"] = req_id + ": ungrounded effect quote in " + file_path
                 return report
             if verdict == "implemented":
+                behavior = next((
+                    o["behavior"] for o in obligations
+                    if o["id"] == entry.get("id")
+                ), "")
+                if not _has_currency_state_write(
+                        behavior, actual_sources[file_path]):
+                    report["reason"] = (
+                        req_id + ": missing authoritative currency state "
+                        "writer for " + str(entry.get("id"))
+                        + " in " + file_path
+                    )
+                    return report
                 # Two independent promised mutations cannot both be certified
                 # by an identical single source line. Reusing an inventory
                 # debit as proof of a currency credit is a false positive.
