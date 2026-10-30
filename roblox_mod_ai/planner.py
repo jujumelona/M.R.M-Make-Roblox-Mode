@@ -88,6 +88,16 @@ class RobloxGameDesignPlanner:
             compile_architecture = True
         # MMM request-first contract: retrieve before selecting mechanics/modules.
         research = self.researcher.research(prompt)
+        # An unclassified source chunk with a complete immutable source span
+        # needs an owner check before a plan can claim model-derived scope.
+        # This preflight is bounded to chunks that have already finished
+        # decomposition, and does not turn ordinary intent drafts into
+        # compulsory full implementation planning.
+        if (not compile_architecture
+                and research.get("ledger", {}).get("classification_unverified")
+                and not research.get("ledger", {}).get("decomposition_pending")
+                and dynamic_design_enabled()):
+            compile_architecture = True
         # 1. Generate Game Title
         title_match = re.search(r"['\"]([^'\"]+)['\"]", prompt)
         if title_match:
