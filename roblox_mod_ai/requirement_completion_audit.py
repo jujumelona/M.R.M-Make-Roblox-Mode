@@ -626,6 +626,7 @@ def audit_whole_requirement_completion(
                 req_id + ": incomplete original-request omitted-effect audit"
             )
             return report
+        implemented_evidence: dict[tuple[str, int], str] = {}
         for entry in checks + extras:
             if not isinstance(entry, dict):
                 report["reason"] = req_id + ": malformed effect evidence"
@@ -636,14 +637,13 @@ def audit_whole_requirement_completion(
                 return report
             file_path = entry.get("file")
             if verdict == "out_of_scope":
-                if (not isinstance(entry.get("issue"), str)
-                        or len(entry["issue"].strip()) < 12):
-                    report["reason"] = req_id + ": unreasoned scope exclusion"
-                    return report
-                report["checks"].append({
-                    "requirement_id": req_id, **entry, "scope": "plan_only",
-                })
-                continue
+                # These are planned original-user requirements. The model
+                # cannot quietly discard one as out of scope.
+                report["reason"] = (
+                    req_id + ": plan scope conflict; proposed effect "
+                    + str(entry.get("id")) + " rejected as out_of_scope"
+                )
+                return report
             if not isinstance(file_path, str) or file_path not in server_paths:
                 report["reason"] = req_id + ": effect cites unauthorized server"
                 return report
@@ -651,6 +651,20 @@ def audit_whole_requirement_completion(
             if not line:
                 report["reason"] = req_id + ": ungrounded effect quote in " + file_path
                 return report
+            if verdict == "implemented":
+                # Two independent promised mutations cannot both be certified
+                # by an identical single source line. Reusing an inventory
+                # debit as proof of a currency credit is a false positive.
+                key = (file_path, line)
+                previous_id = implemented_evidence.get(key)
+                if previous_id is not None and previous_id != entry.get("id"):
+                    report["reason"] = (
+                        req_id + ": shared evidence for independent effects: "
+                        + str(previous_id) + " and " + str(entry.get("id"))
+                        + " in " + file_path + ":" + str(line)
+                    )
+                    return report
+                implemented_evidence[key] = str(entry.get("id"))
             evidence = {"requirement_id": req_id, **entry, "line": line}
             report["checks"].append(evidence)
             if verdict == "missing":
