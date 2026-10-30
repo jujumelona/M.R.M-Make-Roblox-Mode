@@ -120,23 +120,23 @@ def _real_source_quote(root: Path, path: str, quote: str) -> int:
 
 
 _CURRENCY_STATE = re.compile(
-    r"\\b(?:coins?|currency|currencies|money|wallet|balance|credits?|"
-    r"cash|funds?|payout|gold)\\b", re.I,
+    r"\b(?:coins?|currency|currencies|money|wallet|balance|credits?|"
+    r"cash|funds?|payout|gold)\b", re.I,
 )
 _CURRENCY_EFFECT = re.compile(
-    r"\\b(?:increas\\w*|decreas\\w*|credit\\w*|debit\\w*|"
-    r"gain\\w*|earn\\w*|award\\w*|deduct\\w*|"
-    r"spend\\w*|receiv\\w*|pay\\w*|transferr?\\w*)\\b",
+    r"\b(?:increas\w*|decreas\w*|credit\w*|debit\w*|"
+    r"gain\w*|earn\w*|award\w*|deduct\w*|"
+    r"spend\w*|receiv\w*|pay\w*|transferr?\w*)\b",
     re.I,
 )
 _CURRENCY_WRITE = re.compile(
-    r"(?:\\b(?:coins?|currency|currencies|money|wallet|balance|credits?|"
-    r"cash|funds?|payout|gold)\\b(?:\\s*\\.\\s*\\w+|"
-    r"\\s*\\[\\s*['\\\"]\\w+['\\\"]\\s*\\])*"
-    r"\\s*(?:\\+=|-=|=(?!=))|"
-    r"\\b(?:Credit|Debit|AddMoney|AwardCoins|EarnCoins|SpendCoins|"
+    r"(?:\b(?:coins?|currency|currencies|money|wallet|balance|credits?|"
+    r"cash|funds?|payout|gold)\b(?:\s*\.\s*\w+|"
+    r"\s*\[\s*['\\"]\w+['\\"]\s*\])*"
+    r"\s*(?:\+=|-=|=(?!=))|"
+    r"\b(?:Credit|Debit|AddMoney|AwardCoins|EarnCoins|SpendCoins|"
     r"AddCurrency|TransferFunds|SetBalance|UpdateBalance|GiveReward)"
-    r"\\s*\\()",
+    r"\s*\()",
     re.I,
 )
 
@@ -151,7 +151,7 @@ def _has_currency_state_write(behavior: str, source: str) -> bool:
     if not (_CURRENCY_STATE.search(behavior) and
             _CURRENCY_EFFECT.search(behavior)):
         return True
-    executable = "\\n".join(
+    executable = "\n".join(
         line for line in source.splitlines()
         if not line.lstrip().startswith("--")
     )
