@@ -148,7 +148,7 @@ def _source_scopes_for_effect(
                 -len(sources[path]))
 
     ranked = sorted(sources, key=lambda path: (score(path), path), reverse=True)
-    chosen = ranked[:2]
+    chosen = ranked  # Each owner gets a bounded window; model sees at most 2 at once.
     # Numbered lines are extracted from actual bytes and checked again on
     # return. The path/id catalog prevents AI-generated filenames.
     numbered = {}
@@ -275,11 +275,11 @@ def audit_whole_requirement_completion(
             path: (root / path).read_text(encoding="utf-8")
             for path in server_paths
         }
-        if sum(len(src) for src in actual_sources.values()) > MAX_SOURCE_CHARS:
-            report["reason"] = (
-                req_id + ": complete server effect sources exceed reviewer budget; "
-                "do not claim coverage from excerpts"
-            )
+        # Total generated source size is NOT the small model's context size.
+        # Send fixed-size, owner-scoped windows below; do not reject a whole
+        # experience merely because all modules together exceed 72 KB.
+        if any(len(src) > 2_000_000 for src in actual_sources.values()):
+            report["reason"] = req_id + ": unreasonable individual source size"
             return report
         prompt = (
             "Post-generation, end-to-end SOURCE audit of an assembled Roblox "
@@ -437,95 +437,123 @@ def audit_whole_requirement_completion(
             ranked, numbered = _source_scopes_for_effect(
                 effect["behavior"], actual_sources, proposal.modules,
             )
-            path_ids = {path: i for i, path in enumerate(ranked)}
-            focused_sources = {
-                str(path_ids[path]): {
-                    "path": path, "numbered_actual_source": content,
-                } for path, content in numbered.items()
-            }
-            single_prompt = (
-                "Audit exactly ONE Roblox effect. Return compact JSON. "
-                "Use a file_id from this catalog and the physical line number "
-                "from numbered_actual_source. NEVER copy source lines or paths. "
-                "Judge implemented only when server-side effects are actually "
-                "proved; a UI/Remote or level display alone is not proof. "
-                "A missing effect requires a concrete issue and repair. "
-                "For absent proof use missing, not implemented. "
-                "Never claim Studio was run.\\n"
-                + json.dumps({
-                    "effect": effect["behavior"],
-                    "original_request": original[:900],
-                    "owner_catalog": path_ids,
-                    "complete_server_sources": focused_sources,
-                }, ensure_ascii=False)
-            )
-            single_schema = {
-                "type": "object",
-                "properties": {
-                    "verdict": {"type": "string", "enum": [
-                        "implemented", "missing", "out_of_scope",
-                    ]},
-                    "file_id": {"type": "integer"},
-                    "line": {"type": "integer"},
-                    "issue": {"type": "string"},
-                    "repair": {"type": "string"},
-                },
-                "required": ["verdict", "file_id", "line"],
-                "additionalProperties": False,
-            }
+            # The host, not the model, must examine every owner before a
+            # missing-effect verdict can be accepted. One top-2 search could
+            # otherwise produce a false missing result when the state writer
+            # lives in a lower-ranked server module.
             one = None
-            # Do not require small models to generate code quotes or paths.
-            # Failed or malformed replies receive one shorter reinspection,
-            # never a fabricated success.
-            for attempt in range(2):
-                try:
-                    raw = router.complete_json(
-                        prompt=(single_prompt if attempt == 0 else
-                                "Recheck ONE effect; respond with ONLY JSON "
-                                "{verdict,file_id,line,issue,repair}. "
-                                "file_id and line must identify real code.\\n"
-                                + json.dumps({
-                                    "effect": effect["behavior"],
-                                    "owner_catalog": path_ids,
-                                    "complete_server_sources": focused_sources,
-                                }, ensure_ascii=False)),
-                        role="analyzer", temperature=0,
-                        max_tokens=300 if attempt == 0 else 550,
-                        json_schema=single_schema,
+            missing_candidates = []
+            for scope_start in range(0, len(ranked), 2):
+                scope = ranked[scope_start:scope_start + 2]
+                scoped_sources = {
+                    path: actual_sources[path] for path in scope
+                }
+                path_ids = {path: i for i, path in enumerate(scope)}
+                focused_sources = {
+                    str(path_ids[path]): {
+                        "path": path, "numbered_actual_source": numbered[path],
+                    } for path in scope
+                }
+                single_prompt = (
+                    "Audit exactly ONE Roblox effect. Return compact JSON. "
+                    "Only the CURRENT OWNER FILES below are visible. Use "
+                    "file_id (0 or 1) and the physical source line number, "
+                    "never invent file paths or copy code. Check whether the "
+                    "promised state transition is actually implemented. "
+                    "Do not accept a UI/Remote alone as proof. Missing means "
+                    "the effect is NOT evidenced IN THESE FILES; other owners "
+                    "are checked separately by the host. Return issue and "
+                    "repair when missing; do not claim Studio execution.\\n"
+                    + json.dumps({
+                        "effect": effect["behavior"],
+                        "original_request": original[:900],
+                        "current_owner_sources": focused_sources,
+                    }, ensure_ascii=False)
+                )
+                single_schema = {
+                    "type": "object",
+                    "properties": {
+                        "verdict": {"type": "string", "enum": [
+                            "implemented", "missing", "out_of_scope",
+                        ]},
+                        "file_id": {"type": "integer"},
+                        "line": {"type": "integer"},
+                        "issue": {"type": "string"},
+                        "repair": {"type": "string"},
+                    },
+                    "required": ["verdict", "file_id", "line"],
+                    "additionalProperties": False,
+                }
+                scoped_answer = None
+                for attempt in range(2):
+                    try:
+                        raw = router.complete_json(
+                            prompt=(single_prompt if attempt == 0 else
+                                    "Recheck ONE effect. Respond with a tiny "
+                                    "JSON object verdict/file_id/line and "
+                                    "issue/repair if missing. Use only the "
+                                    "numbered physical source below.\\n"
+                                    + json.dumps({
+                                        "effect": effect["behavior"],
+                                        "current_owner_sources": focused_sources,
+                                    }, ensure_ascii=False)),
+                            role="analyzer", temperature=0,
+                            max_tokens=420 if attempt == 0 else 650,
+                            json_schema=single_schema,
+                        )
+                    except Exception as exc:
+                        raw = None
+                        report.setdefault("recovery", []).append({
+                            "requirement_id": req_id, "effect_id": effect_id,
+                            "stage": "single_effect", "attempt": attempt + 1,
+                            "owner_window": scope_start // 2 + 1,
+                            "status": "model_error",
+                            "error": (
+                                type(exc).__name__ + ": " + str(exc)
+                            )[:250],
+                        })
+                    normalized = _normalize_single_effect_answer(
+                        raw, scope, scoped_sources,
                     )
-                except Exception as exc:
-                    raw = None
+                    if normalized is not None:
+                        scoped_answer = normalized
+                        break
                     report.setdefault("recovery", []).append({
                         "requirement_id": req_id, "effect_id": effect_id,
                         "stage": "single_effect", "attempt": attempt + 1,
-                        "status": "model_error",
-                        "error": (type(exc).__name__ + ": " + str(exc))[:250],
+                        "owner_window": scope_start // 2 + 1,
+                        "status": "invalid_evidence",
+                        "response_type": type(raw).__name__,
+                        "response_keys": sorted(map(str, raw.keys()))
+                                         if isinstance(raw, dict) else [],
                     })
-                normalized = _normalize_single_effect_answer(
-                    raw, ranked, actual_sources,
-                )
-                if normalized is not None:
-                    one = normalized
-                    break
-                report.setdefault("recovery", []).append({
-                    "requirement_id": req_id, "effect_id": effect_id,
-                    "stage": "single_effect", "attempt": attempt + 1,
-                    "status": "invalid_evidence",
-                    "response_type": type(raw).__name__,
-                    "response_keys": sorted(map(str, raw.keys()))
-                                     if isinstance(raw, dict) else [],
-                })
+                if scoped_answer is None:
+                    report["reason"] = (
+                        req_id + ": incomplete independent effect checks; "
+                        + effect_id + " could not provide grounded evidence "
+                        + "in owner window " + str(scope_start // 2 + 1)
+                    )
+                    return report
+                if scoped_answer["verdict"] == "missing":
+                    missing_candidates.append(scoped_answer)
+                    continue
+                one = scoped_answer
+                break
             if one is None:
-                prefix = (
-                    "ungrounded batch evidence; "
-                    if effect_id in bad_batch_evidence_ids else ""
-                )
-                report["reason"] = (
-                    req_id + ": incomplete independent effect checks; "
-                    + prefix + effect_id
-                    + " could not provide grounded compact evidence"
-                )
-                return report
+                if len(missing_candidates) != (len(ranked) + 1) // 2:
+                    report["reason"] = (
+                        req_id + ": owner coverage incomplete for " + effect_id
+                    )
+                    return report
+                one = missing_candidates[0]
+            report.setdefault("recovery", []).append({
+                "requirement_id": req_id, "effect_id": effect_id,
+                "stage": "single_effect", "status": "recovered",
+                "owner_windows_checked": (
+                    (len(ranked) + 1) // 2 if one["verdict"] == "missing"
+                    else (scope_start // 2 + 1)
+                ),
+            })
             occurrences[effect_id] = [{"id": effect_id, **one}]
             report.setdefault("recovery", []).append({
                 "requirement_id": req_id, "effect_id": effect_id,
