@@ -214,7 +214,10 @@ def install_host_hud(project_dir: Path) -> bool:
         )
         if not previously_sealed and not legacy_host_owned:
             raise ValueError("HUD source conflicts with a preexisting project file")
-    target.write_text(source,encoding="utf-8")
+    # Hash and write the IDENTICAL UTF-8 bytes on Windows and Unix.
+    # Path.write_text translates LF into CRLF on Windows, so a receipt hash
+    # of source.encode() previously disagreed with the shipped source bytes.
+    target.write_bytes(source.encode("utf-8"))
     receipt.write_text(json.dumps({
         "schema":"rmm/generated-source-receipt-v1",
         "file":HUD_FILE,
