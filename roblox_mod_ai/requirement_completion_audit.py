@@ -210,9 +210,13 @@ def _mask_noncode_luau_strings(source: str) -> str:
             after = position
             while after < length and source[after].isspace():
                 after += 1
+            tail = after + 1
+            while tail < length and source[tail].isspace():
+                tail += 1
             is_index_key = (
                 prev >= 0 and source[prev] == "["
                 and after < length and source[after] == "]"
+                and bool(re.match(r"(?:\+=|-=|=(?!=))", source[tail:]))
             )
             if not is_index_key:
                 for i in range(start, position):
