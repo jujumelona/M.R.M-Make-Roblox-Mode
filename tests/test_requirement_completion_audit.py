@@ -991,3 +991,24 @@ def test_currency_response_field_is_not_wallet_mutation():
     assert _has_currency_state_write(
         effect, 'coins.Value = balance + payout\n',
     )
+
+
+def test_string_containing_fake_currency_code_is_not_executed():
+    from roblox_mod_ai.requirement_completion_audit import (
+        _has_currency_state_write, _mask_noncode_luau_strings,
+        _is_effectful_source_line,
+    )
+    effect = "Player gains earned currency"
+    source = (
+        'print("coins.Value += 999")\n'
+        'warn([[stock.money += 999]])\n'
+        'local message = "coins.Value = 300"\n'
+        'target:SetAttribute("AlienHealth", remaining)\n'
+    )
+    assert not _has_currency_state_write(effect, source)
+    assert not _is_effectful_source_line(source, 1)
+    assert _is_effectful_source_line(source, 4)
+    original = 'profile["Money"] += 9\n'
+    masked = _mask_noncode_luau_strings(original)
+    assert len(masked) == len(original)
+    assert _has_currency_state_write(effect, original)
