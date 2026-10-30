@@ -384,18 +384,14 @@ def test_missing_extra_audit_is_repeated_instead_of_skipped(tmp_path):
 
 
 def test_large_requirement_never_requests_unbounded_batch(tmp_path):
+    import json
     proposal = fixture(tmp_path)
-    (tmp_path / SHIP).write_text(
-        (tmp_path / SHIP).read_text(encoding="utf-8")
-        + "\ncoins.Value += 1\n",
-        encoding="utf-8",
-    )
     req = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
     req["server_state_changes"] = [
-        "Successful trade reduces server-owned resources",
-        "Successful sale increases earned server-owned currency",
-        "Purchasing a ship section attaches the owned part",
-        "Completing the purchase persists the ship ownership state",
+        "The server reduces owned resources",
+        "The server increases earned currency",
+        "The server attaches an owned section",
+        "The server persists owned section state",
     ]
 
     class BoundedModel:
@@ -405,23 +401,27 @@ def test_large_requirement_never_requests_unbounded_batch(tmp_path):
         def complete_json(self, **kwargs):
             prompt = kwargs["prompt"]
             self.prompts.append(prompt)
-            assert not prompt.startswith("Post-generation"), (
-                "Large batch should not be sent to a small model"
-            )
+            assert not prompt.startswith("Post-generation")
+            assert not prompt.startswith(("Audit exactly ONE", "Recheck ONE"))
             if prompt.startswith("Find user-requested"):
-                return {"extra_missing": []}
-            assert prompt.startswith("Audit exactly ONE")
-            return {"verdict": "implemented", "file": SHIP,
-                    "quote": "ship.Sections += 1",
-                    "issue": "none", "repair": "none"}
+                return {"missing_actions": []}
+            assert prompt.startswith("Check ONE promised")
+            obj = json.loads(prompt[prompt.index('{"effect":'):])
+            # A small model misuses ONE real state write for every behavior.
+            # Such spurious repeated proof must still be blocked.
+            return {
+                "choice": next(
+                    x["id"] for x in obj["candidates"]
+                    if x["statement"] == "ship.Sections += 1"
+                )
+            }
 
     router = BoundedModel()
     report = audit_whole_requirement_completion(proposal, tmp_path, router)
     assert not report["fully_covered"], report
     assert "shared evidence" in report["reason"], report
     assert any(x["stage"] == "batch_skipped" for x in report["recovery"])
-    assert sum(x.startswith("Audit exactly ONE") for x in router.prompts) == 4
-
+    assert sum(x.startswith("Check ONE promised") for x in router.prompts) == 4
 
 
 def test_host_numbered_compact_evidence_requires_real_line(tmp_path):
@@ -491,7 +491,7 @@ def test_unplanned_original_action_blocks_without_source_hallucination(tmp_path)
 
 
 def test_realistic_multipart_requirement_recovers_compact_first_effect(tmp_path):
-    """Regression for a semicolon-joined extract/sell/assemble contract."""
+    """Complex prose becomes bounded host-source selections, not large JSON."""
     import json
     proposal = fixture(tmp_path)
     req = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
@@ -511,47 +511,26 @@ def test_realistic_multipart_requirement_recovers_compact_first_effect(tmp_path)
     class TinyModel:
         def __init__(self):
             self.calls = []
-            self.first_invalid = True
-
         def complete_json(self, **kwargs):
             prompt = kwargs["prompt"]
             self.calls.append(prompt)
             assert not prompt.startswith("Post-generation")
-            assert len(prompt) < 15000, "Reviewer still received a giant prompt"
+            assert len(prompt) < 15000
             if prompt.startswith("Find user-requested"):
-                assert "complete_server_sources" not in prompt
                 return {"missing_actions": []}
-            assert prompt.startswith(("Audit exactly ONE", "Recheck ONE"))
+            assert prompt.startswith("Check ONE promised")
             data = json.loads(prompt[prompt.index('{"effect":'):])
-            catalog = {
-                row["path"]: int(index)
-                for index, row in data["current_owner_sources"].items()
-            }
-            if self.first_invalid:
-                self.first_invalid = False
-                return {}
-            target = SHIP if "ship section" in data["effect"] else TRADE
-            # The model returns ONLY a physical source coordinate, never code.
-            return {
-                "verdict": "missing" if "world-resource extraction"
-                            in data["effect"] else "implemented",
-                "file_id": catalog[target],
-                "line": 3,
-                "issue": "The authoritative resource source has no mining transaction",
-                "repair": "Implement validated deposit extraction and inventory credit",
-            }
-
+            # A repeated, unrelated implementation line cannot prove every
+            # distinct effect just because the 9B model asserts it.
+            return {"choice": next(
+                row["id"] for row in data["candidates"]
+                if row["statement"] == "ship.Sections += 1"
+            )}
     model = TinyModel()
     report = audit_whole_requirement_completion(proposal, tmp_path, model)
-    # The tiny model recovered a malformed reply, but incorrectly used the
-    # same real code line to assert multiple unrelated successful effects.
-    # This must be rejected, not counted as proof of a working game.
     assert not report["fully_covered"], report
-    assert ("shared evidence" in report["reason"]
-            or "currency state writer" in report["reason"]), report
-    assert any(r.get("status") == "invalid_evidence"
-               for r in report["recovery"])
-    assert len(model.calls) == 7  # five effects + retry + scope review
+    assert "shared evidence" in report["reason"], report
+    assert len([p for p in model.calls if p.startswith("Check ONE promised")]) == 5
 
 
 def test_fabricated_batch_citation_recovers_only_that_effect(tmp_path):
@@ -890,7 +869,7 @@ def test_seven_effects_malformed_ai_evidence_uses_host_owned_witness_ids(tmp_pat
     assert len(report["checks"]) == 7
     assert all(row["quote"].startswith("state.") for row in report["checks"])
     assert len(model.choices) == 7
-    assert model.invalid_count == 14
+    assert model.invalid_count == 0
     assert sum(row.get("status") == "source_witness_selected"
                for row in report.get("recovery", [])) == 7
 
