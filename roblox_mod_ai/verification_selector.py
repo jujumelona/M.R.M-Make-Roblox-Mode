@@ -60,6 +60,19 @@ def make_verification_report(
             "AI source inspection failed or found quoted blocking problems",
             source_review.get("reason", ""))
 
+    whole_effects = tool_results.get("requirement_completion_audit")
+    if not isinstance(whole_effects, dict) or whole_effects.get("executed") is not True:
+        put("whole_requirement_effects", "not_run",
+            "After-generation original-request effect-by-effect source audit",
+            "Assembled whole-requirement review not executed")
+    else:
+        complete = (whole_effects.get("status") == "reviewed_no_blockers"
+                    and whole_effects.get("fully_covered") is True
+                    and not whole_effects.get("findings"))
+        put("whole_requirement_effects", "passed" if complete else "failed",
+            "All independently promised gameplay effects audited across actual server owners; not Roblox Studio",
+            str(whole_effects.get("reason", ""))[:350])
+
     repair = tool_results.get("ai_source_repair")
     if isinstance(repair, dict):
         put("ai_defect_repair", "passed" if repair.get("passed") is True else "failed",
