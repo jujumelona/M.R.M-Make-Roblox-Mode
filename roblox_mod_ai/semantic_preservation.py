@@ -318,14 +318,28 @@ def source_intent_conflicts(
         text, re.I,
     )
     real_gathering = re.search(
-        r"\b(?:mine|mines|mining|harvest|harvests|harvesting|"
-        r"extract|extracts|extracting|gather|gathers|gathering|"
-        r"collect|collects|collecting)\b"
-        r".{0,75}\b(?:node|deposit|ore|world|ground|mineral|resource)\b|"
-        r"\b(?:resource|ore|mineral)\b.{0,50}"
+        r"\b(?:mine|mines|mined|mining|harvest|harvests|harvested|harvesting|"
+        r"extract|extracts|extracted|extracting|gather|gathers|gathered|gathering|"
+        r"collect|collects|collected|collecting)\b"
+        r".{0,95}\b(?:node|deposit|ore|world|ground|mineral|resource)\b|"
+        r"\b(?:resource|ore|mineral)\b.{0,75}"
         r"\b(?:node|deposit|spawn|mine|harvest|gather|collect|extract)\w*\b",
         text, re.I,
     )
+    # The source may be described BEFORE the mining operation. The old
+    # ordered regex rejected physical ResourceNode -> harvest -> inventory
+    # descriptions; this is independent of a game's particular noun.
+    if not real_gathering:
+        real_gathering = re.search(
+            r"\b(?:nodes?|deposits?|mineable|harvestable|"
+            r"resource\s+source|world\s+source)\b"
+            r".{0,230}\b(?:mine|mines|mined|mining|harvest|harvests|"
+            r"harvested|harvesting|extract|extracts|extracted|extracting|"
+            r"gather|gathers|gathered|collect|collects|collected)\b"
+            r".{0,180}\b(?:resources?|ores?|minerals?|yield|"
+            r"inventory|stock)\b",
+            text, re.I,
+        )
     # An abstract "resource-gathering" event is not a real harvest. The
     # production small-model response granted resources into a balance without
     # naming any mineable/harvestable world source. Our former lexical check
