@@ -80,6 +80,14 @@ def _obligations(requirement: dict[str, Any]) -> list[dict[str, str]]:
     seen = set()
     for sentence in statements:
         for part in _independent_effect_clauses(sentence):
+            # Reject/no-change clauses qualify the preceding server effect.
+            if (result and re.match(
+                    r"(?i)^(?:rejected|invalid|unauthorized)\s+requests?\b",
+                    part)):
+                result[-1]["behavior"] = (
+                    result[-1]["behavior"] + "; " + part
+                )[:900]
+                continue
             key = re.sub(r"\s+", " ", part).casefold()
             if key not in seen:
                 seen.add(key)
@@ -511,40 +519,51 @@ def audit_whole_requirement_completion(
             try:
                 extra_result = router.complete_json(
                     prompt=(
-                        "Find original user-requested gameplay state changes "
-                        "OMITTED FROM the candidate list, not defects already "
-                        "covered by it. Read ALL server owners; source only. "
-                        "Every extra_missing item must include behavior, exact "
-                        "server file, exact non-comment defective quote, "
-                        "issue and concrete repair. Return ONLY "
-                        "{extra_missing:[...]}; [] when none.\\n"
+                        "Find user-requested gameplay ACTIONS omitted from the "
+                        "candidate effect list. Do not judge or quote code in "
+                        "this step. Original request is authoritative. "
+                        "Return only JSON with missing_actions as a list of "
+                        "omitted behaviors, or [] when none.\\n"
                         + json.dumps({
                             "original_user_request": original[:2400],
-                            "candidate_effects": obligations,
-                            "complete_server_sources": actual_sources,
+                            "candidate_effects": [
+                                item["behavior"] for item in obligations
+                            ],
                         }, ensure_ascii=False)
                     ),
                     role="analyzer", temperature=0, max_tokens=1100,
                     json_schema={
                         "type": "object",
-                        "properties": {"extra_missing": {
-                            "type": "array", "maxItems": 12,
-                            "items": {"type": "object", "properties": {
-                                "behavior": {"type": "string"},
-                                "file": {"type": "string"},
-                                "quote": {"type": "string"},
-                                "issue": {"type": "string"},
-                                "repair": {"type": "string"},
-                            }, "required": [
-                                "behavior", "file", "quote", "issue", "repair",
-                            ], "additionalProperties": False},
-                        }},
-                        "required": ["extra_missing"],
+                        "properties": {
+                            "missing_actions": {
+                                "type": "array", "maxItems": 12,
+                                "items": {"type": "string"},
+                            },
+                            "extra_missing": {
+                                "type": "array", "maxItems": 12,
+                                "items": {"type": "object"},
+                            },
+                        },
                         "additionalProperties": False,
                     },
                 )
-                fresh_extras = extra_result.get("extra_missing") if isinstance(
-                    extra_result, dict) else None
+                if isinstance(extra_result, dict):
+                    omissions = extra_result.get("missing_actions", [])
+                    if not isinstance(omissions, list) or any(
+                            not isinstance(item, str) for item in omissions):
+                        omissions = None
+                    if omissions:
+                        report["unplanned_actions"] = omissions[:12]
+                        report["reason"] = (
+                            req_id + ": original request omitted by authored "
+                            "effect plan: " + "; ".join(omissions[:3])[:400]
+                        )
+                        return report
+                    fresh_extras = extra_result.get("extra_missing")
+                    if fresh_extras is None and omissions == []:
+                        fresh_extras = []
+                else:
+                    fresh_extras = None
                 if isinstance(fresh_extras, list):
                     extras = list(retained_extras)
                     existing = {(e.get("file"), e.get("quote"), e.get("behavior"))
