@@ -543,9 +543,9 @@ def _fallback_effect_witness_review(
         at = row["line"] - 1
         lo, hi = max(0, at - 2), min(len(lines), at + 2)
         context = " | ".join(
-            str(i + 1) + ": " + lines[i].strip()[:180]
+            str(i + 1) + ": " + lines[i].strip()[:85]
             for i in range(lo, hi)
-        )[:680]
+        )[:280]
         candidate_view.append({
             "id": row["id"], "statement": row["quote"],
             "owner": row["file"], "context": context,
