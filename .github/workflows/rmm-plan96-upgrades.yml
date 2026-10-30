@@ -1,0 +1,32 @@
+name: Plan96 upgrade producer-consumer regression
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "roblox_mod_ai/host_level_upgrade.py"
+      - "roblox_mod_ai/host_owned_weapon_performance.py"
+      - "roblox_mod_ai/host_verified_typed_effects.py"
+      - "roblox_mod_ai/source_upgrade_contract.py"
+      - "tests/test_plan96_rank_and_weapon_effects.py"
+      - ".github/workflows/rmm-plan96-upgrades.yml"
+  workflow_dispatch:
+
+jobs:
+  source-to-consumer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e ".[dev]" pytest
+      - run: |
+          python -m pytest -q \
+            tests/test_plan96_rank_and_weapon_effects.py \
+            tests/test_source_upgrade_contract.py \
+            tests/test_plan83_rank_protocol.py \
+            tests/test_log25_verified_typed_effects.py \
+            tests/test_report47_upgrade_effect.py \
+            tests/test_requirement_effect_review.py
