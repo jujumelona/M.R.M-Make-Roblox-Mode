@@ -155,16 +155,21 @@ def test_real_architect_recovers_plan_54_on_source_grounded_tie(monkeypatch):
             assert len(self.calls) == 3
             return {"systems": [_system(
                 "EquipmentTrade",
-                "purchases and equips the requested weapon. The server "
-                "validates crew hiring and recruits crew members. The server "
-                "validates spaceship engine upgrades and improves the "
-                "spacecraft performance",
+                "validates the owned currency balance, deducts the "
+                "server-priced cost on purchase, and transfers the purchased "
+                "weapon into owned inventory before equipping it. The server "
+                "validates crew hiring, debits the authorized hiring cost and "
+                "recruits crew members. The server validates spaceship engine "
+                "upgrades, deducts the approved upgrade cost and improves "
+                "the spacecraft performance",
                 "purchased weapon, hired crew, and upgraded spaceship performance",
             )]}
 
     model = Model()
     result = RobloxDynamicArchitect(model).design(prompt, research, [])
     assert len(model.calls) == 3
+    assert any("deducts the approved upgrade cost" in m.description
+               for m in result["modules"])
     assert any("purchased item" in m.description for m in result["modules"])
     assert any("sold resource" in m.description for m in result["modules"])
     assert not any("peer-to-peer offer" in m.description for m in result["modules"])
