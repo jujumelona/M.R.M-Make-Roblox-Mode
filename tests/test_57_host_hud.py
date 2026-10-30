@@ -23,7 +23,7 @@ def test_57_real_action_screens_packaged_without_mutating_original_scripts(tmp_p
     originals={p.name:p.read_bytes() for p in (tmp_path/"src"/"client").glob("*.luau")}
     assert action_gui_names(tmp_path)==["CraftingPanel","FarmingPanel"]
     assert install_host_hud(tmp_path)
-    actual=(tmp_path/"src"/"client"/HUD_FILE).read_text()
+    actual=(tmp_path/"src"/"client"/HUD_FILE).read_text(encoding="utf-8")
     assert actual==render_host_hud(action_gui_names(tmp_path))
     assert '["' not in actual or 'actionGuis=' in actual
     for token in ("actionGuis[candidate.Name]==true",
@@ -45,7 +45,7 @@ def test_57_single_action_or_no_remote_does_not_generate_hud(tmp_path):
     assert not install_host_hud(tmp_path)
     _client(tmp_path,"Trade","MerchantAction")
     assert install_host_hud(tmp_path)
-    result=(tmp_path/"src"/"client"/HUD_FILE).read_text()
+    result=(tmp_path/"src"/"client"/HUD_FILE).read_text(encoding="utf-8")
     assert "MinerAction" in result and "MerchantAction" in result
     assert "AncientMenu" not in result
 
@@ -58,7 +58,7 @@ def test_57_existing_different_hud_is_not_silently_overwritten(tmp_path):
     path.write_text("--!strict\nerror('my original code')\n")
     with pytest.raises(ValueError,match="HUD source conflicts"):
         install_host_hud(tmp_path)
-    assert "my original code" in path.read_text()
+    assert "my original code" in path.read_text(encoding="utf-8")
 
 
 def test_safe_regeneration_adds_new_action_without_overwriting_manual_edits(tmp_path):
@@ -69,14 +69,14 @@ def test_safe_regeneration_adds_new_action_without_overwriting_manual_edits(tmp_
     assert install_host_hud(tmp_path)
     target=tmp_path/"src"/"client"/HUD_FILE
     receipt=tmp_path/".rmm_hud_source_receipt.json"
-    assert "MerchantPanel" in target.read_text()
-    sealed=json.loads(receipt.read_text())
+    assert "MerchantPanel" in target.read_text(encoding="utf-8")
+    sealed=json.loads(receipt.read_text(encoding="utf-8"))
     assert sealed["file"]==HUD_FILE
     _client(tmp_path,"Runner","RacePanel")
     assert install_host_hud(tmp_path)
-    assert "RacePanel" in target.read_text()
+    assert "RacePanel" in target.read_text(encoding="utf-8")
     # Once edited by a human, even in an auto-managed file, never overwrite.
-    target.write_text(target.read_text()+"\\n-- hand edited\\n")
+    target.write_text(target.read_text(encoding="utf-8")+"\\n-- hand edited\\n")
     _client(tmp_path,"Gallery","GalleryPanel")
     with pytest.raises(ValueError,match="HUD source conflicts"):
         install_host_hud(tmp_path)
@@ -103,6 +103,6 @@ def test_action_screen_names_are_data_not_ascii_or_genre_assumptions(tmp_path):
     _client(tmp_path,"Fancy","My Craft Menu")
     assert action_gui_names(tmp_path)==["My Craft Menu","상점 화면"]
     assert install_host_hud(tmp_path)
-    hud=(tmp_path/"src"/"client"/HUD_FILE).read_text()
+    hud=(tmp_path/"src"/"client"/HUD_FILE).read_text(encoding="utf-8")
     assert '"상점 화면"' in hud
     assert '"My Craft Menu"' in hud
