@@ -114,62 +114,115 @@ def _plan_change(module: Any, issues: list[dict[str, Any]], router: Any,
     }
 
 
+def _apply_scoped_hunks(
+    source: str, edits: list[dict[str, str]], windows: list[str],
+) -> str:
+    """Apply several independent anchored edits against ONE reviewed file.
+
+    Every anchor belongs to the original file and one of the evidence windows.
+    Detect overlap, duplicate anchors and whitespace-only substitutions before
+    writing. The outer repair cycle performs all real analyzer and reviewer
+    checks transactionally and rolls back on failure.
+    """
+    if not 1 <= len(edits) <= 4:
+        raise ValueError("Host patch requires one to four source hunks")
+    resolved: list[tuple[int, int, str]] = []
+    for item in edits:
+        if not isinstance(item, dict):
+            raise ValueError("Host patch hunk is not a JSON object")
+        before, after = item.get("before"), item.get("after")
+        if (not isinstance(before, str) or not isinstance(after, str)
+                or len(before) < 8 or len(before) > 1500
+                or not after.strip() or len(after) > 3500
+                or before.strip() == after.strip()
+                or source.count(before) != 1
+                or not any(before in window for window in windows)):
+            raise ValueError("Host patch must change unique, source-grounded hunks")
+        offset = source.find(before)
+        resolved.append((offset, offset + len(before), after))
+    resolved.sort()
+    for index in range(1, len(resolved)):
+        if resolved[index][0] < resolved[index - 1][1]:
+            raise ValueError("Overlapping host patch hunks")
+    result = source
+    for beginning, ending, after in reversed(resolved):
+        result = result[:beginning] + after + result[ending:]
+    if len(result) < len(source) * 0.85:
+        raise ValueError("Host patch removed too much existing source")
+    return result
+
+
 def _repair_host_action_scoped(
     source: str, path: str, issues: list[dict[str, Any]],
     plan: dict[str, Any], router: Any,
 ) -> str:
-    """Ask the small model for ONE bounded anchored edit, never a whole file.
+    """Repair a gameplay *behavior*, not an arbitrary single nearby line.
 
-    It is only called for generated gameplay, never infrastructure. Actual
-    analyzers and independent re-review still decide whether to retain it.
+    Real effects may need several edits (input guard, authoritative mutation,
+    persistence/feedback). Limit edits to the reviewed file and independent,
+    source-grounded windows. Never let the model replace security scaffolding
+    or unrelated modules. Actual validators and re-review decide acceptance.
     """
-    anchor = str(issues[0].get("quote", ""))
-    offset = source.find(anchor)
-    if offset < 0:
-        raise ValueError("Host patch anchor no longer appears in reviewed source")
-    start = max(0, offset - 1300)
-    end = min(len(source), offset + max(200, len(anchor)) + 1300)
+    windows: list[str] = []
+    for issue in issues[:4]:
+        quote = str(issue.get("quote", ""))
+        offset = source.find(quote)
+        if offset < 0:
+            raise ValueError("Host patch anchor no longer appears in reviewed source")
+        beginning = max(0, offset - 1750)
+        end = min(len(source), offset + max(200, len(quote)) + 1750)
+        window = source[beginning:end]
+        if window not in windows:
+            windows.append(window)
+    # Full short modules allow a missing producer and its consumer to be
+    # patched together, even if they are far apart in the same file.
+    if len(source) <= 9000:
+        windows = [source]
     result = router.complete_json(
         prompt=(
-            "Patch exactly ONE local Luau behavior defect. Return two short "
-            "JSON strings 'before' and 'after' (literal source fragments); "
-            "DO NOT return a whole script, disable validation, or remove "
-            "other mechanics. 'before' must match the supplied source window "
-            "verbatim and exactly once in the complete original source. "
-            "'after' must implement the missing effect, preserving authority "
-            "and persistent state. A second pass will run compiler, static "
-            "contracts, and independent behavioral review.\n"
+            "Repair the behavioral defect(s) in ONE complete, already generated "
+            "Roblox Luau gameplay module. Return an ordered set of 1 to 4 "
+            "independent, unique 'before'/'after' source hunks as 'edits'. "
+            "A cross-function correction may require several hunks (e.g. "
+            "validate input, mutate persistent server state, and send gameplay "
+            "feedback). Do not return a whole script, rename a feature, "
+            "disable guards, or rewrite unrelated actions. Every 'before' must "
+            "occur EXACTLY ONCE in the original on-disk module and inside a "
+            "provided source window. Every 'after' must implement meaningful "
+            "runtime behavior with server authority. Validators and a NEW "
+            "independent full source-effect review must pass after applying "
+            "ALL changes transactionally. If a single hunk suffices, legacy "
+            "top-level before/after fields are also accepted.\n"
             + json.dumps({
-                "file": path, "issue": issues[:2],
+                "file": path, "issues": issues[:4],
                 "root_cause": plan["root_cause"],
                 "change_strategy": plan["change_strategy"],
-                "source_window": source[start:end],
-            }, ensure_ascii=False)
+                "source_windows": windows,
+            }, ensure_ascii=False)[:23000]
         ),
-        role="coder", temperature=0, max_tokens=1800,
+        role="coder", temperature=0, max_tokens=3500,
         json_schema={
             "type": "object",
             "properties": {
-                "before": {"type": "string", "maxLength": 1200},
-                "after": {"type": "string", "maxLength": 2200},
+                "edits": {"type": "array", "minItems": 1, "maxItems": 4,
+                          "items": {"type": "object", "properties": {
+                              "before": {"type": "string", "maxLength": 1500},
+                              "after": {"type": "string", "maxLength": 3500},
+                          }, "required": ["before", "after"],
+                              "additionalProperties": False}},
+                "before": {"type": "string", "maxLength": 1500},
+                "after": {"type": "string", "maxLength": 3500},
             },
-            "required": ["before", "after"],
             "additionalProperties": False,
         },
     )
     if not isinstance(result, dict):
         raise ValueError("Host patch has invalid JSON")
-    before, after = result.get("before"), result.get("after")
-    if (not isinstance(before, str) or not isinstance(after, str)
-            or len(before) < 8 or len(before) > 1200
-            or len(after) > 2200 or before == after
-            or source.count(before) != 1
-            or before not in source[start:end]):
-        raise ValueError("Host patch must change one unique small source hunk")
-    revised = source.replace(before, after, 1)
-    if len(revised) < len(source) * 0.85:
-        raise ValueError("Host patch removed too much existing source")
-    return revised
+    edits = result.get("edits")
+    if not isinstance(edits, list):
+        edits = [{"before": result.get("before"),
+                  "after": result.get("after")}]
+    return _apply_scoped_hunks(source, edits, windows)
 
 
 def _confirm_scoped_progress(
