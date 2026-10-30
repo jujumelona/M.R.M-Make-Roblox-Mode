@@ -372,3 +372,38 @@ def test_missing_extra_audit_is_repeated_instead_of_skipped(tmp_path):
     assert report["fully_covered"]
     assert any(p["prompt"].startswith("Find original user-requested")
                for p in router.prompts)
+
+
+def test_large_requirement_never_requests_unbounded_batch(tmp_path):
+    proposal = fixture(tmp_path)
+    req = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
+    req["server_state_changes"] = [
+        "Successful trade reduces server-owned resources",
+        "Successful sale increases earned server-owned currency",
+        "Purchasing a ship section attaches the owned part",
+        "Completing the purchase persists the ship ownership state",
+    ]
+
+    class BoundedModel:
+        def __init__(self):
+            self.prompts = []
+
+        def complete_json(self, **kwargs):
+            prompt = kwargs["prompt"]
+            self.prompts.append(prompt)
+            assert not prompt.startswith("Post-generation"), (
+                "Large batch should not be sent to a small model"
+            )
+            if prompt.startswith("Find original user-requested"):
+                return {"extra_missing": []}
+            assert prompt.startswith("Audit exactly ONE")
+            return {"verdict": "implemented", "file": SHIP,
+                    "quote": "ship.Sections += 1",
+                    "issue": "none", "repair": "none"}
+
+    router = BoundedModel()
+    report = audit_whole_requirement_completion(proposal, tmp_path, router)
+    assert report["fully_covered"], report
+    assert len(report["checks"]) == 4
+    assert any(x["stage"] == "batch_skipped" for x in report["recovery"])
+    assert sum(x.startswith("Audit exactly ONE") for x in router.prompts) == 4
