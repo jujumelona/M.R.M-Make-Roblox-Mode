@@ -971,6 +971,21 @@ class RobloxProductionOrchestrator:
                 if unit.get("executed") and not unit.get("success"):
                     return {"passed": False, "error": "Offline Luau tests failed",
                             "diagnostic": unit}
+            # The generator checkpoint was written BEFORE StyLua and source
+            # repairs. Sync it to the exact on-disk bytes BEFORE launching
+            # model review. A failed review otherwise leaves every source
+            # digest stale in the downloadable failure ZIP, defeating safe
+            # resume and confusing cache/provenance diagnostics. This update
+            # is NOT a semantic-gameplay attestation; that bit only survives
+            # when input signature and byte digest are unchanged.
+            from .codegen_checkpoint import sync_release_checkpoints
+            pre_review_checkpoint = sync_release_checkpoints(
+                output_dir, proposal.modules, checkpoint_signature,
+            )
+            tool_results["pre_review_checkpoint"] = {
+                "success": True, "semantic_review_passed": False,
+                **pre_review_checkpoint,
+            }
             # A second pass compares the actually written, formatted source
             # against each original requirement. It can run in Colab using
             # the already loaded local GGUF; Roblox Studio is NOT invoked.
