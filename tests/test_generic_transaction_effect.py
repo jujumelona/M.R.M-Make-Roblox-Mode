@@ -301,3 +301,85 @@ def test_numeric_compiler_requires_positive_quantities_for_arithmetic():
     }
     with pytest.raises(ValueError, match="EXECUTABLE_ACTION_INPUT_NOT_VALIDATED"):
         render_atomic_server(server, p)
+
+
+def test_generic_planner_never_silently_drops_predeclared_state_effects():
+    from roblox_mod_ai.host_effect_ir_planner import try_plan_effect_data
+
+    class DataOnlyRouter:
+        supports_declarative_effect_program = True
+        def complete_json(self, *_args, **_kwargs):
+            return {
+                "supported": True, "uses_quantity": True,
+                "quantity_max": 10,
+                "changes": [
+                    {"field": "battery", "operation": "decrement",
+                     "source": "quantity", "constant": 0, "multiplier": 1,
+                     "limit": 1000},
+                ],
+            }
+
+    system = {
+        "input_mode": "custom", "interaction": "request_response",
+        "world_entities": [], "action_choices": [],
+        "server_behavior": "One action changes two authoritative counters",
+        "observable_result": "Both changes must be visible",
+        "action_contract": {
+            "state_changes": [
+                {"scope": "player", "key": "RMMGameplayState.battery",
+                 "operation": "decrement"},
+                {"scope": "player", "key": "RMMGameplayState.score",
+                 "operation": "increment"},
+            ],
+        },
+    }
+    assert try_plan_effect_data(
+        DataOnlyRouter(), system, [{"statement": "Two state changes"}],
+    ) is None
+    system["action_contract"]["state_changes"] = [
+        {"scope": "player", "key": "RMMGameplayState.battery",
+         "operation": "decrement"},
+    ]
+    assert try_plan_effect_data(
+        DataOnlyRouter(), system, [{"statement": "One state change"}],
+    ) is not None
+    system["action_contract"]["state_changes"][0]["key"] = (
+        "RMMGameplayState.unrelated_field"
+    )
+    assert try_plan_effect_data(
+        DataOnlyRouter(), system, [{"statement": "Different state key"}],
+    ) is None
+
+
+def test_generic_planner_rejects_reordering_of_declared_effects():
+    from roblox_mod_ai.host_effect_ir_planner import try_plan_effect_data
+
+    class Proposed:
+        supports_declarative_effect_program = True
+        def complete_json(self, *_args, **_kwargs):
+            return {
+                "supported": True, "uses_quantity": True,
+                "quantity_max": 5,
+                "changes": [
+                    {"field": "a", "operation": "increment",
+                     "source": "quantity", "constant": 0, "multiplier": 1,
+                     "limit": 100},
+                    {"field": "b", "operation": "decrement",
+                     "source": "quantity", "constant": 0, "multiplier": 1,
+                     "limit": 100},
+                ],
+            }
+    system = {
+        "input_mode": "custom", "interaction": "request_response",
+        "world_entities": [], "action_choices": [],
+        "server_behavior": "Use two counters",
+        "action_contract": {"state_changes": [
+            {"scope": "player", "key": "RMMGameplayState.b",
+             "operation": "decrement"},
+            {"scope": "player", "key": "RMMGameplayState.a",
+             "operation": "increment"},
+        ]},
+    }
+    assert try_plan_effect_data(
+        Proposed(), system, [{"statement": "Two counters"}],
+    ) is None
