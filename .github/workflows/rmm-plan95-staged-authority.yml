@@ -1,0 +1,32 @@
+name: Plan95 staged state producer contract
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "roblox_mod_ai/planner.py"
+      - "roblox_mod_ai/model_action_authority.py"
+      - "roblox_mod_ai/module_generation_gate.py"
+      - "roblox_mod_ai/authority_architecture_repair.py"
+      - "tests/test_plan95_staged_authority_proof.py"
+      - ".github/workflows/rmm-plan95-staged-authority.yml"
+  workflow_dispatch:
+
+jobs:
+  staged-authority-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -e ".[dev]" pytest
+      - run: |
+          python -m pytest -q \
+            tests/test_plan95_staged_authority_proof.py \
+            tests/test_deferred_model_authority_codegen.py \
+            tests/test_deferred_effect_owner_gate.py \
+            tests/test_log33_authority_replanning.py \
+            tests/test_log34_authority_production_parity.py \
+            tests/test_plan94_early_authority_binding.py
