@@ -1083,3 +1083,42 @@ def test_plain_integer_with_multiple_choices_never_passes(tmp_path):
     assert report["status"] == "failed"
     assert len(report["unverified_effects"]) == 1
     assert report.get("findings", []) == []
+
+
+def test_unverified_model_replies_report_all_requirements_in_one_run(tmp_path):
+    proposal = fixture(tmp_path)
+    first = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
+    first["server_state_changes"] = [
+        "The server persists state for the first feature"
+    ]
+    second = {
+        "id": "req-generic-02",
+        "original_request": "Perform a second unrelated requested action",
+        "owner_files": [SHIP, TRADE],
+        "server_state_changes": [
+            "The server persists state for the second feature"
+        ],
+    }
+    proposal.game_design["detailed_implementation_plan"]["required_functions"].append(second)
+
+    class NeverAnswers:
+        def __init__(self):
+            self.count = 0
+        def complete_json(self, **kwargs):
+            p = kwargs["prompt"]
+            if p.startswith("Find user-requested"):
+                return {"missing_actions": []}
+            self.count += 1
+            return {"malformed": True}
+
+    model = NeverAnswers()
+    report = audit_whole_requirement_completion(
+        proposal, tmp_path, model, host_witness_only=True,
+    )
+    assert report["status"] == "failed", report
+    assert not report["fully_covered"]
+    assert {row["requirement_id"] for row in report["unverified_effects"]} == {
+        first["id"], second["id"],
+    }
+    assert model.count == 2, report
+    assert "cannot prove 2 independent effects" in report["reason"]
