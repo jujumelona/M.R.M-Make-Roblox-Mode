@@ -965,3 +965,29 @@ def test_damage_payout_requires_explicit_owner_requirement():
         "The alien takes damage and the player gains money"
     ]
     assert not _requires_damage_currency_reward(module, proposal)
+
+
+def test_currency_response_field_is_not_wallet_mutation():
+    from roblox_mod_ai.requirement_completion_audit import (
+        _has_currency_state_write,
+    )
+    effect = "Player gains currency after attack"
+    assert not _has_currency_state_write(
+        effect,
+        'local balance = 30\n'
+        'return {success = true, coins = coins.Value, earned = payout}\n',
+    )
+    assert not _has_currency_state_write(
+        effect,
+        'balance = balance + payout\n'
+        'return {success = true, money = balance}\n',
+    )
+    assert _has_currency_state_write(
+        effect, 'profile.money += payout\n',
+    )
+    assert _has_currency_state_write(
+        effect, 'state["Money"] += payout\n',
+    )
+    assert _has_currency_state_write(
+        effect, 'coins.Value = balance + payout\n',
+    )
