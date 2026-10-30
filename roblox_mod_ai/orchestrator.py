@@ -1031,7 +1031,8 @@ class RobloxProductionOrchestrator:
                 # one independent expected effect at a time. Feed missing
                 # effects to the SAME transactional repair-and-re-review loop.
                 whole = audit_whole_requirement_completion(
-                    proposal, output_dir, self.router)
+                    proposal, output_dir, self.router,
+                    host_witness_only=True)
                 tool_results["requirement_completion_audit"] = whole
                 (output_dir / "requirement_completion_audit.json").write_text(
                     json.dumps(whole, indent=2, ensure_ascii=False),
