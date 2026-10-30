@@ -113,7 +113,10 @@ def test_unimplemented_requested_gameplay_never_passes_as_default_combat(tmp_pat
     session=CompleteRobloxAISession(output_root=tmp_path)
     session.planner=RobloxGameDesignPlanner(pre_design_research=research)
     reply=session.plan("펫 부화와 퀘스트")
-    assert not reply.ready_to_build
+    # A source-faithful INTENT draft may enter the production worker; it
+    # cannot claim executable ownership or a completed custom game.
+    assert reply.ready_to_build
+    assert not reply.implementation_ready
     modules=[m.name for m in reply.authored_plan.proposal.modules]
     assert "CombatSystem" not in modules
     result=session.build(source_only=True)

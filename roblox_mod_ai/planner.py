@@ -80,8 +80,24 @@ class RobloxGameDesignPlanner:
         code generation and engine verification retain their strict gates.
         """
         validate_mode(project_mode)
+        # The legacy full-architecture protocol explicitly requests a
+        # compiled model design during PLAN, including direct planner calls.
+        # Default modern planning remains an intent-only draft.
+        if (os.environ.get("RMM_LEGACY_ARCHITECTURE_PROTOCOL", "0") == "1"
+                and os.environ.get("RMM_ENABLE_DYNAMIC_DESIGN", "auto") == "1"):
+            compile_architecture = True
         # MMM request-first contract: retrieve before selecting mechanics/modules.
         research = self.researcher.research(prompt)
+        # An unclassified source chunk with a complete immutable source span
+        # needs an owner check before a plan can claim model-derived scope.
+        # This preflight is bounded to chunks that have already finished
+        # decomposition, and does not turn ordinary intent drafts into
+        # compulsory full implementation planning.
+        if (not compile_architecture
+                and research.get("ledger", {}).get("classification_unverified")
+                and not research.get("ledger", {}).get("decomposition_pending")
+                and dynamic_design_enabled()):
+            compile_architecture = True
         # 1. Generate Game Title
         title_match = re.search(r"['\"]([^'\"]+)['\"]", prompt)
         if title_match:
@@ -99,7 +115,6 @@ class RobloxGameDesignPlanner:
             research["ledger"]["unimplemented_facets"] = sorted(set(
                 research["ledger"]["unimplemented_facets"] + ["unclassified_gameplay"]
             ))
-        import os
         storage_backend = "profilestore" if (
             "profilestore" in prompt.lower() or os.environ.get("RMM_STORAGE_BACKEND") == "profilestore"
         ) else "builtin"
@@ -640,6 +655,13 @@ class RobloxGameDesignPlanner:
         updated = self.plan(
             plan.proposal.requested_prompt + "\n" + feedback,
             project_mode=plan.proposal.game_design.get("project_mode", "new_experience"),
+            # Preserve the caller-selected architectural phase across a
+            # revision. Otherwise every verified dynamic subsystem disappears
+            # when an implementation contract is revised as an intent draft.
+            compile_architecture=(
+                plan.proposal.game_design.get("planning_phase")
+                == "implementation_contract"
+            ),
         )
         revised = updated.proposal
         research = revised.game_design.get("pre_design_research") or {}
