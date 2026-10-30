@@ -299,7 +299,7 @@ class RecoveringRouter:
             if self.initial == "no_extras":
                 return {"checks": [], "extra_missing": None}
             return {"checks": response()["checks"][:1], "extra_missing": []}
-        if prompt.startswith("Find original user-requested"):
+        if prompt.startswith("Find user-requested"):
             return {"extra_missing": []}
         assert prompt.startswith("Audit exactly ONE"), prompt[:120]
         assert "complete_server_sources" in prompt
@@ -332,7 +332,7 @@ def test_incomplete_batch_recovers_each_missing_effect_without_false_pass(tmp_pa
     assert [x["effect_id"] for x in report["recovery"]
             if x["stage"] == "single_effect"] == ["effect-02", "effect-03"]
     assert len(router.prompts) == 4
-    assert any(p["prompt"].startswith("Find original user-requested")
+    assert any(p["prompt"].startswith("Find user-requested")
                for p in router.prompts)
 
 
@@ -353,7 +353,7 @@ def test_truncated_model_output_recovers_all_effects_and_original_scope(tmp_path
     assert len(report["checks"]) == 3
     assert len(report["findings"]) == 1
     assert any(x["stage"] == "batch_output" for x in report["recovery"])
-    assert any(p["prompt"].startswith("Find original user-requested")
+    assert any(p["prompt"].startswith("Find user-requested")
                for p in router.prompts)
 
 
@@ -372,7 +372,7 @@ def test_missing_extra_audit_is_repeated_instead_of_skipped(tmp_path):
     report = audit_whole_requirement_completion(fixture(tmp_path), tmp_path, router)
     assert report["status"] == "issues_found", report
     assert report["fully_covered"]
-    assert any(p["prompt"].startswith("Find original user-requested")
+    assert any(p["prompt"].startswith("Find user-requested")
                for p in router.prompts)
 
 
@@ -396,7 +396,7 @@ def test_large_requirement_never_requests_unbounded_batch(tmp_path):
             assert not prompt.startswith("Post-generation"), (
                 "Large batch should not be sent to a small model"
             )
-            if prompt.startswith("Find original user-requested"):
+            if prompt.startswith("Find user-requested"):
                 return {"extra_missing": []}
             assert prompt.startswith("Audit exactly ONE")
             return {"verdict": "implemented", "file": SHIP,
