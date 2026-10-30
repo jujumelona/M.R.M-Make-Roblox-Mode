@@ -122,6 +122,11 @@ local function setStats(tool, level)
     tool:SetAttribute("RMMDamageMultiplier", 1 + 0.2 * level)
     tool:SetAttribute("RMMFireRateMultiplier", 1 + 0.1 * level)
     tool:SetAttribute("RMMCooldownMultiplier", 1 / (1 + 0.1 * level))
+    -- These mirrors are for HUD/tool inspection. Actual combat calculations
+    -- use the saved server-owned RMMWeaponPerformance level, not attributes
+    -- potentially modified by a client.
+    tool:SetAttribute("RMMMagazineSize", 6 + 2 * level)
+    tool:SetAttribute("RMMFireInterval", 0.3 / (1 + 0.1 * level))
 end
 function Service.start(services)
     assert(type(services.PlayerDataManager) == "table"
