@@ -1,15 +1,13 @@
 """Contract-based source attestation, independent of game genres and prompts."""
 from __future__ import annotations
 
-from copy import deepcopy
-
 import pytest
 
 from roblox_mod_ai.compiled_effect_verification import (
     _luau_tokens, verify_compiled_effect_sources,
 )
 from roblox_mod_ai.host_atomic_effect import render_atomic_server
-from tests.test_generic_transaction_effect import _candidate
+from test_generic_transaction_effect import _candidate
 
 
 def _persist_transaction(tmp_path):
