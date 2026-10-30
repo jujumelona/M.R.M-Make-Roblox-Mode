@@ -170,3 +170,58 @@ def test_log40_no_world_or_route_mutation_for_unrequested_or_weak_extraction():
     before = deepcopy(p.game_design["dynamic_design"])
     assert not ensure_mining_world_contract(p)
     assert before == p.game_design["dynamic_design"]
+
+
+def test_two_source_owned_mining_intents_never_merge_ordinary_and_special_inventory():
+    """Resource identity follows specific original requirement, not module names."""
+    ordinary = mining_plan()
+    special = mining_plan()
+    ordinary_source = "Gather ordinary ore and trade it"
+    special_source = "Mine special minerals on another planet"
+    for proposal, statement in ((ordinary, ordinary_source),
+                                (special, special_source)):
+        source_server = proposal.modules[0]
+        source_client = proposal.modules[1]
+        proposal.requested_prompt = statement
+        proposal.game_design["pre_design_research"] = {
+            "ledger": {"requirements": [{"id": "r", "statement": statement}]}
+        }
+        proposal.game_design["dynamic_design"]["module_requirements"] = {
+            source_server.module_id: ["r"], source_client.module_id: ["r"],
+        }
+        ensure_mining_world_contract(proposal)
+        server = render_host_mining(source_server, proposal)
+        client = render_host_mining(source_client, proposal)
+        assert server is not None and client is not None
+        if proposal is special:
+            assert "progress.specialMinerals = balance + 1" in server
+            assert "progress.resources = balance + 1" not in server
+            assert "specialMinerals = progress.specialMinerals" in server
+            assert "result.specialMinerals" in client
+            assert "result.resources" not in client
+        else:
+            assert "progress.resources = balance + 1" in server
+            assert "progress.specialMinerals" not in server
+            assert "result.resources" in client
+            assert "result.specialMinerals" not in client
+        from roblox_mod_ai.luau_analyzer import LuauStaticAnalyzer
+        analyzer = LuauStaticAnalyzer()
+        for module, source in ((source_server, server), (source_client, client)):
+            errors = [row for row in analyzer.analyze_source(source, module.file_path)
+                      if row.severity == "ERROR"]
+            assert not errors, [(row.rule, row.message) for row in errors]
+
+
+def test_unrelated_prompt_cannot_turn_plain_mining_into_special_currency():
+    proposal = mining_plan()
+    proposal.requested_prompt = "There is also a quest for special minerals elsewhere"
+    proposal.game_design["dynamic_design"]["module_requirements"] = {
+        proposal.modules[0].module_id: ["r"],
+    }
+    proposal.game_design["pre_design_research"] = {
+        "ledger": {"requirements": [{"id": "r", "statement": "Harvest ordinary ore"}]}
+    }
+    ensure_mining_world_contract(proposal)
+    source = render_host_mining(proposal.modules[0], proposal)
+    assert source and "progress.resources = balance + 1" in source
+    assert "progress.specialMinerals" not in source
