@@ -406,6 +406,12 @@ def source_intent_conflicts(
         r"\b(?:section|part|module)\b.{0,90}"
         r"\b(?:to|onto|into|on)\b.{0,35}"
         r"\b(?:craft|ship|spacecraft|hull)\b|"
+        # A model can correctly attach a COMPONENT to a SPACEship without
+        # saying "section" or "spacecraft". Keep the positive attachment
+        # verb mandatory: merely purchasing a component stays insufficient.
+        r"\b(?:attach\w*|install\w*|assembl\w*|construct\w*|build\w*)\b"
+        r".{0,100}\b(?:component|components)\b"
+        r".{0,100}\b(?:spacecraft|spaceship|ship|craft|hull)\b|"
         r"(?:우주선|선체).{0,65}(?:제작|조립|장착|생성|건설)",
         text, re.I,
     )
