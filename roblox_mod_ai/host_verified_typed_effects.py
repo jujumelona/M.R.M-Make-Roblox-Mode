@@ -31,17 +31,16 @@ def _selected_world(module: Any, design: dict, descriptions: list[str]) -> str |
         if not isinstance(name, str) or name not in owned:
             continue
         normalized = _normalized(name)
-        # Logical world entities are intentionally shorter than the
-        # host-materialized Part names (e.g. a semantic actor + a stable
-        # generated suffix). A minimum 12-character comparison rejected
-        # valid 11-character logical actors and silently sent their gameplay
-        # to an ungrounded model-written handler. Match the FULL logical
-        # alias, not an arbitrary fixed-length prefix; accept only a single
-        # source-owned Part below.
+        # Semantic names can be shorter OR longer than physical Part IDs:
+        # "AlienEntity" -> "AlienEntity<id>", but also "alien entities on
+        # planet" -> "AlienEntities1". Compare their grounded shared stem,
+        # not a fixed 12-character substring that rejects short actors.
+        # An ambiguous stem is never enough: exactly one source-owned Part
+        # must match before a host server handler can be selected.
         aliases = [_normalized(alias) for alias in descriptions
                    if isinstance(alias, str)]
-        if any(len(alias) >= 5 and
-               (normalized == alias or normalized.startswith(alias))
+        if any((shared := min(12, len(alias), len(normalized))) >= 8
+               and normalized[:shared] == alias[:shared]
                for alias in aliases):
             matches.append(name)
     return matches[0] if len(matches) == 1 else None
