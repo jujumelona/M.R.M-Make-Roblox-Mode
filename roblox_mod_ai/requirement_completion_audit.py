@@ -392,9 +392,32 @@ def audit_whole_requirement_completion(
                 unexpected.append(str(effect_id)[:80])
         # Only unambiguously identified answers can be reused. The host owns
         # the obligation IDs; no model answer may silently replace an effect.
+        # A complete batch is not usable when its quote is fabricated.
+        # Independently recheck only those IDs rather than failing late.
+        bad_batch_evidence_ids = set()
+        for effect_id, entries in occurrences.items():
+            if len(entries) != 1:
+                continue
+            entry = entries[0]
+            verdict = entry.get("verdict")
+            if verdict == "out_of_scope":
+                if not isinstance(entry.get("issue"), str) or len(
+                        entry["issue"].strip()) < 12:
+                    bad_batch_evidence_ids.add(effect_id)
+            elif verdict in ("implemented", "missing"):
+                file_path = entry.get("file")
+                if (not isinstance(file_path, str)
+                        or file_path not in actual_sources
+                        or not _real_source_quote(
+                            root, file_path, entry.get("quote")
+                        )):
+                    bad_batch_evidence_ids.add(effect_id)
+            else:
+                bad_batch_evidence_ids.add(effect_id)
         recover_ids = [
             row["id"] for row in obligations
             if len(occurrences[row["id"]]) != 1
+            or row["id"] in bad_batch_evidence_ids
         ]
         if recover_ids or unexpected:
             report.setdefault("recovery", []).append({
@@ -493,9 +516,14 @@ def audit_whole_requirement_completion(
                                      if isinstance(raw, dict) else [],
                 })
             if one is None:
+                prefix = (
+                    "ungrounded batch evidence; "
+                    if effect_id in bad_batch_evidence_ids else ""
+                )
                 report["reason"] = (
                     req_id + ": incomplete independent effect checks; "
-                    + effect_id + " could not provide grounded compact evidence"
+                    + prefix + effect_id
+                    + " could not provide grounded compact evidence"
                 )
                 return report
             occurrences[effect_id] = [{"id": effect_id, **one}]
