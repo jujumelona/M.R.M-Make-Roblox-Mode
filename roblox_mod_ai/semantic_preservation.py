@@ -298,6 +298,14 @@ def source_intent_conflicts(
     # that the user can mine, harvest or gather NEW resources. This was the
     # exact gameplay inversion in proposal 48: a "farming" module only
     # decremented the resource balance and credited currency.
+    # Physical world names may be host-generated CamelCase identifiers.
+    # Preserve their word boundaries for semantic audits (ResourceNode is
+    # a resource node), without changing the source, contract or actual
+    # manifest name. This is input-format normalization, not a gameplay grant.
+    harvest_text = re.sub(
+        r"(?<=[a-z0-9])(?=[A-Z])", " ",
+        str(described_intent or ""),
+    ).casefold()
     gathering_requested = re.search(
         r"자원\s*(?:파밍|채굴|수집|획득)|자원파밍|광물\s*(?:채굴|수집)|"
         r"\b(?:resource\s+farm\w*|mining|mine\s+resources?|"
@@ -310,12 +318,12 @@ def source_intent_conflicts(
         r"\b(?:balance|quantity|amount|count|inventory)\b|"
         r"(?:decrement|deduct|subtract|consume|remove)\w*"
         r".{0,55}\b(?:requested\s+amount|owned\s+resources?)\b",
-        text, re.I,
+        harvest_text, re.I,
     )
     paid_instead = re.search(
         r"(?:increment|credit|award|increase)\w*"
         r".{0,70}\b(?:currency|coins?|credits?)\b",
-        text, re.I,
+        harvest_text, re.I,
     )
     real_gathering = re.search(
         r"\b(?:mine|mines|mined|mining|harvest|harvests|harvested|harvesting|"
@@ -324,7 +332,7 @@ def source_intent_conflicts(
         r".{0,95}\b(?:node|deposit|ore|world|ground|mineral|resource)\b|"
         r"\b(?:resource|ore|mineral)\b.{0,75}"
         r"\b(?:node|deposit|spawn|mine|harvest|gather|collect|extract)\w*\b",
-        text, re.I,
+        harvest_text, re.I,
     )
     # The source may be described BEFORE the mining operation. The old
     # ordered regex rejected physical ResourceNode -> harvest -> inventory
@@ -333,12 +341,12 @@ def source_intent_conflicts(
         real_gathering = re.search(
             r"\b(?:nodes?|deposits?|mineable|harvestable|"
             r"resource\s+source|world\s+source)\b"
-            r".{0,230}\b(?:mine|mines|mined|mining|harvest|harvests|"
-            r"harvested|harvesting|extract|extracts|extracted|extracting|"
-            r"gather|gathers|gathered|collect|collects|collected)\b"
+            r".{0,230}\b(?:mine|mines|mining|harvest|harvests|"
+            r"harvesting|extract|extracts|extracting|"
+            r"gather|gathers|collect|collects)\b"
             r".{0,180}\b(?:resources?|ores?|minerals?|yield|"
             r"inventory|stock)\b",
-            text, re.I,
+            harvest_text, re.I,
         )
     # An abstract "resource-gathering" event is not a real harvest. The
     # production small-model response granted resources into a balance without
@@ -352,7 +360,7 @@ def source_intent_conflicts(
         r"광맥|채굴지|광석|자원\s*(?:노드|지점|원천)|"
         r"\b(?:mine|mines|mined|mining|extract|extracts|extracted|extracting)\b"
         r".{0,90}\b(?:ores?|minerals?)\b",
-        text, re.I,
+        harvest_text, re.I,
     )
     if (require_implementation and gathering_requested and real_gathering
             and not gatherable_origin):
