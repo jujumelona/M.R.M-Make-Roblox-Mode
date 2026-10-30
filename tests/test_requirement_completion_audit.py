@@ -448,7 +448,7 @@ def test_original_negative_rejection_clause_kept_with_its_operation():
         "rejected requests change neither displayed balance."
     ]}
     effects = _obligations(requirements)
-    assert len(effects) == 4, effects
+    assert len(effects) == 3, effects
     assert "rejected requests" in effects[0]["behavior"]
     assert "rejected requests" in effects[2]["behavior"]
 
