@@ -443,7 +443,7 @@ def _host_effect_witnesses(
             # Owner metadata and the actual implementation are only ranking
             # hints; neither is treated as proof of semantic equivalence.
             score = 10 * overlap + 2 * len(words & module_tokens)
-            candidates.append((score, path, i, line.strip()))
+            candidates.append((score, path, i, visible.strip()))
     candidates.sort(key=lambda item: (-item[0], item[1], item[2]))
     return [
         {"id": i, "file": path, "line": line_number, "quote": quote}
@@ -745,6 +745,7 @@ def audit_whole_requirement_completion(
                 "unexpected": unexpected[:20],
                 "received_count": len(supplied),
             })
+        unverified_effects: list[dict[str, str]] = []
         for effect in obligations:
             effect_id = effect["id"]
             if effect_id not in recover_ids:
@@ -761,6 +762,7 @@ def audit_whole_requirement_completion(
             # lives in a lower-ranked server module.
             one = None
             missing_candidates = []
+            failed_windows = 0
             for scope_start in range(0, len(ranked), 2):
                 scope = ranked[scope_start:scope_start + 2]
                 scoped_sources = {
@@ -847,29 +849,45 @@ def audit_whole_requirement_completion(
                                          if isinstance(raw, dict) else [],
                     })
                 if scoped_answer is None:
-                    evidence_reason = (
-                        "ungrounded batch evidence; "
-                        if effect_id in bad_batch_evidence_ids else ""
-                    )
-                    report["reason"] = (
-                        req_id + ": incomplete independent effect checks; "
-                        + evidence_reason + effect_id
-                        + " could not provide grounded evidence in owner window "
-                        + str(scope_start // 2 + 1)
-                    )
-                    return report
+                    failed_windows += 1
+                    report.setdefault("recovery", []).append({
+                        "requirement_id": req_id, "effect_id": effect_id,
+                        "stage": "owner_window",
+                        "status": "unverified",
+                        "owner_window": scope_start // 2 + 1,
+                    })
+                    # Invalid JSON on one owner is not proof that the whole
+                    # requirement is missing. Inspect the remaining owners
+                    # and then use host-extracted evidence IDs.
+                    continue
                 if scoped_answer["verdict"] == "missing":
                     missing_candidates.append(scoped_answer)
                     continue
                 one = scoped_answer
                 break
             if one is None:
-                if len(missing_candidates) != (len(ranked) + 1) // 2:
-                    report["reason"] = (
-                        req_id + ": owner coverage incomplete for " + effect_id
+                if (failed_windows == 0
+                        and len(missing_candidates) == (len(ranked) + 1) // 2):
+                    one = missing_candidates[0]
+                else:
+                    one, host_diagnostic = _fallback_effect_witness_review(
+                        router, effect, actual_sources, proposal.modules,
                     )
-                    return report
-                one = missing_candidates[0]
+                    report.setdefault("recovery", []).append({
+                        "requirement_id": req_id, **host_diagnostic,
+                    })
+                    if one is None:
+                        # Continue inspecting ALL effects; never turn an
+                        # unavailable model output into a false success.
+                        unverified_effects.append({
+                            "requirement_id": req_id,
+                            "effect_id": effect_id,
+                            "behavior": effect["behavior"],
+                            "reason": host_diagnostic.get(
+                                "reason", "unverifiable_source_witness"
+                            ),
+                        })
+                        continue
             report.setdefault("recovery", []).append({
                 "requirement_id": req_id, "effect_id": effect_id,
                 "stage": "single_effect", "status": "recovered",
@@ -883,6 +901,15 @@ def audit_whole_requirement_completion(
             occurrences[o["id"]][0] for o in obligations
             if len(occurrences[o["id"]]) == 1
         ]
+        if unverified_effects:
+            report["unverified_effects"] = unverified_effects
+            report["reason"] = (
+                req_id + ": cannot prove " + str(len(unverified_effects))
+                + " independent effects; host witness and owner reviews exhausted"
+            )
+            # The build still fails closed, but never blocks at the first
+            # malformed model answer or manufactures a missing implementation.
+            return report
         if len(checks) != len(obligations):
             report["reason"] = (
                 req_id + ": incomplete independent effect checks after recovery"
