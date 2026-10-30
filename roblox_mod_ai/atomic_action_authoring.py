@@ -287,10 +287,20 @@ def author_verified_atomic_systems(
                     response.get(repair_field)
                     if isinstance(response, dict) else None
                 )
+                if isinstance(patched, str) and patched.strip() == previous_text.strip():
+                    # A failed one-field correction that repeats the exact
+                    # rejected text is proven non-progress. Retrying a whole
+                    # atomic system would spend another model call while
+                    # abandoning verified sibling actions. Stop this unit
+                    # with a precise, source-preserving error instead.
+                    raise SourceActionBindingError(
+                        "ATOMIC_LOCAL_REPAIR_NO_PROGRESS: " + str(index)
+                        + ": identical " + repair_field + " patch after "
+                        + "; ".join(previous_issues.get(repair_field, []))[:400]
+                    )
                 if (not isinstance(patched, str)
                         or not (24 if repair_field == "server_behavior"
-                                else 18) <= len(patched.strip()) <= cap
-                        or patched.strip() == previous_text.strip()):
+                                else 18) <= len(patched.strip()) <= cap):
                     # This is a rejected MODEL reply, not an error in the
                     # source contract. Previously we raised immediately here,
                     # aborting all sibling actions and the entire feature.
