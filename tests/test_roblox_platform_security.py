@@ -7,7 +7,15 @@ def test_roblox_exploit_resistance_and_cross_platform_controls(tmp_path: Path):
     result = session.build(source_only=True)
     assert result.analysis_report.passed
     assert result.metadata["acceptance"]["passed"], result.metadata["acceptance"]
-    byname = {m.name:m.code for m in session.authored_plan.proposal.modules}
+    # BUILD compiles the signed intent plan into a distinct implementation
+    # artifact. Read the actual emitted Luau files, not the untouched plan
+    # snapshot whose module.code fields are intentionally empty.
+    root = Path(result.project_dir)
+    byname = {
+        "ShopService": (root / "src/server/ShopService.server.luau").read_text(encoding="utf-8"),
+        "CombatSystem": (root / "src/server/CombatSystem.server.luau").read_text(encoding="utf-8"),
+        "CombatController": (root / "src/client/CombatController.client.luau").read_text(encoding="utf-8"),
+    }
     shop=byname["ShopService"]
     for term in ('typeof(itemId)', 'PURCHASE_COOLDOWN', 'MAX_SHOP_DISTANCE',
                  'HumanoidRootPart', 'ShopStalls', 'player.UserId'):
