@@ -7,6 +7,7 @@ assertion of successful Studio execution.
 from __future__ import annotations
 
 from typing import Any
+import re
 
 from .semantic_preservation import source_intent_conflicts
 
@@ -99,6 +100,41 @@ LINKS = (
     ("is_combat", "is_shop", "combat_to_economy", "Combat rewards cannot bypass the server currency ledger",
      ("CombatSystem", "ShopService")),
 )
+
+def _source_sequence_prerequisites(rows: list[dict[str, Any]]) -> list[tuple[str, str]]:
+    """Bind only explicit cross-requirement causal/temporal language.
+
+    Module ownership alone is not an integration contract. In particular,
+    independent mechanics in an ordered list must not be conflated. The
+    user-authored 'after that/then' and a conditional prefix repeated in
+    the immediately preceding requirement are narrowly grounded evidence
+    of an intended stage transition, regardless of game genre.
+    """
+    links: list[tuple[str, str]] = []
+    for previous, current in zip(rows, rows[1:]):
+        old = str(previous.get("statement") or "").strip()
+        new = str(current.get("statement") or "").strip()
+        before, after = previous.get("id"), current.get("id")
+        if not old or not new or not isinstance(before, str) or not isinstance(after, str):
+            continue
+        explicit_then = re.match(
+            r"^(?:그렇게\s*해서|그러고\s*나서|그\s*다음(?:에)?|"
+            r"그\s*후(?:에)?|이후(?:에는)?|그리고\s*나서|"
+            r"then\b|after\s+that\b|afterwards\b|subsequently\b)",
+            new, re.I,
+        )
+        # Only a repeated, sufficiently specific predicate is evidence for
+        # a conditional successor. This is not a universal Korean parser.
+        predicate = re.match(r"^([가-힣A-Za-z0-9 ]{5,42}?)면", new)
+        grounded_if = (
+            predicate is not None
+            and len(predicate.group(1).replace(" ", "")) >= 4
+            and predicate.group(1).strip() in old
+        )
+        if explicit_then or grounded_if:
+            links.append((before, after))
+    return links
+
 
 def _matches_source_motion(actual: Any, mandatory: dict[str, str]) -> bool:
     """Require every source-owned movement obligation, permit extra host ABI.
@@ -196,6 +232,33 @@ def build_implementation_blueprint(proposal: Any) -> dict[str, Any]:
             "acceptance": acceptance,
             "acceptance_status": "planned_not_run",
         })
+    # Novel mechanics were previously omitted entirely from integrations:
+    # the static LINK table covers only stock feature flags. Preserve a
+    # source-explicit stage transition across different authored requirements
+    # and require both sets of actual owners. This describes a verification
+    # obligation, NOT an assertion that generated Luau already connects them.
+    requirement_owners = {row["id"]: row["owners"] for row in requirements}
+    for before, after in _source_sequence_prerequisites(
+        ledger.get("requirements") or []
+    ):
+        prior_owners = requirement_owners.get(before) or []
+        next_owners = requirement_owners.get(after) or []
+        if prior_owners and next_owners:
+            integrations.append({
+                "id": "source_transition." + before + "." + after,
+                "depends_on": [before, after],
+                "owners": sorted(set(prior_owners + next_owners)),
+                "expected": (
+                    "Verify original requirement " + before
+                    + " produces the prerequisites consumed by " + after
+                    + "; completing the later stage must demonstrate the "
+                      "actual earlier and later game effects"),
+                "negative_test": (
+                    "Missing or rejected prerequisite must not be reported "
+                    "as a completed end-to-end progression"),
+                "studio_verified": False,
+                "evidence": "explicit_original_request_sequence",
+            })
     scenarios = [{
         "id": "mechanic." + m["id"],
         "setup": m.get("precondition", "Real Studio with generated modules available"),
