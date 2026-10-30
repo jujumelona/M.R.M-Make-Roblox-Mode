@@ -180,7 +180,7 @@ def _repair_host_action_scoped(
         windows = [source]
     result = router.complete_json(
         prompt=(
-            "Repair the behavioral defect(s) in ONE complete, already generated "
+            "Patch exactly ONE generated Roblox Luau module to repair its "
             "Roblox Luau gameplay module. Return an ordered set of 1 to 4 "
             "independent, unique 'before'/'after' source hunks as 'edits'. "
             "A cross-function correction may require several hunks (e.g. "
