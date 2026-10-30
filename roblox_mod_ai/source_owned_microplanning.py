@@ -454,6 +454,31 @@ def _recover_explicit_market_exchange(
         return None
     spans = eligible_atomic_action_spans(source)
     source_quotes = {span["id"]: span["quote"] for span in spans}
+    # A separately authored, source-anchored income provider is NOT evidence
+    # that the income must come from a resource sale. If the planner already
+    # assigned a genuine independent reward (mining, quest, combat, salary),
+    # do not silently turn an ambiguous trade into a host-invented market.
+    # The missing exchange must be authored from its own source span.
+    independent_income = re.compile(
+        r"\\b(?:reward|payout|salary|wage|bounty|quest|mission|"
+        r"mining|harvesting|combat|kill|job)\\b.{0,100}"
+        r"\\b(?:credit\\w*|pay\\w*|earn\\w*|award\\w*|balance)\\b|"
+        r"\\b(?:credit\\w*|pay\\w*|earn\\w*|award\\w*)\\b"
+        r".{0,100}\\b(?:reward|payout|salary|wage|bounty|quest|"
+        r"mission|mining|harvesting|combat|kill|job)\\b",
+        re.I,
+    )
+    currency_span = re.compile(
+        r"돈\\s*(?:모으|벌)|코인\\s*모으|"
+        r"\\b(?:earn|money|wage|salary|income)\\b",
+        re.I,
+    )
+    if any(
+        currency_span.search(source_quotes.get(row.get("source_id"), ""))
+        and independent_income.search(str(row.get("action") or ""))
+        for row in raw
+    ):
+        return None
     action = (
         "Server trades collected resources for money at a server-priced market: "
         "it deducts owned resource inventory and credits earned currency "
