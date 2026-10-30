@@ -2119,7 +2119,24 @@ class RobloxDynamicArchitect:
                                 ):
                                     if found:
                                         field_gaps.setdefault(field, []).extend(found)
-                            if not source_only_gaps and field_gaps:
+                            missing_action_classes = {
+                                str(item).split(":", 1)[0]
+                                for item in semantic_replan
+                                if isinstance(item, str)
+                            }
+                            # A missing independent action (resource harvest,
+                            # income, transaction, etc.) cannot be repaired by
+                            # appending a state sentence to an unrelated
+                            # builder. Reserve the local field repair for
+                            # an already-present action missing only an
+                            # effect/commit/result. The distinction is based
+                            # on generic diagnostic *kinds*, not genre names.
+                            distinct_action_missing = any(
+                                kind.endswith(("_ACTION_MISSING", "_EARNING_MISSING"))
+                                for kind in missing_action_classes
+                            )
+                            if (not source_only_gaps and field_gaps
+                                    and not distinct_action_missing):
                                 semantic_repair = (draft, field_gaps)
                                 semantic_replan = None
                     if "SOURCE_WORLD_TRANSITION:" in previous_error:
