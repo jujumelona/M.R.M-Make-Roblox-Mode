@@ -738,3 +738,57 @@ def test_comment_before_real_source_quote_does_not_hide_real_evidence(tmp_path):
     assert _real_source_quote(
         tmp_path, TRADE, "stock.resources -= 1"
     ) == 4
+
+
+def test_currency_reward_cannot_be_approved_by_alien_health_update(tmp_path):
+    """The actual failed proposal promised damage AND a currency reward."""
+    from roblox_mod_ai.requirement_completion_audit import (
+        _has_currency_state_write,
+    )
+    currency_effect = (
+        "The player gains the resulting damage amount as currency"
+    )
+    combat_only = (
+        'target:SetAttribute("RMMAlienHealth", remaining)\n'
+        "progress.planetOwned = true\n"
+        "player:SetAttribute('RMMPlanetOwned', true)\n"
+    )
+    assert not _has_currency_state_write(currency_effect, combat_only)
+    assert _has_currency_state_write(
+        currency_effect,
+        combat_only + "coins.Value = balance + payout\n",
+    )
+    assert _has_currency_state_write(
+        "Buyer currency decreases by the server price",
+        "inventory.resources -= 1\nwallet:Debit(serverPrice)\n",
+    )
+
+
+def test_planned_currency_reward_requires_a_real_server_writer(tmp_path):
+    proposal = fixture(tmp_path)
+    req = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
+    req["server_state_changes"] = [
+        "Alien entity health decreases by player damage",
+        "Player gains resulting damage as currency",
+    ]
+    # This model lies about the second, unrelated effect, but the host can
+    # establish that the reviewed source never writes a currency balance.
+    class FabricatedReward:
+        def complete_json(self, **kwargs):
+            prompt = kwargs["prompt"]
+            if prompt.startswith("Post-generation"):
+                return {"checks": [
+                    {"id": "effect-01", "verdict": "implemented",
+                     "file": TRADE, "quote": "stock.resources -= 1",
+                     "issue": "none", "repair": "none"},
+                    {"id": "effect-02", "verdict": "implemented",
+                     "file": SHIP, "quote": "ship.Sections += 1",
+                     "issue": "none", "repair": "none"},
+                ], "extra_missing": []}
+            raise AssertionError("Unexpected model call")
+    report = audit_whole_requirement_completion(
+        proposal, tmp_path, FabricatedReward()
+    )
+    assert report["status"] == "failed", report
+    assert not report["fully_covered"]
+    assert "currency state writer" in report["reason"]
