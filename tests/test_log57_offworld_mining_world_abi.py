@@ -60,7 +60,12 @@ def test_log57_unrelated_or_fabricated_world_names_stay_forbidden():
     forged = code.replace(arrival, "InventedOrbitPad")
     assert any("WORLD_OBJECT_NAME_UNDECLARED" in x
                for x in world_lookup_errors(forged, proposal, server))
-    unrelated = 'local p = workspace:FindFirstChild("Craft52E67D11", true)'
+    # Craft52E67D11 is ALREADY explicitly authorized by this fixture.
+    # A truly unrelated but declared world Part must remain forbidden.
+    proposal.game_design["dynamic_design"]["world_objects"].append({
+        "name": "UnrelatedScenePart", "class": "Part",
+    })
+    unrelated = 'local p = workspace:FindFirstChild("UnrelatedScenePart", true)'
     assert world_lookup_errors(unrelated, proposal, server)
 
 
