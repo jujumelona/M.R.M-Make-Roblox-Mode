@@ -186,3 +186,29 @@ def test_without_offline_tests_lune_is_not_applicable_regardless_of_game_type(tm
     assert result["status"] == "not_applicable"
     report = _report(tool_results={"offline_test_count": 0})
     assert report["checks"]["lune_offline"]["status"] == "not_applicable"
+
+
+def test_whole_original_gameplay_review_is_visible_in_final_receipt():
+    normal = _report(tool_results={
+        "requirement_completion_audit": {
+            "executed": True, "fully_covered": True,
+            "status": "reviewed_no_blockers", "findings": [],
+            "reason": "Reviewed all original actions against real sources",
+        }
+    })
+    assert normal["checks"]["whole_requirement_effects"]["status"] == "passed"
+    assert normal["gameplay_verified"] is False
+
+    missed = _report(tool_results={
+        "requirement_completion_audit": {
+            "executed": True, "fully_covered": True,
+            "status": "issues_found",
+            "findings": [{"issue": "some requested gameplay effect missing"}],
+        }
+    }, artifact_ready=False)
+    assert missed["checks"]["whole_requirement_effects"]["status"] == "failed"
+    assert missed["checks"]["artifact"]["status"] == "failed"
+
+    not_checked = _report()
+    assert not_checked["checks"]["whole_requirement_effects"]["status"] == "not_run"
+    assert not_checked["gameplay_verified"] is False
