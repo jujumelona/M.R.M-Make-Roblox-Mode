@@ -363,3 +363,35 @@ def test_saved_spaceflight_blueprint_must_retain_source_owned_motion_contract():
     design["host_world_motion"] = {"WrongServer": contract}
     wrong_owner = build_implementation_blueprint(plan)
     assert not wrong_owner["ready_for_codegen"]
+
+
+def test_source_explicit_stage_causality_is_preserved_for_any_game_genre():
+    # Only original user-provided sequence is authoritative. A model's
+    # independent facet list cannot discard an explicit prerequisite chain.
+    game = _proposal({"is_coin_collect": True, "is_shop": True,
+                      "is_combat": True, "is_leaderboard": True})
+    ledger = game.game_design["pre_design_research"]["ledger"]
+    ledger["requirements"][0]["statement"] = "곡물을 수확하고"
+    ledger["requirements"][1]["statement"] = "그렇게 해서 도구를 준비하고"
+    ledger["requirements"][2]["statement"] = "도구를 준비하면 다음 작업을 시작한다"
+    result = build_implementation_blueprint(game)
+    edges = {row["id"]: row for row in result["integration_contracts"]}
+    first = edges["source_transition.req-001.req-002"]
+    second = edges["source_transition.req-002.req-003"]
+    assert first["depends_on"] == ["req-001", "req-002"]
+    assert second["depends_on"] == ["req-002", "req-003"]
+    assert all(edge["owners"] and not edge["studio_verified"]
+               for edge in (first, second))
+    assert all(edge["evidence"] == "explicit_original_request_sequence"
+               for edge in (first, second))
+    assert any(s["id"] == "integration.source_transition.req-002.req-003"
+               and s["status"] == "not_run"
+               for s in result["studio_scenarios"])
+
+
+def test_unrelated_list_order_never_invents_cross_requirement_dependency():
+    game = _proposal({"is_coin_collect": True, "is_shop": True,
+                      "is_combat": True, "is_leaderboard": True})
+    result = build_implementation_blueprint(game)
+    assert not any(row["id"].startswith("source_transition.")
+                   for row in result["integration_contracts"])
