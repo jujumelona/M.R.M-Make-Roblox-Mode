@@ -460,17 +460,17 @@ def _recover_explicit_market_exchange(
     # do not silently turn an ambiguous trade into a host-invented market.
     # The missing exchange must be authored from its own source span.
     independent_income = re.compile(
-        r"\\b(?:reward|payout|salary|wage|bounty|quest|mission|"
-        r"mining|harvesting|combat|kill|job)\\b.{0,100}"
-        r"\\b(?:credit\\w*|pay\\w*|earn\\w*|award\\w*|balance)\\b|"
-        r"\\b(?:credit\\w*|pay\\w*|earn\\w*|award\\w*)\\b"
-        r".{0,100}\\b(?:reward|payout|salary|wage|bounty|quest|"
-        r"mission|mining|harvesting|combat|kill|job)\\b",
+        r"\b(?:reward|payout|salary|wage|bounty|quest|mission|"
+        r"mining|harvesting|combat|kill|job)\b.{0,100}"
+        r"\b(?:credit\w*|pay\w*|earn\w*|award\w*|balance)\b|"
+        r"\b(?:credit\w*|pay\w*|earn\w*|award\w*)\b"
+        r".{0,100}\b(?:reward|payout|salary|wage|bounty|quest|"
+        r"mission|mining|harvesting|combat|kill|job)\b",
         re.I,
     )
     currency_span = re.compile(
-        r"돈\\s*(?:모으|벌)|코인\\s*모으|"
-        r"\\b(?:earn|money|wage|salary|income)\\b",
+        r"돈\s*(?:모으|벌)|코인\s*모으|"
+        r"\b(?:earn|money|wage|salary|income)\b",
         re.I,
     )
     if any(
