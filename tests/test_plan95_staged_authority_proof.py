@@ -25,10 +25,10 @@ def _six_owned_actions():
     descriptions = [
         "The server validates owned inventory and credits the requested resource.",
         "The server deducts owned stock and credits the priced payment.",
-        "The server attaches owned component to a persisted owned actor.",
-        "The server damages an authoritative owned world target.",
-        "The server saves authoritative ownership of a world location.",
-        "The server removes mined world stock and credits owned inventory.",
+        "The server attaches an owned component to a server-owned actor.",
+        "The server damages a server-owned world target.",
+        "The server saves a server-owned ownership record of a world location.",
+        "The server removes server-owned mined world stock and credits owned inventory.",
     ]
     for i, desc in enumerate(descriptions):
         name = f"GameplayAction{i}Server"
