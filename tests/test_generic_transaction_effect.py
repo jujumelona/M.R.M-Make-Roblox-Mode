@@ -343,6 +343,14 @@ def test_generic_planner_never_silently_drops_predeclared_state_effects():
     assert try_plan_effect_data(
         DataOnlyRouter(), system, [{"statement": "One state change"}],
     ) is not None
+    system["action_contract"]["state_changes"] = []
+    assert try_plan_effect_data(
+        DataOnlyRouter(), system, [{"statement": "No authored state effects"}],
+    ) is None
+    system["action_contract"]["state_changes"] = [
+        {"scope": "player", "key": "RMMGameplayState.battery",
+         "operation": "decrement"},
+    ]
     system["action_contract"]["state_changes"][0]["key"] = (
         "RMMGameplayState.unrelated_field"
     )
