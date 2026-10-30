@@ -260,7 +260,7 @@ def audit_whole_requirement_completion(
                 unexpected.append("<malformed>")
                 continue
             effect_id = entry.get("id")
-            if effect_id in occurrences:
+            if isinstance(effect_id, str) and effect_id in occurrences:
                 occurrences[effect_id].append(entry)
             else:
                 unexpected.append(str(effect_id)[:80])
