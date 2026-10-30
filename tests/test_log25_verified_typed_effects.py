@@ -307,3 +307,28 @@ def test_log25_typed_ui_uses_bound_world_id_not_empty_guesswork():
     ui = next(m for m in p.modules if m.kind == ModuleKind.CLIENT_SCRIPT)
     code = render_typed_client(ui, p)
     assert code and 'box.Text = ""' in code
+
+
+def test_shared_server_enemy_cannot_be_permanently_exhausted():
+    p, server = _fixture("combat")
+    code = render_verified_effect(server, p)
+    assert code
+    assert 'target:SetAttribute("RMMAlienHealth", remaining)' in code
+    assert 'task.delay(25, function()' in code
+    assert 'defeated:GetAttribute("RMMAlienHealth") == 0' in code
+    assert 'defeated:SetAttribute("RMMAlienHealth", 100)' in code
+    assert 'workspace:FindFirstChild("AlienEntities1", true) == defeated' in code
+    assert code.index('target:SetAttribute("RMMAlienHealth", remaining)') < code.index(
+        'task.delay(25, function()')
+    parser_errors = [
+        item for item in LuauStaticAnalyzer().analyze_source(code, server.file_path)
+        if item.severity == "ERROR"
+    ]
+    assert parser_errors == [], [(x.rule, x.message) for x in parser_errors]
+
+
+def test_mineral_harvest_does_not_gain_an_unrelated_enemy_respawn():
+    p, server = _fixture("harvest")
+    code = render_verified_effect(server, p)
+    assert code
+    assert 'task.delay(25, function()' not in code
