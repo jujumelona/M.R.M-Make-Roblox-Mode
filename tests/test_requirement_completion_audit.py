@@ -169,3 +169,98 @@ def test_no_usable_expected_effect_does_not_default_to_pass(tmp_path):
         proposal, tmp_path, Router(response()))
     assert report["status"] == "failed"
     assert not report["executed"]
+
+
+def test_missing_obligation_is_repaired_in_place_then_all_effects_reaudited(
+        tmp_path, monkeypatch):
+    """End-to-end: completed audit -> targeted hunk -> re-audit -> accept."""
+    from hashlib import sha256
+    import roblox_mod_ai.source_repair_cycle as cycle
+
+    proposal = fixture(tmp_path)
+    for index, module in enumerate(proposal.modules):
+        module.module_id = "dyn_" + str(index)
+        module.kind = "server_module"
+    monkeypatch.setattr(cycle, "host_source_must_regenerate", lambda *a: True)
+
+    class Model:
+        def complete_json(self, **kwargs):
+            prompt = kwargs["prompt"]
+            if prompt.startswith("Patch exactly ONE"):
+                return {"edits": [{
+                    "before": "    stock.resources -= 1",
+                    "after": "    stock.resources -= 1\n    stock.money += 1",
+                }]}
+            assert "Post-generation" in prompt
+            complete = "stock.money += 1" in (tmp_path / TRADE).read_text()
+            result = response(first="implemented" if complete else "missing")
+            if complete:
+                result["checks"][0]["quote"] = "stock.money += 1"
+            return result
+
+    router = Model()
+    initial = audit_whole_requirement_completion(proposal, tmp_path, router)
+    assert initial["status"] == "issues_found"
+    initial["source_sha256"] = {
+        module.file_path: sha256(
+            (tmp_path / module.file_path).read_bytes()
+        ).hexdigest()
+        for module in proposal.modules
+    }
+    outcome = cycle.run_source_repair_cycle(
+        proposal, tmp_path, router, initial,
+        verify=lambda: {
+            "passed": "stock.money += 1" in (tmp_path / TRADE).read_text()
+        },
+        review_again=lambda: audit_whole_requirement_completion(
+            proposal, tmp_path, router,
+        ),
+        allow_host_gameplay_repairs=True,
+        max_rounds=2,
+    )
+    assert outcome["passed"] is True, outcome
+    assert outcome["changed_files"] == [TRADE]
+    assert outcome["final_review"]["status"] == "reviewed_no_blockers"
+    assert "stock.money += 1" in (tmp_path / TRADE).read_text()
+    assert "ship.Sections += 1" in (tmp_path / SHIP).read_text()
+
+
+def test_rejected_obligation_repair_restores_previous_gameplay_source(
+        tmp_path, monkeypatch):
+    """An unproven correction must never silently replace an existing module."""
+    from hashlib import sha256
+    import roblox_mod_ai.source_repair_cycle as cycle
+
+    proposal = fixture(tmp_path)
+    for index, module in enumerate(proposal.modules):
+        module.module_id = "dyn_" + str(index)
+        module.kind = "server_module"
+    monkeypatch.setattr(cycle, "host_source_must_regenerate", lambda *a: True)
+
+    class BadModel:
+        def complete_json(self, **kwargs):
+            if kwargs["prompt"].startswith("Patch exactly ONE"):
+                return {"edits": [{
+                    "before": "    stock.resources -= 1",
+                    "after": "    stock.resources -= 2",
+                }]}
+            return response()
+
+    router = BadModel()
+    original = (tmp_path / TRADE).read_text()
+    initial = audit_whole_requirement_completion(proposal, tmp_path, router)
+    initial["source_sha256"] = {
+        module.file_path: sha256((tmp_path / module.file_path).read_bytes()).hexdigest()
+        for module in proposal.modules
+    }
+    outcome = cycle.run_source_repair_cycle(
+        proposal, tmp_path, router, initial,
+        verify=lambda: {"passed": False, "reason": "Unrelated behavior regressed"},
+        review_again=lambda: audit_whole_requirement_completion(
+            proposal, tmp_path, router,
+        ),
+        allow_host_gameplay_repairs=True,
+        max_rounds=1,
+    )
+    assert not outcome["passed"]
+    assert (tmp_path / TRADE).read_text() == original
