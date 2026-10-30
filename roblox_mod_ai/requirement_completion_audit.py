@@ -602,7 +602,8 @@ def _fallback_effect_witness_review(
     return None, diagnostics
 
 def audit_whole_requirement_completion(
-    proposal: Any, root: Path, router: Any,
+    proposal: Any, root: Path, router: Any, *,
+    host_witness_only: bool = False,
 ) -> dict[str, Any]:
     """Check independent gameplay effects AFTER all executable files exist.
 
@@ -730,13 +731,14 @@ def audit_whole_requirement_completion(
                     "required": ["checks", "extra_missing"],
                     "additionalProperties": False,
                 },
-            ) if len(obligations) <= 3 else {}
-            if len(obligations) > 3:
+            ) if len(obligations) <= 3 and not host_witness_only else {}
+            if host_witness_only or len(obligations) > 3:
                 # Prevent an overlong multi-effect output on local small models.
                 # Host-owned IDs are bound to individual result objects below.
                 report.setdefault("recovery", []).append({
                     "requirement_id": req_id, "stage": "batch_skipped",
-                    "reason": "More than three independent effects",
+                    "reason": ("Host-owned witness protocol" if host_witness_only
+                               else "More than three independent effects"),
                     "effect_count": len(obligations),
                 })
         except ValueError as exc:
@@ -816,8 +818,8 @@ def audit_whole_requirement_completion(
             effect_id = effect["id"]
             if effect_id not in recover_ids:
                 continue
-            if len(obligations) > 3:
-                # For long requirements never ask a small model to invent
+            if host_witness_only or len(obligations) > 3:
+                # Never ask the small model to invent
                 # file IDs, source line numbers, quotes or many JSON fields.
                 # The host owns all candidate evidence; the only model
                 # output is an integer referring to a real executable line.
