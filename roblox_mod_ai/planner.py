@@ -413,12 +413,17 @@ class RobloxGameDesignPlanner:
                         existing_modules=existing,
                         requested_prompt=prompt,
                         research=research,
-                        # Never defer an unproven state producer to a BODY
-                        # generator. A transport-only Remote cannot prove
-                        # gameplay ownership, catalog, world actor or effect.
-                        # This requires a SOURCE-OWNED architecture replan
-                        # before spending tokens on unrelated Lua modules.
-                        allow_codegen_deferral=False,
+                        # The 95th production run generated every source-
+                        # validated facet but then required executable state
+                        # producers BEFORE any Luau body existed, replanning
+                        # unchanged transport envelopes twice and discarding
+                        # the entire accepted design. Bound, typed model-owned
+                        # actions must instead carry UNVERIFIED authority
+                        # obligations into mandatory per-module source gates.
+                        # Invalid ownership, routes, world bindings and legacy
+                        # unconstrained bodies still fail preflight. A Remote
+                        # alone never certifies the action as implemented.
+                        allow_codegen_deferral=True,
                         redesign=lambda: RobloxDynamicArchitect(
                             self.router, checkpoint_dir=self.output_root
                         ).design(prompt, research, existing),
