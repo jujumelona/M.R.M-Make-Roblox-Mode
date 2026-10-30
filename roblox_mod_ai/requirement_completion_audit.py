@@ -22,30 +22,69 @@ MAX_OBLIGATIONS = 16
 MAX_REQUIREMENTS = 24
 
 
+_STATE_VERB = re.compile(
+    r"\b(?:increase|decrease|credit|debit|grant|deduct|award|subtract|"
+    r"add|remove|persist|attach|change|update|mutate|set|produce|consume|"
+    r"transfer|spawn|destroy|acquire|gain|earn|build|launch|travel|"
+    r"arrive|extract|mark|place|reduce)(?:s|d|ed)?\b|"
+    r"증가|감소|지급|저장|적립|차감|장착|연결|이동|획득|소모|"
+    r"변경|발사|적용|생성|파괴|거래",
+    re.I,
+)
+
+
+def _independent_effect_clauses(statement: str) -> list[str]:
+    """Unbundle promised changes; a debit cannot certify an unrelated credit.
+
+    The input is ordinary natural-language state-change prose, not a fixed
+    game-feature vocabulary. A conjunction splits only when BOTH sides
+    assert real effects. Noun groups ('damage, rate, and capacity are
+    updated') stay together because the left half has no state verb.
+    """
+    sentences = re.split(r";\s*|(?<=\.)\s+(?=[A-Z가-힣])", statement)
+    separated: list[str] = []
+    for sentence in sentences:
+        sentence = sentence.strip().rstrip(".;")
+        if len(sentence) < 12:
+            continue
+        pieces = re.split(r"(?i),?\s+\band\b\s+|,\s*그리고\s+|\s+그리고\s+", sentence)
+        if len(pieces) > 1 and all(
+            len(piece.strip()) >= 12 and _STATE_VERB.search(piece)
+            for piece in pieces
+        ):
+            separated.extend(piece.strip() for piece in pieces)
+        else:
+            separated.append(sentence)
+    return separated
+
+
 def _obligations(requirement: dict[str, Any]) -> list[dict[str, str]]:
+    # Deployed proposals store effects at the TOP LEVEL of each required
+    # function, while some planners also include a nested implementation
+    # plan. Prefer the concrete persisted state-change contract over a
+    # broader one-line expected-outcome summary.
+    direct = requirement.get("server_state_changes") or []
     steps = requirement.get("ai_implementation_steps") or {}
-    changes = (steps.get("server_state_changes") or []) if isinstance(steps, dict) else []
+    nested = (steps.get("server_state_changes") or []) if isinstance(steps, dict) else []
+    changes = direct if isinstance(direct, list) and direct else nested
     if not isinstance(changes, list):
         changes = []
     statements = [row.strip() for row in changes
                   if isinstance(row, str) and len(row.strip()) >= 12]
     if not statements:
         expected = str(requirement.get("expected_outcome") or "")
-        statements = [part.strip() for part in re.split(
-            r"(?<=[.;])\s+(?=[A-Z가-힣])", expected,
-        ) if len(part.strip()) >= 12]
+        statements = [expected] if len(expected.strip()) >= 12 else []
     if not statements:
         return []
     result = []
     seen = set()
     for sentence in statements:
-        # Distinct effects such as a debit AND a persistent upgrade must not
-        # disappear behind one positive code quote for the whole requirement.
-        key = re.sub(r"\s+", " ", sentence).casefold()
-        if key not in seen:
-            seen.add(key)
-            result.append({"id": f"effect-{len(result)+1:02d}",
-                           "behavior": sentence[:900]})
+        for part in _independent_effect_clauses(sentence):
+            key = re.sub(r"\s+", " ", part).casefold()
+            if key not in seen:
+                seen.add(key)
+                result.append({"id": f"effect-{len(result)+1:02d}",
+                               "behavior": part[:900]})
     return result
 
 
