@@ -523,9 +523,8 @@ def _fallback_effect_witness_review(
 ) -> tuple[dict[str, str] | None, dict[str, Any]]:
     """Small model chooses ONE host-owned witness ID; never fabricates paths.
 
-    Choice zero means missing. Invalid responses are UNVERIFIED, not a
-    successful source audit. This path is used only when the older verbose
-    evidence contract has already failed.
+    Choice zero or an invalid response remains UNVERIFIED, never proof of
+    missing implementation. No speculative repairs use this fallback.
     """
     witnesses = _host_effect_witnesses(effect["behavior"], sources, modules)
     diagnostics: dict[str, Any] = {
@@ -553,53 +552,81 @@ def _fallback_effect_witness_review(
             ],
         }, ensure_ascii=False)
     )
-    for attempt in range(2):
+    def choose(raw: Any) -> int | None:
+        if isinstance(raw, dict) and set(raw) == {"choice"}:
+            raw = raw["choice"]
+        # A plain integer is a valid fallback only when it is the ENTIRE
+        # reply. Never guess a number from prose containing other IDs.
+        if isinstance(raw, str):
+            value = raw.strip()
+            if not re.fullmatch(r"\d{1,3}", value):
+                return None
+            raw = int(value)
+        return raw if type(raw) is int and 0 <= raw <= len(witnesses) else None
+
+    chosen: int | None = None
+    try:
+        reply = router.complete_json(
+            prompt=prompt, role="analyzer", temperature=0, max_tokens=80,
+            json_schema={
+                "type": "object",
+                "properties": {"choice": {"type": "integer",
+                                           "minimum": 0,
+                                           "maximum": len(witnesses)}},
+                "required": ["choice"], "additionalProperties": False,
+            },
+        )
+        chosen = choose(reply)
+        if chosen is None:
+            diagnostics["reason"] = "invalid_structured_choice"
+    except Exception as exc:
+        diagnostics["reason"] = type(exc).__name__ + ": " + str(exc)[:170]
+    if chosen is None and callable(getattr(router, "complete", None)):
+        # Strict JSON frequently fails on small local models. One bounded
+        # raw integer completion is independent of JSON-schema handling.
         try:
-            raw = router.complete_json(
-                prompt=prompt, role="analyzer", temperature=0,
-                max_tokens=80,
-                json_schema={
-                    "type": "object",
-                    "properties": {"choice": {"type": "integer",
-                                               "minimum": 0,
-                                               "maximum": len(witnesses)}},
-                    "required": ["choice"], "additionalProperties": False,
-                },
+            raw = router.complete(
+                prompt=(
+                    "Answer with exactly ONE ASCII integer from 0 to "
+                    + str(len(witnesses)) + ", no prose or punctuation. "
+                    "Select the supporting host-owned candidate ID from "
+                    "this evidence list. Answer 0 if none is conclusive.\n"
+                    + json.dumps({
+                        "effect": effect["behavior"],
+                        "candidates": [
+                            {"id": row["id"], "statement": row["quote"],
+                             "owner": row["file"]} for row in witnesses
+                        ],
+                    }, ensure_ascii=False)
+                ),
+                role="analyzer", temperature=0, max_tokens=12,
             )
-            raw_choice = raw.get("choice") if isinstance(raw, dict) else None
-            if isinstance(raw_choice, str) and raw_choice.isdecimal():
-                raw_choice = int(raw_choice)
-            if type(raw_choice) is not int or not 0 <= raw_choice <= len(witnesses):
-                diagnostics["reason"] = "invalid_choice"
-                continue
-            if raw_choice == 0:
-                diagnostics["status"] = "missing"
-                # A missing effect has no positive proof. Anchor a possible
-                # repair at an actual executable owner statement, without
-                # pretending that this proves absence.
-                row = witnesses[0]
-                return {
-                    "verdict": "missing",
-                    "file": row["file"],
-                    "quote": row["quote"],
-                    "issue": "Requested state change is not independently evidenced: "
-                             + effect["behavior"][:230],
-                    "repair": "Implement and verify the specified authoritative "
-                              "state change without modifying unrelated gameplay",
-                }, diagnostics
-            selected = witnesses[raw_choice - 1]
-            diagnostics["status"] = "source_witness_selected"
-            diagnostics["candidate_id"] = raw_choice
-            return {
-                "verdict": "implemented",
-                "file": selected["file"],
-                "quote": selected["quote"],
-                "issue": "none",
-                "repair": "none",
-            }, diagnostics
+            chosen = choose(raw)
+            diagnostics["recovered_from"] = "plain_integer"
+            if chosen is None:
+                diagnostics["reason"] = "invalid_plain_choice"
         except Exception as exc:
-            diagnostics["reason"] = type(exc).__name__ + ": " + str(exc)[:170]
-    return None, diagnostics
+            diagnostics["reason"] = (
+                "plain_choice_error:" + type(exc).__name__ + ":"
+                + str(exc)[:150]
+            )
+    if chosen is None:
+        return None, diagnostics
+    if chosen == 0:
+        # Absence from a ranked candidate list does NOT establish that the
+        # gameplay effect is absent from the complete program. It also must
+        # never trigger a speculative destructive repair.
+        diagnostics["reason"] = "no_conclusive_source_witness"
+        return None, diagnostics
+    selected = witnesses[chosen - 1]
+    diagnostics["status"] = "source_witness_selected"
+    diagnostics["candidate_id"] = chosen
+    return {
+        "verdict": "implemented",
+        "file": selected["file"],
+        "quote": selected["quote"],
+        "issue": "none", "repair": "none",
+    }, diagnostics
 
 def audit_whole_requirement_completion(
     proposal: Any, root: Path, router: Any, *,
