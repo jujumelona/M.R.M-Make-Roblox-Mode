@@ -1,0 +1,171 @@
+"""A complete build cannot pass from one cherry-picked action quote.
+
+The post-generation pass checks EVERY separately promised effect. Every
+evidence quote is matched against disk source bytes, and actual missing
+behavior is forwarded to the transactional repair loop for its owner.
+"""
+from pathlib import Path
+from types import SimpleNamespace
+
+from roblox_mod_ai.requirement_completion_audit import (
+    audit_whole_requirement_completion, _obligations,
+)
+
+SHIP = "src/server/ShipServer.luau"
+TRADE = "src/server/MarketServer.luau"
+SOURCE_SHIP = (
+    "--!strict\n"
+    "local function build()\n"
+    "    ship.Sections += 1\n"
+    "    return ship.Sections\n"
+    "end\n"
+)
+SOURCE_TRADE = (
+    "--!strict\n"
+    "local function sale()\n"
+    "    stock.resources -= 1\n"
+    "    return stock.resources\n"
+    "end\n"
+)
+
+
+def fixture(tmp_path):
+    for path, source in ((SHIP, SOURCE_SHIP), (TRADE, SOURCE_TRADE)):
+        target = tmp_path / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(source, encoding="utf-8")
+    effects = [
+        "Successful trade reduces owned resources and increases earned currency",
+        "Purchasing a ship section attaches the new section to the owned ship",
+    ]
+    required = {
+        "id": "req-generic",
+        "original_request": "Trade resources for money and build ship sections",
+        "expected_outcome": ". ".join(effects),
+        "owner_files": [SHIP, TRADE],
+        "ai_implementation_steps": {"server_state_changes": effects},
+    }
+    proposal = SimpleNamespace(
+        modules=[
+            SimpleNamespace(name="ShipServer", file_path=SHIP),
+            SimpleNamespace(name="MarketServer", file_path=TRADE),
+        ],
+        game_design={
+            "detailed_implementation_plan": {"required_functions": [required]}
+        },
+    )
+    return proposal
+
+
+class Router:
+    def __init__(self, response):
+        self.response = response
+        self.prompts = []
+
+    def complete_json(self, **kwargs):
+        self.prompts.append(kwargs)
+        return self.response
+
+
+def response(*, first="missing"):
+    return {
+        "checks": [
+            {"id": "effect-01", "verdict": first, "file": TRADE,
+             "quote": "stock.resources -= 1",
+             "issue": "Currency balance is never increased in the authoritative wallet",
+             "repair": "Credit the server-owned currency after validated inventory debit"},
+            {"id": "effect-02", "verdict": "implemented", "file": SHIP,
+             "quote": "ship.Sections += 1",
+             "issue": "none", "repair": "none"},
+        ],
+        "extra_missing": [],
+    }
+
+
+def test_one_real_effect_cannot_approve_other_missing_effect(tmp_path):
+    proposal = fixture(tmp_path)
+    router = Router(response())
+    report = audit_whole_requirement_completion(proposal, tmp_path, router)
+    assert report["fully_covered"] and report["status"] == "issues_found"
+    assert len(report["checks"]) == 2
+    assert len(report["findings"]) == 1
+    finding = report["findings"][0]
+    assert finding["file"] == TRADE
+    assert finding["requirement_id"] == "req-generic"
+    assert finding["evidence"] == "requirement_effect_review_source_quote"
+    assert "currency" in finding["issue"].lower()
+    assert "original_user_request" in router.prompts[0]["prompt"]
+    assert "stock.resources -= 1" in router.prompts[0]["prompt"]
+    assert "ship.Sections += 1" in router.prompts[0]["prompt"]
+
+
+def test_missing_effect_checks_cannot_silently_disappear(tmp_path):
+    proposal = fixture(tmp_path)
+    router = Router({"checks": response()["checks"][:1], "extra_missing": []})
+    report = audit_whole_requirement_completion(proposal, tmp_path, router)
+    assert report["status"] == "failed"
+    assert not report["fully_covered"]
+    assert "incomplete" in report["reason"]
+
+
+def test_fabricated_quote_cannot_count_as_implemented(tmp_path):
+    proposal = fixture(tmp_path)
+    result = response(first="implemented")
+    result["checks"][0]["quote"] = "coins.Value += 999"
+    report = audit_whole_requirement_completion(
+        proposal, tmp_path, Router(result))
+    assert report["status"] == "failed"
+    assert "ungrounded" in report["reason"]
+
+
+def test_comment_only_quote_cannot_certify_effect(tmp_path):
+    proposal = fixture(tmp_path)
+    source = (tmp_path / TRADE).read_text()
+    (tmp_path / TRADE).write_text(
+        source + "\n-- This action adds earned currency to wallet\n",
+        encoding="utf-8")
+    result = response(first="implemented")
+    result["checks"][0]["quote"] = "This action adds earned currency to wallet"
+    report = audit_whole_requirement_completion(
+        proposal, tmp_path, Router(result))
+    assert report["status"] == "failed"
+    assert "ungrounded" in report["reason"]
+
+
+def test_extra_original_action_not_in_plan_still_blocks_build(tmp_path):
+    proposal = fixture(tmp_path)
+    result = response(first="implemented")
+    result["extra_missing"] = [{
+        "behavior": "Player must visibly receive money after a trade",
+        "file": TRADE, "quote": "return stock.resources",
+        "issue": "Trade never increases the displayed player's currency",
+        "repair": "Credit real wallet and replicate confirmed balance",
+    }]
+    report = audit_whole_requirement_completion(
+        proposal, tmp_path, Router(result))
+    assert report["status"] == "issues_found"
+    assert len(report["findings"]) == 1
+    assert report["findings"][0]["behavior"].startswith("Player")
+
+
+def test_all_effects_with_real_source_evidence_can_pass_source_review(tmp_path):
+    proposal = fixture(tmp_path)
+    result = response(first="implemented")
+    report = audit_whole_requirement_completion(
+        proposal, tmp_path, Router(result))
+    assert report["status"] == "reviewed_no_blockers"
+    assert report["fully_covered"]
+    assert report["findings"] == []
+    assert "Studio" in report["reason"]
+
+
+def test_no_usable_expected_effect_does_not_default_to_pass(tmp_path):
+    proposal = fixture(tmp_path)
+    requirement = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
+    requirement["ai_implementation_steps"] = {"server_state_changes": []}
+    requirement["expected_outcome"] = ""
+    assert _obligations(requirement) == []
+    report = audit_whole_requirement_completion(
+        proposal, tmp_path, Router(response()))
+    assert report["status"] == "failed"
+    assert not report["executed"]
