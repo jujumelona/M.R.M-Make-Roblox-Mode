@@ -24,7 +24,7 @@ def _six_owned_actions():
     links = {}
     descriptions = [
         "The server validates owned inventory and credits the requested resource.",
-        "The server deducts owned stock and credits the priced payment.",
+        "The server deducts server-owned inventory stock and credits the price payment.",
         "The server attaches an owned component to a server-owned actor.",
         "The server damages a server-owned world target.",
         "The server saves a server-owned ownership record of a world location.",
