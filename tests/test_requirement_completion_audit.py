@@ -841,3 +841,134 @@ def test_comment_only_quote_cannot_prove_mutation_with_long_comment(tmp_path):
     assert _real_source_quote(tmp_path, TRADE, "stock.money += 9") == 6
 
 
+
+
+
+def test_seven_effects_malformed_ai_evidence_uses_host_owned_witness_ids(tmp_path):
+    """No game/genre special case: every server effect is a real source write."""
+    import json
+    proposal = fixture(tmp_path)
+    req = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
+    fields = tuple("abcdefgh")
+    req["server_state_changes"] = [
+        "The server increments state." + field + " by one" for field in fields[:7]
+    ]
+    path = tmp_path / SHIP
+    path.write_text(
+        "--!strict\nlocal function perform()\n"
+        + "".join("    state." + x + " += 1\n" for x in fields)
+        + "end\n", encoding="utf-8",
+    )
+
+    class SmallJsonModel:
+        def __init__(self):
+            self.choices = []
+            self.invalid_count = 0
+        def complete_json(self, **kwargs):
+            prompt = kwargs["prompt"]
+            if prompt.startswith("Find user-requested"):
+                return {"missing_actions": []}
+            if prompt.startswith(("Audit exactly ONE", "Recheck ONE")):
+                self.invalid_count += 1
+                return {"verdict": "implemented"}  # old broken evidence format
+            if prompt.startswith("Check ONE promised"):
+                obj = json.loads(prompt[prompt.index('{"effect":'):])
+                field = obj["effect"].split("state.")[1].split()[0]
+                choices = [
+                    row for row in obj["candidates"]
+                    if "state." + field + " += 1" in row["statement"]
+                ]
+                assert len(choices) == 1
+                self.choices.append(choices[0]["id"])
+                return {"choice": choices[0]["id"]}
+            raise AssertionError("Unexpected model prompt: " + prompt[:80])
+
+    model = SmallJsonModel()
+    report = audit_whole_requirement_completion(proposal, tmp_path, model)
+    assert report["fully_covered"], report
+    assert report["status"] == "reviewed_no_blockers", report
+    assert len(report["checks"]) == 7
+    assert all(row["quote"].startswith("state.") for row in report["checks"])
+    assert len(model.choices) == 7
+    assert model.invalid_count == 14
+    assert sum(row.get("status") == "source_witness_selected"
+               for row in report.get("recovery", [])) == 7
+
+
+def test_seven_unparseable_effects_are_all_reported_not_silently_approved(tmp_path):
+    """Independent effects survive model errors with host-owned stable IDs."""
+    proposal = fixture(tmp_path)
+    req = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
+    req["server_state_changes"] = [
+        "The server changes state field " + str(i) for i in range(7)
+    ]
+
+    class NeverAnswers:
+        calls = 0
+        def complete_json(self, **kwargs):
+            self.calls += 1
+            if kwargs["prompt"].startswith("Find user-requested"):
+                return {"missing_actions": []}
+            return {"not_the_schema": True}
+
+    model = NeverAnswers()
+    report = audit_whole_requirement_completion(proposal, tmp_path, model)
+    assert report["status"] == "failed", report
+    assert not report["fully_covered"]
+    assert len(report["unverified_effects"]) == 7, report
+    assert {row["effect_id"] for row in report["unverified_effects"]} == {
+        "effect-%02d" % i for i in range(1, 8)
+    }
+    assert "cannot prove 7 independent effects" in report["reason"]
+    assert model.calls >= 21  # 2 old-schema calls + one witness per effect
+
+
+def test_host_witness_zero_is_missing_not_implemented(tmp_path):
+    import json
+    proposal = fixture(tmp_path)
+    req = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
+    req["server_state_changes"] = [
+        "The server decrements a distinct persistent player metric"
+    ]
+
+    class RejectsProof:
+        def complete_json(self, **kwargs):
+            p = kwargs["prompt"]
+            if p.startswith("Post-generation"):
+                return {"checks": [], "extra_missing": []}
+            if p.startswith(("Audit exactly ONE", "Recheck ONE")):
+                return {}
+            if p.startswith("Check ONE promised"):
+                obj = json.loads(p[p.index('{"effect":'):])
+                assert obj["candidates"]
+                return {"choice": 0}
+            if p.startswith("Find user-requested"):
+                return {"missing_actions": []}
+            raise AssertionError(p[:80])
+
+    report = audit_whole_requirement_completion(
+        proposal, tmp_path, RejectsProof(),
+    )
+    assert report["fully_covered"], report
+    assert report["status"] == "issues_found", report
+    assert len(report["findings"]) == 1
+    assert report["findings"][0]["severity"] == "blocking"
+    assert "not independently evidenced" in report["findings"][0]["issue"]
+
+
+def test_source_witnesses_never_include_comment_or_arithmetic_only_evidence():
+    from roblox_mod_ai.requirement_completion_audit import _host_effect_witnesses
+    source = (
+        "-- state.resource += 500\n"
+        "local x = math.max(0, 2)\n"
+        'print("state.resource += 999")\n'
+        "state.resource += 1\n"
+    )
+    path = "src/server/SomeOwner.luau"
+    found = _host_effect_witnesses(
+        "Increment resource state", {path: source}, [],
+    )
+    assert len(found) == 1
+    assert found[0]["file"] == path
+    assert found[0]["line"] == 4
+    assert found[0]["quote"] == "state.resource += 1"
