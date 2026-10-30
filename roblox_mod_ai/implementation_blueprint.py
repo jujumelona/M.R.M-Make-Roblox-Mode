@@ -126,10 +126,18 @@ def _source_sequence_prerequisites(rows: list[dict[str, Any]]) -> list[tuple[str
         # Only a repeated, sufficiently specific predicate is evidence for
         # a conditional successor. This is not a universal Korean parser.
         predicate = re.match(r"^([가-힣A-Za-z0-9 ]{5,42}?)면", new)
+        stem = predicate.group(1).strip() if predicate else ""
+        # Korean predicates conjugate (나갈 -> 나가면, 만들 -> 만들면).
+        # A one-syllable trim is only sufficient with a long shared prefix;
+        # it never creates a dependency from a generic keyword alone.
+        shared_root = stem[:-1].strip()
         grounded_if = (
-            predicate is not None
-            and len(predicate.group(1).replace(" ", "")) >= 4
-            and predicate.group(1).strip() in old
+            bool(stem)
+            and len(stem.replace(" ", "")) >= 4
+            and (stem in old or (
+                len(shared_root.replace(" ", "")) >= 4
+                and shared_root in old
+            ))
         )
         if explicit_then or grounded_if:
             links.append((before, after))
