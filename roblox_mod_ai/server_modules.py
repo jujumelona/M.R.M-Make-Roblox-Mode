@@ -21,9 +21,41 @@ _BOOTSTRAP_PATH = "src/server/RMMServerBootstrap.server.luau"
 
 
 def normalize_dynamic_server_modules(proposal: RobloxProposal) -> bool:
-    if not proposal.game_design.get("dynamic_design"):
+    design = proposal.game_design.get("dynamic_design")
+    if not design:
         return False
     changed = False
+    # A source-validated typed action that mutates player state needs a
+    # concrete server persistence provider. Imported standalone typed plans
+    # can omit this standard host dependency. Materialize it BEFORE signing
+    # the server bootstrap, but only if a real typed state effect requires
+    # player persistence. Never inject one into an unrelated dynamic plan.
+    typed = design.get("host_typed_actions") or {}
+    requires_player_state = any(
+        isinstance(row, dict)
+        and row.get("transport_only") is not True
+        and isinstance(row.get("contract"), dict)
+        and any(
+            isinstance(effect, dict) and effect.get("scope") == "player"
+            for effect in (row["contract"].get("state_changes") or [])
+        )
+        for row in typed.values()
+    )
+    if (requires_player_state
+            and proposal.game_design.get("storage_backend", "builtin") == "builtin"
+            and not any(m.name == "PlayerDataManager" for m in proposal.modules)):
+        if any(m.module_id == "mod_player_data" for m in proposal.modules):
+            raise ValueError("PLAYER_DATA_MODULE_ID_COLLISION")
+        proposal.modules.append(RobloxModuleSpec(
+            module_id="mod_player_data",
+            name="PlayerDataManager",
+            kind=ModuleKind.DATA_STORE,
+            file_path="src/server/PlayerDataManager.server.luau",
+            roblox_service=RobloxService.SERVER_SCRIPT_SERVICE,
+            description="Host-owned persistent player state (GetState API).",
+            depends_on=[],
+        ))
+        changed = True
     names = set()
     for module in proposal.modules:
         host_data = (module.module_id == "mod_player_data"
