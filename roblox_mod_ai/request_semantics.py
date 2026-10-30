@@ -59,6 +59,10 @@ _PEER_TRADE_CONTEXT = re.compile(
 
 
 _PEER_TRADE_OUTPUT = re.compile(
+    # The requested action can mention owned assets between 'trade' and
+    # 'with each other'; an adjacent-word match missed that transfer.
+    r"\bplayers?\s+(?:can\s+)?(?:trade|exchange|barter)\b.{0,180}"
+    r"\b(?:with\s+(?:each\s+other|another\s+player)|each\s+other|between\s+players)\b|"
     r"\bplayer[- ]to[- ]player\s+(?:trade|trading|exchange)\b|"
     r"\b(?:p2p|peer[- ]to[- ]peer)\s+(?:trade|trading|exchange)\b|"
     r"\b(?:two|both|other)\s+players?'?\s*(?:inventor(?:y|ies)|trade|offers?)\b|"
