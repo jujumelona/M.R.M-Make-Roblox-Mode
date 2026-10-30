@@ -50,6 +50,7 @@ from .host_verified_typed_effects import render_verified_effect
 from .host_space_actions import render_host_space_action
 from .host_contextual_harvest import render_contextual_harvest
 from .host_space_colonization import render_colony_alias
+from .host_verified_colony import render_colony
 from .host_player_data import render_callable_player_data
 from .gameplay_round import render_arena_round_service, render_arena_round_controller
 from .implementation_blueprint import audit_implementation_blueprint
@@ -117,6 +118,7 @@ class LuauCodeGenerator:
                     or render_atomic_server(module, proposal) is not None
                     or render_verified_effect(module, proposal) is not None
                     or render_colony_alias(module, proposal) is not None
+                    or render_colony(module, proposal) is not None
                     or render_host_space_action(module, proposal) is not None
                     or render_contextual_harvest(module, proposal) is not None
                     or render_host_gameplay(module, proposal) is not None
@@ -179,6 +181,9 @@ class LuauCodeGenerator:
         verified_effect = render_verified_effect(module, proposal)
         if verified_effect is not None:
             return verified_effect
+        verified_colony = render_colony(module, proposal)
+        if verified_colony is not None:
+            return verified_colony
         verified_colony_alias = render_colony_alias(module, proposal)
         if verified_colony_alias is not None:
             return verified_colony_alias
