@@ -365,9 +365,10 @@ def audit_whole_requirement_completion(
                 req_id + ": incomplete independent effect checks after recovery"
             )
             return report
-        if not isinstance(extras, list):
-            # A malformed batch must not cause the original user request to
-            # lose the separate omitted-from-plan check.
+        if not isinstance(extras, list) or recover_ids or unexpected:
+            # An incomplete batch cannot attest to original-request coverage
+            # merely by returning extra_missing: []. Audit omissions anew.
+            retained_extras = extras if isinstance(extras, list) else []
             try:
                 extra_result = router.complete_json(
                     prompt=(
@@ -403,8 +404,23 @@ def audit_whole_requirement_completion(
                         "additionalProperties": False,
                     },
                 )
-                extras = extra_result.get("extra_missing") if isinstance(
+                fresh_extras = extra_result.get("extra_missing") if isinstance(
                     extra_result, dict) else None
+                if isinstance(fresh_extras, list):
+                    extras = list(retained_extras)
+                    existing = {(e.get("file"), e.get("quote"), e.get("behavior"))
+                                for e in extras if isinstance(e, dict)}
+                    for entry in fresh_extras:
+                        if not isinstance(entry, dict):
+                            extras = None
+                            break
+                        key = (entry.get("file"), entry.get("quote"),
+                               entry.get("behavior"))
+                        if key not in existing:
+                            extras.append(entry)
+                            existing.add(key)
+                else:
+                    extras = None
             except Exception as exc:
                 report.setdefault("recovery", []).append({
                     "requirement_id": req_id, "stage": "omitted_effects",
