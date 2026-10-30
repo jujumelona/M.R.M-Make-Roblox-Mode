@@ -302,7 +302,8 @@ def author_verified_atomic_systems(
                     )
                 if (not isinstance(patched, str)
                         or not (24 if repair_field == "server_behavior"
-                                else 18) <= len(patched.strip()) <= cap):
+                                else 18) <= len(patched.strip()) <= cap
+                        or patched.strip() == previous_text.strip()):
                     # This is a rejected MODEL reply, not an error in the
                     # source contract. Previously we raised immediately here,
                     # aborting all sibling actions and the entire feature.
