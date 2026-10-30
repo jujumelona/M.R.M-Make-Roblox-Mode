@@ -24,9 +24,9 @@ def test_30_single_winner_generates_hud_no_duplicate_package_writer(tmp_path):
     files = project.materialize_project_tree(make_game(), root)
     target = root / "src/client" / HUD_FILE
     assert files["RMMHUDLayout"] == target
-    assert 'gui.Name="RMMUnifiedHUD"' in target.read_text()
-    assert "RMMActionDock" not in target.read_text()
-    receipt = json.loads((root / ".rmm_hud_source_receipt.json").read_text())
+    assert 'gui.Name="RMMUnifiedHUD"' in target.read_text(encoding="utf-8")
+    assert "RMMActionDock" not in target.read_text(encoding="utf-8")
+    receipt = json.loads((root / ".rmm_hud_source_receipt.json").read_text(encoding="utf-8"))
     assert receipt["source_sha256"] == hashlib.sha256(target.read_bytes()).hexdigest()
     # Calling the installer twice must not conflict, corrupt the source or
     # create another dock with a different name.
@@ -50,11 +50,11 @@ def test_30_exact_shipped_legacy_dock_is_migrated_but_user_source_is_not(tmp_pat
     target = client / HUD_FILE
     target.write_bytes(shipped.read_bytes())
     assert install_host_hud(tmp_path)
-    assert "RMMUnifiedHUD" in target.read_text()
-    assert "RMMActionDock" not in target.read_text()
+    assert "RMMUnifiedHUD" in target.read_text(encoding="utf-8")
+    assert "RMMActionDock" not in target.read_text(encoding="utf-8")
     # Now overwrite the sealed source to simulate an authored edit. It must
     # not be silently destroyed by the next generate.
-    target.write_text(target.read_text() + "\n-- hand edited")
+    target.write_text(target.read_text(encoding="utf-8") + "\n-- hand edited")
     with pytest.raises(ValueError, match="HUD source conflicts"):
         install_host_hud(tmp_path)
 
