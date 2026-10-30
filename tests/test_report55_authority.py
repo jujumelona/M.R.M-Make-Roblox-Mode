@@ -136,6 +136,8 @@ def test_55_colony_uses_real_arrival_and_persistent_player_settlement(monkeypatc
     src = LuauCodeGenerator().generate_module_code(server, p)
     cli = LuauCodeGenerator().generate_module_code(client, p)
     assert "spawnColony(player,ARRIVAL,stamp)" in src
+    assert 'if state.planetOwned ~= true then' in src
+    assert 'reason="planet_not_owned"' in src
     assert 'GetState(player,"RMMPlanetProgress")' in src
     assert 'RMMFlightState' in src
     assert "GetOwnedActor(player)" in src
@@ -177,3 +179,31 @@ def test_55_verified_paid_crew_and_weapon_changes_affect_real_combat():
     errors = [e for e in LuauStaticAnalyzer().analyze_source(
         source, combat.file_path) if e.severity == "ERROR"]
     assert errors == [], [(e.rule, e.message) for e in errors]
+
+
+def test_55_world_combat_victory_authorizes_colony_state(monkeypatch):
+    from test_log25_verified_typed_effects import _fixture
+    from roblox_mod_ai.host_verified_typed_effects import render_verified_effect
+
+    p, combat = _fixture("combat")
+    colony, server, client = colony_fixture(monkeypatch)
+    d = p.game_design["dynamic_design"]
+    for field in ("host_actions", "remotes", "module_remotes", "host_typed_actions"):
+        d[field].update(colony.game_design["dynamic_design"][field])
+    d["world_objects"].extend(
+        [obj for obj in colony.game_design["dynamic_design"]["world_objects"]
+         if obj["name"] != "OrbitLanding"]
+    )
+    # The owner is a connected, authenticated colony server and the combat
+    # target shares the exact source-owned arrival marker.
+    p.modules.extend((server, client))
+    monkeypatch.setattr(
+        "roblox_mod_ai.host_verified_colony.eligible_colony",
+        lambda peer, _proposal: ("ColonyAction", "CraftBuilderServer", "OrbitArrival")
+        if peer is server else None
+    )
+    result = render_verified_effect(combat, p)
+    assert result is not None
+    assert 'progress.planetOwned = true' in result
+    assert 'GetState(player, "RMMPlanetProgress")' in result
+    assert 'player:SetAttribute("RMMPlanetOwned", true)' in result
