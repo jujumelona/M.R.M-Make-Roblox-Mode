@@ -96,27 +96,62 @@ def _obligations(requirement: dict[str, Any]) -> list[dict[str, str]]:
     return result
 
 
+
+def _mask_luau_comments(source: str) -> str:
+    """Blank comments without changing physical line positions.
+
+    Handle inline comments and Lua's [=[ long comments, while leaving quoted
+    strings and long string literals intact. The masked text has the same
+    length/newline offsets as the source, so host line citations stay valid.
+    """
+    output = list(source)
+    index = 0
+    limit = len(source)
+    while index < limit:
+        ch = source[index]
+        if ch in ("'", '"'):
+            quote = ch
+            index += 1
+            while index < limit:
+                if source[index] == "\\":
+                    index += 2
+                elif source[index] == quote:
+                    index += 1
+                    break
+                else:
+                    index += 1
+            continue
+        if ch == "[":
+            opening = re.match(r"\[(=*)\[", source[index:])
+            if opening:
+                closing = "]" + opening.group(1) + "]"
+                end = source.find(closing, index + opening.end())
+                index = limit if end < 0 else end + len(closing)
+                continue
+        if source.startswith("--", index):
+            opening = re.match(r"--\[(=*)\[", source[index:])
+            if opening:
+                closing = "]" + opening.group(1) + "]"
+                end = source.find(closing, index + opening.end())
+                stop = limit if end < 0 else end + len(closing)
+            else:
+                end = source.find("\n", index)
+                stop = limit if end < 0 else end
+            for offset in range(index, stop):
+                if source[offset] != "\n":
+                    output[offset] = " "
+            index = stop
+            continue
+        index += 1
+    return "".join(output)
+
 def _real_source_quote(root: Path, path: str, quote: str) -> int:
     if not isinstance(quote, str) or not 6 <= len(quote) <= 320:
         return 0
     source = (root / path).read_text(encoding="utf-8")
-    if quote not in source:
-        return 0
-    # Do not reject a real later occurrence just because an earlier comment
-    # contained the same words. The host locates executable physical lines.
-    offset = 0
-    while True:
-        index = source.find(quote, offset)
-        if index < 0:
-            return 0
-        line = source.count("\n", 0, index) + 1
-        current = source.splitlines()[line - 1].lstrip()
-        if not current.startswith("--"):
-            return line
-        offset = index + 1
-
-
-
+    visible = _mask_luau_comments(source)
+    index = visible.find(quote)
+    return visible.count("\n", 0, index) + 1 if index >= 0 else 0
 
 
 _CURRENCY_STATE = re.compile(
@@ -150,11 +185,12 @@ def _has_currency_state_write(behavior: str, source: str) -> bool:
     if not (_CURRENCY_STATE.search(behavior) and
             _CURRENCY_EFFECT.search(behavior)):
         return True
-    executable = "\n".join(
-        line for line in source.splitlines()
-        if not line.lstrip().startswith("--")
+    executable = _mask_luau_comments(source)
+    return any(
+        bool(_CURRENCY_WRITE.search(line))
+        for line in executable.splitlines()
+        if not line.strip().startswith("local ")
     )
-    return bool(_CURRENCY_WRITE.search(executable))
 
 def _source_scopes_for_effect(
     behavior: str, sources: dict[str, str], modules: list[Any],
@@ -340,17 +376,12 @@ def _is_effectful_source_line(source: str, line_number: int) -> bool:
 
 
 def _real_source_quote_in_text(source: str, quote: str) -> int:
-    if not isinstance(quote, str) or quote not in source:
+    if not isinstance(quote, str) or not quote:
         return 0
-    offset = 0
-    while True:
-        i = source.find(quote, offset)
-        if i < 0:
-            return 0
-        n = source.count("\n", 0, i) + 1
-        if not source.splitlines()[n - 1].lstrip().startswith("--"):
-            return n
-        offset = i + 1
+    visible = _mask_luau_comments(source)
+    index = visible.find(quote)
+    return visible.count("\n", 0, index) + 1 if index >= 0 else 0
+
 
 def audit_whole_requirement_completion(
     proposal: Any, root: Path, router: Any,
