@@ -43,6 +43,12 @@ class CompleteChatReply:
             "dynamic_architecture_failed",
         }:
             return False
+        # An original intent may be saved for later implementation. A revision
+        # of an already approved plan must not silently promote NEW unsupported
+        # requirements as though all existing gameplay still covered them.
+        if (self.authored_plan.revision_count > 0
+                and blockers and not proposal.game_design.get("dynamic_design")):
+            return False
         if (not any(proposal.game_design.get("features", {}).values())
                 and not proposal.game_design.get("dynamic_design")
                 and os.environ.get("RMM_ENABLE_DYNAMIC_DESIGN", "auto").strip() == "0"):
@@ -203,7 +209,10 @@ class CompleteRobloxAISession:
         # Default interactive PLAN still only captures source intent; BUILD
         # compiles that draft later. Older full-JSON clients explicitly select
         # this compatibility protocol and expect module IDs already assigned.
-        eager_legacy = os.environ.get("RMM_LEGACY_ARCHITECTURE_PROTOCOL", "0") == "1"
+        eager_legacy = (
+            os.environ.get("RMM_LEGACY_ARCHITECTURE_PROTOCOL", "0") == "1"
+            or os.environ.get("RMM_ENABLE_DYNAMIC_DESIGN", "auto") == "1"
+        )
         if eager_legacy:
             plan = self.planner.plan(
                 prompt, project_mode=project_mode,
