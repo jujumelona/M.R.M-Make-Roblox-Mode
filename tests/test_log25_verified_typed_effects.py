@@ -395,3 +395,39 @@ def test_mining_and_purchase_do_not_inherit_weapon_click_attack():
         assert source is not None
         assert 'tool.Activated:Connect(function()' not in source
         assert 'connectedWeapons[tool]' not in source
+
+
+def test_host_compiler_generates_promised_combat_reward_end_to_end():
+    """Owner plan -> actual host-rendered Luau; small coder is never called."""
+    proposal, server = _fixture("combat")
+    requirement = {
+        "id": "req-combat",
+        "original_request": "Fight aliens to earn money",
+        "owner_files": [server.file_path],
+        "server_state_changes": [
+            "Alien health decreases by damage, and the attacking player "
+            "gains the actual damage amount as currency"
+        ],
+    }
+    proposal.game_design["detailed_implementation_plan"] = {
+        "required_functions": [requirement],
+    }
+    code = render_verified_effect(server, proposal)
+    assert code
+    assert 'local actualReward = hp - remaining' in code
+    assert 'coins.Value += actualReward' in code
+    assert code.index('reason = "wallet_unavailable"') < code.index(
+        'target:SetAttribute("RMMAlienHealth", remaining)'
+    ) < code.index('coins.Value += actualReward')
+    assert 'coins.Value += actualReward' not in render_verified_effect(
+        server, _fixture("combat")[0]
+    )
+    assert LuauCodeGenerator(NeverCallCoder()).generate_module_code(
+        server, proposal
+    ) == code
+    errors = [
+        item for item in LuauStaticAnalyzer().analyze_source(
+            code, server.file_path
+        ) if item.severity == "ERROR"
+    ]
+    assert errors == [], [(item.rule, item.message) for item in errors]
