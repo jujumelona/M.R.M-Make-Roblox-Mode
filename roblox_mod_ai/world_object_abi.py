@@ -83,6 +83,58 @@ def world_names(proposal: Any, module: Any = None) -> tuple[list[str], list[str]
                     and target in authorized
                     and destination in declared):
                 authorized.append(destination)
+    # A source-authorized, host-compiled mine may place its REAL resource
+    # Part near a separately materialized launch destination. This arrival
+    # is a read-only placement reference, never a second mineable target.
+    # The previous exception covered host_space_actions and typed effects,
+    # but not host_mining, which blocked a valid cross-module source action.
+    #
+    # Do not authorize the entire world, match a guessed name prefix, or
+    # grant this to arbitrary model code. Demand the exact miner's owned
+    # resource Part, its verified no-client-quantity ingress, and a unique
+    # builder -> launcher -> arrival identity chain.
+    if module is not None and getattr(module, "kind", None) == "server_module":
+        from .host_mining import (
+            _offworld_resource_destination, render_host_mining,
+        )
+        requested, arrival = _offworld_resource_destination(module, proposal)
+        if requested and isinstance(arrival, str) and arrival in declared:
+            materializations = [
+                row for row in (design.get("host_materialized_world") or [])
+                if isinstance(row, dict)
+                and row.get("service") == getattr(module, "name", None)
+                and row.get("transport_rebased") is True
+                and row.get("input") == "RemoteFunction_server_selected_nearest_Part"
+                and isinstance(row.get("resource_node"), str)
+                and row["resource_node"] in authorized
+                and not row.get("vehicle_context")
+            ]
+            arrivals = [
+                row for row in (design.get("host_arrival_materializations") or [])
+                if isinstance(row, dict) and row.get("arrival") == arrival
+            ]
+            identities = design.get("host_vehicle_identity_bindings") or []
+            if len(materializations) == 1 and len(arrivals) == 1:
+                link = arrivals[0]
+                matching = [
+                    row for row in identities
+                    if isinstance(row, dict)
+                    and row.get("server") == link.get("server")
+                    and row.get("builder") == link.get("builder")
+                    and row.get("actor_provider") == "GetOwnedActor"
+                ]
+                peers = {getattr(peer, "name", ""): peer
+                         for peer in getattr(proposal, "modules", ())}
+                if (len(matching) == 1
+                        and link.get("server") in peers
+                        and link.get("builder") in peers
+                        and sum(
+                            obj.get("name") == arrival and obj.get("class") == "Part"
+                            for obj in design.get("world_objects") or []
+                            if isinstance(obj, dict)
+                        ) == 1
+                        and render_host_mining(module, proposal) is not None):
+                    authorized.append(arrival)
     return sorted(declared), sorted(set(authorized))
 
 
