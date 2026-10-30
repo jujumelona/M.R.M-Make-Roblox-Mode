@@ -143,7 +143,15 @@ def _effect_consumer(code: str, namespace: str, target: str) -> bool:
                 for derived in lines[min(read_lines):i]:
                     computation = re.match(
                         r'(?:local\s+)?' + re.escape(updated)
-                        + r'\s*=\s*(.+)
+                        + r'\s*=\s*(.+)$', derived,
+                    )
+                    if (computation
+                            and _ident(computation.group(1), old_value)
+                            and any(_ident(computation.group(1), t)
+                                    for t in variables if t != updated)):
+                        return True
+        # Physical properties like speed / collision / force are effects.
+        property_write = re.search(
             r'\b\w+\.(?:WalkSpeed|JumpPower|AssemblyLinearVelocity|'
             r'VectorVelocity|MaxForce|MaxTorque|Health|'
             r'Damage|Thrust|Speed|Capacity)\s*=\s*(.+)', line,
