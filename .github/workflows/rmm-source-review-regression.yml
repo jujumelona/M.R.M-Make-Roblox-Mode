@@ -3,6 +3,8 @@ on:
   push:
     branches: [main]
     paths:
+      - 'roblox_mod_ai/requirement_completion_audit.py'
+      - 'tests/test_requirement_completion_audit.py'
       - 'roblox_mod_ai/source_review.py'
       - 'roblox_mod_ai/source_repair_cycle.py'
       - 'roblox_mod_ai/source_finding_adjudication.py'
@@ -30,6 +32,7 @@ jobs:
         run: python -m compileall -q roblox_mod_ai tests
       - name: Source review and repair regressions
         run: |
+          python -m pytest -q tests/test_requirement_completion_audit.py
           python -m pytest -q tests/test_plan40_source_review_recovery.py
           python -m pytest -q tests/test_plan41_ai_review_evidence.py
           python -m pytest -q tests/test_plan42_review_provenance.py
