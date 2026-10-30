@@ -105,7 +105,6 @@ class RobloxGameDesignPlanner:
             research["ledger"]["unimplemented_facets"] = sorted(set(
                 research["ledger"]["unimplemented_facets"] + ["unclassified_gameplay"]
             ))
-        import os
         storage_backend = "profilestore" if (
             "profilestore" in prompt.lower() or os.environ.get("RMM_STORAGE_BACKEND") == "profilestore"
         ) else "builtin"
