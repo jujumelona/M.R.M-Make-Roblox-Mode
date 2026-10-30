@@ -172,7 +172,7 @@ _CURRENCY_WRITE = re.compile(
     r"\.\s*(?:coins?|currency|currencies|money|wallet|balance|credits?|"
     r"cash|funds?|payout|gold)\b\s*(?:\+=|-=|=(?!=))|"
     r"\[[^\]\n]*\b(?:coins?|currency|money|wallet|balance|credits?)"
-    r"\b[^\]\n]*\]\s*(?:\+=|-=|=(?!=))|"
+    r"\b[^\]\n]*\](?:\s*\.\s*\w+)*\s*(?:\+=|-=|=(?!=))|"
     r"\b(?:Credit|Debit|AddMoney|AwardCoins|EarnCoins|SpendCoins|"
     r"AddCurrency|TransferFunds|SetBalance|UpdateBalance|GiveReward)"
     r"\s*\()",
@@ -216,7 +216,10 @@ def _mask_noncode_luau_strings(source: str) -> str:
             is_index_key = (
                 prev >= 0 and source[prev] == "["
                 and after < length and source[after] == "]"
-                and bool(re.match(r"(?:\+=|-=|=(?!=))", source[tail:]))
+                and bool(re.match(
+                    r"(?:\s*\.\s*\w+)*\s*(?:\+=|-=|=(?!=))",
+                    source[tail:],
+                ))
             )
             if not is_index_key:
                 for i in range(start, position):
