@@ -325,18 +325,19 @@ def source_intent_conflicts(
         r".{0,70}\b(?:currency|coins?|credits?)\b",
         harvest_text, re.I,
     )
+    # Match an ACTIVE server harvest, not a mere "resource node" noun.
+    # Accepted order A: action then physical resource. Accepted order B:
+    # source then action then actual extracted yield. Inflected verbs are
+    # recognized, but preconditions such as "not already harvested" alone
+    # are never proof of a successful harvest.
     real_gathering = re.search(
-        r"\b(?:mine|mines|mined|mining|harvest|harvests|harvested|harvesting|"
-        r"extract|extracts|extracted|extracting|gather|gathers|gathered|gathering|"
-        r"collect|collects|collected|collecting)\b"
-        r".{0,95}\b(?:node|deposit|ore|world|ground|mineral|resource)\b|"
-        r"\b(?:resource|ore|mineral)\b.{0,75}"
-        r"\b(?:node|deposit|spawn|mine|harvest|gather|collect|extract)\w*\b",
+        r"\b(?:mine|mines|mining|harvest|harvests|harvesting|"
+        r"extract|extracts|extracting|gather|gathers|gathering|"
+        r"collect|collects|collecting)\b"
+        r".{0,145}\b(?:nodes?|deposits?|ores?|world|ground|"
+        r"minerals?|resources?|yield)\b",
         harvest_text, re.I,
     )
-    # The source may be described BEFORE the mining operation. The old
-    # ordered regex rejected physical ResourceNode -> harvest -> inventory
-    # descriptions; this is independent of a game's particular noun.
     if not real_gathering:
         real_gathering = re.search(
             r"\b(?:nodes?|deposits?|mineable|harvestable|"
