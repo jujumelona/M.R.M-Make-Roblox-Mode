@@ -175,6 +175,20 @@ def has_vehicle_arrival_evidence(outcome: str) -> bool:
 def has_actual_occupant_ejection(text: str) -> bool:
     """Treat 'no passenger is ejected' as prevention, not actual ejection."""
     for clause in re.split(r"[,;.!?\n]+", str(text or "")):
+        # A conditional *rejected* attempt to remove passengers is not an
+        # actual ejection. Distinguish "the player exits" from "a request
+        # that would empty the crew list is rejected" without making a
+        # genre-specific exception or suppressing other independent clauses.
+        rejected_exit = bool(re.search(
+            r"\b(?:invalid|unauthorized|prohibited|unsafe)\b.{0,180}"
+            r"\b(?:request|input|action)\b.{0,120}"
+            r"\b(?:would|could|attempt(?:s|ed)?\s+to)\b.{0,120}"
+            r"\b(?:leave|exit|eject\w*|disembark\w*|empty)\b.{0,140}"
+            r"\b(?:reject\w*|block\w*|deny|denied|refus\w*)\b",
+            clause, re.I,
+        ))
+        if rejected_exit:
+            continue
         matches = list(_LEAVES.finditer(clause))
         for match in matches:
             # The negation must govern this match, not a different sentence.
