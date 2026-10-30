@@ -10,7 +10,6 @@ from roblox_mod_ai.spec import ModuleKind
 from roblox_mod_ai.host_verified_typed_effects import (
     eligible_verified_effect, render_verified_effect,
 )
-from roblox_mod_ai.generation_scope import generation_scope
 from roblox_mod_ai.world_object_abi import world_lookup_errors, world_names
 
 
@@ -105,10 +104,7 @@ def test_log52_full_logical_alias_compiles_with_no_small_model_server_body():
     code = render_verified_effect(combat, proposal)
     assert code is not None
     assert 'target:SetAttribute("RMMAlienHealth", remaining)' in code
-    assert 'marker:SetAttribute("RMMAlienHealth", 100)' not in code
-    assert 'marker:SetAttribute("RMMAlienHealth", 100)' not in code
-    assert 'marker:SetAttribute("RMMAlienHealth", 100)' not in code
-    assert 'marker:SetAttribute("RMMAlienHealth", 100)' not in code
+    assert 'marker:SetAttribute("RMMAlienHealth", 100)' in code
     assert 'if args.quantity ~= 1 then' in code
     assert 'not_in_space' in code
     assert actor in world_names(proposal, combat)[1]
