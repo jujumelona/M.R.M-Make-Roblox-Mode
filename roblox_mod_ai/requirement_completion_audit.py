@@ -534,6 +534,22 @@ def _fallback_effect_witness_review(
     if not witnesses:
         diagnostics["reason"] = "no_executable_owner_witness"
         return None, diagnostics
+    # Host-provided bounded context prevents a local model from treating
+    # an unrelated attribute assignment as an authoritative gameplay effect.
+    # The actual citation remains the exact host-owned physical source line.
+    candidate_view = []
+    for row in witnesses:
+        lines = _mask_luau_comments(sources[row["file"]]).splitlines()
+        at = row["line"] - 1
+        lo, hi = max(0, at - 2), min(len(lines), at + 2)
+        context = " | ".join(
+            str(i + 1) + ": " + lines[i].strip()[:180]
+            for i in range(lo, hi)
+        )[:680]
+        candidate_view.append({
+            "id": row["id"], "statement": row["quote"],
+            "owner": row["file"], "context": context,
+        })
     # Show the local source around each candidate, but the reply contains
     # only a number, never a file name, line number, quote, or repeated ID.
     prompt = (
@@ -545,11 +561,7 @@ def _fallback_effect_witness_review(
         "is NOT proof. Return 0 when uncertain. No code generation.\n"
         + json.dumps({
             "effect": effect["behavior"],
-            "candidates": [
-                {"id": row["id"], "statement": row["quote"],
-                 "owner": row["file"]}
-                for row in witnesses
-            ],
+            "candidates": candidate_view,
         }, ensure_ascii=False)
     )
     def choose(raw: Any) -> int | None:
@@ -593,10 +605,7 @@ def _fallback_effect_witness_review(
                     "this evidence list. Answer 0 if none is conclusive.\n"
                     + json.dumps({
                         "effect": effect["behavior"],
-                        "candidates": [
-                            {"id": row["id"], "statement": row["quote"],
-                             "owner": row["file"]} for row in witnesses
-                        ],
+                        "candidates": candidate_view,
                     }, ensure_ascii=False)
                 ),
                 role="analyzer", temperature=0, max_tokens=12,
