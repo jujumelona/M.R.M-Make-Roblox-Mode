@@ -102,8 +102,8 @@ def normalize_verified_server_body(body: str, proposal: RobloxProposal) -> str:
     body = "".join(
         line for line in body.splitlines(keepends=True)
         if not re.fullmatch(
-            r"\\s*local\\s+args\\s*=\\s*actionArgs\\s*;?\\s*",
-            line.rstrip("\\r\\n"),
+            r"\s*local\s+args\s*=\s*actionArgs\s*;?\s*",
+            line.rstrip("\r\n"),
         )
     )
     body = normalize_verified_peer_abi(body, proposal)
