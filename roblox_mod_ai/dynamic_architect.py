@@ -723,7 +723,16 @@ class RobloxDynamicArchitect:
                     "Source requirements have no implementation facets. "
                     "Recover original request decomposition before game planning; "
                     "do not invent a stock project to fill this gap.")
-            return self._design_by_facets(prompt, research, existing_modules)
+            # Authority preflight runs BEFORE the planner freezes its final
+            # proposal. The source-authenticated asset permissions must exist
+            # NOW, not only in planner.py after authority reparsing. Otherwise
+            # real host-compiled trade services appear as transport-only
+            # model actions and are repeatedly regenerated despite already
+            # having an independently verified server implementation.
+            from .request_semantics import source_action_authorizations
+            scoped = self._design_by_facets(prompt, research, existing_modules)
+            scoped["source_action_authorizations"] = source_action_authorizations(prompt)
+            return scoped
         last_error = ""
         raw: Any = None
         observations = research.setdefault("architecture_attempts", [])
@@ -766,6 +775,8 @@ class RobloxDynamicArchitect:
                     canonical, ledger, {m.name for m in existing_modules})
                 observations.append({"attempt": attempt + 1, "passed": True,
                                      "validator": "all architecture obligations assigned"})
+                from .request_semantics import source_action_authorizations
+                validated["source_action_authorizations"] = source_action_authorizations(prompt)
                 return validated
             except Exception as exc:
                 last_error = type(exc).__name__ + ": " + str(exc)[:420]
