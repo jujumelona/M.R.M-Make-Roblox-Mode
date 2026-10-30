@@ -179,18 +179,22 @@ def has_actual_occupant_ejection(text: str) -> bool:
         # actual ejection. Distinguish "the player exits" from "a request
         # that would empty the crew list is rejected" without making a
         # genre-specific exception or suppressing other independent clauses.
-        rejected_exit = bool(re.search(
+        rejected_exit = re.search(
             r"\b(?:invalid|unauthorized|prohibited|unsafe)\b.{0,180}"
             r"\b(?:request|input|action)\b.{0,120}"
             r"\b(?:would|could|attempt(?:s|ed)?\s+to)\b.{0,120}"
             r"\b(?:leave|exit|eject\w*|disembark\w*|empty)\b.{0,140}"
             r"\b(?:reject\w*|block\w*|deny|denied|refus\w*)\b",
             clause, re.I,
-        ))
-        if rejected_exit:
-            continue
+        )
         matches = list(_LEAVES.finditer(clause))
         for match in matches:
+            # Reject only the conditional's own exit, not another actual
+            # passenger exit in the same clause or a later independent event.
+            if (rejected_exit is not None
+                    and rejected_exit.start() <= match.start()
+                    and match.end() <= rejected_exit.end()):
+                continue
             # The negation must govern this match, not a different sentence.
             window = clause[max(0, match.start() - 90):match.end()]
             if not _NEGATED_OCCUPANT_EXIT.search(window):
