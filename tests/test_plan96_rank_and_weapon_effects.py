@@ -173,3 +173,11 @@ player:SetAttribute("DisplayRank", 8)
         pass
     modules = {producer: File(), consumer: File()}
     assert _downstream_effect_evidence(producer, source, modules, tmp_path) == []
+
+
+def test_no_nil_weapon_inventory_probe_or_payment_before_preflight():
+    assert "and inventory.items[TARGET]>=1" not in RANK_SERVER
+    assert "and (inventory.items[TARGET] or 0)>=1" in RANK_SERVER
+    assert RANK_SERVER.index("invalid_owned_weapon_instance") < RANK_SERVER.index(
+        "coins.Value-=COST")
+    assert "existing and not existing:IsA(\\"Tool\\")" in RANK_SERVER
