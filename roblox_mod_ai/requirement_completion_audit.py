@@ -904,7 +904,7 @@ def audit_whole_requirement_completion(
         if unverified_effects:
             report["unverified_effects"] = unverified_effects
             report["reason"] = (
-                req_id + ": cannot prove " + str(len(unverified_effects))
+                req_id + ": incomplete independent effect checks; ungrounded evidence; cannot prove " + str(len(unverified_effects))
                 + " independent effects; host witness and owner reviews exhausted"
             )
             # The build still fails closed, but never blocks at the first
