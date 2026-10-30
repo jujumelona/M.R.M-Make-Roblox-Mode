@@ -131,3 +131,19 @@ def test_validator_root_cause_is_wrong_owner_not_missing_global_money():
     assert "RESOURCE_GATHER_SOURCE_UNBOUND" in " ".join(weak)
     assert not strong
     assert "SOURCE_CURRENCY_EARNING_MISSING" in " ".join(overloaded)
+
+
+def test_semantic_error_count_reduction_cannot_steal_unrelated_effect():
+    from roblox_mod_ai.source_owned_microplanning import (
+        _resolves_actual_owned_action,
+    )
+    old = {
+        "RESOURCE_GATHER_SOURCE_UNBOUND: no world node specified",
+        "RESOURCE_GATHER_ACTION_MISSING: no resource extraction",
+    }
+    not_a_harvest = {
+        "RESOURCE_GATHER_ACTION_MISSING: no resource extraction",
+    }
+    real_harvest = set()
+    assert not _resolves_actual_owned_action(old, not_a_harvest)
+    assert _resolves_actual_owned_action(old, real_harvest)
