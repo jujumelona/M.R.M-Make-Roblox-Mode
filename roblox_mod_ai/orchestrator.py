@@ -19,7 +19,7 @@ from .quality_gates import acceptance_obligations, make_artifact_manifest
 from .request_traceability import build_request_traceability
 from .local_studio import install_local_studio_checks
 from .verification_selector import make_verification_report
-from .source_review import review_generated_sources
+from .source_review import review_generated_sources, _configured as source_reviewer_configured
 from .requirement_effect_review import review_requirement_effects
 from .requirement_completion_audit import audit_whole_requirement_completion
 from .compiled_effect_verification import verify_compiled_effect_sources
@@ -1009,6 +1009,13 @@ class RobloxProductionOrchestrator:
             # against each original requirement. It can run in Colab using
             # the already loaded local GGUF; Roblox Studio is NOT invoked.
             def review_with_requirements() -> dict:
+                # CI compile-only runs have no semantic model. Preserve their
+                # explicit NOT_RUN status: a failed model-dependent selection
+                # without any model is not evidence of a broken Luau build.
+                # Production with a configured GGUF still executes the full
+                # blocking semantic audit below; never fake its result.
+                if not source_reviewer_configured():
+                    return review_generated_sources(proposal, output_dir, self.router)
                 # Run independent source/behavior obligations BEFORE dozens
                 # of optional small-model whole-file critiques. A failed
                 # source contract cannot be repaired by repeatedly asking
