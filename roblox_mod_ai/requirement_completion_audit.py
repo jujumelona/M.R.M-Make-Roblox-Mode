@@ -1049,16 +1049,18 @@ def audit_whole_requirement_completion(
             report.setdefault("unverified_effects", []).extend(
                 unverified_effects
             )
-            # Continue to the next independent requirement, so one failed
-            # model answer cannot hide all later defects. The final result
-            # remains FAIL-CLOSED and cannot claim complete source coverage.
-            continue
-        if len(checks) != len(obligations):
+            # Preserve source-grounded findings from every OTHER checked
+            # effect; otherwise new defects remain hidden until the next
+            # run. Do not attempt a global omitted-effect completeness
+            # verdict while independent effects remain unverified.
+            extras = []
+        elif len(checks) != len(obligations):
             report["reason"] = (
                 req_id + ": incomplete independent effect checks after recovery"
             )
             return report
-        if not isinstance(extras, list) or recover_ids or unexpected:
+        if (not unverified_effects
+                and (not isinstance(extras, list) or recover_ids or unexpected)):
             # An incomplete batch cannot attest to original-request coverage
             # merely by returning extra_missing: []. Audit omissions anew.
             retained_extras = extras if isinstance(extras, list) else []
