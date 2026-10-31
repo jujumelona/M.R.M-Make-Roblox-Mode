@@ -99,3 +99,50 @@ Set `RMM_STUDIO_E2E_RECEIPT` to `studio_receipt.json` when running the productio
 verification. The converter rejects absent/failed checks and calculates hashes of both
 compiled files; it does not invent gameplay results. Studio console output is
 **self-attested**, not a cryptographic Roblox certificate.
+
+## Colab strict server-engine release gate (2026-10)
+
+The checked-in notebook now defaults to ENGINE_VERIFY_BEFORE_FINAL=True.
+It builds with the existing offline Luau/StyLua/Selene/luau-analyze/Rojo/Place
+structural checks, publishes the compiled place to a dedicated Roblox TEST
+Place only when explicitly opted in, executes server-side Luau against that
+exact published version, and checks the exact compiled Place SHA-256 again
+before packaging a _SERVER_ENGINE_VERIFIED.zip.
+
+### Required one-time setup
+
+1. Create an expendable TEST experience and its Place in Roblox Creator
+   Dashboard. NEVER supply a production Place ID.
+2. Create an Open Cloud API key restricted to that test experience, granting
+   the necessary Place Publishing (write) and Luau Execution session
+   permissions. See https://create.roblox.com/docs/cloud/auth/api-keys and
+   https://create.roblox.com/docs/cloud/reference/features/luau-execution .
+3. In Colab Secrets (key icon), add ROBLOX_OPEN_CLOUD_API_KEY and grant the
+   notebook permission to read it. Do not put the value into a Python cell,
+   GitHub file, chat message, failure ZIP or model prompt.
+4. In cell 1 enter the TEST-only CLOUD_TEST_UNIVERSE_ID,
+   CLOUD_TEST_PLACE_ID, and explicitly enable CLOUD_ENABLE_TEST_PUBLISH.
+   Leave ENGINE_VERIFY_BEFORE_FINAL=True.
+5. Run the notebook normally.
+
+The dynamically generated engine tests check every Rojo-managed server and
+client script instance, require generated server ModuleScripts inside the real
+Roblox engine, inspect Remote classes, physical world objects, usable
+ProximityPrompt instances, and perform an isolated DataStore roundtrip.
+Evidence includes the exact tested Place digest, version, task path,
+script hash, and (when available) engine failure logs.
+
+Test assertions are host-owned; the small model cannot remove or weaken them.
+
+A failed engine task can trigger up to MAX_ENGINE_REBUILDS=2 bounded
+repair/rebuild attempts. Each must preserve the exact source request and
+original requirement ledger; a repeated unchanged Place fails without
+repeating the model loop. Missing credentials, permissions, opt-in, network
+failure, task timeout and unverified output never count as success.
+In that case Colab offers a diagnostic ZIP, not a verified final ZIP.
+The gate can be disabled for explicitly unverified offline development builds.
+
+Open Cloud runs headlessly in the Roblox server engine. It cannot certify
+human interaction, several real clients, LocalScript GUI input, or real-user
+save/restore. StudioTestService and its own matching evidence receipt remain
+necessary for claiming full multiplayer gameplay verification.
