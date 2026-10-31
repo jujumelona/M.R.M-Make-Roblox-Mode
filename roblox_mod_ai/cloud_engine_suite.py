@@ -135,7 +135,7 @@ def make_engine_suite_script(proposal: RobloxProposal) -> str:
         'task.wait(0.5) -- Give server bootstrap a chance to initialize.',
     ]
     for ident, assertion in checks:
-        lines.append("check(" + json.dumps(ident, ensure_ascii=True) + ",function() "
+        lines.append("check(" + json.dumps(ident, ensure_ascii=False) + ",function() "
                      + assertion + " end)")
     lines.extend([
         'if #failures>0 then error("RMM_ENGINE_ASSERTIONS_FAILED "'
