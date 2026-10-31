@@ -10,7 +10,7 @@ def test_owned_tool_grant_has_fail_closed_preflight_before_payment():
     preflight = src.index('local created, granted=pcall(ensureOwnedTool,player)')
     rejection = src.index('return {success=false,reason="weapon_grant_failed"}')
     debit = src.index("coins.Value-=COST")
-    ownership = src.index("inventory.items[TARGET] = 1")
+    ownership = src.index("inventory.items[TARGET]=1")
     assert preflight < rejection < debit < ownership
     assert 'assert(ensureOwnedTool(player)' not in src
 
