@@ -104,3 +104,28 @@ def test_obsolete_autorunning_profile_is_retired_before_rojo_packaging(tmp_path)
     retired = list((tmp_path / "retired_sources").rglob("*.luau"))
     assert retired and retired[0].read_text(encoding="utf-8") == "print('obsolete host script')"
     assert (tmp_path / data.file_path).is_file()
+
+
+def test_disconnect_save_failure_retries_before_discarding_authoritative_state():
+    """A transient DataStore failure must not immediately erase the only copy."""
+    _, data, _ = _plan()
+    source = data.code
+    begin = source.index("local function onPlayerRemoving(player: Player)")
+    end = source.index("function PlayerDataManager.GetState", begin)
+    handler = source[begin:end]
+    assert "pendingDisconnectSaves += 1" in handler
+    assert "local committed = savePlayerData(player)" in handler
+    assert "for attempt = 1, 3 do" in handler
+    assert "committed = savePlayerData(player)" in handler
+    assert handler.index("if not committed then") < handler.index(
+        "sessionData[userId] = nil"
+    )
+    assert handler.index("committed = savePlayerData(player)") < handler.index(
+        "sessionData[userId] = nil"
+    )
+    assert "pendingDisconnectSaves -= 1" in handler
+    assert "restartQueued(userId)" in handler
+    assert (
+        "while (remaining > 0 or pendingDisconnectSaves > 0) "
+        "and os.clock() < deadline do"
+    ) in source
