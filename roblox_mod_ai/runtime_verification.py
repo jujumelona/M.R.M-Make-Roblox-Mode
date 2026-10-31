@@ -45,10 +45,9 @@ assert(ok, "DataStore test failed: " .. tostring(err))
     # generated contract and run them in the actual uploaded Roblox DataModel.
     # Keep a separate test-only DataStore roundtrip as a distinct assertion.
     scripted = make_engine_suite_script(proposal)
-    return (scripted.removesuffix("return true\\n")
-            + "do\\n" + "\\n".join(checks)
-            + "\\nend\\nreturn true\\n")
-
+    return (scripted.removesuffix("return true\n")
+            + "do\n" + "\n".join(checks)
+            + "\nend\nreturn true\n")
 
 class OpenCloudRuntimeVerifier:
     """Publish an isolated test place and poll a *real* Roblox engine task.
