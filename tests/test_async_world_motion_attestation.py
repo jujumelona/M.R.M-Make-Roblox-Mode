@@ -5,7 +5,7 @@ import pytest
 
 from roblox_mod_ai.async_world_motion_attestation import attest_async_vehicle_transit
 from roblox_mod_ai.host_vehicle_departure import _SERVER
-from roblox_mod_ai.requirement_completion_audit import _fallback_effect_witness_review
+from roblox_mod_ai.requirement_completion_audit import (\n    _fallback_effect_witness_review, _is_effectful_source_line,\n    audit_whole_requirement_completion,\n)
 
 
 SOURCE = _SERVER.replace("@BUILDER@", "OwnedVehicleBuilder").replace(
@@ -83,3 +83,85 @@ def test_fallback_does_not_send_proved_async_motion_to_small_ai():
     )
     assert report and report["verdict"] == "implemented"
     assert details["method"] == "guarded_occupied_vehicle_timed_world_transition"
+
+
+
+def test_composite_proof_matches_whole_requirement_contract_and_real_lines():
+    entry, metadata = attest_async_vehicle_transit(
+        EFFECT, {PATH: SOURCE}, MODULES,
+    )
+    assert entry is not None, metadata
+    parts = entry["proof_lines"]
+    assert 2 <= len(parts) <= 6
+    assert metadata["proof_lines"] == len(parts)
+    assert entry["line"] in {row["line"] for row in parts}
+    assert len({row["line"] for row in parts}) == len(parts)
+    for part in parts:
+        assert SOURCE.splitlines()[part["line"] - 1].strip() == part["quote"]
+        assert _is_effectful_source_line(SOURCE, part["line"])
+    assert parts[0]["line"] < entry["line"] < parts[-1]["line"]
+
+
+def test_formatted_async_source_keeps_correct_physical_citations():
+    formatted = (SOURCE.replace(
+        'player:SetAttribute("RMMFlightState",action==',
+        'player:SetAttribute("RMMFlightState", action == ',
+    ).replace(
+        "vehicle:PivotTo(start:Lerp(target,alpha))",
+        "vehicle:PivotTo(start:Lerp(target, alpha))",
+    ).replace(
+        'player:SetAttribute("RMMFlightState",finalState)',
+        'player:SetAttribute("RMMFlightState", finalState)',
+    ))
+    entry, metadata = attest_async_vehicle_transit(
+        EFFECT, {PATH: formatted}, MODULES,
+    )
+    assert entry is not None, metadata
+    assert 2 <= len(entry["proof_lines"]) <= 6
+    for part in entry["proof_lines"]:
+        assert formatted.splitlines()[part["line"] - 1].strip() == part["quote"]
+
+
+def test_async_motion_contract_survives_full_requirement_audit(tmp_path):
+    file = tmp_path / PATH
+    file.parent.mkdir(parents=True)
+    file.write_text(SOURCE, encoding="utf-8")
+    proposal = SimpleNamespace(
+        modules=MODULES,
+        game_design={"detailed_implementation_plan": {
+            "required_functions": [{
+                "id": "req-transit",
+                "original_request": "Players use the owned spacecraft to travel",
+                "expected_outcome": EFFECT,
+                "server_state_changes": [EFFECT],
+                "owner_files": [PATH],
+            }],
+        }},
+    )
+
+    class ScopeOnly:
+        def complete_json(self, **kwargs):
+            prompt = kwargs["prompt"]
+            if prompt.startswith("Find user-requested"):
+                return {"missing_actions": []}
+            raise AssertionError("No model vote should override deterministic transit")
+
+    report = audit_whole_requirement_completion(
+        proposal, tmp_path, ScopeOnly(), host_witness_only=True,
+    )
+    assert report["status"] == "reviewed_no_blockers", report
+    assert report["fully_covered"], report
+    assert len(report["checks"]) == 1
+    assert len(report["checks"][0]["proof_lines"]) >= 2
+
+
+@pytest.mark.parametrize("source", [
+    SOURCE.replace(
+        'player:SetAttribute("RMMFlightState",action=="return"',
+        'player:SetAttribute("RMMFlightState","arrived"'
+    ),
+    SOURCE.replace('player:SetAttribute("RMMFlightState",finalState)',
+                   'player:SetAttribute("RMMFlightState","arrived")'),
+])
+def test_missing_start_or_finish_does_not_manufacture_composite_proof(source):
+    assert proof(source) is None
