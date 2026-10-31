@@ -169,11 +169,19 @@ def attest_paid_inventory_grant(
             if not quote or quote.startswith("--"):
                 return None
             return {"line": line, "quote": quote}
+        def token_start(match: re.Match[str], base: int = 0) -> int:
+            # A multiline ^\\s* regex can start on a blank/comment line,
+            # not at the effectful token. Citation offsets MUST point at the
+            # first executable non-whitespace character of the matched code.
+            visible_match = match.group(0)
+            first = re.search(r"\\S", visible_match)
+            assert first is not None
+            return base + match.start() + first.start()
         points = [
-            citation(tool_parent.start()),
-            citation(handler.start() + debit.start()),
-            citation(handler.start() + owned.start()),
-            citation(handler.start() + entitlement.start()),
+            citation(token_start(tool_parent)),
+            citation(token_start(debit, handler.start())),
+            citation(token_start(owned, handler.start())),
+            citation(token_start(entitlement, handler.start())),
         ]
         if not all(points) or len({p["line"] for p in points}) != 4:
             continue
