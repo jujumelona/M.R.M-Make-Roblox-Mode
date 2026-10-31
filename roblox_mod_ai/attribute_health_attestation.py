@@ -67,10 +67,18 @@ def attest_attribute_health(source: str, role: str) -> dict[str, Any] | None:
             continue
         if not re.search(r"\b" + re.escape(hp) + r"\s*<=\s*0", body):
             continue
-        if not re.search(
-            r"\b(?:root|characterRoot|attackerRoot)\.Position\s*-\s*"
+        range_match = re.search(
+            r"\b(\w+)\.Position\s*-\s*"
             + re.escape(target) + r"\.Position\)\.Magnitude\s*>\s*\d+",
             body,
+        )
+        if range_match is None:
+            continue
+        # A range check that dereferences a missing character root aborts
+        # before the hit. Require rejection when that root is absent.
+        if not re.search(
+            r"\bnot\s+" + re.escape(range_match.group(1)) + r"\b",
+            body[:range_match.start()],
         ):
             continue
         compute = re.search(
@@ -89,6 +97,16 @@ def attest_attribute_health(source: str, role: str) -> dict[str, Any] | None:
             r"\b(?:args|actionArgs|payload|clientDamage|requestedDamage)\b",
             damage_assignment.group(1),
         ):
+            continue
+        # Prove a positive server-selected damage floor. Merely computing
+        # remaining = hp - 0 is not an implemented combat effect. Unknown
+        # formulas must be independently reviewed, not silently approved.
+        damage_formula = damage_assignment.group(1).strip()
+        positive_damage = re.match(
+            r"math\.(?:min|max)\(\s*[1-9]\d*\s*,\s*[1-9]\d*\b",
+            damage_formula,
+        )
+        if positive_damage is None:
             continue
         write = re.search(
             r"\b" + re.escape(target) + r":SetAttribute\(\s*[\"']"
