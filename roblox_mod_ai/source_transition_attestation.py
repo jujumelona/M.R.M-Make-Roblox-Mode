@@ -162,6 +162,11 @@ def _attest_persisted_projection(effect: str, source: str, root: Path,
             or not _DONE.search("\n".join(body))):
         return None
     for idx, alias, field, namespace, assignment in changes:
+        # A write to some persistent profile is not automatically evidence
+        # for an unrelated effect. Tie the claimed object/state to the
+        # actual written key or its owning persisted namespace.
+        if not ((_tokens(field) | _tokens(namespace)) & _tokens(effect)):
+            continue
         if not re.search(r"\[\s*\w+\s*\]", assignment):
             continue
         if not _persist_provider(root, namespace, source):
