@@ -444,6 +444,67 @@ def _is_routed_authority_witness(code: str, roots: set[str]) -> bool:
     return False
 
 
+def _reachable_routed_helpers(
+    lines: list[str], start_line: int, end_line: int,
+) -> dict[int, set[str]]:
+    """Identify executable statements in locally defined called helpers.
+
+    A function declaration alone proves nothing. Only top-level local
+    functions actually called by the routed handler, or transitively by
+    another called helper, are considered. This is a bounded lexical
+    reachability check; it does not claim Roblox runtime execution.
+    """
+    definitions: dict[str, tuple[int, int, set[str]]] = {}
+    header = re.compile(
+        r"^local\s+function\s+([A-Za-z_]\w*)\s*\(([^)]*)\)"
+    )
+    for idx, line in enumerate(lines, 1):
+        match = header.match(line)
+        if not match:
+            continue
+        # The formatter emits zero-indented 'end' for top-level helpers.
+        end = next((
+            pos for pos in range(idx + 1, len(lines) + 1)
+            if re.fullmatch(r"end\s*", lines[pos - 1])
+        ), 0)
+        if end <= idx:
+            continue
+        params = {
+            re.split(r"\s*:", arg.strip(), maxsplit=1)[0]
+            for arg in match.group(2).split(",")
+            if re.fullmatch(r"[A-Za-z_]\w*", re.split(
+                r"\s*:", arg.strip(), maxsplit=1
+            )[0])
+        }
+        definitions[match.group(1)] = (idx, end, params)
+    found: dict[int, set[str]] = {}
+    if not definitions:
+        return found
+    frontier = "\n".join(lines[start_line:end_line - 1])
+    pending: list[str] = []
+    for name in sorted(definitions):
+        if re.search(
+            r"(?<![:.])\b" + re.escape(name) + r"\s*\(", frontier
+        ):
+            pending.append(name)
+    visited: set[str] = set()
+    while pending and len(visited) < min(32, len(definitions)):
+        name = pending.pop(0)
+        if name in visited:
+            continue
+        visited.add(name)
+        begin, end, params = definitions[name]
+        for lineno in range(begin + 1, end):
+            found[lineno] = params
+        body = "\n".join(lines[begin:end - 1])
+        for other in sorted(definitions):
+            if other not in visited and re.search(
+                r"(?<![:.])\b" + re.escape(other) + r"\s*\(", body
+            ):
+                pending.append(other)
+    return found
+
+
 def _host_effect_witnesses(
     behavior: str, sources: dict[str, str], modules: list[Any],
     limit: int = 24,
@@ -504,6 +565,10 @@ def _host_effect_witnesses(
         else:
             begin_line, end_line = 0, len(lines) + 1
         routed_source = has_markers or routed
+        called_helper_lines = (
+            _reachable_routed_helpers(masked, begin_line, end_line)
+            if routed_source else {}
+        )
         # Scan the routed function once, not once per evidence candidate.
         # A function-level return at the minimum body indentation proves
         # that later statements cannot run. Nested guard returns do not.
@@ -565,7 +630,9 @@ def _host_effect_witnesses(
                             + r"\b\s*(?:[.:\[]|$)", rhs
                         ) for owner in was_trusted if owner != name)):
                         routed_roots.add(name)
-            if not begin_line < i < end_line:
+            in_action = begin_line < i < end_line
+            helper_params = called_helper_lines.get(i)
+            if not in_action and helper_params is None:
                 continue
             if excluded_locations and (path, i) in excluded_locations:
                 continue
@@ -582,11 +649,13 @@ def _host_effect_witnesses(
             if len(visible.strip()) < 6 or len(visible.strip()) > 320:
                 continue
             if (routed_source and not _is_routed_authority_witness(
-                    code, routed_roots)):
-                # A scratch-table write beside a genuine player-state
-                # mutation must not be mistaken for a second game effect.
+                    code, routed_roots if in_action else helper_params or set())):
+                # An unused helper or unrelated scratch-table mutation cannot
+                # prove an authenticated action. For a called helper, only
+                # explicit writes through its formal parameter qualify.
                 continue
-            if (unreachable_after is not None and i > unreachable_after):
+            if (in_action and unreachable_after is not None
+                    and i > unreachable_after):
                 # A never-executed mutation cannot establish gameplay.
                 continue
             contextual = " ".join(masked[max(0, i - 3):min(len(masked), i + 2)])
