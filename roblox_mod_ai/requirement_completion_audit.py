@@ -1143,14 +1143,14 @@ def audit_whole_requirement_completion(
                             role="analyzer", temperature=0, max_tokens=160,
                         )
                         answer = raw.strip() if isinstance(raw, str) else ""
-                        if re.fullmatch(r"NONE\\.?", answer, re.I):
+                        if re.fullmatch(r"NONE\.?", answer, re.I):
                             extras = list(retained_extras)
                             report.setdefault("recovery", []).append({
                                 "requirement_id": req_id,
                                 "stage": "omitted_effects",
                                 "status": "recovered_plain_none",
                             })
-                        elif re.fullmatch(r"MISSING:\\s+.{12,300}", answer, re.I):
+                        elif re.fullmatch(r"MISSING:\s+.{12,300}", answer, re.I):
                             missing = answer.split(":", 1)[1].strip()
                             report["unplanned_actions"] = [missing]
                             report["reason"] = (
