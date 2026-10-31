@@ -84,7 +84,7 @@ def verify_compiled_effect_sources(
     """Fail closed if declared executable actions are absent or altered."""
     root = Path(source_root)
     game_design = getattr(proposal, "game_design", {}) or {}
-    design = (game_design.get("dynamic_design", {}) or {}
+    design = (game_design.get("dynamic_design", {})
               if isinstance(game_design, dict) else None)
     report: dict[str, Any] = {
         "schema": "rmm/compiled-effect-source-attestation-v1",
