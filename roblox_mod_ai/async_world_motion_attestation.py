@@ -149,12 +149,12 @@ def attest_async_vehicle_transit(
         # movement is a multi-stage state transition, not a single pivot.
         # Bind its started -> moved -> arrived writes in execution order.
         launch = re.search(
-            r'(?m)^\s*player:SetAttribute\(\s*["\\\']RMMFlightState["\\\']\s*,'
-            r'\s*action\s*==\s*["\\\']return["\\\']\s+and', body,
+            r"(?m)^\s*player:SetAttribute\(\s*['\"]RMMFlightState['\"]\s*,"
+            r"\s*action\s*==\s*['\"]return['\"]\s+and", body,
         )
         arrived = re.search(
-            r'(?m)^\s*player:SetAttribute\(\s*["\\\']RMMFlightState["\\\']'
-            r'\s*,\s*finalState\s*\)', body,
+            r"(?m)^\s*player:SetAttribute\(\s*['\"]RMMFlightState['\"]"
+            r"\s*,\s*finalState\s*\)", body,
         )
         if not launch or not arrived or not (
             launch.start() < pivot.start() < arrived.start()
