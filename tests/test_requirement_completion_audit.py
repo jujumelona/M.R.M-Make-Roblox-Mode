@@ -1911,3 +1911,32 @@ def test_unrelated_getownedactor_call_cannot_prove_authenticated_motion():
     assert _host_effect_witnesses(
         "Move authenticated owned craft", {path: source}, [],
     ) == []
+
+
+
+def test_composite_reviewer_receives_bounded_host_source_rejection_guards():
+    from roblox_mod_ai.requirement_completion_audit import (
+        _host_composite_witness_bundles,
+    )
+    file = "src/server/GenericTransaction.luau"
+    source = (
+        "function Service.handleAction(player, services)\n"
+        "    if not player then return false end\n"
+        "    if available < 1 then\n"
+        '        return { success = false, reason = "insufficient" }\n'
+        "    end\n"
+        "    stock.available -= 1\n"
+        "    balance.owned += 1\n"
+        "end\n"
+    )
+    witness = [
+        {"id": 1, "file": file, "line": 6, "quote": "stock.available -= 1"},
+        {"id": 2, "file": file, "line": 7, "quote": "balance.owned += 1"},
+    ]
+    result = _host_composite_witness_bundles(witness, {file: source})
+    assert len(result) == 1
+    guards = result[0]["guard_context"]
+    assert any("insufficient" in row["source"] for row in guards), result
+    assert len(guards) <= 9
+    assert all(row["line"] < 6 for row in guards)
+    assert [row["line"] for row in result[0]["statements"]] == [6, 7]
