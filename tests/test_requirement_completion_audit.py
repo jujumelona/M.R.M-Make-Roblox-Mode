@@ -1510,3 +1510,140 @@ def test_routed_world_target_rebound_to_unowned_scratch_is_not_proof():
         "end\nreturn Service\n"
     )
     assert _host_effect_witnesses("World state action", {path: source}, []) == []
+
+
+
+def test_compound_upgrade_and_payment_create_two_independent_obligations():
+    """One money debit cannot also prove the independent upgraded state."""
+    from roblox_mod_ai.requirement_completion_audit import _obligations
+    req = {
+        "server_state_changes": [
+            "The owned machine's performance is upgraded and the owner's "
+            "currency is debited by the server-priced cost."
+        ],
+    }
+    obligations = _obligations(req)
+    assert len(obligations) == 2, obligations
+    assert "performance is upgraded" in obligations[0]["behavior"]
+    assert "currency is debited" in obligations[1]["behavior"]
+
+
+def test_authoritative_profile_aliases_are_all_visible_to_witness_selection():
+    """Both direct and aliased GetState writes must survive evidence extraction."""
+    from roblox_mod_ai.requirement_completion_audit import _host_effect_witnesses
+    path = "src/server/GenericService.luau"
+    source = (
+        "local Service = {}\n"
+        "function Service.handleAction(player, services)\n"
+        "    local manager = services.PlayerDataManager\n"
+        "    local owned = manager.GetState(player, 'Resources')\n"
+        "    local profile = services.PlayerDataManager.GetState(player, 'Machine')\n"
+        "    owned.count -= 1\n"
+        "    profile.level += 1\n"
+        "end\nreturn Service\n"
+    )
+    candidates = _host_effect_witnesses(
+        "Update authenticated player state", {path: source}, [],
+    )
+    assert {(row["line"], row["quote"]) for row in candidates} == {
+        (6, "owned.count -= 1"),
+        (7, "profile.level += 1"),
+    }, candidates
+
+
+def test_repeated_model_choice_is_forced_to_independent_real_lines(tmp_path):
+    """A small AI cannot reuse one statement for separate state changes."""
+    import json
+    proposal = fixture(tmp_path)
+    req = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
+    req["owner_files"] = [SHIP]
+    req["server_state_changes"] = [
+        "The server updates the first saved counter",
+        "The server updates the second saved counter",
+    ]
+    (tmp_path / SHIP).write_text(
+        "local function perform()\n"
+        "    state.first += 1\n"
+        "    state.second += 1\n"
+        "end\n", encoding="utf-8",
+    )
+
+    class AlwaysFirst:
+        def __init__(self):
+            self.candidate_lists = []
+        def complete_json(self, **kwargs):
+            prompt = kwargs["prompt"]
+            if prompt.startswith("Find user-requested"):
+                return {"missing_actions": []}
+            assert prompt.startswith("Check ONE promised")
+            data = json.loads(prompt[prompt.index('{"effect":'):])
+            self.candidate_lists.append(data["candidates"])
+            return {"choice": 1}
+
+    router = AlwaysFirst()
+    report = audit_whole_requirement_completion(
+        proposal, tmp_path, router, host_witness_only=True,
+    )
+    assert report["fully_covered"], report
+    assert report["status"] == "reviewed_no_blockers"
+    assert len(report["checks"]) == 2
+    assert {(e["file"], e["line"]) for e in report["checks"]} == {
+        (SHIP, 2), (SHIP, 3),
+    }
+    assert len(router.candidate_lists) == 2
+    assert len(router.candidate_lists[0]) == 2
+    assert len(router.candidate_lists[1]) == 1
+
+
+def test_one_state_write_cannot_falsely_certify_two_effects(tmp_path):
+    proposal = fixture(tmp_path)
+    req = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
+    req["owner_files"] = [SHIP]
+    req["server_state_changes"] = [
+        "The server changes the first authoritative counter",
+        "The server changes the second authoritative counter",
+    ]
+    (tmp_path / SHIP).write_text("state.first += 1\n", encoding="utf-8")
+
+    class FirstOnly:
+        def complete_json(self, **kwargs):
+            if kwargs["prompt"].startswith("Find user-requested"):
+                return {"missing_actions": []}
+            return {"choice": 1}
+
+    report = audit_whole_requirement_completion(
+        proposal, tmp_path, FirstOnly(), host_witness_only=True,
+    )
+    assert not report["fully_covered"], report
+    assert report["status"] == "failed", report
+    assert len(report["unverified_effects"]) == 1
+    assert report["unverified_effects"][0]["effect_id"] == "effect-02"
+    assert any(row.get("reason") == "no_unused_independent_source_witness"
+               for row in report["recovery"])
+    assert not report.get("findings")
+
+
+def test_one_line_with_two_distinct_writes_remains_valid_for_two_effects(tmp_path):
+    proposal = fixture(tmp_path)
+    req = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
+    req["owner_files"] = [SHIP]
+    req["server_state_changes"] = [
+        "The first property is reduced",
+        "The second property is increased",
+    ]
+    (tmp_path / SHIP).write_text(
+        "state.first -= 1; state.second += 1\n", encoding="utf-8",
+    )
+
+    class OneLine:
+        def complete_json(self, **kwargs):
+            if kwargs["prompt"].startswith("Find user-requested"):
+                return {"missing_actions": []}
+            return {"choice": 1}
+
+    report = audit_whole_requirement_completion(
+        proposal, tmp_path, OneLine(), host_witness_only=True,
+    )
+    assert report["fully_covered"], report
+    assert len(report["checks"]) == 2, report
+    assert len({row["line"] for row in report["checks"]}) == 1
