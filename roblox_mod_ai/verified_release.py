@@ -92,9 +92,18 @@ def run_verified_release(
                     and report.get("place_sha256") == place_digest
                     and isinstance(report.get("task_path"), str)
                     and "/luau-execution-sessions/" in report["task_path"])
-        entry = {"attempt": attempt, "status": "engine_passed" if verified
-                 else "engine_failed", "place_sha256": place_digest,
-                 "engine": report}
+        # Missing configuration or an unexecuted Cloud request is not a
+        # failed gameplay run. Preserve this distinction in every receipt.
+        if verified:
+            outcome = "engine_passed"
+        elif report.get("status") == "verification_setup_required":
+            outcome = "verification_setup_required"
+        elif report.get("executed") is not True:
+            outcome = "engine_not_executed"
+        else:
+            outcome = "engine_failed"
+        entry = {"attempt": attempt, "status": outcome,
+                 "place_sha256": place_digest, "engine": report}
         attempts.append(entry)
         (out / "cloud_engine_report.json").write_text(
             json.dumps({"schema": "rmm/engine-release-gate-v1",
@@ -138,7 +147,11 @@ def run_verified_release(
                              "error_type": type(error).__name__})
             failure_report = _save_failure(out, attempts)
             break
-    return {"verified": False, "release_status": "engine_verification_incomplete",
+    status = ("verification_setup_required"
+              if any(entry.get("status") == "verification_setup_required"
+                     for entry in attempts)
+              else "engine_verification_incomplete")
+    return {"verified": False, "release_status": status,
             "final_zip": "", "attempts": attempts, "failure_report": failure_report}
 
 
