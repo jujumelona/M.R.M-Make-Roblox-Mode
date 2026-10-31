@@ -447,6 +447,7 @@ def _is_routed_authority_witness(code: str, roots: set[str]) -> bool:
 def _host_effect_witnesses(
     behavior: str, sources: dict[str, str], modules: list[Any],
     limit: int = 24,
+    excluded_locations: set[tuple[str, int]] | None = None,
 ) -> list[dict[str, Any]]:
     """Build evidence IDs from real executable source, not model-written quotes.
 
@@ -566,6 +567,8 @@ def _host_effect_witnesses(
                         routed_roots.add(name)
             if not begin_line < i < end_line:
                 continue
+            if excluded_locations and (path, i) in excluded_locations:
+                continue
             # This is a linear-time pass: do not split/mask the entire source
             # again for every line of every independently promised effect.
             code = _mask_noncode_luau_strings(visible).strip()
@@ -646,19 +649,26 @@ def _host_effect_witnesses(
 def _fallback_effect_witness_review(
     router: Any, effect: dict[str, str], sources: dict[str, str],
     modules: list[Any],
+    excluded_locations: set[tuple[str, int]] | None = None,
 ) -> tuple[dict[str, str] | None, dict[str, Any]]:
     """Small model chooses ONE host-owned witness ID; never fabricates paths.
 
     Choice zero or an invalid response remains UNVERIFIED, never proof of
     missing implementation. No speculative repairs use this fallback.
     """
-    witnesses = _host_effect_witnesses(effect["behavior"], sources, modules)
+    witnesses = _host_effect_witnesses(
+        effect["behavior"], sources, modules,
+        excluded_locations=excluded_locations,
+    )
     diagnostics: dict[str, Any] = {
         "stage": "host_witness_fallback", "effect_id": effect["id"],
         "candidate_count": len(witnesses), "status": "unverified",
     }
     if not witnesses:
-        diagnostics["reason"] = "no_executable_owner_witness"
+        diagnostics["reason"] = (
+            "no_unused_independent_source_witness" if excluded_locations
+            else "no_executable_owner_witness"
+        )
         return None, diagnostics
     # Host-provided bounded context prevents a local model from treating
     # an unrelated attribute assignment as an authoritative gameplay effect.
