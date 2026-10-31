@@ -20,6 +20,7 @@ _DONE = re.compile(r"\breturn\s*\{\s*success\s*=\s*true\b")
 
 
 def _tokens(text: str) -> set[str]:
+    text = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", text)
     text = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", text)
     words = set(_WORD.findall(text.lower()))
     return words | {w[:-1] for w in words if w.endswith("s") and len(w) > 4}
