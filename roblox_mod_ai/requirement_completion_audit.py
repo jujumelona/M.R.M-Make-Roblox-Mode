@@ -665,7 +665,12 @@ def _host_effect_witnesses(
                         + r"\s*\.\s*GetState\s*\(\s*player\s*,",
                         rhs,
                     ) for manager in previous_managers if manager != name)
-                    if (direct_profile or alias_profile
+                    owned_actor = bool(re.search(
+                        r"\bservices\s*\.\s*[A-Za-z_]\w*"
+                        r"\s*\.\s*GetOwnedActor\s*\(\s*player\s*\)",
+                        rhs,
+                    ))
+                    if (direct_profile or alias_profile or owned_actor
                         or re.search(
                             r"\b(?:player|workspace|Workspace)\s*[.:\[]", rhs
                         ) or any(re.search(
