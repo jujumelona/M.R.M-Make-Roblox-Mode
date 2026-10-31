@@ -1203,7 +1203,9 @@ def audit_whole_requirement_completion(
             # from different branches to the same first occurrence.
             line = entry.get("line")
             if line is not None:
-                actual_lines = actual_sources[file_path].splitlines()
+                actual_lines = _mask_luau_comments(
+                    actual_sources[file_path]
+                ).splitlines()
                 if (type(line) is not int or not 1 <= line <= len(actual_lines)
                         or actual_lines[line - 1].strip() != entry.get("quote")
                         or not _is_effectful_source_line(
