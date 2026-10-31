@@ -670,6 +670,12 @@ def _fallback_effect_witness_review(
             else "no_executable_owner_witness"
         )
         return None, diagnostics
+    # Source owner descriptions are provenance hints for tiny models, not
+    # independent proof; only actual executable statements are admissible.
+    roles = {
+        m.file_path: str(getattr(m, "description", "") or "")[:180]
+        for m in modules if getattr(m, "file_path", None) in sources
+    }
     # Host-provided bounded context prevents a local model from treating
     # an unrelated attribute assignment as an authoritative gameplay effect.
     # The actual citation remains the exact host-owned physical source line.
@@ -684,7 +690,8 @@ def _fallback_effect_witness_review(
         )[:280]
         candidate_view.append({
             "id": row["id"], "statement": row["quote"],
-            "owner": row["file"], "context": context,
+            "owner": row["file"], "owner_role": roles.get(row["file"], ""),
+            "context": context,
         })
     # Show the local source around each candidate, but the reply contains
     # only a number, never a file name, line number, quote, or repeated ID.
@@ -694,7 +701,9 @@ def _fallback_effect_witness_review(
         "the HOST-EXTRACTED candidates. Return {choice:N} only, where "
         "N is one candidate ID, or 0 if none fully supports the effect. "
         "A random write, UI, math computation, or unrelated state change "
-        "is NOT proof. Return 0 when uncertain. No code generation.\n"
+        "is NOT proof. Owner role text is only a routing hint, never "
+        "proof without the actual matching state write. "
+        "Return 0 when uncertain. No code generation.\n"
         + json.dumps({
             "effect": effect["behavior"],
             "candidates": candidate_view,
