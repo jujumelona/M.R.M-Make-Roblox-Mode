@@ -161,3 +161,39 @@ def test_legal_unicode_spaces_and_punctuation_are_quoted_as_data_not_luau_code()
     script = make_engine_suite_script(p)
     assert json.dumps(name, ensure_ascii=False) in script
     assert 'workspace:FindFirstChild("광물 채굴\\" ); game:Destroy(); --")' in script
+
+
+
+def test_exact_cloud_success_creates_distinct_server_verified_zip(tmp_path):
+    import hashlib
+    p = plan()
+    s = FakeSession(tmp_path, p)
+    place = tmp_path / "place.rbxlx"
+    (tmp_path / "compiled_place.rbxlx").write_bytes(place.read_bytes())
+    sha = hashlib.sha256(place.read_bytes()).hexdigest()
+    oracle = SimpleNamespace(run=lambda _p, _place: {
+        "passed": True, "executed": True, "state": "COMPLETE",
+        "results": [True], "place_sha256": sha,
+        "task_path": (
+            "universes/1/places/2/versions/3/"
+            "luau-execution-sessions/s1/tasks/t1"
+        ),
+        "test_place_version": 3,
+        "script_sha256": "b" * 64,
+        "scope": "server_smoke_and_datastore_only",
+    })
+    out = run_verified_release(s, s.reply, run_name="sample",
+                               max_rebuilds=0, verifier=oracle)
+    assert out["verified"] is True
+    assert out["release_status"] == "server_engine_verified_studio_pending"
+    assert out["final_zip"].endswith("_SERVER_ENGINE_VERIFIED.zip")
+    with zipfile.ZipFile(out["final_zip"]) as archive:
+        assert hashlib.sha256(archive.read("compiled_place.rbxlx")).hexdigest() == sha
+        report = json.loads(archive.read("cloud_engine_report.json"))
+        assert report["verified"] is True
+        assert report["studio_multiplayer_verified"] is False
+        manifest = json.loads(archive.read("artifact_manifest.json"))
+        assert manifest["place_sha256"] == sha
+        assert manifest["source_files"]["cloud_engine_report.json"] == hashlib.sha256(
+            archive.read("cloud_engine_report.json")
+        ).hexdigest()
