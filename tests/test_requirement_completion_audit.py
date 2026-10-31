@@ -1398,3 +1398,39 @@ def test_scaffold_rebinding_authenticated_local_to_scratch_removes_proof():
     observed = _host_effect_witnesses("Mutate game state", {path: source}, [])
     assert len(observed) == 1, observed
     assert observed[0]["quote"] == "profile.actual += 1"
+
+
+
+def test_markerless_routed_handler_rejects_unused_helper_state_write():
+    from roblox_mod_ai.requirement_completion_audit import _host_effect_witnesses
+
+    path = "src/server/OldService.luau"
+    source = (
+        "local Service = {}\n"
+        "local function unusedHelper()\n"
+        "    fake.value += 1\n"
+        "end\n"
+        "function Service.handleAction(player, services)\n"
+        '    local profile = services.PlayerDataManager.GetState(player, "Account")\n'
+        "    profile.value += 1\n"
+        "end\n"
+        "return Service\n"
+    )
+    result = _host_effect_witnesses("Update state", {path: source}, [])
+    assert len(result) == 1, result
+    assert result[0]["quote"] == "profile.value += 1"
+    assert result[0]["line"] == 7
+
+
+def test_markerless_routed_handler_with_only_scratch_write_is_not_proof():
+    from roblox_mod_ai.requirement_completion_audit import _host_effect_witnesses
+
+    path = "src/server/OldService.luau"
+    source = (
+        "local Service = {}\n"
+        "function Service.handleAction(player, services)\n"
+        "    local scratch = {}\n"
+        "    scratch.value += 1\n"
+        "end\nreturn Service\n"
+    )
+    assert _host_effect_witnesses("Update state", {path: source}, []) == []
