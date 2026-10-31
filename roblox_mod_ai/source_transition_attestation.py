@@ -87,8 +87,12 @@ def _attest_transfer(effect: str, source: str, start: int, body: list[str],
     if ("IsDescendantOf(workspace)" not in all_source or ".Magnitude" not in "\n".join(body)
             or not _DONE.search("\n".join(body)) or "GetState" not in "\n".join(body)):
         return None
-    for profile_index, profile_var, field, _, assignment in changes:
-        if not (_tokens(field) & tokens):
+    for profile_index, profile_var, field, namespace, assignment in changes:
+        # The observable can name an inventory/profile, while a generated
+        # service writes a concrete resource subtype (e.g. special minerals).
+        # Bind the effect to the actual authoritative GetState namespace as
+        # well as its field; never require a game-specific field spelling.
+        if not ((_tokens(field) | _tokens(namespace)) & tokens):
             continue
         m = re.search(r"=\s*(\w+)\s*\+\s*(\d+)\b", assignment)
         if not m or int(m.group(2)) <= 0:
