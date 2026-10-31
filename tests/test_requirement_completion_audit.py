@@ -1434,3 +1434,42 @@ def test_markerless_routed_handler_with_only_scratch_write_is_not_proof():
         "end\nreturn Service\n"
     )
     assert _host_effect_witnesses("Update state", {path: source}, []) == []
+
+
+
+def test_routed_write_after_unconditional_return_is_not_gameplay_evidence():
+    from roblox_mod_ai.requirement_completion_audit import _host_effect_witnesses
+
+    path = "src/server/AnyService.luau"
+    source = (
+        "local Service = {}\n"
+        "function Service.handleAction(player, services)\n"
+        "    -- RMM_GAMEPLAY_BODY_BEGIN\n"
+        "    return false\n"
+        '    local profile = services.PlayerDataManager.GetState(player, "State")\n'
+        "    profile.counter += 1\n"
+        "    -- RMM_GAMEPLAY_BODY_END\n"
+        "end\nreturn Service\n"
+    )
+    assert _host_effect_witnesses("Increment counter", {path: source}, []) == []
+
+
+def test_routed_conditional_early_return_does_not_hide_later_valid_write():
+    from roblox_mod_ai.requirement_completion_audit import _host_effect_witnesses
+
+    path = "src/server/AnyService.luau"
+    source = (
+        "local Service = {}\n"
+        "function Service.handleAction(player, services)\n"
+        "    -- RMM_GAMEPLAY_BODY_BEGIN\n"
+        "    if player == nil then\n"
+        "        return false\n"
+        "    end\n"
+        '    local profile = services.PlayerDataManager.GetState(player, "State")\n'
+        "    profile.counter += 1\n"
+        "    -- RMM_GAMEPLAY_BODY_END\n"
+        "end\nreturn Service\n"
+    )
+    found = _host_effect_witnesses("Increment counter", {path: source}, [])
+    assert len(found) == 1, found
+    assert found[0]["line"] == 8
