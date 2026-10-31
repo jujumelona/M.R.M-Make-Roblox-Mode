@@ -1269,3 +1269,31 @@ def test_audit_rejects_more_owners_than_bounded_witness_capacity():
     assert _host_effect_witnesses(
         "Update the requested state", sources, [], limit=24,
     ) == []
+
+
+
+def test_one_unverified_effect_does_not_hide_other_confirmed_findings(tmp_path):
+    """A failed model reply does not discard already grounded missing effects."""
+    proposal = fixture(tmp_path)
+
+    class MixedReview:
+        def complete_json(self, **kwargs):
+            prompt = kwargs["prompt"]
+            if prompt.startswith("Post-generation"):
+                return {"checks": response()["checks"][:2], "extra_missing": []}
+            if prompt.startswith(("Audit exactly ONE", "Recheck ONE",
+                                  "Check ONE promised")):
+                return {"malformed": True}
+            raise AssertionError(prompt[:100])
+
+    report = audit_whole_requirement_completion(
+        proposal, tmp_path, MixedReview(),
+    )
+    assert report["status"] == "failed", report
+    assert not report["fully_covered"]
+    assert [row["effect_id"] for row in report["unverified_effects"]] == [
+        "effect-03",
+    ], report
+    assert len(report["findings"]) == 1, report
+    assert report["findings"][0]["requirement_id"] == "req-generic"
+    assert "Currency balance" in report["findings"][0]["issue"]
