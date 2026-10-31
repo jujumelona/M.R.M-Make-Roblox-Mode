@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from .effect_scope_reconciliation import reconcile_omitted_actions
+from .source_transition_attestation import attest_compound_state_transition
 
 SCHEMA = "rmm/whole-requirement-completion-audit-v1"
 MAX_SOURCE_CHARS = 72000
@@ -821,12 +822,26 @@ def _fallback_effect_witness_review(
     router: Any, effect: dict[str, str], sources: dict[str, str],
     modules: list[Any],
     excluded_locations: set[tuple[str, int]] | None = None,
+    root: Path | None = None,
 ) -> tuple[dict[str, str] | None, dict[str, Any]]:
-    """Small model chooses ONE host-owned witness ID; never fabricates paths.
+    """Choose source-grounded proof, preferring structural compound evidence.
 
-    Choice zero or an invalid response remains UNVERIFIED, never proof of
-    missing implementation. No speculative repairs use this fallback.
+    Verified nonyielding profile transfers and DataStore-backed world
+    projections are proven by executable source, not a small-model guess.
+    Every other mechanism keeps the existing bounded witness review.
     """
+    if root is not None:
+        proven, details = attest_compound_state_transition(
+            effect["behavior"], sources, modules, root,
+        )
+        if proven is not None and (
+            not excluded_locations
+            or (proven["file"], proven["line"]) not in excluded_locations
+        ):
+            return proven, {
+                "stage": "deterministic_compound_audit",
+                "effect_id": effect["id"], **details,
+            }
     witnesses = _host_effect_witnesses(
         effect["behavior"], sources, modules,
         excluded_locations=excluded_locations,
@@ -1255,6 +1270,7 @@ def audit_whole_requirement_completion(
                 choice, diagnostic = _fallback_effect_witness_review(
                     router, effect, actual_sources, proposal.modules,
                     excluded_locations=exhausted,
+                    root=root,
                 )
                 report.setdefault("recovery", []).append({
                     "requirement_id": req_id, **diagnostic,
@@ -1396,6 +1412,7 @@ def audit_whole_requirement_completion(
                 else:
                     one, host_diagnostic = _fallback_effect_witness_review(
                         router, effect, actual_sources, proposal.modules,
+                        root=root,
                     )
                     report.setdefault("recovery", []).append({
                         "requirement_id": req_id, **host_diagnostic,
@@ -1693,7 +1710,9 @@ def audit_whole_requirement_completion(
                     actual_line = actual_sources[file_path].splitlines()[line - 1]
                     if _distinct_state_writes(actual_line) < len(bound_ids):
                         report["reason"] = (
-                            req_id + ": shared evidence for independent effects: "
+                            ("; ".join(report.get("omission_reasons", [])) + "; "
+                             if report.get("unplanned_actions") else "")
+                            + req_id + ": shared evidence for independent effects: "
                             + ", ".join(sorted(bound_ids))
                             + " in " + file_path + ":" + str(line)
                         )
