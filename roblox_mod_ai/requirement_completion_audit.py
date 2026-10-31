@@ -33,6 +33,45 @@ _STATE_VERB = re.compile(
 )
 
 
+def _shared_predicate_field_effects(sentence: str) -> list[str] | None:
+    """Atomize generic coordinated fields sharing one state-change verb.
+
+    A request saying that several distinct properties are updated is not
+    satisfied by updating just the first property. Preserve a shared
+    possessive owner and the full common postcondition for every field.
+    """
+    match = re.fullmatch(
+        r"(.{8,240}?)\s+\b(?:are|were)\s+"
+        r"((?:updated|increased|decreased|reduced|persisted|"
+        r"saved|changed|set|restored|upgraded)\b.{0,270})",
+        sentence, re.I,
+    )
+    if not match:
+        return None
+    subject, postcondition = match.groups()
+    if "," not in subject:
+        return None
+    fields = [
+        part.strip() for part in re.split(
+            r",\s*(?:and\s+)?|\s+and\s+", subject, flags=re.I,
+        ) if part.strip()
+    ]
+    if not 2 <= len(fields) <= 5 or any(
+            len(part) < 3 or len(part) > 110 for part in fields):
+        return None
+    # Do not split a list of complete independent clauses a second time.
+    if any(_STATE_VERB.search(part) for part in fields):
+        return None
+    owner = re.match(r"^(.{1,110}?['’]s\s+)(.+)$", fields[0])
+    if owner:
+        prefix = owner.group(1)
+        fields[0] = owner.group(2)
+    else:
+        prefix = ""
+    return [prefix + field + " is " + postcondition
+            for field in fields]
+
+
 def _independent_effect_clauses(statement: str) -> list[str]:
     """Unbundle promised changes; a debit cannot certify an unrelated credit.
 
@@ -46,6 +85,10 @@ def _independent_effect_clauses(statement: str) -> list[str]:
     for sentence in sentences:
         sentence = sentence.strip().rstrip(".;")
         if len(sentence) < 12:
+            continue
+        coordinated = _shared_predicate_field_effects(sentence)
+        if coordinated:
+            separated.extend(coordinated)
             continue
         pieces = re.split(r"(?i),?\s+\band\b\s+|,\s*그리고\s+|\s+그리고\s+", sentence)
         if len(pieces) > 1 and all(
