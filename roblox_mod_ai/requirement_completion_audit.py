@@ -445,29 +445,6 @@ def _is_routed_authority_witness(code: str, roots: set[str]) -> bool:
     return False
 
 
-def _routed_top_level_return_blocks(
-    masked_lines: list[str], action_start: int, candidate_line: int,
-) -> bool:
-    """Detect one sound, common unreachable case in formatted action code.
-
-    A return on its own line at the action's top indentation level makes
-    later statements unreachable. Nested conditional returns intentionally
-    do not count. This is a necessary static check, not a full Luau CFG.
-    """
-    if not 0 <= action_start < candidate_line <= len(masked_lines):
-        return False
-    start = masked_lines[action_start:candidate_line - 1]
-    meaningful = [line for line in start if line.strip()]
-    if not meaningful:
-        return False
-    base = min(len(line) - len(line.lstrip()) for line in meaningful)
-    for line in start:
-        if (len(line) - len(line.lstrip()) == base
-                and re.match(r"^\s*return(?:\s|$)", line)):
-            return True
-    return False
-
-
 def _host_effect_witnesses(
     behavior: str, sources: dict[str, str], modules: list[Any],
     limit: int = 24,
@@ -530,6 +507,24 @@ def _host_effect_witnesses(
         else:
             begin_line, end_line = 0, len(lines) + 1
         routed_source = has_markers or routed
+        # Scan the routed function once, not once per evidence candidate.
+        # A function-level return at the minimum body indentation proves
+        # that later statements cannot run. Nested guard returns do not.
+        unreachable_after = None
+        if routed_source:
+            body = masked[begin_line:end_line - 1]
+            indents = [
+                len(row) - len(row.lstrip())
+                for row in body if row.strip()
+            ]
+            if indents:
+                base_indent = min(indents)
+                for line_id in range(begin_line + 1, end_line):
+                    row = masked[line_id - 1]
+                    if (len(row) - len(row.lstrip()) == base_indent
+                            and re.match(r"^\s*return(?:\s|$)", row)):
+                        unreachable_after = line_id
+                        break
         routed_roots = {
             "player", "workspace", "Workspace", "actionTarget", "targetPart"
         }
@@ -578,9 +573,7 @@ def _host_effect_witnesses(
                 # A scratch-table write beside a genuine player-state
                 # mutation must not be mistaken for a second game effect.
                 continue
-            if (routed_source and _routed_top_level_return_blocks(
-                    masked, begin_line, i)):
-                # The candidate follows an unconditional top-level return.
+            if (unreachable_after is not None and i > unreachable_after):
                 # A never-executed mutation cannot establish gameplay.
                 continue
             contextual = " ".join(masked[max(0, i - 3):min(len(masked), i + 2)])
