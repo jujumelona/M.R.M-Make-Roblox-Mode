@@ -1009,11 +1009,36 @@ class RobloxProductionOrchestrator:
             # against each original requirement. It can run in Colab using
             # the already loaded local GGUF; Roblox Studio is NOT invoked.
             def review_with_requirements() -> dict:
+                # Run independent source/behavior obligations BEFORE dozens
+                # of optional small-model whole-file critiques. A failed
+                # source contract cannot be repaired by repeatedly asking
+                # the same model to rate unrelated source snippets.
+                # This function is re-invoked after each real repair, so
+                # evidence always comes from the current disk contents.
+                whole = audit_whole_requirement_completion(
+                    proposal, output_dir, self.router,
+                    host_witness_only=True)
+                tool_results["requirement_completion_audit"] = whole
+                (output_dir / "requirement_completion_audit.json").write_text(
+                    json.dumps(whole, indent=2, ensure_ascii=False),
+                    encoding="utf-8")
+                if whole.get("status") == "failed" or not whole.get("fully_covered"):
+                    return {
+                        "schema": "rmm/source-review-v1",
+                        "scope": "static_source_only_no_roblox_engine",
+                        "executed": True,
+                        "status": "failed",
+                        "reason": (
+                            "Whole-requirement effect audit incomplete: " +
+                            str(whole.get("reason", "unknown"))),
+                        "findings": [],
+                        "requirement_audit": "blocking_preflight",
+                    }
                 line_review = review_generated_sources(proposal, output_dir, self.router)
                 if line_review.get("status") in ("failed", "not_run"):
                     return line_review
-                # Review the full original request against the observable
-                # effects, not just lines, names, or RemoteFunction presence.
+                # Full-source model review and semantic effect review still
+                # execute whenever the deterministic audit is complete.
                 effects = review_requirement_effects(proposal, output_dir, self.router)
                 tool_results["requirement_effect_review"] = effects
                 (output_dir / "requirement_effect_review.json").write_text(
@@ -1024,24 +1049,6 @@ class RobloxProductionOrchestrator:
                     line_review["reason"] = (
                         "Requirement effect review incomplete: " +
                         effects.get("reason", "unknown"))
-                    return line_review
-                # A positive citation for ONE server action is not proof
-                # that the complete, multi-action original requirement works.
-                # Reinspect the assembled server-side producer/consumer graph
-                # one independent expected effect at a time. Feed missing
-                # effects to the SAME transactional repair-and-re-review loop.
-                whole = audit_whole_requirement_completion(
-                    proposal, output_dir, self.router,
-                    host_witness_only=True)
-                tool_results["requirement_completion_audit"] = whole
-                (output_dir / "requirement_completion_audit.json").write_text(
-                    json.dumps(whole, indent=2, ensure_ascii=False),
-                    encoding="utf-8")
-                if whole.get("status") == "failed" or not whole.get("fully_covered"):
-                    line_review["status"] = "failed"
-                    line_review["reason"] = (
-                        "Whole-requirement effect audit incomplete: " +
-                        str(whole.get("reason", "unknown")))
                     return line_review
                 line_review["requirement_effects"] = {
                     "status": effects["status"],
