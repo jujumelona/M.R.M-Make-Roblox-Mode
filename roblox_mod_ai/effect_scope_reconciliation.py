@@ -139,3 +139,62 @@ def reconcile_omitted_actions(
         else:
             missing.append(action)
     return missing, duplicates
+
+# The model is a *discoverer* of possible omissions, not an authority that
+# can extend the original user request. Claims require independent grounding
+# in the literal original-language request before becoming blocking omissions.
+# This intentionally does not use genre, item, or user-prompt-specific terms.
+_GENERIC_CLAIM = frozenset({
+    "player", "server", "game", "item", "items", "world", "resource",
+    "owned", "state", "inventory", "balance", "price", "quantity", "amount",
+    "selected", "request", "rejected", "requests", "change", "changes",
+    "effect", "effects", "result", "successful", "success", "action",
+    "required", "corresponding", "visible", "visibly", "validated",
+    "original", "new", "current", "provided", "theirs",
+})
+
+def original_request_supports_action(action: str, original: str) -> bool:
+    """Strict positive provenance for a new claimed user obligation.
+
+    A local model cannot create an action by describing a plausible gameplay
+    detail not directly present in the original request. Exact original
+    phrases are sufficient. Paraphrases require both an action and multiple
+    matching subject identifiers. Cross-language guesses are retained as
+    unverified diagnostic claims, not authoritative missing requirements.
+    """
+    if not isinstance(action, str) or not isinstance(original, str):
+        return False
+    condensed = re.sub(r"\s+", " ", action).strip().casefold()
+    normalized_original = re.sub(r"\s+", " ", original).strip().casefold()
+    if not condensed or not normalized_original:
+        return False
+    if condensed in normalized_original:
+        return True
+    expected = _terms(original)
+    claimed = _terms(action)
+    asserted_actions = claimed & _ACTIONS
+    if not asserted_actions or not (asserted_actions & (expected & _ACTIONS)):
+        return False
+    anchors = claimed - _ACTIONS - _GENERIC_CLAIM
+    confirmed = anchors & expected
+    # Two independent subject/content anchors protect against generic
+    # "build a thing" / "pay a cost" hallucinations.
+    return bool(len(confirmed) >= 2 and len(confirmed) * 3 >= len(anchors) * 2)
+
+def reconcile_original_scope_claims(
+    actions: list[str], original: str, effects: list[dict[str, Any]],
+) -> tuple[list[str], list[str], list[str]]:
+    """(grounded uncovered, documented duplicates, ungrounded suggestions).
+
+    Unanchored claims remain visible for human diagnosis. They cannot
+    invalidate the already approved, source-anchored effect ledger.
+    """
+    missing, duplicates, ungrounded = [], [], []
+    for action in actions:
+        if already_planned_action(action, effects):
+            duplicates.append(action)
+        elif original_request_supports_action(action, original):
+            missing.append(action)
+        else:
+            ungrounded.append(action)
+    return missing, duplicates, ungrounded
