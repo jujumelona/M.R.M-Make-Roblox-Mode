@@ -160,16 +160,21 @@ function Service.start(services)
         local saved=services.PlayerDataManager.GetState(player,"RMMRankProgress")
         if saved and good(saved[TARGET] or 0) then player:SetAttribute(ATTR,saved[TARGET] or 0) end
         if GRANT_TOOL then
-            local inventory=services.PlayerDataManager.GetState(player,"RMMInventory")
-            if type(inventory)=="table" and type(inventory.items)=="table"
-                and good(inventory.items[TARGET] or 0)
-                and (inventory.items[TARGET] or 0)>=1 then
-                -- Rebuild the physical owned Tool on rejoin and respawn.
-                task.defer(function() ensureOwnedTool(player) end)
-                player.CharacterAdded:Connect(function()
-                    task.defer(function() ensureOwnedTool(player) end)
-                end)
+            -- Install the respawn subscriber even for a player who has NOT
+            -- purchased yet. A listener installed only if owned at OnReady
+            -- loses the purchased Tool on the player's first later death.
+            local function restoreIfOwned()
+                local inventory=services.PlayerDataManager.GetState(player,"RMMInventory")
+                if type(inventory)=="table" and type(inventory.items)=="table"
+                    and good(inventory.items[TARGET] or 0)
+                    and (inventory.items[TARGET] or 0)>=1 then
+                    ensureOwnedTool(player)
+                end
             end
+            task.defer(restoreIfOwned)
+            player.CharacterAdded:Connect(function()
+                task.defer(restoreIfOwned)
+            end)
         end
     end)
     Players.PlayerRemoving:Connect(function(player) last[player]=nil end)
@@ -215,6 +220,15 @@ function Service.handleAction(player,services,...)
         return {success=false,reason="unchanged"} end
     local now=os.clock()
     if last[player] and now-last[player]<0.25 then return {success=false,reason="cooldown"} end
+    -- Physical Tool creation is fallible (Backpack removal or an
+    -- invalid runtime instance). Verify its outcome BEFORE debiting paid
+    -- currency; a failed grant must not charge a player.
+    if acquiring and GRANT_TOOL then
+        local created, granted=pcall(ensureOwnedTool,player)
+        if not created or not granted then
+            return {success=false,reason="weapon_grant_failed"}
+        end
+    end
     last[player]=now
     coins.Value-=COST
     if acquiring then
@@ -225,7 +239,7 @@ function Service.handleAction(player,services,...)
             -- physical Tool creation with no yield. Price is never client data.
             entitlements[script.Name.."/"..TARGET]={
                 purchased=true,kind="weapon",bonus=0}
-            assert(ensureOwnedTool(player), "Verified Backpack disappeared")
+            -- Tool was already created/validated before the price debit.
         end
         ranks[TARGET]=1
         player:SetAttribute("RMMWeaponOwned",true)
