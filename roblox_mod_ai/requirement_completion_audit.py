@@ -18,6 +18,7 @@ from typing import Any
 
 from .effect_scope_reconciliation import reconcile_original_scope_claims
 from .source_transition_attestation import attest_compound_state_transition
+from .async_world_motion_attestation import attest_async_vehicle_transit
 
 SCHEMA = "rmm/whole-requirement-completion-audit-v1"
 MAX_SOURCE_CHARS = 72000
@@ -830,6 +831,20 @@ def _fallback_effect_witness_review(
     projections are proven by executable source, not a small-model guess.
     Every other mechanism keeps the existing bounded witness review.
     """
+    # A timed world movement cannot be established by one arbitrary state
+    # write, and the local 9B reviewer cannot infer a multi-second coroutine
+    # from a few selected lines. Attempt a conservative whole-path source
+    # proof before the bounded evidence-selection fallback.
+    moved, movement = attest_async_vehicle_transit(
+        effect["behavior"], sources, modules,
+    )
+    if moved is not None and (
+        not excluded_locations or (moved["file"], moved["line"]) not in excluded_locations
+    ):
+        return moved, {
+            "stage": "deterministic_async_motion_audit",
+            "effect_id": effect["id"], **movement,
+        }
     if root is not None:
         proven, details = attest_compound_state_transition(
             effect["behavior"], sources, modules, root,
