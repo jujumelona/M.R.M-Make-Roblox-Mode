@@ -142,3 +142,44 @@ def test_real_audit_still_blocks_a_new_unplanned_behavior(tmp_path, monkeypatch)
     assert not report["fully_covered"], report
     assert report["unplanned_actions"], report
     assert "original request omitted" in report["reason"]
+
+
+def test_audit_aggregates_plan_omission_and_other_unverified_effect(tmp_path, monkeypatch):
+    """One failure receipt exposes the next blocker instead of serial reruns."""
+    import roblox_mod_ai.requirement_completion_audit as audit
+    proposal, path = _integration_proposal(tmp_path)
+    proposal.game_design["detailed_implementation_plan"]["required_functions"].append({
+        "id": "req-next",
+        "original_request": "Implement another independent counter in owned state",
+        "owner_files": [path],
+        "server_state_changes": ["The owned independent counter increases persistently"],
+    })
+    def witnessed(router, effect, sources, modules, **kwargs):
+        if "independent counter" in effect["behavior"]:
+            return None, {
+                "stage": "host_witness_fallback",
+                "status": "unverified",
+                "reason": "no_conclusive_source_witness",
+            }
+        is_add = "added" in effect["behavior"]
+        return {
+            "verdict": "implemented", "file": path,
+            "line": 2 if is_add else 1,
+            "quote": "state.weaponInventory += 1" if is_add else "state.currency -= 5",
+            "issue": "none", "repair": "none",
+        }, {"stage": "host_witness_fallback", "status": "source_witness_selected"}
+    monkeypatch.setattr(audit, "_fallback_effect_witness_review", witnessed)
+    class Reporter:
+        def complete_json(self, **kwargs):
+            assert kwargs["prompt"].startswith("Find user-requested")
+            return {"missing_actions": [
+                "A crew member is purchased and added to the player's roster"
+            ]}
+    report = audit_whole_requirement_completion(
+        proposal, tmp_path, Reporter(), host_witness_only=True,
+    )
+    assert report["status"] == "failed"
+    assert report["unplanned_actions"]
+    assert report["unverified_effects"]
+    assert "original request omitted" in report["reason"]
+    assert "cannot prove 1 independent effects" in report["reason"]
