@@ -125,6 +125,7 @@ end
            seat + passengers + "local function resolveShip(player)\n")
     change(
         "    shipModels[player] = ship\n    return ship, anchor, parts",
+        "    ship.PrimaryPart = anchor\n"
         "    shipModels[player] = ship\n"
         "    if not ensurePilotSeat(player, ship, anchor) then return nil end\n"
         "    if not ensurePassengerSeats(player, ship, anchor) then return nil end\n"
@@ -169,6 +170,7 @@ function Service.GetOwnedActor(player)
     local seat = ship:FindFirstChild("PilotSeat")
     local sections = ship:FindFirstChild("AssembledSections")
     if not anchor or not anchor:IsA("BasePart")
+        or ship.PrimaryPart ~= anchor
         or not seat or not seat:IsA("VehicleSeat")
         or not sections or not sections:IsA("Folder") then return nil end
     local pilotWeld = seat:FindFirstChild("PilotWeld")
