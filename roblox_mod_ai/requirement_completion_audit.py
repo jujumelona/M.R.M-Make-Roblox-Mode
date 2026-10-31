@@ -14,6 +14,7 @@ import hashlib
 import json
 import re
 from pathlib import Path
+from .deferred_producer_evidence import has_authoritative_producer_write
 from typing import Any
 
 SCHEMA = "rmm/whole-requirement-completion-audit-v1"
@@ -444,6 +445,28 @@ def _host_effect_witnesses(
     for path, source in sorted(sources.items()):
         lines = source.splitlines()
         masked = _mask_luau_comments(source).splitlines()
+        # Host-routed handlers expose a protected authored gameplay region.
+        # An unrelated write in service startup, UI scaffolding or an unused
+        # helper is not evidence that the authenticated action produces state.
+        begin_marker = "-- RMM_GAMEPLAY_BODY_BEGIN"
+        end_marker = "-- RMM_GAMEPLAY_BODY_END"
+        has_markers = begin_marker in source or end_marker in source
+        if has_markers:
+            if (source.count(begin_marker) != 1 or source.count(end_marker) != 1
+                    or not has_authoritative_producer_write(source)):
+                # Missing/duplicated sentinels or a scratch-only body cannot
+                # prove an effect. No attempt to infer gameplay from prose.
+                continue
+            begin_line = next(
+                i for i, value in enumerate(lines, 1) if begin_marker in value
+            )
+            end_line = next(
+                i for i, value in enumerate(lines, 1) if end_marker in value
+            )
+            if end_line <= begin_line:
+                continue
+        else:
+            begin_line, end_line = 0, len(lines) + 1
         # Provenance, not variable naming: the owner of a server profile is
         # found by its assignment from the authoritative GetState API.
         persistent_roots = set(re.findall(
@@ -452,6 +475,8 @@ def _host_effect_witnesses(
             _mask_luau_comments(source),
         ))
         for i, (line, visible) in enumerate(zip(lines, masked), 1):
+            if not begin_line < i < end_line:
+                continue
             # This is a linear-time pass: do not split/mask the entire source
             # again for every line of every independently promised effect.
             code = _mask_noncode_luau_strings(visible).strip()
