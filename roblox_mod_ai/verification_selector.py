@@ -83,6 +83,10 @@ def make_verification_report(
             "AI correction is only required when source review found blocking defects")
 
     real_place = not source_only and not addon_mode
+    from_tool("server_remote_ingress", "remote_ingress",
+              "Every routed Remote is source-bound to its server module, "
+              "wire checks, arity guard and live handler; NOT Roblox Studio",
+              applicable=real_place)
     from_tool("stylua", "stylua", "formatter/parser", applicable=not source_only)
     wally_info = tool_results.get("wally") or {}
     from_tool("wally_dependencies", "wally", "external Wally package install",
