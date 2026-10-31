@@ -140,7 +140,10 @@ def attest_async_vehicle_transit(
         # The witness is an actual mutation within the authenticated action,
         # with a verified waypoint, ongoing player/vehicle/seat guards, and an
         # arrival-state update after the movement coroutine.
-        line = raw[:action_match.start() + pivot.start()].count("\n") + 1
+        # Offsets are in the comment-masked source, whose lines remain in
+        # their original order but whose character columns are shorter.
+        # Counting newlines in raw using these offsets cites the WRONG line.
+        line = code[:action_match.start() + pivot.start()].count("\n") + 1
         quoted = raw.splitlines()[line - 1].strip()
         if ":PivotTo(" not in quoted:
             continue
