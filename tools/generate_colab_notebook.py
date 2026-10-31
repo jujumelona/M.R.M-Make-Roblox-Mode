@@ -328,35 +328,26 @@ def build_notebook() -> None:
             "CLOUD_RELEASE = None\n"
             "PLAN_FAILURE_LOGS_ZIP = None\n"
             "\n"
-            'if CLOUD_RELEASE is not None:\n'
-            '    if CLOUD_RELEASE.get("verified"):\n'
-            '        DOWNLOAD_TARGETS.append(Path(CLOUD_RELEASE["final_zip"]))\n'
-            '        if CLOUD_RELEASE.get("place"):\n'
-            '            DOWNLOAD_TARGETS.append(Path(CLOUD_RELEASE["place"]))\n'
-            '    elif CLOUD_RELEASE.get("failure_report"):\n'
-            '        DOWNLOAD_TARGETS.append(Path(CLOUD_RELEASE["failure_report"]))\n'
-            '    if SAVED_PLAN_PATH.is_file():\n'
-            '        DOWNLOAD_TARGETS.append(SAVED_PLAN_PATH)\n'
-            'elif RUN_MODE == "Plan":\n'
-            '    print("Plan 모드: 빌드를 건너뜁니다.")\n'
-            'elif RUN_MODE == "Audit":\n'
-            '    print("전체 프로젝트 및 Luau 스크립트 정적 감사(Audit) 실행 중...")\n'
+            "if RUN_MODE == \"Plan\":\n"
+            "    print(\"Plan 모드: 빌드를 건너뜁니다.\")\n"
+            "elif RUN_MODE == \"Audit\":\n"
+            "    print(\"전체 프로젝트 및 Luau 스크립트 정적 감사(Audit) 실행 중...\")\n"
             "    analyzer = LuauStaticAnalyzer()\n"
-            '    src_dir = REPO_DIR / "src"\n'
+            "    src_dir = REPO_DIR / \"src\"\n"
             "    total_files = 0\n"
             "    issues_found = 0\n"
             "    if src_dir.is_dir():\n"
-            '        for luau_file in src_dir.rglob("*.luau"):\n'
+            "        for luau_file in src_dir.rglob(\"*.luau\"):\n"
             "            total_files += 1\n"
-            '            code = luau_file.read_text(encoding="utf-8")\n'
+            "            code = luau_file.read_text(encoding=\"utf-8\")\n"
             "            res = analyzer.analyze(code, filename=luau_file.name)\n"
             "            if not res.valid or res.warnings:\n"
             "                issues_found += len(res.errors) + len(res.warnings)\n"
-            '                print(f"  [{luau_file.name}] 오류: {len(res.errors)}, 경고: {len(res.warnings)}")\n'
-            '    print(f"Audit 완료: 총 {total_files}개 파일 검사, {issues_found}개 이슈 감지됨.")\n'
+            "                print(f\"  [{luau_file.name}] 오류: {len(res.errors)}, 경고: {len(res.warnings)}\")\n"
+            "    print(f\"Audit 완료: 총 {total_files}개 파일 검사, {issues_found}개 이슈 감지됨.\")\n"
             "else:\n"
             "    if FINAL_PLAN_REPLY is None:\n"
-            '        raise RuntimeError("빌드할 계획이 없습니다. 5번 셀(플랜 준비)을 먼저 실행해 주세요.")\n'
+            "        raise RuntimeError(\"빌드할 계획이 없습니다. 5번 셀(플랜 준비)을 먼저 실행해 주세요.\")\n"
             "\n"
             "    if FINAL_PLAN_REPLY.ready_to_build:\n"
             "        print(\"빌드 시작: 코드 생성 -> 정적 검사 및 에이전트 수정 -> Rojo 빌드\")\n"
@@ -365,19 +356,17 @@ def build_notebook() -> None:
             "            CLOUD_RELEASE = run_verified_release(\n"
             "                session, FINAL_PLAN_REPLY, run_name=ROBLOX_EXPERIENCE_NAME,\n"
             "                max_rebuilds=MAX_ENGINE_REBUILDS)\n"
-            "            print('실제 Roblox 서버 검증:', CLOUD_RELEASE['release_status'])\n"
-            "            print('최종 검증 ZIP:', CLOUD_RELEASE['final_zip'] or '없음')\n"
-            "            print('실패 진단 ZIP:', CLOUD_RELEASE['failure_report'] or '없음')\n"
-            "            print('Studio 멀티플레이 검증: 별도로 필요')\n"
+            "            print(\"실제 Roblox 서버 검증:\", CLOUD_RELEASE[\"release_status\"])\n"
+            "            print(\"최종 검증 ZIP:\", CLOUD_RELEASE[\"final_zip\"] or \"없음\")\n"
+            "            print(\"실패 진단 ZIP:\", CLOUD_RELEASE[\"failure_report\"] or \"없음\")\n"
+            "            print(\"Studio 멀티플레이 검증: 별도로 필요\")\n"
             "        else:\n"
             "            BUILD_RESULT = session.build(FINAL_PLAN_REPLY, run_name=ROBLOX_EXPERIENCE_NAME)\n"
             "        if BUILD_RESULT is not None:\n"
-            "            print('오프라인 빌드 상태:', BUILD_RESULT.success)\n"
-            "            print('검증 상태:', BUILD_RESULT.metadata.get('release_status', 'unverified'))\n"
-            "            print('Place:', BUILD_RESULT.rbxlx_path)\n"
-            "            print('오프라인 ZIP (엔진 미검증):', BUILD_RESULT.project_zip_path)\n"
+            "            print(\"오프라인 빌드:\", BUILD_RESULT.success)\n"
+            "            print(\"검증 상태:\", BUILD_RESULT.metadata.get(\"release_status\", \"unverified\"))\n"
             "            if not BUILD_RESULT.success:\n"
-            "                print('실패 로그:', BUILD_RESULT.metadata.get('failure_logs_zip', ''))\n"
+            "                print(\"실패 진단 ZIP:\", BUILD_RESULT.metadata.get(\"failure_logs_zip\", \"\"))\n"
             "    else:\n"
             "        PLAN_FAILURE_LOGS_ZIP = session.export_plan_failure()\n"
             "        research = FINAL_PLAN_REPLY.authored_plan.proposal.game_design.get(\"pre_design_research\", {})\n"
@@ -398,7 +387,16 @@ def build_notebook() -> None:
             "\n"
             "DOWNLOAD_TARGETS = []\n"
             "\n"
-            'if RUN_MODE == "Plan":\n'
+            "if CLOUD_RELEASE is not None:\n"
+            "    if CLOUD_RELEASE.get(\"verified\"):\n"
+            "        DOWNLOAD_TARGETS.append(Path(CLOUD_RELEASE[\"final_zip\"]))\n"
+            "        if CLOUD_RELEASE.get(\"place\"):\n"
+            "            DOWNLOAD_TARGETS.append(Path(CLOUD_RELEASE[\"place\"]))\n"
+            "    elif CLOUD_RELEASE.get(\"failure_report\"):\n"
+            "        DOWNLOAD_TARGETS.append(Path(CLOUD_RELEASE[\"failure_report\"]))\n"
+            "    if SAVED_PLAN_PATH.is_file():\n"
+            "        DOWNLOAD_TARGETS.append(SAVED_PLAN_PATH)\n"
+            "elif RUN_MODE == \"Plan\":\n"
             "    if SAVED_PLAN_PATH.is_file():\n"
             "        DOWNLOAD_TARGETS.append(SAVED_PLAN_PATH)\n"
             "elif BUILD_RESULT is not None and BUILD_RESULT.success:\n"
@@ -419,19 +417,19 @@ def build_notebook() -> None:
             "    DOWNLOAD_TARGETS.append(Path(PLAN_FAILURE_LOGS_ZIP))\n"
             "\n"
             "if not DOWNLOAD_TARGETS:\n"
-            '    print("다운로드할 결과 파일이 없습니다.")\n'
+            "    print(\"다운로드할 결과 파일이 없습니다.\")\n"
             "else:\n"
-            '    print(f"총 {len(DOWNLOAD_TARGETS)}개의 결과물이 준비되었습니다:")\n'
+            "    print(f\"총 {len(DOWNLOAD_TARGETS)}개의 결과물이 준비되었습니다:\")\n"
             "    for target in DOWNLOAD_TARGETS:\n"
-            '        print(f"  - {target.name} ({target.stat().st_size:,} bytes): {target}")\n'
+            "        print(f\"  - {target.name} ({target.stat().st_size:,} bytes): {target}\")\n"
             "\n"
             "    try:\n"
             "        from google.colab import files as colab_files\n"
             "        for target in DOWNLOAD_TARGETS:\n"
-            '            print(f"Google Colab 다운로드 시작: {target.name}")\n'
+            "            print(f\"Google Colab 다운로드 시작: {target.name}\")\n"
             "            colab_files.download(str(target))\n"
             "    except (ImportError, Exception):\n"
-            '        print("로컬 환경에서는 위 파일 경로에서 직접 접근하거나 더블클릭할 수 있습니다.")\n'
+            "        print(\"로컬 환경에서는 위 파일 경로에서 직접 접근하거나 더블클릭할 수 있습니다.\")\n"
         ),
         id="download",
     )
