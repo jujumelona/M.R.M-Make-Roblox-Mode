@@ -17,10 +17,18 @@ local Service = {}
 local function validSource(part)
     return part:IsDescendantOf(workspace)
 end
+local stockByPart = {}
+local function getStock(part)
+    if not validSource(part) then return nil end
+    if not stockByPart[part] then stockByPart[part] = { remaining = 100 } end
+    return stockByPart[part]
+end
 function Service.handleAction(player, services, ...)
     if not validSource(part) then return false end
     local distance = (root.Position - part.Position).Magnitude
     if distance > 12 then return false end
+    local stock = getStock(part)
+    if not stock then return false end
     if stock.remaining > 0 then
         local profile = services.PlayerDataManager.GetState(player, "GatherState")
         if not profile then return false end
@@ -29,6 +37,7 @@ function Service.handleAction(player, services, ...)
         if type(prior) ~= "number" then return false end
         stock.remaining -= 1
         profile.items = prior + 1
+        part:SetAttribute("ItemsLeft", stock.remaining)
         return { success = true, items = profile.items }
     end
     return false
@@ -69,12 +78,17 @@ function PlayerDataManager.GetState(player, namespace)
     return data.gameState[namespace]
 end
 function PlayerDataManager.OnReady(callback) end
-local function save()
+local savePlayerData
+savePlayerData = function(player)
     local snapshot = HttpService:JSONDecode(HttpService:JSONEncode(data))
     store:UpdateAsync(key, function(current)
         return snapshot
     end)
 end
+local function onPlayerRemoving(player)
+    savePlayerData(player)
+end
+Players.PlayerRemoving:Connect(onPlayerRemoving)
 return PlayerDataManager
 """
 WORLD_EFFECT = (
@@ -130,6 +144,9 @@ def test_transfer_fails_if_world_stock_or_inventory_credit_is_missing(tmp_path):
         WORLD_SOURCE.replace("profile.items = prior + 1", "local sample = prior + 1"),
         WORLD_SOURCE.replace("type(prior)", "typeof(counter)"),
         WORLD_SOURCE.replace("IsDescendantOf(workspace)", "IsA('Part')"),
+        WORLD_SOURCE.replace("local stock = getStock(part)", "local stock = {}"),
+        WORLD_SOURCE.replace('part:SetAttribute("ItemsLeft", stock.remaining)',
+                             'local ignored = stock.remaining'),
         WORLD_SOURCE.replace("stock.remaining -= 1", "stock.remaining -= 1\n        task.wait(1)"),
     ):
         sources, roles = _source_attestation(tmp_path, world=broken)
@@ -147,6 +164,8 @@ def test_projection_fails_if_real_storage_or_world_replay_is_missing(tmp_path):
                                         'GetState(player, "OtherNamespace")', 1)},
         {"provider": PROVIDER.replace("return snapshot", "return current")},
         {"provider": PROVIDER.replace("JSONEncode(data)", "JSONEncode({})")},
+        {"provider": PROVIDER.replace("Players.PlayerRemoving:Connect(onPlayerRemoving)",
+                                       "local neverConnected = true")},
         {"craft": CRAFT_SOURCE.replace("profile.slots[id] = { owned = true }",
                                         "local localValue = true")},
     ):
