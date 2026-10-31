@@ -24,15 +24,36 @@ def attest_async_vehicle_transit(
 ) -> tuple[dict[str, Any] | None, dict[str, Any]]:
     # The role and effect route candidates; the proof below must establish
     # concrete physical state transitions and occupant preservation.
-    if not re.search(
+    # Distinguish state-machine facets without demanding the 9B model
+    # rediscover a whole asynchronous implementation from isolated lines.
+    # A temporal arrival and an occupant-preservation invariant are not
+    # new genres or invented features: each must be proved by the SAME
+    # authoritative transit trace and receive its own physical mutation.
+    vehicle_word = re.search(
         r"\b(?:vehicle|craft|ship|spaceship|spacecraft|rocket|train|"
         r"aircraft|bus|boat|ferry)\b", effect, re.I,
-    ) or not re.search(
+    )
+    movement_word = re.search(
         r"\b(?:launch|travel|move|depart|transport|orbit|arriv|"
         r"relocat|flight|voyage)\w*\b", effect, re.I,
-    ):
+    )
+    rider_word = re.search(
+        r"\b(?:occupant|passenger|crew|aboard|rider)\w*\b", effect, re.I,
+    )
+    arrives = bool(re.search(r"\barriv\w*\b", effect, re.I))
+    no_ejection = bool(re.search(
+        r"\b(?:no|not|never|without)\b.{0,100}"
+        r"\b(?:eject|remov|los|empty|drop)\w*\b", effect, re.I,
+    ))
+    if vehicle_word and movement_word:
+        facet = "transit"
+    elif arrives and rider_word:
+        facet = "arrive_with_occupants"
+    elif no_ejection and rider_word:
+        facet = "preserve_occupants_on_success"
+    else:
         return None, {"reason": "not_a_vehicle_transit_effect"}
-    options: list[tuple[str, list[dict[str, Any]]]] = []
+    options: list[tuple[str, list[dict[str, Any]], int]] = []
     for path, raw in sorted(sources.items()):
         if not path.startswith("src/server/"):
             continue
@@ -173,29 +194,55 @@ def attest_async_vehicle_transit(
         started = exact_write(launch)
         moved = exact_write(pivot)
         finished = exact_write(arrived)
+        # Occupant continuity needs an independently cited collection
+        # mutation, not only a claim that an uninspected loop exists.
+        captured_match = re.search(
+            r"(?m)^\s*table\.insert\(\s*occupiedSeats\s*,\s*\{\s*"
+            r"seat\s*=\s*part\s*,\s*humanoid\s*=\s*occupant\s*\}\s*\)",
+            body,
+        )
+        captured = exact_write(captured_match) if captured_match else None
         if not all((started, moved, finished)):
             continue
         if ":PivotTo(" not in moved["quote"]:
             continue
-        if len({started["line"], moved["line"], finished["line"]}) != 3:
+        if captured is None:
             continue
-        options.append((path, [started, moved, finished]))
+        if len({captured["line"], started["line"],
+                moved["line"], finished["line"]}) != 4:
+            continue
+        if not (captured["line"] < started["line"] <
+                moved["line"] < finished["line"]):
+            continue
+        # Keep exactly one anchor per independent effect. A repeated PivotTo
+        # cannot falsely certify arrival or the passenger manifest.
+        if facet == "arrive_with_occupants":
+            proof_lines = [moved, finished]
+            anchor_index = 1
+        elif facet == "preserve_occupants_on_success":
+            proof_lines = [captured, moved, finished]
+            anchor_index = 0
+        else:
+            proof_lines = [started, moved, finished]
+            anchor_index = 1
+        options.append((path, proof_lines, anchor_index))
     if len(options) != 1:
         return None, {
             "status": "unverified",
             "reason": "no_unique_verified_async_vehicle_path",
             "candidate_count": len(options),
         }
-    path, lines = options[0]
+    path, lines, anchor_index = options[0]
     return {
         "verdict": "implemented", "file": path,
         # Anchor on the physical vehicle mutation, and include that same
         # exact line among the composite proof citations.
-        "line": lines[1]["line"], "quote": lines[1]["quote"],
+        "line": lines[anchor_index]["line"], "quote": lines[anchor_index]["quote"],
         "proof_lines": lines, "issue": "none", "repair": "none",
     }, {
         "status": "deterministic_async_source_witness",
         "method": "guarded_occupied_vehicle_timed_world_transition",
+        "facet": facet,
         "source_only": True,
         "proof_lines": len(lines),
     }
