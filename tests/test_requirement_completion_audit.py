@@ -1473,3 +1473,40 @@ def test_routed_conditional_early_return_does_not_hide_later_valid_write():
     found = _host_effect_witnesses("Increment counter", {path: source}, [])
     assert len(found) == 1, found
     assert found[0]["line"] == 8
+
+
+
+def test_routed_world_target_alias_may_be_a_real_effect_not_scratch():
+    from roblox_mod_ai.requirement_completion_audit import _host_effect_witnesses
+
+    path = "src/server/WorldAction.luau"
+    source = (
+        "local Service = {}\n"
+        "function Service.handleAction(player, services)\n"
+        "    -- RMM_GAMEPLAY_BODY_BEGIN\n"
+        '    local actionTarget = workspace:FindFirstChild("OwnedTarget")\n'
+        "    if not actionTarget then return false end\n"
+        "    actionTarget:Destroy()\n"
+        "    -- RMM_GAMEPLAY_BODY_END\n"
+        "end\nreturn Service\n"
+    )
+    witnesses = _host_effect_witnesses("Destroy a server-selected world object",
+                                      {path: source}, [])
+    assert len(witnesses) == 1, witnesses
+    assert witnesses[0]["quote"] == "actionTarget:Destroy()"
+
+
+def test_routed_world_target_rebound_to_unowned_scratch_is_not_proof():
+    from roblox_mod_ai.requirement_completion_audit import _host_effect_witnesses
+
+    path = "src/server/WorldAction.luau"
+    source = (
+        "local Service = {}\n"
+        "function Service.handleAction(player, services)\n"
+        "    -- RMM_GAMEPLAY_BODY_BEGIN\n"
+        "    local actionTarget = {}\n"
+        "    actionTarget.value += 1\n"
+        "    -- RMM_GAMEPLAY_BODY_END\n"
+        "end\nreturn Service\n"
+    )
+    assert _host_effect_witnesses("World state action", {path: source}, []) == []
