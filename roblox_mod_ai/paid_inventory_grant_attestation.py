@@ -120,9 +120,20 @@ def attest_paid_inventory_grant(
         if not (grant.start() < debit.start() < owned.start()
                 < entitlement.start() < approved.start()):
             continue
-        # Reject an action that can yield between the paid state writes.
-        if has(r"\b(?:task\.wait|WaitForChild|Heartbeat:Wait)\s*\(",
-               body[debit.start():approved.start()]):
+        # The balance preflight, physical grant and persistent debit must be
+        # non-yielding. A coroutine wait between validation and debit would
+        # reopen a TOCTOU gap even when the final writes are adjacent.
+        balance_guard = re.search(r"coins\.Value\s*<\s*COST\b", body)
+        if not balance_guard or balance_guard.start() >= grant.start():
+            continue
+        yielding = r"\b(?:task\.wait|WaitForChild|Heartbeat:Wait)\s*\("
+        if has(yielding, body[balance_guard.end():approved.start()]):
+            continue
+        helper_start = code.find("local function ensureOwnedTool(player)")
+        helper_end = code.find("function Service.start(", helper_start)
+        if helper_start < 0 or helper_end < helper_start:
+            continue
+        if has(yielding, code[helper_start:helper_end]):
             continue
         # Grant failure must return before debit. An unrelated failure
         # message elsewhere is not a guard over the actual pcall.
