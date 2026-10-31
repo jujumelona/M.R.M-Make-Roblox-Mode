@@ -1356,3 +1356,45 @@ def test_host_scaffold_malformed_body_markers_cannot_prove_gameplay():
         "end\nreturn Service\n"
     )
     assert _host_effect_witnesses("Update server state", {path: source}, []) == []
+
+
+
+def test_scaffold_cannot_use_scratch_write_beside_real_player_state_write():
+    from roblox_mod_ai.requirement_completion_audit import _host_effect_witnesses
+
+    path = "src/server/GenericHandler.luau"
+    source = (
+        "local Service = {}\n"
+        "function Service.handleAction(player, services, ...)\n"
+        "    -- RMM_GAMEPLAY_BODY_BEGIN\n"
+        '    local profile = services.PlayerDataManager.GetState(player, "GameState")\n'
+        "    local scratch = {}\n"
+        "    scratch.fake += 1\n"
+        "    profile.actual += 1\n"
+        "    -- RMM_GAMEPLAY_BODY_END\n"
+        "end\nreturn Service\n"
+    )
+    observed = _host_effect_witnesses("Mutate game state", {path: source}, [])
+    assert len(observed) == 1, observed
+    assert observed[0]["quote"] == "profile.actual += 1"
+    assert observed[0]["line"] == 7
+
+
+def test_scaffold_rebinding_authenticated_local_to_scratch_removes_proof():
+    from roblox_mod_ai.requirement_completion_audit import _host_effect_witnesses
+
+    path = "src/server/GenericHandler.luau"
+    source = (
+        "local Service = {}\n"
+        "function Service.handleAction(player, services, ...)\n"
+        "    -- RMM_GAMEPLAY_BODY_BEGIN\n"
+        '    local profile = services.PlayerDataManager.GetState(player, "GameState")\n'
+        "    profile.actual += 1\n"
+        "    local profile = {}\n"
+        "    profile.scratch += 1\n"
+        "    -- RMM_GAMEPLAY_BODY_END\n"
+        "end\nreturn Service\n"
+    )
+    observed = _host_effect_witnesses("Mutate game state", {path: source}, [])
+    assert len(observed) == 1, observed
+    assert observed[0]["quote"] == "profile.actual += 1"
