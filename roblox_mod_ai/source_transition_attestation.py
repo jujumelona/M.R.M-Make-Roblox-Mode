@@ -162,9 +162,35 @@ def _attest_persisted_projection(effect: str, source: str, root: Path,
         if not other:
             continue
         j, line = other[-1]
+        # Bind the persisted record to the actual physical projection.
+        # The saved profile write may already prove a separate "attach"
+        # requirement; anchor this proof on a *different* executable
+        # world-instance mutation to prevent double-counting one line.
+        physical = None
+        for name in linked_helpers:
+            match = re.search(
+                r"(?ms)^local function\s+" + re.escape(name)
+                + r"\s*\([^)]*\).*?^end\s*$", before_start,
+            )
+            if not match:
+                continue
+            for physical_match in re.finditer(
+                r"(?m)^\s*\w+\.Parent\s*=\s*\w+\s*$", match.group(),
+            ):
+                physical = (
+                    before_start[:match.start() + physical_match.start()].count("\n") + 1,
+                    physical_match.group().strip(),
+                )
+                break
+            if physical:
+                break
+        if physical is None:
+            continue
+        physical_line, physical_quote = physical
         return [
             {"line": start + j + 1, "quote": line},
             {"line": start + idx + 1, "quote": assignment},
+            {"line": physical_line, "quote": physical_quote},
         ]
     return None
 
