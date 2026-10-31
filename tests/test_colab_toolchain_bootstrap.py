@@ -98,11 +98,15 @@ def test_generator_and_committed_notebook_agree_about_cells(tmp_path, monkeypatc
         (Path(__file__).resolve().parents[1] /
          "R.M.M_Make_Roblox_Mode_Colab.ipynb").read_text(encoding="utf-8"))
     expected = json.loads(generated.read_text(encoding="utf-8"))
-    for index in (2, 4, 6, 7):
+    for index in (1, 2, 4, 6, 7):
         a = "".join(actual["cells"][index]["source"])
         b = "".join(expected["cells"][index]["source"])
         assert a == b, f"Committed Colab cell {index} diverged from generator"
-        if index == 2:
+        if index == 1:
+            assert 'ENGINE_VERIFICATION_POLICY = "Auto"' in a
+            assert "CLOUD_ENGINE_READY" in a
+            assert "ENGINE_VERIFY_BEFORE_FINAL = " in a
+        elif index == 2:
             assert a.index("setup_colab_toolchain(") < a.index("ensure_model_runtime(")
         elif index == 4:
             assert "ensure_model_runtime(" not in a
