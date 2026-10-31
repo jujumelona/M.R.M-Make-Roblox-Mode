@@ -8,6 +8,7 @@ import re
 
 from roblox_mod_ai.host_ship_attachment import _SERVER
 from roblox_mod_ai.host_flight_ready_attachment import render_flight_ready_attachment
+from roblox_mod_ai.host_vehicle_departure import _SERVER as DEPARTURE_SERVER
 from roblox_mod_ai.luau_analyzer import LuauStaticAnalyzer
 
 
@@ -88,3 +89,32 @@ def test_generated_source_preserves_existing_secure_builder_and_launch_provider(
         assert key.replace(" = ", "=") in source.replace(" = ", "=")
     assert source.count("function Service.GetOwnedActor(player)") == 1
     assert source.count('local function ensurePassengerSeats(player, ship, anchor)') == 1
+
+
+
+def test_model_world_pivot_is_explicitly_owned_by_builder_anchor():
+    source = rendered()
+    assert "ship.PrimaryPart = anchor" in source
+    assert "or ship.PrimaryPart ~= anchor" in source
+    assert source.index("ship.PrimaryPart = anchor") < source.index(
+        "shipModels[player] = ship"
+    )
+
+
+def test_destination_floor_and_boarding_proximity_are_geometrically_linked():
+    move = DEPARTURE_SERVER
+    assert 'destination.Size.Y/2+5' in move
+    assert "or not destination.Anchored or not destination.CanCollide" in move
+    assert "orbitTarget=destination.CFrame*CFrame.new(0,destination.Size.Y/2+5,0)" in move
+    assert 'local start=vehicle:GetPivot()' in move
+    assert "vehicle:PivotTo(start:Lerp(target,alpha))" in move
+    assert "orbitTarget=destination.CFrame*CFrame.new(0,16,0)" not in move
+    # For arbitrary positive landing-pad height, model anchor is 5 studs
+    # over the TOP of the platform, and the player's HumanoidRootPart
+    # standing on the surface is approximately 3 studs over it. The
+    # boarding prompt's 10-stud radius and 12-stud server guard are safe.
+    for height in [1, 2, 4, 10, 30]:
+        surface_top = height/2
+        model_anchor = surface_top + 5
+        standing_root = surface_top + 3
+        assert 0 <= model_anchor-standing_root < 10
