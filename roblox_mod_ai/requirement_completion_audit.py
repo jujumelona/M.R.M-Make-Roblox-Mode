@@ -1041,6 +1041,22 @@ def audit_whole_requirement_completion(
         "schema": SCHEMA, "executed": False, "fully_covered": False,
         "status": "failed", "reason": "", "checks": [], "findings": [],
     }
+    # Identify the *loaded* Colab code, not an asserted repository HEAD.
+    # Stale notebook imports otherwise produce repeated failures even after
+    # main was updated and invalidate source review/repair comparisons.
+    policy_dir = Path(__file__).resolve().parent
+    report["validator_sha256"] = {}
+    for validator_name in (
+        "requirement_completion_audit.py",
+        "effect_scope_reconciliation.py",
+        "source_transition_attestation.py",
+    ):
+        try:
+            report["validator_sha256"][validator_name] = hashlib.sha256(
+                (policy_dir / validator_name).read_bytes()
+            ).hexdigest()
+        except OSError:
+            report["validator_sha256"][validator_name] = "unavailable"
     requirements = ((proposal.game_design.get("detailed_implementation_plan") or {})
                     .get("required_functions") or [])
     if not isinstance(requirements, list) or not 1 <= len(requirements) <= MAX_REQUIREMENTS:
