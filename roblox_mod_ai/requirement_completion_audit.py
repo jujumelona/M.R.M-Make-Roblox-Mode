@@ -764,13 +764,14 @@ def _host_effect_witnesses(
 
 
 def _host_composite_witness_bundles(
-    witnesses: list[dict[str, Any]], limit: int = 12,
+    witnesses: list[dict[str, Any]],
+    sources: dict[str, str] | None = None,
+    limit: int = 12,
 ) -> list[dict[str, Any]]:
-    """Use source-owned groups where one statement cannot prove a composite.
+    """Group host-owned state writes and bounded real rejection guards.
 
-    These are actual line citations from ONE owner, not model-authored code.
-    A bundle must contain at least two distinct source statements; its
-    existence alone proves nothing until a separate review selects it.
+    Guard previews help an LLM assess failure semantics. A guard by itself
+    is never an implementation witness, nor a claim of runtime coverage.
     """
     grouped: dict[str, list[dict[str, Any]]] = {}
     for row in witnesses:
@@ -779,9 +780,27 @@ def _host_composite_witness_bundles(
     for path, rows in grouped.items():
         if len(rows) < 2:
             continue
-        # A small prompt cannot display unlimited writes from large modules.
-        # Retain ranked candidates (and their real physical line locations).
         selected = sorted(rows[:6], key=lambda row: row["line"])
+        guards: list[dict[str, Any]] = []
+        if sources and path in sources:
+            lines = _mask_luau_comments(sources[path]).splitlines()
+            first = min(row["line"] for row in selected)
+            # Include the reject path before writes as well as neighboring
+            # guards, but bound prompt size even for multi-thousand-line owners.
+            start = max(0, first - 45)
+            for index in range(start, first - 1):
+                visible = lines[index].strip()
+                if (visible and (
+                        re.search(r"\b(?:if|elseif)\b", visible)
+                        or re.search(r"\breturn\b.*(?:false|nil|reason)", visible)
+                        or "GetState(" in visible
+                        or "GetOwnedActor(" in visible)
+                        and len(visible) <= 190):
+                    guards.append({
+                        "line": index + 1,
+                        "source": visible[:150],
+                    })
+            guards = guards[-9:]
         result.append({
             "id": len(result) + 1,
             "file": path,
@@ -789,6 +808,7 @@ def _host_composite_witness_bundles(
                 {"line": row["line"], "quote": row["quote"]}
                 for row in selected
             ],
+            "guard_context": guards,
         })
         if len(result) >= limit:
             break
@@ -921,7 +941,7 @@ def _fallback_effect_witness_review(
         # credit or a stateful travel sequence. The host groups REAL writes
         # within each owner, then asks for a second, bounded integer review.
         # A second 0 or malformed output remains fail-closed.
-        bundles = _host_composite_witness_bundles(witnesses)
+        bundles = _host_composite_witness_bundles(witnesses, sources)
         diagnostics["composite_candidate_count"] = len(bundles)
         if bundles:
             try:
@@ -932,7 +952,9 @@ def _fallback_effect_witness_review(
                         "An individual line was insufficient. Choose one "
                         "bundle ONLY if its COMBINED executable statements "
                         "support the exact behavior, including necessary "
-                        "state transitions. If no bundle proves the whole "
+                        "state transitions and rejection guards. The listed "
+                        "guard_context is context, not a second proof. "
+                        "If no bundle proves the whole "
                         "behavior, choose 0. Never treat owner descriptions "
                         "or client feedback as proof. Output only {choice:N}.\n"
                         + json.dumps({
