@@ -156,7 +156,7 @@ class OpenCloudRuntimeVerifier:
                     # observed client/studio multiplayer or ingest untrusted
                     # log output as instructions.
                     runtime_logs = []
-                    if not passed:
+                    if not passed and (self.client is None or os.environ.get("RMM_FETCH_CLOUD_TASK_LOGS") == "1"):
                         try:
                             logs_res = session.get(task_url + "/logs",
                                 headers={"x-api-key": key})
@@ -177,7 +177,8 @@ class OpenCloudRuntimeVerifier:
                         "script_sha256": script_digest,
                         "contract_check_count": len(engine_contract_checks(proposal)),
                         "engine_logs": safe_logs,
-                        "scope": "server_datamodel_remotes_world_and_datastore_not_multiplayer",
+                        "scope": "server_smoke_and_datastore_only",
+                        "extended_scope": "server_datamodel_remotes_world_and_datastore_not_multiplayer",
                         "reason": "ok" if passed else str(
                             task.get("error", "Task did not return exactly [true]")
                         )[:3000].replace(key, "[REDACTED]"),
