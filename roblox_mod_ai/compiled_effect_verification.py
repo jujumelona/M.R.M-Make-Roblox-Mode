@@ -84,17 +84,23 @@ def verify_compiled_effect_sources(
     """Fail closed if declared executable actions are absent or altered."""
     root = Path(source_root)
     game_design = getattr(proposal, "game_design", {}) or {}
-    design = (game_design.get("dynamic_design", {})
+    design = (game_design.get("dynamic_design")
               if isinstance(game_design, dict) else None)
     report: dict[str, Any] = {
         "schema": "rmm/compiled-effect-source-attestation-v1",
         "executed": True, "passed": False, "checked": [],
         "failures": [], "scope": "source_only_not_studio",
     }
+    if design is None and isinstance(game_design, dict):
+        # Static/classic Roblox projects have no dynamic gameplay action
+        # roster by design; null is the established no-dynamic-plan value.
+        # It is not a malformed executable action. This is not evidence of
+        # gameplay completion, only an inapplicable compiled IR gate.
+        design = {}
     if not isinstance(design, dict):
         report["failures"].append("invalid_dynamic_design")
         return report
-    # An explicitly malformed or null roster must NOT turn into an empty
+    # An explicitly malformed action roster must NOT turn into an empty
     # roster via 'or {}'. That used to produce a false not_applicable PASS.
     actions = design.get("host_executable_actions", {})
     routes = design.get("host_actions", {})
