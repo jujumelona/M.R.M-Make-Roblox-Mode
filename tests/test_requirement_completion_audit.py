@@ -468,6 +468,10 @@ def test_original_negative_rejection_clause_kept_with_its_operation():
 
 def test_unplanned_original_action_blocks_without_source_hallucination(tmp_path):
     proposal = fixture(tmp_path)
+    # A new requirement is authoritative ONLY if grounded in the original.
+    proposal.game_design["detailed_implementation_plan"]["required_functions"][0][
+        "original_request"
+    ] += "; A requested physical resource deposit must exist in the world"
     class Reporter:
         def complete_json(self, **kwargs):
             if kwargs["prompt"].startswith("Post-generation"):
@@ -1129,6 +1133,9 @@ def test_unverified_model_replies_report_all_requirements_in_one_run(tmp_path):
 def test_original_scope_json_failure_can_recover_only_from_exact_plain_none(tmp_path):
     proposal = fixture(tmp_path)
     req = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
+    req["original_request"] += (
+        "; An additional server-owned state change from the original request"
+    )
     req["server_state_changes"] = [
         "The server decrements a real persistent resource count"
     ]
