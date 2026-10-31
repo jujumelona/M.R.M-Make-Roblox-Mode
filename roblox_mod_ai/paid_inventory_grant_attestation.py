@@ -174,7 +174,7 @@ def attest_paid_inventory_grant(
             # not at the effectful token. Citation offsets MUST point at the
             # first executable non-whitespace character of the matched code.
             visible_match = match.group(0)
-            first = re.search(r"\\S", visible_match)
+            first = re.search(r"\S", visible_match)
             assert first is not None
             return base + match.start() + first.start()
         points = [
