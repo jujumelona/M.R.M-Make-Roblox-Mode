@@ -37,7 +37,7 @@ def build_notebook() -> None:
             "> 자연어 요구사항만으로 **Roblox Studio 경험 및 인게임 모딩 시스템**을 자동 기획하고, Luau 코드를 정적 검증 및 Rojo 빌드한 뒤 **즉시 열 수 있는 `.rbxlx` 및 Rojo 프로젝트 ZIP**을 생성하는 올인원 Colab 노트북입니다.\n"
             "\n"
             "- **Full**: 기획/RAG/Luau 생성 및 도구체인 검사 (실제 Roblox Studio 멀티플레이 검증은 별도 필요)\n"
-            "- **Engine gate**: 테스트 Place에서 실제 Roblox 서버 검증이 통과해야만 최종 ZIP 다운로드 (Colab Secrets 및 테스트용 ID 필요)\n"
+            "- **Engine verification (Auto)**: 기본은 가능한 로컬 검사와 ZIP 생성. 테스트용 Roblox 인증 정보가 준비된 경우에만 실제 서버 엔진 검증까지 실행하며, 검증 상태를 명확히 구분\n"
             "- **Plan**: 자연어 요구사항을 게임플레이, 네트워크(RemoteEvent), DataStore, UI 서브시스템으로 분해 및 기획안 생성\n"
             "- **Revise**: 이전 계획 또는 체크포인트를 바탕으로 사용자 피드백을 반영하여 부분 수정\n"
             "- **Execute**: 이미 확정된 `proposal.json` 계획 파일로 즉시 코드 생성 및 빌드 수행\n"
@@ -52,82 +52,84 @@ def build_notebook() -> None:
             "# @title 1. 실행 모드 및 게임 설정\n"
             "import os\n"
             "\n"
-            'RUN_MODE = "Full" #@param ["Full", "Plan", "Revise", "Execute", "Audit"]\n'
-            'PROMPT = "코인 수집, 상점 시스템, 리더보드가 포함된 검투 아레나 게임을 만들어줘." #@param {type:"string"}\n'
-            'PLAN_FILE = "" #@param {type:"string"}\n'
-            'ROBLOX_EXPERIENCE_NAME = "CombatArena" #@param {type:"string"}\n'
-            'GENRE = "Action" #@param ["Action", "RPG", "Simulator", "Tycoon", "Obby", "Survival", "Minigame", "Custom"]\n'
-            'MODEL_PROFILE = "t4_local" #@param ["t4_local", "fast_test", "openai-compatible"]\n'
-            'REMOTE_BASE_URL = "" #@param {type:"string"}\n'
-            'REMOTE_API_KEY = "" #@param {type:"string"}\n'
-            'SEARCH_CREATOR_STORE = True #@param {type:"boolean"}\n'
-            'SAVE_TO_GOOGLE_DRIVE = False #@param {type:"boolean"}\n'
-            '# Verified-release mode: do not download an untested final build.\n'
-            'ENGINE_VERIFY_BEFORE_FINAL = True #@param {type:"boolean"}\n'
-            'CLOUD_TEST_UNIVERSE_ID = "" #@param {type:"string"}\n'
-            'CLOUD_TEST_PLACE_ID = "" #@param {type:"string"}\n'
-            'CLOUD_ENABLE_TEST_PUBLISH = False #@param {type:"boolean"}\n'
-            'MAX_ENGINE_REBUILDS = 2 #@param {type:"integer"}\n'
+            "RUN_MODE = \"Full\" #@param [\"Full\", \"Plan\", \"Revise\", \"Execute\", \"Audit\"]\n"
+            "PROMPT = \"코인 수집, 상점 시스템, 리더보드가 포함된 검투 아레나 게임을 만들어줘.\" #@param {type:\"string\"}\n"
+            "PLAN_FILE = \"\" #@param {type:\"string\"}\n"
+            "ROBLOX_EXPERIENCE_NAME = \"CombatArena\" #@param {type:\"string\"}\n"
+            "GENRE = \"Action\" #@param [\"Action\", \"RPG\", \"Simulator\", \"Tycoon\", \"Obby\", \"Survival\", \"Minigame\", \"Custom\"]\n"
+            "MODEL_PROFILE = \"t4_local\" #@param [\"t4_local\", \"fast_test\", \"openai-compatible\"]\n"
+            "REMOTE_BASE_URL = \"\" #@param {type:\"string\"}\n"
+            "REMOTE_API_KEY = \"\" #@param {type:\"string\"}\n"
+            "SEARCH_CREATOR_STORE = True #@param {type:\"boolean\"}\n"
+            "SAVE_TO_GOOGLE_DRIVE = False #@param {type:\"boolean\"}\n"
+            "ENGINE_VERIFICATION_POLICY = \"Auto\" #@param [\"Auto\", \"Required\", \"Off\"]\n"
+            "CLOUD_TEST_UNIVERSE_ID = \"\" #@param {type:\"string\"}\n"
+            "CLOUD_TEST_PLACE_ID = \"\" #@param {type:\"string\"}\n"
+            "CLOUD_ENABLE_TEST_PUBLISH = False #@param {type:\"boolean\"}\n"
+            "MAX_ENGINE_REBUILDS = 2 #@param {type:\"integer\"}\n"
             "\n"
-            'VALID_RUN_MODES = {"Full", "Plan", "Revise", "Execute", "Audit"}\n'
+            "VALID_RUN_MODES = {\"Full\", \"Plan\", \"Revise\", \"Execute\", \"Audit\"}\n"
             "if RUN_MODE not in VALID_RUN_MODES:\n"
-            '    raise ValueError(f"지원하지 않는 실행 모드: {RUN_MODE}")\n'
+            "    raise ValueError(f\"지원하지 않는 실행 모드: {RUN_MODE}\")\n"
             "\n"
-            'if RUN_MODE not in {"Execute", "Audit"} and not PROMPT.strip():\n'
-            '    raise ValueError("선택한 실행 모드에서는 PROMPT를 입력해야 합니다.")\n'
+            "if RUN_MODE not in {\"Execute\", \"Audit\"} and not PROMPT.strip():\n"
+            "    raise ValueError(\"선택한 실행 모드에서는 PROMPT를 입력해야 합니다.\")\n"
             "\n"
-            'os.environ["RMM_EXPERIENCE_NAME"] = ROBLOX_EXPERIENCE_NAME\n'
-            'os.environ["RMM_GENRE"] = GENRE\n'
-            '# API key comes only from Colab Secrets, never from a printed cell.\n'
-            'if CLOUD_TEST_UNIVERSE_ID.strip():\n'
-            '    os.environ["ROBLOX_TEST_UNIVERSE_ID"] = CLOUD_TEST_UNIVERSE_ID.strip()\n'
-            'else:\n'
-            '    os.environ.pop("ROBLOX_TEST_UNIVERSE_ID", None)\n'
-            'if CLOUD_TEST_PLACE_ID.strip():\n'
-            '    os.environ["ROBLOX_TEST_PLACE_ID"] = CLOUD_TEST_PLACE_ID.strip()\n'
-            'else:\n'
-            '    os.environ.pop("ROBLOX_TEST_PLACE_ID", None)\n'
-            'if CLOUD_ENABLE_TEST_PUBLISH:\n'
-            '    os.environ["RMM_ALLOW_TEST_PLACE_PUBLISH"] = "1"\n'
-            'else:\n'
-            '    os.environ.pop("RMM_ALLOW_TEST_PLACE_PUBLISH", None)\n'
-            'try:\n'
-            '    from google.colab import userdata\n'
-            '    cloud_key = userdata.get("ROBLOX_OPEN_CLOUD_API_KEY")\n'
-            '    if cloud_key:\n'
-            '        os.environ["ROBLOX_OPEN_CLOUD_API_KEY"] = cloud_key\n'
-            'except Exception:\n'
-            '    pass\n'
-            "# Check the private TEST environment BEFORE downloading a model or building\n"
-            "# any code. Missing permission is not an AI/game failure, and secrets are\n"
-            "# never printed. Change ENGINE_VERIFY_BEFORE_FINAL=False for an explicitly\n"
-            "# unverified development build without Roblox account credentials.\n"
-            "if ENGINE_VERIFY_BEFORE_FINAL and RUN_MODE in {\"Full\", \"Execute\", \"Revise\"}:\n"
-            "    missing = []\n"
-            "    if not os.environ.get(\"ROBLOX_OPEN_CLOUD_API_KEY\", \"\").strip():\n"
-            "        missing.append(\"ROBLOX_OPEN_CLOUD_API_KEY (Colab Secrets의 열쇠 아이콘)\")\n"
-            "    for key in (\"ROBLOX_TEST_UNIVERSE_ID\", \"ROBLOX_TEST_PLACE_ID\"):\n"
-            "        value = os.environ.get(key, \"\").strip()\n"
-            "        if not value.isdecimal() or int(value or \"0\") <= 0:\n"
-            "            missing.append(key + \" (Roblox Creator Dashboard의 테스트 게임 ID)\")\n"
-            "    if os.environ.get(\"RMM_ALLOW_TEST_PLACE_PUBLISH\") != \"1\":\n"
-            "        missing.append(\"CLOUD_ENABLE_TEST_PUBLISH=True (테스트 Place 업로드 동의)\")\n"
-            "    if missing:\n"
+            "os.environ[\"RMM_EXPERIENCE_NAME\"] = ROBLOX_EXPERIENCE_NAME\n"
+            "os.environ[\"RMM_GENRE\"] = GENRE\n"
+            "if CLOUD_TEST_UNIVERSE_ID.strip():\n"
+            "    os.environ[\"ROBLOX_TEST_UNIVERSE_ID\"] = CLOUD_TEST_UNIVERSE_ID.strip()\n"
+            "else:\n"
+            "    os.environ.pop(\"ROBLOX_TEST_UNIVERSE_ID\", None)\n"
+            "if CLOUD_TEST_PLACE_ID.strip():\n"
+            "    os.environ[\"ROBLOX_TEST_PLACE_ID\"] = CLOUD_TEST_PLACE_ID.strip()\n"
+            "else:\n"
+            "    os.environ.pop(\"ROBLOX_TEST_PLACE_ID\", None)\n"
+            "if CLOUD_ENABLE_TEST_PUBLISH:\n"
+            "    os.environ[\"RMM_ALLOW_TEST_PLACE_PUBLISH\"] = \"1\"\n"
+            "else:\n"
+            "    os.environ.pop(\"RMM_ALLOW_TEST_PLACE_PUBLISH\", None)\n"
+            "try:\n"
+            "    from google.colab import userdata\n"
+            "    cloud_key = userdata.get(\"ROBLOX_OPEN_CLOUD_API_KEY\")\n"
+            "    if cloud_key:\n"
+            "        os.environ[\"ROBLOX_OPEN_CLOUD_API_KEY\"] = cloud_key\n"
+            "except Exception:\n"
+            "    pass\n"
+            "# Auto performs every available verification; missing optional Roblox account\n"
+            "# credentials must NOT block code generation, offline repair or ZIP delivery.\n"
+            "# Required is opt-in strict remote-engine verification; Off is offline-only.\n"
+            "if ENGINE_VERIFICATION_POLICY not in {\"Auto\", \"Required\", \"Off\"}:\n"
+            "    raise ValueError(\"ENGINE_VERIFICATION_POLICY must be Auto, Required or Off\")\n"
+            "CLOUD_MISSING_REQUIREMENTS = []\n"
+            "if not os.environ.get(\"ROBLOX_OPEN_CLOUD_API_KEY\", \"\").strip():\n"
+            "    CLOUD_MISSING_REQUIREMENTS.append(\"ROBLOX_OPEN_CLOUD_API_KEY (Colab Secrets)\")\n"
+            "for key in (\"ROBLOX_TEST_UNIVERSE_ID\", \"ROBLOX_TEST_PLACE_ID\"):\n"
+            "    value = os.environ.get(key, \"\").strip()\n"
+            "    if not value.isdecimal() or int(value or \"0\") <= 0:\n"
+            "        CLOUD_MISSING_REQUIREMENTS.append(key)\n"
+            "if os.environ.get(\"RMM_ALLOW_TEST_PLACE_PUBLISH\") != \"1\":\n"
+            "    CLOUD_MISSING_REQUIREMENTS.append(\"CLOUD_ENABLE_TEST_PUBLISH=True\")\n"
+            "CLOUD_ENGINE_READY = not CLOUD_MISSING_REQUIREMENTS\n"
+            "ENGINE_VERIFY_BEFORE_FINAL = (ENGINE_VERIFICATION_POLICY == \"Required\"\n"
+            "    or ENGINE_VERIFICATION_POLICY == \"Auto\" and CLOUD_ENGINE_READY)\n"
+            "if RUN_MODE in {\"Full\", \"Execute\", \"Revise\"} and not CLOUD_ENGINE_READY:\n"
+            "    if ENGINE_VERIFICATION_POLICY == \"Required\":\n"
             "        raise RuntimeError(\n"
-            "            \"Roblox 엔진 검증 환경이 없어 생성을 시작하지 않았습니다.\\n\"\n"
-            "            + \"누락: \" + \", \".join(missing) + \"\\n\"\n"
-            "            + \"1) Creator Dashboard에 별도 TEST Experience/Place를 만듭니다.\\n\"\n"
-            "            + \"2) 해당 TEST 게임으로 제한한 Open Cloud API 키를 발급합니다.\\n\"\n"
-            "            + \"3) Colab Secrets에 ROBLOX_OPEN_CLOUD_API_KEY를 등록하고 노트북 접근을 허용합니다.\\n\"\n"
-            "            + \"4) 위 ID 두 개와 CLOUD_ENABLE_TEST_PUBLISH=True를 설정한 뒤 다시 실행합니다.\\n\"\n"
-            "            + \"API 키 값을 채팅이나 셀 출력에 붙여넣지 마세요.\\n\"\n"
-            "            + \"외부 연결 없이 개발용 생성만 원한다면 ENGINE_VERIFY_BEFORE_FINAL=False를 선택하세요.\"\n"
+            "            \"Required 모드의 Roblox 서버 엔진 검증 설정이 부족합니다: \"\n"
+            "            + \", \".join(CLOUD_MISSING_REQUIREMENTS)\n"
+            "            + \". 테스트용 Roblox Experience/Place를 설정하거나 Auto 모드를 사용하세요.\"\n"
             "        )\n"
+            "    if ENGINE_VERIFICATION_POLICY == \"Auto\":\n"
+            "        print(\"[검증 자동 선택] Roblox 테스트 인증 정보가 없어 서버 엔진 검사는 건너뜁니다.\")\n"
+            "        print(\"[진행] Luau 검사·수정·Rojo 빌드·ZIP 생성은 계속합니다.\")\n"
+            "        print(\"[주의] 결과물은 built_unverified이며 Roblox 실플레이 검증 결과가 아닙니다.\")\n"
+            "        print(\"[선택적 설정] \" + \", \".join(CLOUD_MISSING_REQUIREMENTS))\n"
             "if REMOTE_BASE_URL:\n"
-            '    os.environ["RMM_MODEL_BASE_URL"] = REMOTE_BASE_URL\n'
-            '    os.environ["ROBLOX_LLAMA_SERVER_URL"] = REMOTE_BASE_URL\n'
+            "    os.environ[\"RMM_MODEL_BASE_URL\"] = REMOTE_BASE_URL\n"
+            "    os.environ[\"ROBLOX_LLAMA_SERVER_URL\"] = REMOTE_BASE_URL\n"
             "if REMOTE_API_KEY:\n"
-            '    os.environ["RMM_MODEL_API_KEY"] = REMOTE_API_KEY\n'
+            "    os.environ[\"RMM_MODEL_API_KEY\"] = REMOTE_API_KEY\n"
         ),
         id="configuration",
     )
@@ -475,7 +477,7 @@ def build_notebook() -> None:
             "5. AI로 Studio 플레이 테스트를 조작하려면 Studio의 내장 MCP 서버를 활성화하고 신뢰하는 로컬 MCP 클라이언트를 연결합니다. 예시 설정: local_studio/studio_mcp.windows.json.\n"
             "\n"
             "서버 엔진 검증을 사용하려면 테스트 전용 Roblox Place/Universe 및 Colab Secret ROBLOX_OPEN_CLOUD_API_KEY를 준비하고, CLOUD_ENABLE_TEST_PUBLISH를 직접 켭니다.\n"
-            "검증 게이트 기본값이 True일 때 인증 정보가 없다면 최종 ZIP을 배포하지 않으며 진단만 제공합니다.\n"
+            "Auto 모드는 인증 정보가 없어도 오프라인 생성·검증 및 ZIP 다운로드를 계속합니다. 서버 엔진 검증이 수행되지 않은 결과는 built_unverified로 표시합니다. Required 모드에서만 인증 정보가 없으면 중단합니다.\n"
             "Colab은 사용자의 Windows PC에서 실행되는 Studio를 직접 제어하지 않습니다.\n"
         ),
         id="boundaries",
