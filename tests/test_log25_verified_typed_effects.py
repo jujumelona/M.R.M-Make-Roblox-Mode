@@ -419,6 +419,9 @@ def test_declared_damage_currency_reward_is_real_server_state_credit():
     assert source.index("coins.Value > 2147483647 - earnedDamage") < (
         source.index('target:SetAttribute("RMMAlienHealth", remaining)')
     )
+    assert source.index("coins.Value > 2147483647 - earnedDamage") < (
+        source.index("coins.Value += earnedDamage")
+    )
     assert source.index('target:SetAttribute("RMMAlienHealth", remaining)') < (
         source.index("coins.Value += earnedDamage")
     )
