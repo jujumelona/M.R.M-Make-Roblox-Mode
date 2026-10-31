@@ -61,7 +61,7 @@ class OpenCloudRuntimeVerifier:
         client: httpx.Client | None = None,
         publisher: object | None = None,
         poll_interval: float = 2.0,
-        max_polls: int = 90,
+        max_polls: int = 165,
     ) -> None:
         self.client = client
         self.publisher = publisher
@@ -163,9 +163,20 @@ class OpenCloudRuntimeVerifier:
                             if logs_res.status_code == 200:
                                 obj = logs_res.json()
                                 if isinstance(obj, dict):
-                                    runtime_logs = obj.get("logs", [])
-                                    if not isinstance(runtime_logs, list):
-                                        runtime_logs = []
+                                    # Official API returns luauExecutionSessionTaskLogs,
+                                    # not a top-level "logs" array. Include structured
+                                    # messages and flat messages for real repair evidence.
+                                    records = obj.get("luauExecutionSessionTaskLogs", [])
+                                    if isinstance(records, list):
+                                        for row in records[:50]:
+                                            if not isinstance(row, dict):
+                                                continue
+                                            for message in (row.get("structuredMessages") or [])[:150]:
+                                                if isinstance(message, dict):
+                                                    runtime_logs.append(str(message.get("message", ""))[:500])
+                                            for message in (row.get("messages") or [])[:150]:
+                                                if isinstance(message, str):
+                                                    runtime_logs.append(message[:500])
                         except (httpx.HTTPError, ValueError, TypeError):
                             pass
                     safe_logs = str(runtime_logs)[:12000].replace(key, "[REDACTED]") if key else ""
