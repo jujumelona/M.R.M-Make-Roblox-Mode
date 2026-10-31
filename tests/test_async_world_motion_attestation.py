@@ -5,7 +5,10 @@ import pytest
 
 from roblox_mod_ai.async_world_motion_attestation import attest_async_vehicle_transit
 from roblox_mod_ai.host_vehicle_departure import _SERVER
-from roblox_mod_ai.requirement_completion_audit import (\n    _fallback_effect_witness_review, _is_effectful_source_line,\n    audit_whole_requirement_completion,\n)
+from roblox_mod_ai.requirement_completion_audit import (
+    _fallback_effect_witness_review, _is_effectful_source_line,
+    audit_whole_requirement_completion,
+)
 
 
 SOURCE = _SERVER.replace("@BUILDER@", "OwnedVehicleBuilder").replace(
