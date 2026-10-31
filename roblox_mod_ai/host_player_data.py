@@ -135,6 +135,13 @@ end""")
     end = source.index('                player:Kick("Your profile session lock', begin)
     source = source[:begin] + "            if not savePlayerData(player, false) then\n" + source[end:]
     source = _replace(source, "local function savePlayerData(player: Player): boolean", "savePlayerData = function(player: Player, release: boolean?): boolean")
+    # Keep a disconnected player's authoritative snapshot alive until its
+    # release save has either succeeded or exhausted a bounded second pass.
+    # A failed UpdateAsync must never be silently reported as a clean exit.
+    source = _replace(source, "local savePlayerData\n\nlocal sessionData:", """local savePlayerData
+local pendingDisconnectSaves = 0
+
+local sessionData:""")
     source = _replace(source, "    if isSaving[userId] then return false end", """    if isSaving[userId] and release == false then return false end
     while isSaving[userId] do task.wait(0.1) end
     if sessionData[userId] ~= data then return true end""")
@@ -162,13 +169,32 @@ end""")
     sessionLocks[userId] = nil
     studioEphemeral[userId] = nil
 end""", """    if profilePlayers[userId] ~= player then return end
-    savePlayerData(player)
+    pendingDisconnectSaves += 1
+    local committed = savePlayerData(player)
+    -- The first write already uses bounded retryWithBackoff. When the
+    -- disconnect happens during an outage, retain the old snapshot and
+    -- make a second bounded series instead of discarding it immediately.
+    for attempt = 1, 3 do
+        if committed then break end
+        task.wait(math.min(8, 2 ^ attempt))
+        committed = savePlayerData(player)
+    end
+    if not committed then
+        warn("RMM PROFILE SAVE FAILED after disconnect retry for "
+            .. tostring(userId) .. "; progress may be unsaved")
+    end
     sessionData[userId] = nil
     sessionLocks[userId] = nil
     studioEphemeral[userId] = nil
     profilePlayers[userId] = nil
+    pendingDisconnectSaves -= 1
     restartQueued(userId)
 end""")
+    # BindToClose must also account for disconnect callbacks still saving;
+    # Players:GetPlayers() does not contain players that already departed.
+    source = _replace(source,
+        "while remaining > 0 and os.clock() < deadline do",
+        "while (remaining > 0 or pendingDisconnectSaves > 0) and os.clock() < deadline do")
     marker = "Players.PlayerAdded:Connect(onPlayerAdded)"
     if source.count(marker) != 1:
         raise ValueError("Builtin profile startup anchor changed")
