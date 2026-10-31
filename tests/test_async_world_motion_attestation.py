@@ -168,3 +168,79 @@ def test_async_motion_contract_survives_full_requirement_audit(tmp_path):
 ])
 def test_missing_start_or_finish_does_not_manufacture_composite_proof(source):
     assert proof(source) is None
+
+
+
+TRANSIT_EFFECTS = [
+    "The owned craft visibly travels into a playable destination",
+    "arrives with its occupants still aboard",
+    "no passenger is ejected and the crew list remains populated",
+]
+
+
+def test_one_authoritative_transit_trace_proves_distinct_temporal_facets():
+    anchors = []
+    for expected, facet in zip(
+        TRANSIT_EFFECTS,
+        ["transit", "arrive_with_occupants",
+         "preserve_occupants_on_success"],
+    ):
+        result, details = attest_async_vehicle_transit(
+            expected, {PATH: SOURCE}, MODULES,
+        )
+        assert result is not None, (expected, details)
+        assert details["facet"] == facet
+        assert 2 <= len(result["proof_lines"]) <= 6
+        assert result["line"] in {p["line"] for p in result["proof_lines"]}
+        for part in result["proof_lines"]:
+            assert SOURCE.splitlines()[part["line"] - 1].strip() == part["quote"]
+            assert _is_effectful_source_line(SOURCE, part["line"])
+        anchors.append(result["line"])
+    assert len(set(anchors)) == 3
+
+
+def test_three_temporal_facets_pass_real_whole_requirement_audit(tmp_path):
+    target = tmp_path / PATH
+    target.parent.mkdir(parents=True)
+    target.write_text(SOURCE, encoding="utf-8")
+    proposal = SimpleNamespace(
+        modules=MODULES,
+        game_design={"detailed_implementation_plan": {
+            "required_functions": [{
+                "id": "req-travel",
+                "original_request": "Use a real owned vehicle for transport",
+                "expected_outcome": ". ".join(TRANSIT_EFFECTS),
+                "server_state_changes": TRANSIT_EFFECTS,
+                "owner_files": [PATH],
+            }],
+        }},
+    )
+
+    class NoModelInterpretationOfKnownStateMachine:
+        def complete_json(self, **kwargs):
+            if kwargs["prompt"].startswith("Find user-requested"):
+                return {"missing_actions": []}
+            raise AssertionError("No repeated tiny-model interpretation of known transit")
+
+    report = audit_whole_requirement_completion(
+        proposal, tmp_path, NoModelInterpretationOfKnownStateMachine(),
+        host_witness_only=True,
+    )
+    assert report["fully_covered"], report
+    assert report["status"] == "reviewed_no_blockers", report
+    assert len(report["checks"]) == 3, report
+    assert not report.get("unverified_effects"), report
+    assert len({r["line"] for r in report["checks"]}) == 3, report
+
+
+@pytest.mark.parametrize("broken", [
+    SOURCE.replace("and occupantsIntact() do", "do"),
+    SOURCE.replace("table.insert(occupiedSeats, { seat=part, humanoid=occupant })",
+                   "local decor = { seat=part, humanoid=occupant }"),
+    SOURCE.replace('player:SetAttribute("RMMFlightState",finalState)',
+                   'player:SetAttribute("RMMFlightState","arrived")'),
+])
+def test_temporal_facet_audit_fails_closed_on_broken_continuity(broken):
+    for claim in TRANSIT_EFFECTS[1:]:
+        cert, _ = attest_async_vehicle_transit(claim, {PATH: broken}, MODULES)
+        assert cert is None
