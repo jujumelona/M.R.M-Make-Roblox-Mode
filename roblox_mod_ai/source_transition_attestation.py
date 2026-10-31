@@ -258,7 +258,11 @@ def attest_compound_state_transition(
         # The author-owned role routes evidence; field and state-flow proofs
         # are still mandatory. No game title or prompt-specific branch exists.
         overlap = len((original - generic) & _tokens(path + " " + role))
-        if overlap < 2:
+        # Lexical text is only a routing hint. Requiring two identical
+        # English words rejected otherwise proven inventory subtypes and
+        # cross-language authoring. Structural state-flow proof below is
+        # mandatory regardless of this score.
+        if overlap < 1:
             continue
         pair = _attest_transfer(effect, source, start, body, changes)
         method = "world_stock_to_owned_profile"
