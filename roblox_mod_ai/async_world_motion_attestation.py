@@ -143,13 +143,43 @@ def attest_async_vehicle_transit(
         # Offsets are in the comment-masked source, whose lines remain in
         # their original order but whose character columns are shorter.
         # Counting newlines in raw using these offsets cites the WRONG line.
-        line = code[:action_match.start() + pivot.start()].count("\n") + 1
-        quoted = raw.splitlines()[line - 1].strip()
-        if ":PivotTo(" not in quoted:
+        # Whole-requirement completion checks a composite proof contract:
+        # 2-6 DISTINCT executable source mutations with exact physical
+        # line citations, including the selected primary anchor. An async
+        # movement is a multi-stage state transition, not a single pivot.
+        # Bind its started -> moved -> arrived writes in execution order.
+        launch = re.search(
+            r'(?m)^\s*player:SetAttribute\(\s*["\\\']RMMFlightState["\\\']\s*,'
+            r'\s*action\s*==\s*["\\\']return["\\\']\s+and', body,
+        )
+        arrived = re.search(
+            r'(?m)^\s*player:SetAttribute\(\s*["\\\']RMMFlightState["\\\']'
+            r'\s*,\s*finalState\s*\)', body,
+        )
+        if not launch or not arrived or not (
+            launch.start() < pivot.start() < arrived.start()
+        ):
             continue
-        options.append((path, [
-            {"line": line, "quote": quoted},
-        ]))
+        raw_lines = raw.splitlines()
+        def exact_write(entry: re.Match[str]) -> dict[str, Any] | None:
+            offset = action_match.start() + entry.start()
+            line_number = code[:offset].count("\n") + 1
+            if not 1 <= line_number <= len(raw_lines):
+                return None
+            quote = raw_lines[line_number - 1].strip()
+            if not quote or quote.startswith("--"):
+                return None
+            return {"line": line_number, "quote": quote}
+        started = exact_write(launch)
+        moved = exact_write(pivot)
+        finished = exact_write(arrived)
+        if not all((started, moved, finished)):
+            continue
+        if ":PivotTo(" not in moved["quote"]:
+            continue
+        if len({started["line"], moved["line"], finished["line"]}) != 3:
+            continue
+        options.append((path, [started, moved, finished]))
     if len(options) != 1:
         return None, {
             "status": "unverified",
@@ -159,7 +189,9 @@ def attest_async_vehicle_transit(
     path, lines = options[0]
     return {
         "verdict": "implemented", "file": path,
-        "line": lines[0]["line"], "quote": lines[0]["quote"],
+        # Anchor on the physical vehicle mutation, and include that same
+        # exact line among the composite proof citations.
+        "line": lines[1]["line"], "quote": lines[1]["quote"],
         "proof_lines": lines, "issue": "none", "repair": "none",
     }, {
         "status": "deterministic_async_source_witness",
