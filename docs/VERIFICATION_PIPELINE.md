@@ -102,7 +102,7 @@ compiled files; it does not invent gameplay results. Studio console output is
 
 ## Colab strict server-engine release gate (2026-10)
 
-The checked-in notebook now defaults to ENGINE_VERIFY_BEFORE_FINAL=True.
+The checked-in notebook defaults to ENGINE_VERIFICATION_POLICY=Auto: offline source/contract checks, bounded repair, Rojo compilation and development ZIP output continue without any Roblox API key. When an explicitly opted-in TEST place and permissions are ready, Auto additionally runs the real Roblox engine gate.
 It builds with the existing offline Luau/StyLua/Selene/luau-analyze/Rojo/Place
 structural checks, publishes the compiled place to a dedicated Roblox TEST
 Place only when explicitly opted in, executes server-side Luau against that
@@ -122,7 +122,7 @@ before packaging a _SERVER_ENGINE_VERIFIED.zip.
    GitHub file, chat message, failure ZIP or model prompt.
 4. In cell 1 enter the TEST-only CLOUD_TEST_UNIVERSE_ID,
    CLOUD_TEST_PLACE_ID, and explicitly enable CLOUD_ENABLE_TEST_PUBLISH.
-   Leave ENGINE_VERIFY_BEFORE_FINAL=True.
+   Leave ENGINE_VERIFICATION_POLICY=Auto for capability-based verification; select Required only to stop if credentials are incomplete, or Off to intentionally build offline.
 5. Run the notebook normally.
 
 The dynamically generated engine tests check every Rojo-managed server and
@@ -139,8 +139,8 @@ repair/rebuild attempts. Each must preserve the exact source request and
 original requirement ledger; a repeated unchanged Place fails without
 repeating the model loop. Missing credentials, permissions, opt-in, network
 failure, task timeout and unverified output never count as success.
-In that case Colab offers a diagnostic ZIP, not a verified final ZIP.
-The gate can be disabled for explicitly unverified offline development builds.
+In Auto mode, incomplete credentials skip remote execution and allow the offline development ZIP, clearly labeled built_unverified. In Required mode, incomplete credentials stop before model setup. When remote verification actually runs but fails, it produces a diagnostic ZIP rather than a server-verified final ZIP.
+Off mode always creates explicitly unverified offline development artifacts. Auto never claims a server-engine pass unless the actual Cloud task completes and the exact compiled Place hash matches.
 
 Open Cloud runs headlessly in the Roblox server engine. It cannot certify
 human interaction, several real clients, LocalScript GUI input, or real-user
