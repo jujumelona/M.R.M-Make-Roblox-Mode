@@ -117,3 +117,24 @@ def test_packaging_stage_can_resolve_compiled_verifier_from_module_scope():
     assert orchestrator.verify_compiled_effect_sources is (
         verify_compiled_effect_sources
     )
+
+
+
+@pytest.mark.parametrize("invalid_roster", [[], False, "", None, 0])
+def test_explicitly_malformed_action_roster_never_passes_as_not_applicable(
+        tmp_path, invalid_roster):
+    proposal, _, _, _ = _persist_transaction(tmp_path)
+    proposal.game_design["dynamic_design"]["host_executable_actions"] = invalid_roster
+    result = verify_compiled_effect_sources(proposal, tmp_path)
+    assert not result["passed"], result
+    assert "invalid_executable_action_roster" in result["failures"]
+
+
+def test_genuinely_absent_executable_roster_stays_explicitly_not_applicable(tmp_path):
+    proposal, _, _, _ = _persist_transaction(tmp_path)
+    design = proposal.game_design["dynamic_design"]
+    design.pop("host_executable_actions")
+    result = verify_compiled_effect_sources(proposal, tmp_path)
+    assert result["passed"], result
+    assert result["status"] == "not_applicable", result
+    assert result["declared_action_count"] == 0
