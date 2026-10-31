@@ -910,7 +910,7 @@ def audit_whole_requirement_completion(
                     "Do not accept a UI/Remote alone as proof. Missing means "
                     "the effect is NOT evidenced IN THESE FILES; other owners "
                     "are checked separately by the host. Return issue and "
-                    "repair when missing; do not claim Studio execution.\\n"
+                    "repair when missing; do not claim Studio execution.\n"
                     + json.dumps({
                         "effect": effect["behavior"],
                         "original_request": original[:900],
@@ -939,7 +939,7 @@ def audit_whole_requirement_completion(
                                     "Recheck ONE effect. Respond with a tiny "
                                     "JSON object verdict/file_id/line and "
                                     "issue/repair if missing. Use only the "
-                                    "numbered physical source below.\\n"
+                                    "numbered physical source below.\n"
                                     + json.dumps({
                                         "effect": effect["behavior"],
                                         "current_owner_sources": focused_sources,
@@ -1052,7 +1052,7 @@ def audit_whole_requirement_completion(
                         "candidate effect list. Do not judge or quote code in "
                         "this step. Original request is authoritative. "
                         "Return only JSON with missing_actions as a list of "
-                        "omitted behaviors, or [] when none.\\n"
+                        "omitted behaviors, or [] when none.\n"
                         + json.dumps({
                             "original_user_request": original[:2400],
                             "candidate_effects": [
@@ -1133,7 +1133,7 @@ def audit_whole_requirement_completion(
                                 "if all original actions are represented, "
                                 "or exactly MISSING: followed by ONE "
                                 "omitted user-requested action. No other "
-                                "text.\\n" + json.dumps({
+                                "text.\n" + json.dumps({
                                     "original_user_request": original[:2400],
                                     "candidate_effects": [
                                         row["behavior"] for row in obligations
