@@ -514,13 +514,22 @@ def render_verified_effect(module: Any, proposal: Any) -> str | None:
             effect = _DAMAGE
         if role == "world_damage" and _damage_credit_contract(module, proposal):
             marker = '    target:SetAttribute("RMMAlienHealth", remaining)'
-            if effect.count(marker) != 1:
+            computed = (
+                '    local remaining = math.max(0, hp - damage)'
+                if '    local remaining = math.max(0, hp - damage)' in effect
+                else '    local remaining = math.max(0, hp - 20)'
+            )
+            if effect.count(marker) != 1 or effect.count(computed) != 1:
                 raise ValueError("DAMAGE_CREDIT_CANNOT_LOCATE_COMMIT")
+            # A successful attack can also consume persistent weapon ammo.
+            # Validate the reward wallet before THAT write too, so a refused
+            # transaction cannot expend ammunition or alter world state.
             effect = effect.replace(
-                marker,
-                _DAMAGE_CREDIT_PRECHECK + marker
-                + '\n    coins.Value += earnedDamage',
+                computed, computed + '\n' + _DAMAGE_CREDIT_PRECHECK.rstrip(),
                 1,
+            )
+            effect = effect.replace(
+                marker, marker + '\n    coins.Value += earnedDamage', 1,
             )
         if role == "world_damage":
             # A real enemy state transition is reversible only after a
