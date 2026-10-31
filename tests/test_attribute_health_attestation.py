@@ -31,7 +31,7 @@ function Service.handleAction(player, services, ...)
     end
     local target = workspace:FindFirstChild("TargetDrone", true)
     local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-    if not target or not target:IsA("BasePart")
+    if not root or not target or not target:IsA("BasePart")
         or (root.Position - target.Position).Magnitude > 40 then
         return { success = false, reason = "out_of_range" }
     end
@@ -73,6 +73,12 @@ def test_server_owned_part_health_is_real_damage_without_humanoid():
                    'workspace:FindFirstChild("OtherDrone", true)\n    local root'),
     SERVER.replace('local damage = math.min(20, 5 + rank)',
                    'local damage = args.damage'),
+    SERVER.replace('local damage = math.min(20, 5 + rank)',
+                   'local damage = 0'),
+    SERVER.replace('local damage = math.min(20, 5 + rank)',
+                   'local damage = math.min(20, 0 + rank)'),
+    SERVER.replace('if not root or not target or not target:IsA("BasePart")',
+                   'if not target or not target:IsA("BasePart")'),
     SERVER.replace('(root.Position - target.Position).Magnitude > 40',
                    '(root.Position - target.Position).Magnitude == 0'),
     SERVER.replace('if type(hp) ~= "number" or hp <= 0 then',
