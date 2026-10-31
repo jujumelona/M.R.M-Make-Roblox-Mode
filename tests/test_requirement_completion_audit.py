@@ -1297,3 +1297,62 @@ def test_one_unverified_effect_does_not_hide_other_confirmed_findings(tmp_path):
     assert len(report["findings"]) == 1, report
     assert report["findings"][0]["requirement_id"] == "req-generic"
     assert "Currency balance" in report["findings"][0]["issue"]
+
+
+
+def test_host_scaffold_witness_must_be_inside_authenticated_action_body():
+    from roblox_mod_ai.requirement_completion_audit import _host_effect_witnesses
+
+    path = "src/server/AnyService.luau"
+    source = (
+        "local Service = {}\n"
+        "local function neverInvoked()\n"
+        "    state.fake += 1\n"
+        "end\n"
+        "function Service.start(services)\n"
+        "    Service._services = services\n"
+        "end\n"
+        "function Service.handleAction(player, services, ...)\n"
+        "    if player == nil then return false end\n"
+        "    -- RMM_GAMEPLAY_BODY_BEGIN\n"
+        '    local profile = services.PlayerDataManager.GetState(player, "Account")\n'
+        "    profile.real += 1\n"
+        "    -- RMM_GAMEPLAY_BODY_END\n"
+        "end\n"
+        "return Service\n"
+    )
+    witnesses = _host_effect_witnesses("Update owned state", {path: source}, [])
+    assert [row["quote"] for row in witnesses] == ["profile.real += 1"]
+    assert witnesses[0]["line"] == 12
+
+
+def test_host_scaffold_scratch_only_body_cannot_attest_a_gameplay_effect():
+    from roblox_mod_ai.requirement_completion_audit import _host_effect_witnesses
+
+    path = "src/server/AnyService.luau"
+    source = (
+        "local Service = {}\n"
+        "function Service.handleAction(player, services, ...)\n"
+        "    -- RMM_GAMEPLAY_BODY_BEGIN\n"
+        "    local scratch = {}\n"
+        "    scratch.score += 1\n"
+        "    -- RMM_GAMEPLAY_BODY_END\n"
+        "end\n"
+        "return Service\n"
+    )
+    assert _host_effect_witnesses("Update server state", {path: source}, []) == []
+
+
+def test_host_scaffold_malformed_body_markers_cannot_prove_gameplay():
+    from roblox_mod_ai.requirement_completion_audit import _host_effect_witnesses
+
+    path = "src/server/AnyService.luau"
+    source = (
+        "local Service = {}\n"
+        "function Service.handleAction(player, services, ...)\n"
+        "    -- RMM_GAMEPLAY_BODY_BEGIN\n"
+        '    local profile = services.PlayerDataManager.GetState(player, "Account")\n'
+        "    profile.real += 1\n"
+        "end\nreturn Service\n"
+    )
+    assert _host_effect_witnesses("Update server state", {path: source}, []) == []
