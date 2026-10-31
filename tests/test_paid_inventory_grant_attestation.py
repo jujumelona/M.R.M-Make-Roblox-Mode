@@ -102,6 +102,10 @@ def test_formatter_spacing_and_multiline_blocks_keep_proof():
      'return {success=true}'),
     ('entitlements[script.Name.."/"..TARGET]={',
      'local unusedEntitlement={'),
+    ('coins.Value-=COST', 'task.wait()\n    coins.Value-=COST'),
+    ('local created, granted=pcall(ensureOwnedTool,player)',
+     'task.wait()\n        local created, granted=pcall(ensureOwnedTool,player)'),
+    ('tool.Name=TARGET', 'tool.Name=TARGET\n    task.wait()'),
     ('task.defer(restoreIfOwned)', 'task.defer(function() end)'),
     ('player.CharacterAdded:Connect(function()', 'player.ChildAdded:Connect(function()'),
 ])
