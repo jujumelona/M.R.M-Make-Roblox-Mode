@@ -445,6 +445,29 @@ def _is_routed_authority_witness(code: str, roots: set[str]) -> bool:
     return False
 
 
+def _routed_top_level_return_blocks(
+    masked_lines: list[str], action_start: int, candidate_line: int,
+) -> bool:
+    """Detect one sound, common unreachable case in formatted action code.
+
+    A return on its own line at the action's top indentation level makes
+    later statements unreachable. Nested conditional returns intentionally
+    do not count. This is a necessary static check, not a full Luau CFG.
+    """
+    if not 0 <= action_start < candidate_line <= len(masked_lines):
+        return False
+    start = masked_lines[action_start:candidate_line - 1]
+    meaningful = [line for line in start if line.strip()]
+    if not meaningful:
+        return False
+    base = min(len(line) - len(line.lstrip()) for line in meaningful)
+    for line in start:
+        if (len(line) - len(line.lstrip()) == base
+                and re.match(r"^\s*return(?:\s|$)", line)):
+            return True
+    return False
+
+
 def _host_effect_witnesses(
     behavior: str, sources: dict[str, str], modules: list[Any],
     limit: int = 24,
@@ -554,6 +577,11 @@ def _host_effect_witnesses(
                     code, routed_roots)):
                 # A scratch-table write beside a genuine player-state
                 # mutation must not be mistaken for a second game effect.
+                continue
+            if (routed_source and _routed_top_level_return_blocks(
+                    masked, begin_line, i)):
+                # The candidate follows an unconditional top-level return.
+                # A never-executed mutation cannot establish gameplay.
                 continue
             contextual = " ".join(masked[max(0, i - 3):min(len(masked), i + 2)])
             line_tokens = _generic_identifier_terms(contextual)
