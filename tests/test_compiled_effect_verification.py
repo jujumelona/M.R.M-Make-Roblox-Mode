@@ -147,3 +147,20 @@ def test_explicit_invalid_dynamic_design_is_not_verified(tmp_path, invalid_desig
     result = verify_compiled_effect_sources(proposal, tmp_path)
     assert not result["passed"], result
     assert "invalid_dynamic_design" in result["failures"]
+
+
+
+def test_malformed_module_path_fails_closed_without_type_error(tmp_path):
+    proposal, server, _, _ = _persist_transaction(tmp_path)
+    server.file_path = ["src/server/NotAPath.luau"]
+    report = verify_compiled_effect_sources(proposal, tmp_path)
+    assert not report["passed"], report
+    assert any("invalid_server_path" in issue for issue in report["failures"])
+
+
+def test_owner_record_without_name_fails_closed_without_attribute_error(tmp_path):
+    proposal, server, _, _ = _persist_transaction(tmp_path)
+    proposal.modules = [{"file_path": server.file_path}]
+    report = verify_compiled_effect_sources(proposal, tmp_path)
+    assert not report["passed"], report
+    assert any("missing_or_ambiguous_owner" in issue for issue in report["failures"])
