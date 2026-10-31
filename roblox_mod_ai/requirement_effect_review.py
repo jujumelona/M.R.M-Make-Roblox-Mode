@@ -14,6 +14,7 @@ import re
 from pathlib import Path
 
 from .source_upgrade_contract import attest_paid_upgrade
+from .attribute_health_attestation import attest_attribute_health
 from typing import Any
 
 SCHEMA = "rmm/requirement-effect-review-v1"
@@ -518,6 +519,24 @@ def review_requirement_effects(proposal: Any, root: Path, router: Any) -> dict[s
                 })
                 report["cross_module_contracts"].append({
                     "requirement_id": req_id, **attestation,
+                })
+                continue
+            # A world-owned Part with a numeric health Attribute is a
+            # legitimate combat entity. The engine does not require every
+            # damaged entity to have a Humanoid. However the attribute read,
+            # server-authoritative damage, guarded write and downstream
+            # health-dependent behavior must all be present to use this proof.
+            health = attest_attribute_health(source, responsibility)
+            if health is not None:
+                report["executed"] = True
+                report["requirements"].append({
+                    "id": req_id, "verdict": "implemented",
+                    "file": file_path, "line": health["line"],
+                    "quote": health["quote"], "issue": "none",
+                    "method": health["method"], "scope": health["scope"],
+                })
+                report["cross_module_contracts"].append({
+                    "requirement_id": req_id, "file": file_path, **health,
                 })
                 continue
             # A written implementation responsibility is a promise, not code
