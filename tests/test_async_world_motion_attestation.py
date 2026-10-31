@@ -21,7 +21,7 @@ EFFECT = (
 )
 MODULES = [
     SimpleNamespace(
-        file_path=PATH, description="Travel the owned vehicle with its occupants"
+        file_path=PATH, name="TransitService", description="Travel the owned vehicle with its occupants"
     )
 ]
 
