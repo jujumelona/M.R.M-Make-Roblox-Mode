@@ -138,3 +138,12 @@ def test_genuinely_absent_executable_roster_stays_explicitly_not_applicable(tmp_
     assert result["passed"], result
     assert result["status"] == "not_applicable", result
     assert result["declared_action_count"] == 0
+
+
+@pytest.mark.parametrize("invalid_design", [None, [], "", False])
+def test_explicit_invalid_dynamic_design_is_not_verified(tmp_path, invalid_design):
+    proposal, _, _, _ = _persist_transaction(tmp_path)
+    proposal.game_design["dynamic_design"] = invalid_design
+    result = verify_compiled_effect_sources(proposal, tmp_path)
+    assert not result["passed"], result
+    assert "invalid_dynamic_design" in result["failures"]
