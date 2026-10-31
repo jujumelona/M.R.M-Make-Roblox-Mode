@@ -57,7 +57,7 @@ def verify_remote_ingress(proposal: Any, source_root: Path) -> dict:
             issue.append("invalid_owner_or_arg_limit")
         if kind not in ("RemoteFunction", "RemoteEvent") or declared.get(remote) != kind:
             issue.append("wrong_declared_remote_class")
-        if set(m.name for m in modules if isinstance(getattr(m, "name", None), str)).count(service_name) != 1:
+        if [m.name for m in modules if isinstance(getattr(m, "name", None), str)].count(service_name) != 1:
             issue.append("missing_or_ambiguous_service")
         # Quote as pure data to prevent a route name manipulating a regex.
         candidates = [block for block in blocks
