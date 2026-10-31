@@ -426,33 +426,6 @@ def _generic_identifier_terms(value: str) -> set[str]:
             normalized.add(word[:-1])
     return normalized
 
-def _host_routed_authority_roots(source: str, end_line: int) -> set[str]:
-    """Conservative provenance of server-owned state within a routed action.
-
-    Only bindings explicitly sourced from the authenticated player or world
-    can support a gameplay write. This is a necessary static condition, NOT
-    proof of semantic equivalence or execution in Roblox Studio.
-    """
-    visible = _mask_luau_comments(source).splitlines()
-    trusted = {"player", "workspace", "Workspace", "actionTarget", "targetPart"}
-    bindings = re.compile(r"\blocal\s+([A-Za-z_]\w*)\s*=\s*([^\n]+)")
-    for line in visible[:end_line]:
-        match = bindings.search(line)
-        if not match:
-            continue
-        name, rhs = match.groups()
-        # A new local declaration shadows any earlier trusted binding.
-        trusted.discard(name)
-        if (re.search(r"\bPlayerDataManager\s*\.\s*GetState\s*\(", rhs)
-                or re.search(r"\b(?:player|workspace|Workspace)\s*[.:\[]", rhs)
-                or any(re.search(
-                    r"\b" + re.escape(owner) + r"\b\s*(?:[.:\[]|$)",
-                    rhs,
-                ) for owner in trusted)):
-            trusted.add(name)
-    return trusted
-
-
 def _is_routed_authority_witness(code: str, roots: set[str]) -> bool:
     """An accepted witness itself must mutate an authenticated owner."""
     candidate = _mask_noncode_luau_strings(code).strip()
@@ -513,6 +486,12 @@ def _host_effect_witnesses(
                 continue
         else:
             begin_line, end_line = 0, len(lines) + 1
+        routed_roots = {
+            "player", "workspace", "Workspace", "actionTarget", "targetPart"
+        }
+        local_binding = re.compile(
+            r"\blocal\s+([A-Za-z_]\w*)\s*=\s*([^\n]+)"
+        )
         # Provenance, not variable naming: the owner of a server profile is
         # found by its assignment from the authoritative GetState API.
         persistent_roots = set(re.findall(
@@ -521,6 +500,21 @@ def _host_effect_witnesses(
             _mask_luau_comments(source),
         ))
         for i, (line, visible) in enumerate(zip(lines, masked), 1):
+            if has_markers:
+                binding = local_binding.search(visible)
+                if binding:
+                    name, rhs = binding.groups()
+                    was_trusted = set(routed_roots)
+                    routed_roots.discard(name)
+                    if (re.search(
+                            r"\bPlayerDataManager\s*\.\s*GetState\s*\(", rhs
+                        ) or re.search(
+                            r"\b(?:player|workspace|Workspace)\s*[.:\[]", rhs
+                        ) or any(re.search(
+                            r"\b" + re.escape(owner)
+                            + r"\b\s*(?:[.:\[]|$)", rhs
+                        ) for owner in was_trusted if owner != name)):
+                        routed_roots.add(name)
             if not begin_line < i < end_line:
                 continue
             # This is a linear-time pass: do not split/mask the entire source
@@ -536,7 +530,7 @@ def _host_effect_witnesses(
             if len(visible.strip()) < 6 or len(visible.strip()) > 320:
                 continue
             if (has_markers and not _is_routed_authority_witness(
-                    code, _host_routed_authority_roots(source, i))):
+                    code, routed_roots)):
                 # A scratch-table write beside a genuine player-state
                 # mutation must not be mistaken for a second game effect.
                 continue
