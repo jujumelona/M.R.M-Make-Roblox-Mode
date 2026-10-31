@@ -395,3 +395,66 @@ def test_mining_and_purchase_do_not_inherit_weapon_click_attack():
         assert source is not None
         assert 'tool.Activated:Connect(function()' not in source
         assert 'connectedWeapons[tool]' not in source
+
+
+
+def test_declared_damage_currency_reward_is_real_server_state_credit():
+    """Combat health decrement and promised currency award are both compiled."""
+    proposal, server = _fixture("combat")
+    proposal.game_design["detailed_implementation_plan"] = {
+        "required_functions": [{
+            "id": "req-generic-01",
+            "owner_files": [server.file_path],
+            "server_state_changes": [
+                "A target's health decreases by inflicted damage, and the "
+                "authenticated player gains the resulting damage as currency."
+            ],
+        }],
+    }
+    source = render_verified_effect(server, proposal)
+    assert source is not None
+    assert "local earnedDamage = hp - remaining" in source
+    assert 'leaderstats and leaderstats:FindFirstChild("Coins")' in source
+    assert "coins.Value > 2147483647 - earnedDamage" in source
+    assert source.index("coins.Value > 2147483647 - earnedDamage") < (
+        source.index('target:SetAttribute("RMMAlienHealth", remaining)')
+    )
+    assert source.index('target:SetAttribute("RMMAlienHealth", remaining)') < (
+        source.index("coins.Value += earnedDamage")
+    )
+    analyzer = LuauStaticAnalyzer()
+    assert not [x for x in analyzer.analyze_source(source, server.file_path)
+                if x.severity == "ERROR"]
+
+
+def test_world_damage_without_source_declared_currency_reward_never_mints_money():
+    proposal, server = _fixture("combat")
+    proposal.game_design["detailed_implementation_plan"] = {
+        "required_functions": [{
+            "id": "req-generic-02",
+            "owner_files": [server.file_path],
+            "server_state_changes": [
+                "The server applies damage to the validated world target."
+            ],
+        }],
+    }
+    source = render_verified_effect(server, proposal)
+    assert source is not None
+    assert "coins.Value += earnedDamage" not in source
+    assert "_DAMAGE_CREDIT_PRECHECK" not in source
+
+
+def test_reward_not_enabled_by_different_owners_unrelated_damage():
+    proposal, server = _fixture("combat")
+    proposal.game_design["detailed_implementation_plan"] = {
+        "required_functions": [{
+            "id": "req-generic-03",
+            "owner_files": ["src/server/OtherService.luau"],
+            "server_state_changes": [
+                "The player attacks the target and gains its damage as money."
+            ],
+        }],
+    }
+    source = render_verified_effect(server, proposal)
+    assert source is not None
+    assert "coins.Value += earnedDamage" not in source
