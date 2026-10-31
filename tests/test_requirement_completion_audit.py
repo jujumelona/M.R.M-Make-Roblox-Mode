@@ -1772,8 +1772,8 @@ def test_composite_witness_rechecks_a_real_multistatement_gameplay_effect(tmp_pa
     req = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
     req["owner_files"] = [SHIP]
     req["server_state_changes"] = [
-        "After successful transfer the server reduces available stock "
-        "and credits the authenticated owner's balance"
+        "A successful transfer atomically changes both authoritative "
+        "server-owned resource balances"
     ]
     (tmp_path / SHIP).write_text(
         "local function transfer()\n"
