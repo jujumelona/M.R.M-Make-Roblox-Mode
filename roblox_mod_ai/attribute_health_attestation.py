@@ -40,9 +40,19 @@ def attest_attribute_health(source: str, role: str) -> dict[str, Any] | None:
         body,
     ):
         hp, target, _, attribute = read.groups()
-        if not re.search(
+        target_lookup = re.search(
             r"\blocal\s+" + re.escape(target)
-            + r"\s*=\s*workspace:FindFirstChild\s*\(", body,
+            + r"\s*=\s*workspace:FindFirstChild\s*\(\s*([\"'])([^\"']+)\1",
+            body,
+        )
+        if target_lookup is None:
+            continue
+        # The pre-action initializer must refer to this exact world entity,
+        # not an unrelated decorative Part using the same attribute name.
+        world_name = re.escape(target_lookup.group(2))
+        if not re.search(
+            r"workspace:FindFirstChild\s*\(\s*[\"']" + world_name
+            + r"[\"']", prelude,
         ):
             continue
         if not re.search(
@@ -85,7 +95,7 @@ def attest_attribute_health(source: str, role: str) -> dict[str, Any] | None:
             + re.escape(attribute) + r"[\"']\s*,\s*"
             + re.escape(remaining) + r"\s*\)", body,
         )
-        if write is None or write.start() <= read.start() + compute.start():
+        if write is None or write.start() <= read.end() + compute.start():
             continue
         between = body[read.start():write.start()]
         if re.search(r"\b(?:task\.wait|wait|UpdateAsync|SetAsync|InvokeServer|InvokeClient)\s*\(", between):
