@@ -69,6 +69,8 @@ def _persist_provider(root: Path, namespace: str, source: str) -> bool:
         r"UpdateAsync\s*\(\s*key\s*,",
         r"return\s+snapshot\b",
         r"function\s+PlayerDataManager\.OnReady\s*\(",
+        r"Players\.PlayerRemoving\s*:\s*Connect\s*\(",
+        r"\bsavePlayerData\s*\(\s*player\b",
     )
     return bool(namespace and all(re.search(x, data) for x in facts))
 
@@ -100,7 +102,34 @@ def _attest_transfer(effect: str, source: str, start: int, body: list[str],
             continue
         for debit_index in range(profile_index):
             debit = body[debit_index]
-            if not re.search(r"\b\w+\.\w+\s*-=\s*\d+\b", debit):
+            debit_match = re.search(r"\b(\w+)\.(\w+)\s*-=\s*\d+\b", debit)
+            if not debit_match:
+                continue
+            stock_var = debit_match.group(1)
+            # The depleted stock must originate from a validated world part,
+            # never an unrelated or unbound local scratch table.
+            stock_origin = re.search(
+                r"\blocal\s+" + re.escape(stock_var)
+                + r"\s*=\s*(\w+)\s*\(\s*(\w+)\s*\)", before,
+            )
+            if not stock_origin:
+                continue
+            reader, part_var = stock_origin.groups()
+            reader_match = re.search(
+                r"(?ms)^local function\s+" + re.escape(reader)
+                + r"\s*\(\s*" + re.escape(part_var)
+                + r"\s*\).*?^end\s*$", all_source,
+            )
+            if (not reader_match
+                    or not re.search(r"\breturn\s+\w+\s*\[\s*"
+                                     + re.escape(part_var) + r"\s*\]",
+                                     reader_match.group())
+                    or not re.search(r"\b(?:valid|check|verify)\w*\s*\(\s*"
+                                     + re.escape(part_var) + r"\s*\)",
+                                     reader_match.group(), re.I)):
+                continue
+            if not re.search(r"\b" + re.escape(part_var)
+                             + r":SetAttribute\s*\(", "\n".join(body[profile_index:])):
                 continue
             interval = "\n".join(body[debit_index:profile_index + 1])
             if re.search(r"\b(?:task\.wait|wait|UpdateAsync|SetAsync|InvokeServer)\s*\(", interval):
@@ -132,11 +161,18 @@ def _attest_persisted_projection(effect: str, source: str, root: Path,
             continue
         if not _persist_provider(root, namespace, source):
             continue
+        replay = re.search(
+            r"(?ms)\bOnReady\s*\(\s*function\s*\(\s*player\s*\)"
+            r"(.*?)^\s*end\s*\)", before_start,
+        )
+        if not replay:
+            continue
+        replay_body = replay.group(1)
         if not re.search(r"\.GetState\(player,\s*[\"']" + re.escape(namespace)
-                         + r"[\"']\)", before_start):
+                         + r"[\"']\)", replay_body):
             continue
         if not re.search(r"\b" + re.escape(alias) + r"\." +
-                         re.escape(field) + r"\[\s*\w+\s*\]", before_start):
+                         re.escape(field) + r"\[\s*\w+\s*\]", replay_body):
             continue
         action_text = "\n".join(body)
         helper_names = set(re.findall(r"\b(\w+)\s*\([^\n]*\)", before_start))
@@ -144,6 +180,7 @@ def _attest_persisted_projection(effect: str, source: str, root: Path,
             name for name in helper_names
             if name not in {"GetState", "OnReady", "FindFirstChild"}
             and re.search(r"\b" + re.escape(name) + r"\s*\(", action_text)
+            and re.search(r"\b" + re.escape(name) + r"\s*\(", replay_body)
             and re.search(r"local\s+function\s+" + re.escape(name) + r"\s*\(", before_start)
             and re.search(r"local\s+function\s+" + re.escape(name)
                           + r"\s*\([^)]*\)[\s\S]*?Instance\.new\(", before_start)
