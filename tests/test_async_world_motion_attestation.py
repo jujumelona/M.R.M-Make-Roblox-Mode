@@ -31,7 +31,7 @@ def test_host_authored_async_occupied_vehicle_transition_is_proven():
     entry = proof()
     assert entry is not None
     assert entry["file"] == PATH
-    assert ":PivotTo(start:Lerp(target, alpha))" in entry["quote"]
+    assert ":PivotTo(start:Lerp(target,alpha))" in entry["quote"]
     assert entry["verdict"] == "implemented"
 
 
