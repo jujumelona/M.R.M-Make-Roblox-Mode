@@ -419,7 +419,8 @@ def test_large_requirement_never_requests_unbounded_batch(tmp_path):
     router = BoundedModel()
     report = audit_whole_requirement_completion(proposal, tmp_path, router)
     assert not report["fully_covered"], report
-    assert "shared evidence" in report["reason"], report
+    assert "cannot prove" in report["reason"], report
+    assert report.get("unverified_effects"), report
     assert any(x["stage"] == "batch_skipped" for x in report["recovery"])
     assert sum(x.startswith("Check ONE promised") for x in router.prompts) == 4
 
@@ -529,7 +530,8 @@ def test_realistic_multipart_requirement_recovers_compact_first_effect(tmp_path)
     model = TinyModel()
     report = audit_whole_requirement_completion(proposal, tmp_path, model)
     assert not report["fully_covered"], report
-    assert "shared evidence" in report["reason"], report
+    assert "cannot prove" in report["reason"], report
+    assert report.get("unverified_effects"), report
     assert len([p for p in model.calls if p.startswith("Check ONE promised")]) == 5
 
 
@@ -1226,7 +1228,7 @@ def test_host_witness_rejects_tampered_line_even_if_quote_exists(tmp_path, monke
     )
 
     monkeypatch.setattr(audit, "_fallback_effect_witness_review",
-        lambda *args: ({
+        lambda *args, **kwargs: ({
             "verdict": "implemented", "file": SHIP,
             "quote": "state.counter += 1", "line": 2,
             "issue": "none", "repair": "none",
