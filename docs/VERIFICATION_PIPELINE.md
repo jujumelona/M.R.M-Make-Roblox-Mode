@@ -22,7 +22,7 @@
 
 Create a separate disposable TEST experience/place. Never configure a production place as the test target.
 Set ROBLOX_OPEN_CLOUD_API_KEY, ROBLOX_TEST_UNIVERSE_ID, ROBLOX_TEST_PLACE_ID, and RMM_ALLOW_TEST_PLACE_PUBLISH=1.
-The key requires places:write and luau-execution-sessions:write scopes for this TEST experience.
+For the TEST experience, configure the legacy Place Publishing API's **universe-places / Write** access and the Open Cloud Luau Execution scope **universe.place.luau-execution-session:write** (read status/logs as permitted). See https://create.roblox.com/docs/cloud/reference/scopes and https://create.roblox.com/docs/cloud/guides/usage-place-publishing .
 Without these inputs the runtime check reports unexecuted, not successful.
 
 ## Real Studio multiplayer receipt
