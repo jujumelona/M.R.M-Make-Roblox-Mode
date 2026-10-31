@@ -1169,3 +1169,103 @@ def test_original_scope_json_failure_can_recover_only_from_exact_plain_none(tmp_
     assert not bad["fully_covered"], bad
     assert bad["status"] == "failed"
     assert "omitted-effect audit" in bad["reason"]
+
+
+
+def test_host_witness_keeps_selected_physical_line_when_statements_repeat(tmp_path):
+    """Identical writes in different functions are different source evidence."""
+    import json
+
+    proposal = fixture(tmp_path)
+    requirement = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
+    requirement["owner_files"] = [SHIP]
+    requirement["server_state_changes"] = [
+        "The authoritative server increments an owned counter"
+    ]
+    (tmp_path / SHIP).write_text(
+        "local function first()\n"
+        "    state.counter += 1\n"
+        "end\n"
+        "local function second()\n"
+        "    state.counter += 1\n"
+        "end\n", encoding="utf-8",
+    )
+
+    class SelectSecond:
+        def complete_json(self, **kwargs):
+            p = kwargs["prompt"]
+            if p.startswith("Find user-requested"):
+                return {"missing_actions": []}
+            assert p.startswith("Check ONE promised")
+            obj = json.loads(p[p.index('{"effect":'):])
+            candidates = obj["candidates"]
+            second = [row for row in candidates
+                      if "5: state.counter += 1" in row["context"]]
+            assert len(second) == 1, candidates
+            return {"choice": second[0]["id"]}
+
+    report = audit_whole_requirement_completion(
+        proposal, tmp_path, SelectSecond(), host_witness_only=True,
+    )
+    assert report["fully_covered"], report
+    assert report["checks"][0]["line"] == 5, report
+    assert report["checks"][0]["quote"] == "state.counter += 1"
+
+
+def test_host_witness_rejects_tampered_line_even_if_quote_exists(tmp_path, monkeypatch):
+    import roblox_mod_ai.requirement_completion_audit as audit
+
+    proposal = fixture(tmp_path)
+    requirement = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
+    requirement["owner_files"] = [SHIP]
+    requirement["server_state_changes"] = [
+        "The authoritative server increments an owned counter"
+    ]
+    (tmp_path / SHIP).write_text(
+        "state.counter += 1\nstate.other += 1\n", encoding="utf-8",
+    )
+
+    monkeypatch.setattr(audit, "_fallback_effect_witness_review",
+        lambda *args: ({
+            "verdict": "implemented", "file": SHIP,
+            "quote": "state.counter += 1", "line": 2,
+            "issue": "none", "repair": "none",
+        }, {"stage": "host_witness_fallback", "status": "source_witness_selected"}))
+
+    class OnlyScope:
+        def complete_json(self, **kwargs):
+            return {"missing_actions": []}
+
+    result = audit.audit_whole_requirement_completion(
+        proposal, tmp_path, OnlyScope(), host_witness_only=True,
+    )
+    assert result["status"] == "failed", result
+    assert "host witness line/quote mismatch" in result["reason"]
+
+
+def test_audit_rejects_owner_path_escape_before_reading(tmp_path):
+    from types import SimpleNamespace
+    proposal = fixture(tmp_path)
+    req = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
+    req["owner_files"] = ["src/server/../../escape.luau"]
+    proposal.modules.append(SimpleNamespace(
+        name="BadOwner", file_path="src/server/../../escape.luau",
+    ))
+    (tmp_path / "escape.luau").write_text("state.score += 1\n", encoding="utf-8")
+
+    result = audit_whole_requirement_completion(
+        proposal, tmp_path, Router(response()), host_witness_only=True,
+    )
+    assert result["status"] == "failed", result
+    assert "missing complete source ownership" in result["reason"]
+
+
+def test_audit_rejects_more_owners_than_bounded_witness_capacity():
+    from roblox_mod_ai.requirement_completion_audit import _host_effect_witnesses
+    sources = {
+        "src/server/Module%d.luau" % i: "state.counter%d += 1\n" % i
+        for i in range(25)
+    }
+    assert _host_effect_witnesses(
+        "Update the requested state", sources, [], limit=24,
+    ) == []
