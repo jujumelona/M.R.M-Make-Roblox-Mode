@@ -1649,3 +1649,66 @@ def test_one_line_with_two_distinct_writes_remains_valid_for_two_effects(tmp_pat
     assert report["fully_covered"], report
     assert len(report["checks"]) == 2, report
     assert len({row["line"] for row in report["checks"]}) == 1
+
+
+
+def test_routed_action_includes_executed_local_helper_state_changes():
+    """Weapon/vehicle upgrades may mutate a verified object in a called helper."""
+    from roblox_mod_ai.requirement_completion_audit import _host_effect_witnesses
+
+    path = "src/server/ActionWithHelper.luau"
+    source = (
+        "local Service = {}\n"
+        "local function applyStatus(object, level)\n"
+        '    object:SetAttribute("Damage", level + 1)\n'
+        '    object:SetAttribute("Speed", level + 2)\n'
+        "end\n"
+        "local function unusedStatus(object)\n"
+        '    object:SetAttribute("Fake", 999)\n'
+        "end\n"
+        "function Service.handleAction(player, services)\n"
+        "    -- RMM_GAMEPLAY_BODY_BEGIN\n"
+        "    local item = player.Character\n"
+        "    if not item then return false end\n"
+        "    applyStatus(item, 2)\n"
+        "    -- RMM_GAMEPLAY_BODY_END\n"
+        "end\nreturn Service\n"
+    )
+    found = _host_effect_witnesses("Update owned status", {path: source}, [])
+    assert {(row["line"], row["quote"]) for row in found} == {
+        (3, 'object:SetAttribute("Damage", level + 1)'),
+        (4, 'object:SetAttribute("Speed", level + 2)'),
+    }, found
+
+
+def test_unreachable_helper_not_called_by_action_is_never_a_source_witness():
+    from roblox_mod_ai.requirement_completion_audit import _host_effect_witnesses
+
+    path = "src/server/ActionWithHelper.luau"
+    source = (
+        "local Service = {}\n"
+        "local function uncalled(object)\n"
+        '    object:SetAttribute("Fake", 999)\n'
+        "end\n"
+        "function Service.handleAction(player, services)\n"
+        "    return false\n"
+        "end\nreturn Service\n"
+    )
+    assert _host_effect_witnesses("Update state", {path: source}, []) == []
+
+
+def test_reachable_helper_scratch_local_mutation_is_not_authored_proof():
+    from roblox_mod_ai.requirement_completion_audit import _host_effect_witnesses
+
+    path = "src/server/ActionWithHelper.luau"
+    source = (
+        "local Service = {}\n"
+        "local function doNothing(owner)\n"
+        "    local scratch = {}\n"
+        "    scratch.fake += 1\n"
+        "end\n"
+        "function Service.handleAction(player, services)\n"
+        "    doNothing(player)\n"
+        "end\nreturn Service\n"
+    )
+    assert _host_effect_witnesses("Update state", {path: source}, []) == []
