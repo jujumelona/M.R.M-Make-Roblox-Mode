@@ -470,11 +470,15 @@ def _host_effect_witnesses(
         begin_marker = "-- RMM_GAMEPLAY_BODY_BEGIN"
         end_marker = "-- RMM_GAMEPLAY_BODY_END"
         has_markers = begin_marker in source or end_marker in source
+        routed = bool(re.search(
+            r"(?m)^function\s+Service\.handleAction\s*\(", source
+        ))
         if has_markers:
             if (source.count(begin_marker) != 1 or source.count(end_marker) != 1
+                    or not routed
                     or not has_authoritative_producer_write(source)):
-                # Missing/duplicated sentinels or a scratch-only body cannot
-                # prove an effect. No attempt to infer gameplay from prose.
+                # Missing/duplicated sentinels, no routed entrypoint, or a
+                # scratch-only body cannot prove actual gameplay.
                 continue
             begin_line = next(
                 i for i, value in enumerate(lines, 1) if begin_marker in value
@@ -484,8 +488,25 @@ def _host_effect_witnesses(
             )
             if end_line <= begin_line:
                 continue
+        elif routed:
+            # Older scaffolded services have the same exported entrypoint but
+            # no sentinels. Restrict their evidence to the action function,
+            # not the lifecycle/startup code or unused helper functions.
+            if not has_authoritative_producer_write(source):
+                continue
+            begin_line = next(
+                i for i, value in enumerate(lines, 1)
+                if re.match(r"^function\s+Service\.handleAction\s*\(", value)
+            )
+            end_line = next((
+                i for i, value in enumerate(lines, 1)
+                if i > begin_line and re.match(r"^end\s*$", value)
+            ), 0)
+            if end_line <= begin_line:
+                continue
         else:
             begin_line, end_line = 0, len(lines) + 1
+        routed_source = has_markers or routed
         routed_roots = {
             "player", "workspace", "Workspace", "actionTarget", "targetPart"
         }
@@ -500,7 +521,7 @@ def _host_effect_witnesses(
             _mask_luau_comments(source),
         ))
         for i, (line, visible) in enumerate(zip(lines, masked), 1):
-            if has_markers:
+            if routed_source:
                 binding = local_binding.search(visible)
                 if binding:
                     name, rhs = binding.groups()
@@ -529,7 +550,7 @@ def _host_effect_witnesses(
                 continue
             if len(visible.strip()) < 6 or len(visible.strip()) > 320:
                 continue
-            if (has_markers and not _is_routed_authority_witness(
+            if (routed_source and not _is_routed_authority_witness(
                     code, routed_roots)):
                 # A scratch-table write beside a genuine player-state
                 # mutation must not be mistaken for a second game effect.
