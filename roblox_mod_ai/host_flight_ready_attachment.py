@@ -62,12 +62,72 @@ def render_flight_ready_attachment(source: str) -> str:
     return true
 end
 '''
+    passengers = r'''-- Flight-ready models require actual passenger seats rather than
+-- merely scanning descendants for seat occupants that cannot board.
+local function ensurePassengerSeats(player, ship, anchor)
+    for index=1,2 do
+        local name="PassengerSeat"..tostring(index)
+        local seat=ship:FindFirstChild(name)
+        if seat and not seat:IsA("Seat") then return false end
+        if not seat then
+            seat=Instance.new("Seat")
+            seat.Name=name
+            seat.Size=Vector3.new(2.5,1,2.5)
+            seat.Anchored=false
+            seat.Parent=ship
+        end
+        -- Keep guests clear of the pilot and the positive-X built sections.
+        local z=index==1 and -3 or 3
+        seat.CFrame=anchor.CFrame*CFrame.new(-3,3.2,z)
+        local weld=seat:FindFirstChild("PassengerWeld")
+        if weld and (not weld:IsA("WeldConstraint")
+            or weld.Part0~=anchor or weld.Part1~=seat) then return false end
+        if not weld then
+            weld=Instance.new("WeldConstraint")
+            weld.Name="PassengerWeld"
+            weld.Part0=anchor
+            weld.Part1=seat
+            weld.Parent=seat
+        end
+        local promptName="BoardPassenger"..tostring(index)
+        local prompt=anchor:FindFirstChild(promptName)
+        if prompt and not prompt:IsA("ProximityPrompt") then return false end
+        if not prompt then
+            prompt=Instance.new("ProximityPrompt")
+            prompt.Name=promptName
+            prompt.ActionText="Board passenger seat "..tostring(index)
+            prompt.ObjectText="Assembled vehicle"
+            prompt.MaxActivationDistance=10
+            prompt.RequiresLineOfSight=false
+            prompt.Parent=anchor
+            prompt.Triggered:Connect(function(requester)
+                if requester==player or not requester:IsA("Player")
+                    or requester.Parent~=Players
+                    or player.Parent~=Players
+                    or ship:GetAttribute("OwnerUserId")~=player.UserId
+                    or seat.Occupant~=nil
+                    or Service.GetOwnedActor(player)~=ship then return end
+                local character=requester.Character
+                local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+                local root=character and character:FindFirstChild("HumanoidRootPart")
+                if not humanoid or humanoid.Health<=0
+                    or not root or not root:IsA("BasePart")
+                    or humanoid.Sit
+                    or (root.Position-anchor.Position).Magnitude>12 then return end
+                seat:Sit(humanoid)
+            end)
+        end
+    end
+    return true
+end
+'''
     change("local function resolveShip(player)\n",
-           seat + "local function resolveShip(player)\n")
+           seat + passengers + "local function resolveShip(player)\n")
     change(
         "    shipModels[player] = ship\n    return ship, anchor, parts",
         "    shipModels[player] = ship\n"
         "    if not ensurePilotSeat(player, ship, anchor) then return nil end\n"
+        "    if not ensurePassengerSeats(player, ship, anchor) then return nil end\n"
         "    return ship, anchor, parts",
     )
     change(
@@ -114,6 +174,14 @@ function Service.GetOwnedActor(player)
     local pilotWeld = seat:FindFirstChild("PilotWeld")
     if not pilotWeld or not pilotWeld:IsA("WeldConstraint")
         or pilotWeld.Part0 ~= anchor or pilotWeld.Part1 ~= seat then return nil end
+    for index=1,2 do
+        local passenger=ship:FindFirstChild("PassengerSeat"..tostring(index))
+        if not passenger or not passenger:IsA("Seat") then return nil end
+        local passengerWeld=passenger:FindFirstChild("PassengerWeld")
+        if not passengerWeld or not passengerWeld:IsA("WeldConstraint")
+            or passengerWeld.Part0~=anchor
+            or passengerWeld.Part1~=passenger then return nil end
+    end
     local total = 0
     for id in pairs(SECTIONS) do
         total += 1
