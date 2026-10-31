@@ -83,16 +83,21 @@ def verify_compiled_effect_sources(
 ) -> dict[str, Any]:
     """Fail closed if declared executable actions are absent or altered."""
     root = Path(source_root)
-    design = (getattr(proposal, "game_design", {}) or {}).get(
-        "dynamic_design"
-    ) or {}
-    actions = design.get("host_executable_actions") or {}
-    routes = design.get("host_actions") or {}
+    game_design = getattr(proposal, "game_design", {}) or {}
+    design = (game_design.get("dynamic_design", {}) or {}
+              if isinstance(game_design, dict) else None)
     report: dict[str, Any] = {
         "schema": "rmm/compiled-effect-source-attestation-v1",
         "executed": True, "passed": False, "checked": [],
         "failures": [], "scope": "source_only_not_studio",
     }
+    if not isinstance(design, dict):
+        report["failures"].append("invalid_dynamic_design")
+        return report
+    # An explicitly malformed or null roster must NOT turn into an empty
+    # roster via 'or {}'. That used to produce a false not_applicable PASS.
+    actions = design.get("host_executable_actions", {})
+    routes = design.get("host_actions", {})
     if not isinstance(actions, dict) or not isinstance(routes, dict):
         report["failures"].append("invalid_executable_action_roster")
         return report
