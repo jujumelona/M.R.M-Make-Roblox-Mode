@@ -7,17 +7,19 @@ All emitted Luau identifiers are encoded as literals, not model-authored code.
 from __future__ import annotations
 
 import json
-import re
 from typing import Any
 
 from .spec import RobloxProposal
 
 
 def _lit(value: str) -> str:
-    # Roblox Luau supports double-quoted JSON string escapes for ASCII names.
-    if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z_0-9]{0,120}", value):
-        raise ValueError("Untrusted or non-Rojo instance identifier in engine contract")
-    return json.dumps(value)
+    # Roblox Instance.Name supports Korean, whitespace, and punctuation.
+    # Quote every model-origin name as DATA. Reject only empty/control names:
+    # no arbitrary content can become executable Luau syntax.
+    if (not isinstance(value, str) or not 0 < len(value) <= 128
+            or any(ord(char) < 32 or ord(char) == 127 for char in value)):
+        raise ValueError("Invalid Instance.Name in engine contract")
+    return json.dumps(value, ensure_ascii=False)
 
 
 def engine_contract_checks(proposal: RobloxProposal) -> list[tuple[str, str]]:
