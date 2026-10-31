@@ -426,6 +426,52 @@ def _generic_identifier_terms(value: str) -> set[str]:
             normalized.add(word[:-1])
     return normalized
 
+def _host_routed_authority_roots(source: str, end_line: int) -> set[str]:
+    """Conservative provenance of server-owned state within a routed action.
+
+    Only bindings explicitly sourced from the authenticated player or world
+    can support a gameplay write. This is a necessary static condition, NOT
+    proof of semantic equivalence or execution in Roblox Studio.
+    """
+    visible = _mask_luau_comments(source).splitlines()
+    trusted = {"player", "workspace", "Workspace", "actionTarget", "targetPart"}
+    bindings = re.compile(r"\blocal\s+([A-Za-z_]\w*)\s*=\s*([^\n]+)")
+    for line in visible[:end_line]:
+        match = bindings.search(line)
+        if not match:
+            continue
+        name, rhs = match.groups()
+        # A new local declaration shadows any earlier trusted binding.
+        trusted.discard(name)
+        if (re.search(r"\bPlayerDataManager\s*\.\s*GetState\s*\(", rhs)
+                or re.search(r"\b(?:player|workspace|Workspace)\s*[.:\[]", rhs)
+                or any(re.search(
+                    r"\b" + re.escape(owner) + r"\b\s*(?:[.:\[]|$)",
+                    rhs,
+                ) for owner in trusted)):
+            trusted.add(name)
+    return trusted
+
+
+def _is_routed_authority_witness(code: str, roots: set[str]) -> bool:
+    """An accepted witness itself must mutate an authenticated owner."""
+    candidate = _mask_noncode_luau_strings(code).strip()
+    targets = [m.group(1) for m in _WRITE_TARGETS.finditer(candidate)]
+    for target in targets:
+        root = re.split(r"[.\[]", target, maxsplit=1)[0]
+        if root in roots and ("." in target or "[" in target):
+            return True
+    for root in roots:
+        if re.search(
+            r"\b" + re.escape(root)
+            + r"\s*:\s*(?:SetAttribute|PivotTo|MoveTo|TakeDamage|Destroy|"
+            + r"ApplyImpulse|Teleport|SetPrimaryPartCFrame|"
+            + r"LoadCharacter)\s*\(", candidate, re.I,
+        ):
+            return True
+    return False
+
+
 def _host_effect_witnesses(
     behavior: str, sources: dict[str, str], modules: list[Any],
     limit: int = 24,
@@ -488,6 +534,11 @@ def _host_effect_witnesses(
                 )):
                 continue
             if len(visible.strip()) < 6 or len(visible.strip()) > 320:
+                continue
+            if (has_markers and not _is_routed_authority_witness(
+                    code, _host_routed_authority_roots(source, i))):
+                # A scratch-table write beside a genuine player-state
+                # mutation must not be mistaken for a second game effect.
                 continue
             contextual = " ".join(masked[max(0, i - 3):min(len(masked), i + 2)])
             line_tokens = _generic_identifier_terms(contextual)
