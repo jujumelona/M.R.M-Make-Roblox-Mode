@@ -194,3 +194,47 @@ def test_unrelated_service_and_ambiguous_duplicate_owners_fail_closed(tmp_path):
     )
     assert no_match is None
     assert details["candidate_count"] == 2
+
+
+
+def test_whole_requirement_audit_uses_compound_proof_without_model_guess(tmp_path):
+    """Integration: two independently sourced effects, no LLM witness choice."""
+    from roblox_mod_ai.requirement_completion_audit import (
+        audit_whole_requirement_completion,
+    )
+    sources, roles = _source_attestation(tmp_path)
+    for path, source in sources.items():
+        destination = tmp_path / path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(source, encoding="utf-8")
+    proposal = SimpleNamespace(
+        modules=[SimpleNamespace(name="WorldService", file_path=WORLD,
+                                 description=roles[0].description),
+                 SimpleNamespace(name="CraftService", file_path=CRAFT,
+                                 description=roles[1].description)],
+        game_design={"detailed_implementation_plan": {"required_functions": [{
+            "id": "req-universal",
+            "original_request": "Gather from world sources and construct saved craft",
+            "server_state_changes": [WORLD_EFFECT, CRAFT_EFFECT],
+            "owner_files": [WORLD, CRAFT],
+        }]}}
+    )
+    class NoModelWitnesses:
+        def __init__(self):
+            self.requests = []
+        def complete_json(self, **kwargs):
+            self.requests.append(kwargs["prompt"])
+            assert kwargs["prompt"].startswith("Find user-requested"), kwargs["prompt"][:100]
+            return {"missing_actions": []}
+    model = NoModelWitnesses()
+    report = audit_whole_requirement_completion(
+        proposal, tmp_path, model, host_witness_only=True,
+    )
+    assert report["fully_covered"], report
+    assert report["status"] == "reviewed_no_blockers", report
+    assert len(report["checks"]) == 2
+    assert sorted(x["stage"] for x in report["recovery"]
+                  if x.get("status") == "deterministic_compound_source_witness") == [
+        "deterministic_compound_audit", "deterministic_compound_audit",
+    ]
+    assert all(x.startswith("Find user-requested") for x in model.requests)
