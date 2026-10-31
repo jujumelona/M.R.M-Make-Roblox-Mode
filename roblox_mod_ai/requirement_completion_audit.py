@@ -999,6 +999,7 @@ def audit_whole_requirement_completion(
                 "received_count": len(supplied),
             })
         unverified_effects: list[dict[str, str]] = []
+        claimed_witnesses: dict[tuple[str, int], int] = {}
         for effect in obligations:
             effect_id = effect["id"]
             if effect_id not in recover_ids:
@@ -1008,8 +1009,15 @@ def audit_whole_requirement_completion(
                 # file IDs, source line numbers, quotes or many JSON fields.
                 # The host owns all candidate evidence; the only model
                 # output is an integer referring to a real executable line.
+                exhausted = {
+                    key for key, used in claimed_witnesses.items()
+                    if used >= max(1, _distinct_state_writes(
+                        actual_sources[key[0]].splitlines()[key[1] - 1]
+                    ))
+                }
                 choice, diagnostic = _fallback_effect_witness_review(
                     router, effect, actual_sources, proposal.modules,
+                    excluded_locations=exhausted,
                 )
                 report.setdefault("recovery", []).append({
                     "requirement_id": req_id, **diagnostic,
@@ -1024,6 +1032,9 @@ def audit_whole_requirement_completion(
                         ),
                     })
                 else:
+                    if choice.get("verdict") == "implemented":
+                        key = (choice["file"], choice["line"])
+                        claimed_witnesses[key] = claimed_witnesses.get(key, 0) + 1
                     occurrences[effect_id] = [{"id": effect_id, **choice}]
                 continue
             # Crucially, this response does NOT ask the small model to copy an
