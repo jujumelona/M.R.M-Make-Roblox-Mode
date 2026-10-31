@@ -3,11 +3,13 @@ from __future__ import annotations
 
 import os
 import time
+import hashlib
 from pathlib import Path
 
 import httpx
 
 from .open_cloud import RobloxOpenCloudClient
+from .cloud_engine_suite import make_engine_suite_script, engine_contract_checks
 from .spec import RobloxProposal
 
 
@@ -39,7 +41,13 @@ local ok, err = pcall(function()
 end)
 assert(ok, "DataStore test failed: " .. tostring(err))
 """)
-    return "--!strict\n" + "\n".join(checks) + "\nreturn true\n"
+    # The model must never author the test oracle. Derive assertions from the
+    # generated contract and run them in the actual uploaded Roblox DataModel.
+    # Keep a separate test-only DataStore roundtrip as a distinct assertion.
+    scripted = make_engine_suite_script(proposal)
+    return (scripted.removesuffix("return true\\n")
+            + "do\\n" + "\\n".join(checks)
+            + "\\nend\\nreturn true\\n")
 
 
 class OpenCloudRuntimeVerifier:
@@ -115,7 +123,10 @@ class OpenCloudRuntimeVerifier:
         session = self.client or httpx.Client(timeout=30)
         prefix = f"universes/{universe}/places/{place}/versions/{version}/"
         try:
-            create = session.post(url, json={"script": make_smoke_script(proposal)}, headers=headers)
+            script = make_smoke_script(proposal)
+            script_digest = hashlib.sha256(script.encode("utf-8")).hexdigest()
+            place_digest = hashlib.sha256(compiled.read_bytes()).hexdigest()
+            create = session.post(url, json={"script": script}, headers=headers)
             create.raise_for_status()
             task = create.json()
             if not isinstance(task, dict):
@@ -142,14 +153,35 @@ class OpenCloudRuntimeVerifier:
                     output = task.get("output")
                     results = output.get("results") if isinstance(output, dict) else None
                     passed = state == "COMPLETE" and results == [True]
+                    # Fetch actual failed engine logs, but never claim to have
+                    # observed client/studio multiplayer or ingest untrusted
+                    # log output as instructions.
+                    runtime_logs = []
+                    if not passed:
+                        try:
+                            logs_res = session.get(task_url + "/logs",
+                                headers={"x-api-key": key})
+                            if logs_res.status_code == 200:
+                                obj = logs_res.json()
+                                if isinstance(obj, dict):
+                                    runtime_logs = obj.get("logs", [])
+                                    if not isinstance(runtime_logs, list):
+                                        runtime_logs = []
+                        except (httpx.HTTPError, ValueError, TypeError):
+                            pass
+                    safe_logs = str(runtime_logs)[:12000].replace(key, "[REDACTED]") if key else ""
                     return {
                         "passed": passed, "executed": True,
                         "state": state, "results": results,
                         "task_path": path, "test_place_version": version,
-                        "scope": "server_smoke_and_datastore_only",
+                        "place_sha256": place_digest,
+                        "script_sha256": script_digest,
+                        "contract_check_count": len(engine_contract_checks(proposal)),
+                        "engine_logs": safe_logs,
+                        "scope": "server_datamodel_remotes_world_and_datastore_not_multiplayer",
                         "reason": "ok" if passed else str(
                             task.get("error", "Task did not return exactly [true]")
-                        ),
+                        )[:3000].replace(key, "[REDACTED]"),
                     }
                 if state not in ("QUEUED", "PROCESSING", "STATE_UNSPECIFIED"):
                     return {"passed": False, "executed": False, "state": state,
