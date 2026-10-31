@@ -1497,12 +1497,17 @@ def audit_whole_requirement_completion(
                             "actions": already,
                         })
                     if omissions:
-                        report["unplanned_actions"] = omissions[:12]
-                        report["reason"] = (
+                        # A plan-scope defect must not hide independently
+                        # unverified effects or later requirements. Gather all
+                        # findings before reporting one combined failure.
+                        report.setdefault("unplanned_actions", []).extend(
+                            omissions[:12],
+                        )
+                        report.setdefault("omission_reasons", []).append(
                             req_id + ": original request omitted by authored "
                             "effect plan: " + "; ".join(omissions[:3])[:400]
                         )
-                        return report
+                        fresh_extras = []
                     fresh_extras = extra_result.get("extra_missing")
                     if fresh_extras is None and omissions == []:
                         fresh_extras = []
@@ -1573,12 +1578,14 @@ def audit_whole_requirement_completion(
                                     "actions": already,
                                 })
                             else:
-                                report["unplanned_actions"] = omitted
-                                report["reason"] = (
+                                report.setdefault("unplanned_actions", []).extend(
+                                    omitted,
+                                )
+                                report.setdefault("omission_reasons", []).append(
                                     req_id + ": original request omitted by "
                                     "authored effect plan: " + missing[:300]
                                 )
-                                return report
+                                extras = list(retained_extras)
                         else:
                             report.setdefault("recovery", []).append({
                                 "requirement_id": req_id,
@@ -1708,6 +1715,17 @@ def audit_whole_requirement_completion(
                     ),
                     "evidence": "requirement_effect_review_source_quote",
                 })
+    if report.get("unplanned_actions"):
+        # Report *both* plan omissions and inconclusive implementation proofs
+        # from the same pass; neither suppresses the other.
+        details = report.get("omission_reasons", [])
+        if report.get("unverified_effects"):
+            details = list(details) + [
+                "cannot prove " + str(len(report["unverified_effects"]))
+                + " independent effects across requirements",
+            ]
+        report["reason"] = "; ".join(details)[:1400]
+        return report
     if report.get("unverified_effects"):
         report["reason"] = (
             "incomplete independent effect checks; ungrounded evidence; "
