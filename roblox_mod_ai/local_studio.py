@@ -101,13 +101,18 @@ _LOCAL_README = """# Local Roblox Studio checks - no API key
 The project ZIP includes compiled_place.rbxlx. Extract the entire archive
 onto the Windows PC with Roblox Studio installed.
 
-- Double-click compiled_place.rbxlx to open it in Studio. Use Play for
-  solo coin pickup, HUD and shop checks only. A round-based PvP game will
-  correctly remain in Waiting with one player.
-- For actual arena combat, use Studio's Test tab multiplayer controls:
-  start a local server with at least 2 clients, wait for the countdown,
-  fight, confirm winner/Wins/KOs/rewards, then replay and test disconnects.
-  A single-client Play session is NOT evidence that PvP works.
+- Double-click compiled_place.rbxlx and inspect the actual generated
+  gameplay_contract.json and gameplay_playtest_scenarios.json before playing.
+- Run Studio Play to exercise EACH declared player action and verify the
+  observable server-owned state changes plus negative/rejected cases.
+  A successful project build or instance smoke is not a gameplay result.
+- Where the contract requires interactions among multiple players, use
+  Studio's Test tab with a local server and the required number of clients.
+  Do not infer that every generated project is a PvP arena.
+- Verify every required cross-system progression path: output of a
+  prerequisite must be observable as the next action's validated input.
+- Verify disconnect/rejoin and rejected purchases in a separate published
+  test experience with API services enabled, never against production data.
 - Persistence must be tested separately in a suitable published test
   experience with DataStore access; an unpublished offline Place uses
   memory-only profiles and cannot prove save/rejoin behavior.
