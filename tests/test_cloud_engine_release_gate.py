@@ -74,7 +74,7 @@ def test_actual_smoke_combines_runtime_contract_and_separate_datastore_test():
 
 
 @pytest.mark.parametrize("bad", [
-    "", "x" * 130, "Bad\\nName", "Bad\\x00Name",
+    "", "x" * 130, "Bad\nName", "Bad\x00Name",
 ])
 def test_control_character_instance_identifiers_rejected(bad):
     p = plan()
