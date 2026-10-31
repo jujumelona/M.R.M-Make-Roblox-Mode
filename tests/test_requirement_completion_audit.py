@@ -1712,3 +1712,53 @@ def test_reachable_helper_scratch_local_mutation_is_not_authored_proof():
         "end\nreturn Service\n"
     )
     assert _host_effect_witnesses("Update state", {path: source}, []) == []
+
+
+
+def test_multiple_independent_fields_with_one_predicate_are_all_obligations():
+    from roblox_mod_ai.requirement_completion_audit import _obligations
+
+    req = {
+        "server_state_changes": [
+            "The owned device's damage multiplier, firing speed, and "
+            "capacity are updated and persisted in server-owned data."
+        ],
+    }
+    obligations = _obligations(req)
+    assert len(obligations) == 3, obligations
+    assert obligations[0]["behavior"] == (
+        "The owned device's damage multiplier is updated and persisted in "
+        "server-owned data"
+    )
+    assert obligations[1]["behavior"] == (
+        "The owned device's firing speed is updated and persisted in "
+        "server-owned data"
+    )
+    assert obligations[2]["behavior"] == (
+        "The owned device's capacity is updated and persisted in "
+        "server-owned data"
+    )
+
+
+def test_noun_list_without_shared_effect_verb_is_not_split():
+    from roblox_mod_ai.requirement_completion_audit import _obligations
+    req = {
+        "server_state_changes": [
+            "The first, second, and third options are shown in the menu."
+        ],
+    }
+    obligations = _obligations(req)
+    assert len(obligations) == 1, obligations
+
+
+def test_separate_update_and_payment_effects_are_individually_counted():
+    from roblox_mod_ai.requirement_completion_audit import _obligations
+    req = {
+        "server_state_changes": [
+            "The first system's strength, speed, and capacity are upgraded "
+            "and persisted. The player's balance is debited by the price."
+        ],
+    }
+    effects = _obligations(req)
+    assert len(effects) == 4, effects
+    assert sum("balance" in row["behavior"] for row in effects) == 1
