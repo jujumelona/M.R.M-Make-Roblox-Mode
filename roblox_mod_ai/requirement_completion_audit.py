@@ -524,6 +524,7 @@ def _host_effect_witnesses(
         routed_roots = {
             "player", "workspace", "Workspace", "actionTarget", "targetPart"
         }
+        data_manager_aliases: set[str] = set()
         local_binding = re.compile(
             r"\blocal\s+([A-Za-z_]\w*)\s*=\s*([^\n]+)"
         )
@@ -540,10 +541,23 @@ def _host_effect_witnesses(
                 if binding:
                     name, rhs = binding.groups()
                     was_trusted = set(routed_roots)
+                    previous_managers = set(data_manager_aliases)
                     routed_roots.discard(name)
-                    if (re.search(
-                            r"\bPlayerDataManager\s*\.\s*GetState\s*\(", rhs
-                        ) or re.search(
+                    data_manager_aliases.discard(name)
+                    if re.fullmatch(
+                            r"\s*services\s*\.\s*PlayerDataManager\s*", rhs):
+                        data_manager_aliases.add(name)
+                    direct_profile = re.search(
+                        r"\bPlayerDataManager\s*\.\s*GetState\s*\(\s*player\s*,",
+                        rhs,
+                    )
+                    alias_profile = any(re.search(
+                        r"\b" + re.escape(manager)
+                        + r"\s*\.\s*GetState\s*\(\s*player\s*,",
+                        rhs,
+                    ) for manager in previous_managers if manager != name)
+                    if (direct_profile or alias_profile
+                        or re.search(
                             r"\b(?:player|workspace|Workspace)\s*[.:\[]", rhs
                         ) or any(re.search(
                             r"\b" + re.escape(owner)
