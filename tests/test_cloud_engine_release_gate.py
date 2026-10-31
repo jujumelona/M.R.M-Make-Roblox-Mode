@@ -74,9 +74,9 @@ def test_actual_smoke_combines_runtime_contract_and_separate_datastore_test():
 
 
 @pytest.mark.parametrize("bad", [
-    "Injected ); game:Destroy(); --", "a/b", "x.y", "", "x" * 130,
+    "", "x" * 130, "Bad\\nName", "Bad\\x00Name",
 ])
-def test_untrusted_instance_identifiers_never_enter_executable_luau(bad):
+def test_control_character_instance_identifiers_rejected(bad):
     p = plan()
     p.game_design["dynamic_design"]["world_objects"][0]["name"] = bad
     with pytest.raises(ValueError):
@@ -152,3 +152,12 @@ def test_fake_completion_or_wrong_place_digest_cannot_release(tmp_path):
                                max_rebuilds=0, verifier=oracle)
     assert out["verified"] is False
     assert out["final_zip"] == ""
+
+
+def test_legal_unicode_spaces_and_punctuation_are_quoted_as_data_not_luau_code():
+    p = plan()
+    name = '광물 채굴" ); game:Destroy(); --'
+    p.game_design["dynamic_design"]["world_objects"][0]["name"] = name
+    script = make_engine_suite_script(p)
+    assert json.dumps(name, ensure_ascii=False) in script
+    assert 'workspace:FindFirstChild("광물 채굴\\" ); game:Destroy(); --")' in script
