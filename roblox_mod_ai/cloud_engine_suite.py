@@ -52,10 +52,19 @@ def engine_contract_checks(proposal: RobloxProposal) -> list[tuple[str, str]]:
         filename = path.rsplit("/", 1)[-1].removesuffix(".luau").removesuffix(".client").removesuffix(".server")
         # Roblox determines script instance name from its filename. Verify both
         # the file-derived name and expected instance class in the REAL place.
+        runtime_require = (
+            '; local ok,value=pcall(require,item); '
+            'assert(ok, "module failed to load in Roblox engine: "..tostring(value)); '
+            'assert(type(value)=="table" or type(value)=="function", '
+            '"server module exported no callable contract")'
+            if kind == "server_module" and str(getattr(module, "module_id", "")).startswith("dyn_")
+            else ""
+        )
         add("module:" + path,
             f'local container={folder}; '
             f'local item=container and container:FindFirstChild({_lit(filename)}); '
-            f'assert(item and item:IsA({_lit(expected)}), "missing or wrong script class")')
+            f'assert(item and item:IsA({_lit(expected)}), "missing or wrong script class")'
+            + runtime_require)
 
     design = (proposal.game_design or {}).get("dynamic_design") or {}
     if not isinstance(design, dict):
@@ -70,6 +79,17 @@ def engine_contract_checks(proposal: RobloxProposal) -> list[tuple[str, str]]:
             'local f=game:GetService("ReplicatedStorage"):FindFirstChild("Remotes"); '
             f'local r=f and f:FindFirstChild({_lit(name)}); '
             f'assert(r and r:IsA({_lit(kind)}), "missing or wrong Remote")')
+
+    actions = design.get("host_world_actions") or {}
+    if not isinstance(actions, dict):
+        raise ValueError("Malformed world interaction roster")
+    for name in sorted(actions):
+        add("interaction:" + str(name),
+            f'local o=workspace:FindFirstChild({_lit(name)}); '
+            'local prompt=o and o:FindFirstChild("RMMInteract"); '
+            'assert(prompt and prompt:IsA("ProximityPrompt"), "missing world interaction"); '
+            'assert(prompt.Enabled and prompt.MaxActivationDistance>0, '
+            '"unusable interaction prompt")')
 
     objects = design.get("world_objects") or []
     if not isinstance(objects, list):
