@@ -235,12 +235,13 @@ def test_three_temporal_facets_pass_real_whole_requirement_audit(tmp_path):
 
 @pytest.mark.parametrize("broken", [
     SOURCE.replace("and occupantsIntact() do", "do"),
-    SOURCE.replace("table.insert(occupiedSeats, { seat=part, humanoid=occupant })",
+    SOURCE.replace("table.insert(occupiedSeats,{seat=part,humanoid=occupant})",
                    "local decor = { seat=part, humanoid=occupant }"),
     SOURCE.replace('player:SetAttribute("RMMFlightState",finalState)',
                    'player:SetAttribute("RMMFlightState","arrived")'),
 ])
 def test_temporal_facet_audit_fails_closed_on_broken_continuity(broken):
+    assert broken != SOURCE, "A no-op mutation is not a valid negative test"
     for claim in TRANSIT_EFFECTS[1:]:
         cert, _ = attest_async_vehicle_transit(claim, {PATH: broken}, MODULES)
         assert cert is None
