@@ -1149,7 +1149,7 @@ def test_original_scope_json_failure_can_recover_only_from_exact_plain_none(tmp_
     )
     assert report["fully_covered"], report
     assert approved.plain_calls == 1
-    assert any(row["status"] == "recovered_plain_none"
+    assert any(row.get("status") == "recovered_plain_none"
                for row in report["recovery"])
 
     omitted = ScopeFailsJson(
