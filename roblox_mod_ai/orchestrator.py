@@ -23,6 +23,7 @@ from .source_review import review_generated_sources, _configured as source_revie
 from .requirement_effect_review import review_requirement_effects
 from .requirement_completion_audit import audit_whole_requirement_completion
 from .compiled_effect_verification import verify_compiled_effect_sources
+from .remote_ingress_attestation import verify_remote_ingress
 from .source_repair_cycle import run_source_repair_cycle
 from .gameplay_contract import make_studio_playtest_scenarios
 from .rbxlx_inspector import inspect_compiled_place
@@ -1295,6 +1296,18 @@ class RobloxProductionOrchestrator:
                     "passed": False,
                     "error": "PACKAGE_COMPILED_EFFECT_MISMATCH",
                     "diagnostic": packaged_effects,
+                }
+            # Check EVERY host-owned Remote -> service -> handler binding,
+            # including when host_executable_actions is legitimately empty.
+            # This is source-only, not a claim of Studio/engine execution.
+            ingress = verify_remote_ingress(proposal, output_dir)
+            tool_results["remote_ingress"] = ingress
+            (output_dir / "remote_ingress_verification.json").write_text(
+                json.dumps(ingress, indent=2, ensure_ascii=False), encoding="utf-8")
+            if not ingress["passed"]:
+                return {
+                    "passed": False, "error": "GAMEPLAY_REMOTE_INGRESS_UNBOUND",
+                    "diagnostic": ingress,
                 }
             structural = inspect_compiled_place(proposal, place, source_root=output_dir)
             tool_results["compiled_structure"] = structural
