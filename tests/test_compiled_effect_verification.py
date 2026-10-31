@@ -140,7 +140,7 @@ def test_genuinely_absent_executable_roster_stays_explicitly_not_applicable(tmp_
     assert result["declared_action_count"] == 0
 
 
-@pytest.mark.parametrize("invalid_design", [None, [], "", False])
+@pytest.mark.parametrize("invalid_design", [[], "", False])
 def test_explicit_invalid_dynamic_design_is_not_verified(tmp_path, invalid_design):
     proposal, _, _, _ = _persist_transaction(tmp_path)
     proposal.game_design["dynamic_design"] = invalid_design
@@ -164,3 +164,14 @@ def test_owner_record_without_name_fails_closed_without_attribute_error(tmp_path
     report = verify_compiled_effect_sources(proposal, tmp_path)
     assert not report["passed"], report
     assert any("missing_or_ambiguous_owner" in issue for issue in report["failures"])
+
+
+
+def test_classic_null_dynamic_design_is_explicitly_not_applicable(tmp_path):
+    from types import SimpleNamespace
+    # A classic fixed-feature place has no model-authored dynamic IR.
+    proposal = SimpleNamespace(game_design={"dynamic_design": None}, modules=[])
+    result = verify_compiled_effect_sources(proposal, tmp_path)
+    assert result["passed"], result
+    assert result["status"] == "not_applicable"
+    assert result["declared_action_count"] == 0
