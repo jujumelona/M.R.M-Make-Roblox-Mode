@@ -156,9 +156,15 @@ function Service.handleAction(player,services,...)
         return true
     end
     local destination=workspace:FindFirstChild(destinationName)
-    if not destination or not destination:IsA("BasePart") then
-        return {success=false,reason="missing_destination"} end
-    local orbitTarget=destination.CFrame*CFrame.new(0,16,0)
+    if not destination or not destination:IsA("BasePart")
+        or not destination.Anchored or not destination.CanCollide then
+        return {success=false,reason="missing_playable_destination"} end
+    -- The registered destination is a world landing pad. Resolve approach
+    -- height from its top surface rather than placing the model pivot an
+    -- arbitrary 16 studs above the deck (which can strand dismounted riders
+    -- outside the boarding prompt radius). The launchable Model.PrimaryPart
+    -- is the builder's physical assembly anchor.
+    local orbitTarget=destination.CFrame*CFrame.new(0,destination.Size.Y/2+5,0)
     local start=vehicle:GetPivot()
     local nearOrbit=(start.Position-orbitTarget.Position).Magnitude<=80
     local target
