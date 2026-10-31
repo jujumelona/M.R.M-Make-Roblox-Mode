@@ -430,11 +430,24 @@ function Service.handleAction(player, services, ...)
     if resources < definition.cost then
         return {success = false, reason = "insufficient_resources"}
     end
-    -- No DataStore call or yield occurs between validation and both updates.
+    -- Commit the PHYSICAL section first, before charging its price.
+    -- The sections folder is server-owned and this creation path has no
+    -- yields; a failed Part/Weld construction cannot debit resources or
+    -- certify an installed section that does not exist.
+    if parts:FindFirstChild(id) then
+        return {success = false, reason = "section_already_materialized"}
+    end
+    local placed, physicallyCreated = pcall(placePart, parts, anchor, id)
+    if not placed or physicallyCreated ~= true then
+        -- Restore a clean world after a partial Part/Weld creation failure.
+        local orphan = parts:FindFirstChild(id)
+        if orphan then orphan:Destroy() end
+        return {success = false, reason = "section_materialization_failed"}
+    end
+    -- No yield between materialization, authenticated debit and saved grant.
     inventory.resources = resources - definition.cost
     profile.sections[id] = {owned = true, level = 1,
         performance = definition.performance}
-    placePart(parts, anchor, id)
     local score = publish(player, profile)
     return {success = true, section = id, resources = inventory.resources,
         performance = score}
