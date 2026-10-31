@@ -65,13 +65,16 @@ def test_paid_first_weapon_purchases_real_owned_tool_and_entitlement():
     assert "tool.Parent=backpack" in RANK_SERVER
     assert "inventory.items[TARGET]=1" in RANK_SERVER
     assert "coins.Value-=COST" in RANK_SERVER
-    assert RANK_SERVER.index("coins.Value-=COST") < RANK_SERVER.index("tool.Parent=backpack") or (
-        # ensureOwnedTool function is declared early, but called in the
-        # acquisition success branch AFTER server price is debited.
-        RANK_SERVER.index("coins.Value-=COST") < RANK_SERVER.index(
-            "assert(ensureOwnedTool(player)")
-    )
-    assert "task.defer(function() ensureOwnedTool(player) end)" in RANK_SERVER
+    # A failed grant must NOT consume currency. The Tool helper is declared
+    # before the action, and its verified preflight call executes before debit.
+    assert RANK_SERVER.index('local created, granted=pcall(ensureOwnedTool,player)') < (
+        RANK_SERVER.index('coins.Value-=COST'))
+    assert 'return {success=false,reason="weapon_grant_failed"}' in RANK_SERVER
+    assert 'assert(ensureOwnedTool(player)' not in RANK_SERVER
+    # First purchase after login must survive death; the respawn subscriber
+    # is unconditional for the GRANT_TOOL protocol and re-reads inventory.
+    assert "player.CharacterAdded:Connect(function()" in RANK_SERVER
+    assert "task.defer(restoreIfOwned)" in RANK_SERVER
 
 
 def _add_weapon_upgrade_peer(proposal):
