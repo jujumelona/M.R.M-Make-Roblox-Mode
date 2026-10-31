@@ -489,6 +489,10 @@ def _host_effect_witnesses(
     # this, a large construction server can fill the entire top-N list and
     # starve the extraction/market owners of any selectable evidence.
     owners = sorted(sources)
+    if len(owners) > limit:
+        # A bounded witness list must never silently omit a server owner
+        # while claiming to have considered all candidate implementations.
+        return []
     owner_quota = max(1, min(6, limit // max(1, len(owners))))
     chosen: list[tuple[int, str, int, str]] = []
     present: set[tuple[str, int]] = set()
@@ -684,9 +688,21 @@ def audit_whole_requirement_completion(
             path for path in owners
             if isinstance(path, str) and path.startswith("src/server/")
         })
-        if not server_paths or any(path not in known_paths
-                                   or not (root / path).is_file()
-                                   for path in server_paths):
+        def valid_server_owner(path: str) -> bool:
+            # Proposal paths are planning data, not unrestricted filesystem
+            # paths. Do not allow "..", backslashes or symlinks to escape
+            # the generated project's source tree.
+            target = root / path
+            return (
+                path in known_paths and "\\" not in path
+                and ".." not in Path(path).parts
+                and Path(path).suffix == ".luau"
+                and target.is_file()
+                and target.resolve().is_relative_to(root.resolve())
+            )
+        if not server_paths or any(
+            not valid_server_owner(path) for path in server_paths
+        ):
             report["reason"] = req_id + ": missing complete source ownership"
             return report
         actual_sources = {
