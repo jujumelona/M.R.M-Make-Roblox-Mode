@@ -116,11 +116,15 @@ def test_unconfigured_cloud_is_not_falsely_treated_as_build_failure(tmp_path):
                                max_rebuilds=2, verifier=oracle)
     assert out["verified"] is False
     assert out["final_zip"] == ""
+    assert out["release_status"] == "verification_setup_required"
+    assert out["attempts"][0]["status"] == "verification_setup_required"
     assert s.builds == 1
     assert s.revisions == 0
     assert Path(out["failure_report"]).is_file()
     with zipfile.ZipFile(out["failure_report"]) as z:
-        assert json.loads(z.read("cloud_verification_failure.json"))["verified"] is False
+        data = json.loads(z.read("cloud_verification_failure.json"))
+        assert data["verified"] is False
+        assert data["attempts"][0]["status"] == "verification_setup_required"
 
 
 def test_real_engine_failure_no_finish_and_no_unchanged_game_retry(tmp_path):
