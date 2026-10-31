@@ -393,6 +393,42 @@ _HARVEST = r'''    if args.quantity > 10 then
         remainingDeposit = stock - args.quantity}'''
 
 
+def _damage_credit_contract(module: Any, proposal: Any) -> bool:
+    """Use source-owned planned state changes, not original prompt keywords."""
+    design = getattr(proposal, "game_design", {}) or {}
+    functions = ((design.get("detailed_implementation_plan") or {})
+                 .get("required_functions") or [])
+    for req in functions:
+        if not isinstance(req, dict):
+            continue
+        if module.file_path not in (req.get("owner_files") or []):
+            continue
+        changes = req.get("server_state_changes") or []
+        if not isinstance(changes, list):
+            continue
+        for clause in changes:
+            if not isinstance(clause, str):
+                continue
+            for sentence in re.split(r"(?<=\.)\s+|;\s*", clause):
+                if (re.search(r"\b(?:damag\w*|hit\w*|attack\w*)\b", sentence, re.I)
+                        and re.search(r"\b(?:currency|money|coins?|credits?)\b",
+                                      sentence, re.I)
+                        and re.search(r"\b(?:gain\w*|award\w*|credit\w*|earn\w*|"
+                                      r"increas\w*|grant\w*)\b", sentence, re.I)):
+                    return True
+    return False
+
+
+_DAMAGE_CREDIT_PRECHECK = r'''    local earnedDamage = hp - remaining
+    local leaderstats = player:FindFirstChild("leaderstats")
+    local coins = leaderstats and leaderstats:FindFirstChild("Coins")
+    if not coins or not coins:IsA("IntValue")
+        or type(coins.Value) ~= "number" or coins.Value % 1 ~= 0
+        or coins.Value < 0 or coins.Value > 2147483647 - earnedDamage then
+        return {success = false, reason = "reward_balance_unavailable"} end
+'''
+
+
 def render_verified_effect(module: Any, proposal: Any) -> str | None:
     selected = eligible_verified_effect(module, proposal)
     if selected is None:
@@ -476,6 +512,16 @@ def render_verified_effect(module: Any, proposal: Any) -> str | None:
             effect = _COLONY_DAMAGE
         else:
             effect = _DAMAGE
+        if role == "world_damage" and _damage_credit_contract(module, proposal):
+            marker = '    target:SetAttribute("RMMAlienHealth", remaining)'
+            if effect.count(marker) != 1:
+                raise ValueError("DAMAGE_CREDIT_CANNOT_LOCATE_COMMIT")
+            effect = effect.replace(
+                marker,
+                _DAMAGE_CREDIT_PRECHECK + marker
+                + '\n    coins.Value += earnedDamage',
+                1,
+            )
         if role == "world_damage":
             # A real enemy state transition is reversible only after a
             # server-chosen delay. No client-supplied reset, health or time.
