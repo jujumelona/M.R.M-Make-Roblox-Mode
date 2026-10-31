@@ -238,3 +238,33 @@ def test_whole_requirement_audit_uses_compound_proof_without_model_guess(tmp_pat
         "deterministic_compound_audit", "deterministic_compound_audit",
     ]
     assert all(x.startswith("Find user-requested") for x in model.requests)
+
+
+def test_inventory_namespace_proves_subtype_credit_without_name_matching(tmp_path):
+    """A gameplay effect refers to inventory but the state writes a new subtype.
+
+    Generated mechanisms and categories are arbitrary; proof follows GetState
+    provenance, real world-stock debit, nonyielding credit and guards.
+    """
+    alternative = (
+        WORLD_SOURCE.replace('"GatherState"', '"PlayerInventory"')
+        .replace("profile.items", "profile.rareCrystals")
+        .replace("items = profile.rareCrystals", "rareCrystals = profile.rareCrystals")
+    )
+    sources, roles = _source_attestation(tmp_path, world=alternative)
+    proof, diagnostic = attest_compound_state_transition(
+        "After accepted world resource extraction the owned inventory increases "
+        "by the validated quantity; rejected requests change nothing",
+        sources, roles, tmp_path,
+    )
+    assert diagnostic["status"] == "deterministic_compound_source_witness", diagnostic
+    assert proof["proof_lines"][1]["quote"] == "profile.rareCrystals = prior + 1"
+
+    wrong_namespace = alternative.replace('"PlayerInventory"', '"UnknownStore"')
+    sources, roles = _source_attestation(tmp_path, world=wrong_namespace)
+    proof, _ = attest_compound_state_transition(
+        "After accepted world resource extraction the owned inventory increases "
+        "by the validated quantity; rejected requests change nothing",
+        sources, roles, tmp_path,
+    )
+    assert proof is None
