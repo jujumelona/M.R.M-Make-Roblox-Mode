@@ -122,6 +122,9 @@ def test_real_audit_does_not_fail_from_duplicate_omission(tmp_path, monkeypatch)
 def test_real_audit_still_blocks_a_new_unplanned_behavior(tmp_path, monkeypatch):
     import roblox_mod_ai.requirement_completion_audit as audit
     proposal, path = _integration_proposal(tmp_path)
+    proposal.game_design["detailed_implementation_plan"]["required_functions"][0][
+        "original_request"
+    ] += "; A crew member is purchased and added to the player's roster"
     def witnessed(router, effect, sources, modules, **kwargs):
         is_add = "added" in effect["behavior"]
         return {
@@ -148,6 +151,9 @@ def test_audit_aggregates_plan_omission_and_other_unverified_effect(tmp_path, mo
     """One failure receipt exposes the next blocker instead of serial reruns."""
     import roblox_mod_ai.requirement_completion_audit as audit
     proposal, path = _integration_proposal(tmp_path)
+    proposal.game_design["detailed_implementation_plan"]["required_functions"][0][
+        "original_request"
+    ] += "; A crew member is purchased and added to the player's roster"
     proposal.game_design["detailed_implementation_plan"]["required_functions"].append({
         "id": "req-next",
         "original_request": "Implement another independent counter in owned state",
@@ -183,3 +189,57 @@ def test_audit_aggregates_plan_omission_and_other_unverified_effect(tmp_path, mo
     assert report["unverified_effects"]
     assert "original request omitted" in report["reason"]
     assert "cannot prove 1 independent effects" in report["reason"]
+
+def test_model_invents_ship_build_currency_and_inventory_gain(tmp_path):
+    from roblox_mod_ai.effect_scope_reconciliation import (
+        reconcile_original_scope_claims,
+    )
+    original = "Collect materials, trade for currency and assemble a vehicle."
+    effects = _obligations({"server_state_changes": [
+        "Accepted source extraction increases player inventory.",
+        "Trade decreases resources and increases currency.",
+        "Vehicle section builds consume materials and attach the section.",
+    ]})
+    claims = [
+        "After building the vehicle section, the player's currency decreases by its price",
+        "After building the vehicle section, their inventory increases by the consumed materials",
+        "The player's built vehicle sections are attached to the vehicle",
+    ]
+    missing, duplicate, unverified = reconcile_original_scope_claims(
+        claims, original, effects,
+    )
+    assert missing == []
+    assert set(unverified + duplicate) == set(claims)
+
+
+def test_new_literal_user_obligation_is_still_blocking():
+    from roblox_mod_ai.effect_scope_reconciliation import (
+        reconcile_original_scope_claims,
+    )
+    original = (
+        "Build an automated tower; collect rare gems from the northern cave"
+    )
+    effects = _obligations({"server_state_changes": [
+        "The tower is built from collected materials",
+    ]})
+    claims = ["collect rare gems from the northern cave"]
+    missing, _, unverified = reconcile_original_scope_claims(
+        claims, original, effects,
+    )
+    assert missing == claims
+    assert unverified == []
+
+
+def test_cross_language_unanchored_claim_is_not_authority():
+    from roblox_mod_ai.effect_scope_reconciliation import (
+        reconcile_original_scope_claims,
+    )
+    effects = _obligations({"server_state_changes": [
+        "The spacecraft physically launches into space",
+    ]})
+    missing, duplicates, unverified = reconcile_original_scope_claims(
+        ["The player receives a free rocket and funds on launch"],
+        "우주로 나갈 수 있다", effects,
+    )
+    assert not missing and not duplicates
+    assert len(unverified) == 1
