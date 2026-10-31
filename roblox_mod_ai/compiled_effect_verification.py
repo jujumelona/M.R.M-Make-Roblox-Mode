@@ -109,16 +109,15 @@ def verify_compiled_effect_sources(
             continue
         route = routes.get(remote)
         owner = route.get("service") if isinstance(route, dict) else None
-        matches = [m for m in modules if m.name == owner]
+        matches = [m for m in modules if getattr(m, "name", None) == owner]
         if len(matches) != 1:
             report["failures"].append("missing_or_ambiguous_owner:" + remote)
             continue
         module = matches[0]
-        path = module.file_path
-        if path in seen_servers:
-            report["failures"].append("multiple_programs_same_owner:" + path)
-            continue
-        seen_servers.add(path)
+        path = getattr(module, "file_path", None)
+        # Validate untrusted planning records before using them as a set key
+        # or filesystem path, so an invalid module roster returns a bounded
+        # diagnostic instead of an unhandled TypeError/AttributeError.
         if (not isinstance(path, str)
                 or not path.startswith("src/server/")
                 or "\\" in path
@@ -127,6 +126,10 @@ def verify_compiled_effect_sources(
                 or not path.endswith(".luau")):
             report["failures"].append("invalid_server_path:" + remote)
             continue
+        if path in seen_servers:
+            report["failures"].append("multiple_programs_same_owner:" + path)
+            continue
+        seen_servers.add(path)
         try:
             expected = render_atomic_server(module, proposal)
         except (TypeError, ValueError, KeyError, AttributeError) as exc:
