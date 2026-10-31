@@ -16,6 +16,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+from .effect_scope_reconciliation import reconcile_omitted_actions
+
 SCHEMA = "rmm/whole-requirement-completion-audit-v1"
 MAX_SOURCE_CHARS = 72000
 MAX_OBLIGATIONS = 16
@@ -1484,6 +1486,16 @@ def audit_whole_requirement_completion(
                     if not isinstance(omissions, list) or any(
                             not isinstance(item, str) for item in omissions):
                         raise ValueError("invalid_missing_actions")
+                    omissions, already = reconcile_omitted_actions(
+                        omissions, obligations,
+                    )
+                    if already:
+                        report.setdefault("recovery", []).append({
+                            "requirement_id": req_id,
+                            "stage": "omitted_effects",
+                            "status": "duplicates_in_existing_effect_ledger",
+                            "actions": already,
+                        })
                     if omissions:
                         report["unplanned_actions"] = omissions[:12]
                         report["reason"] = (
@@ -1549,12 +1561,24 @@ def audit_whole_requirement_completion(
                             })
                         elif re.fullmatch(r"MISSING:\s+.{12,300}", answer, re.I):
                             missing = answer.split(":", 1)[1].strip()
-                            report["unplanned_actions"] = [missing]
-                            report["reason"] = (
-                                req_id + ": original request omitted by "
-                                "authored effect plan: " + missing[:300]
+                            omitted, already = reconcile_omitted_actions(
+                                [missing], obligations,
                             )
-                            return report
+                            if already:
+                                extras = list(retained_extras)
+                                report.setdefault("recovery", []).append({
+                                    "requirement_id": req_id,
+                                    "stage": "omitted_effects",
+                                    "status": "duplicates_in_existing_effect_ledger",
+                                    "actions": already,
+                                })
+                            else:
+                                report["unplanned_actions"] = omitted
+                                report["reason"] = (
+                                    req_id + ": original request omitted by "
+                                    "authored effect plan: " + missing[:300]
+                                )
+                                return report
                         else:
                             report.setdefault("recovery", []).append({
                                 "requirement_id": req_id,
