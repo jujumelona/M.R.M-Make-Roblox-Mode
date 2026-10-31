@@ -19,6 +19,7 @@ from typing import Any
 from .effect_scope_reconciliation import reconcile_original_scope_claims
 from .source_transition_attestation import attest_compound_state_transition
 from .async_world_motion_attestation import attest_async_vehicle_transit
+from .paid_inventory_grant_attestation import attest_paid_inventory_grant
 
 SCHEMA = "rmm/whole-requirement-completion-audit-v1"
 MAX_SOURCE_CHARS = 72000
@@ -835,6 +836,20 @@ def _fallback_effect_witness_review(
     # write, and the local 9B reviewer cannot infer a multi-second coroutine
     # from a few selected lines. Attempt a conservative whole-path source
     # proof before the bounded evidence-selection fallback.
+    # Resolve a real paid Tool acquisition without asking a tiny model to
+    # select one of dozens of unrelated single-line writes. The host must
+    # prove the entire debit -> durable inventory -> Tool/respawn contract.
+    acquired, purchase = attest_paid_inventory_grant(
+        effect["behavior"], sources, modules,
+    )
+    if acquired is not None and (
+        not excluded_locations or
+        (acquired["file"], acquired["line"]) not in excluded_locations
+    ):
+        return acquired, {
+            "stage": "deterministic_paid_inventory_audit",
+            "effect_id": effect["id"], **purchase,
+        }
     moved, movement = attest_async_vehicle_transit(
         effect["behavior"], sources, modules,
     )
