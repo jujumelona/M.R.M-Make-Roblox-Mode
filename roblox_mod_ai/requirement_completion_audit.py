@@ -1509,7 +1509,10 @@ def audit_whole_requirement_completion(
                         )
                         fresh_extras = []
                     fresh_extras = extra_result.get("extra_missing")
-                    if fresh_extras is None and omissions == []:
+                    if fresh_extras is None:
+                        # The dedicated omission verdict has no source-quote
+                        # entries. Keep its separate blocking diagnostic while
+                        # continuing to other requirements.
                         fresh_extras = []
                 else:
                     raise ValueError("invalid_scope_review_response")
