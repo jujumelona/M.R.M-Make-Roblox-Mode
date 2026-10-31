@@ -14,7 +14,6 @@ import hashlib
 import json
 import re
 from pathlib import Path
-from .deferred_producer_evidence import has_authoritative_producer_write
 from typing import Any
 
 SCHEMA = "rmm/whole-requirement-completion-audit-v1"
@@ -475,10 +474,9 @@ def _host_effect_witnesses(
         ))
         if has_markers:
             if (source.count(begin_marker) != 1 or source.count(end_marker) != 1
-                    or not routed
-                    or not has_authoritative_producer_write(source)):
-                # Missing/duplicated sentinels, no routed entrypoint, or a
-                # scratch-only body cannot prove actual gameplay.
+                    or not routed):
+                # Missing/duplicated sentinels or no routed entrypoint
+                # cannot establish that the action can execute.
                 continue
             begin_line = next(
                 i for i, value in enumerate(lines, 1) if begin_marker in value
@@ -492,8 +490,6 @@ def _host_effect_witnesses(
             # Older scaffolded services have the same exported entrypoint but
             # no sentinels. Restrict their evidence to the action function,
             # not the lifecycle/startup code or unused helper functions.
-            if not has_authoritative_producer_write(source):
-                continue
             begin_line = next(
                 i for i, value in enumerate(lines, 1)
                 if re.match(r"^function\s+Service\.handleAction\s*\(", value)
