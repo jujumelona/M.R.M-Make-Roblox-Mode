@@ -23,7 +23,7 @@ MAX_REQUIREMENTS = 24
 
 
 _STATE_VERB = re.compile(
-    r"\b(?:increase|decrease|credit|debit|grant|deduct|award|subtract|"
+    r"\b(?:increase|decrease|upgrade|credit|debit|grant|deduct|award|subtract|"
     r"add|remove|persist|attach|change|update|mutate|set|produce|consume|"
     r"transfer|spawn|destroy|acquire|gain|earn|build|launch|travel|"
     r"arrive|extract|mark|place|reduce)(?:s|d|ed)?\b|"
