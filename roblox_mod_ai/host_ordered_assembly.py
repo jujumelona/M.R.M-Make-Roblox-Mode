@@ -347,17 +347,13 @@ end
     end
     if resources < definition.cost then'''
     result=_replace_exact(result,original,changed)
-    original='''    inventory.resources = resources - definition.cost
-    profile.sections[id] = {owned = true, level = 1,
-        performance = definition.performance}
-    placePart(parts, anchor, id)'''
-    changed='''    if not placePart(parts, anchor, id) then
-        return {success = false, reason = "attachment_failed"}
-    end
-    inventory.resources = resources - definition.cost
-    profile.sections[id] = {owned = true, level = 1,
-        performance = definition.performance}'''
-    result=_replace_exact(result,original,changed)
+    # The shared physical builder now atomically validates creation BEFORE
+    # charging resources. Ordered assembly must inherit this first-party
+    # transaction instead of attempting an outdated second source rewrite.
+    if result.count("pcall(placePart, parts, anchor, id)") != 1 or (
+        "section_materialization_failed" not in result
+    ):
+        raise ValueError("ORDERED_ASSEMBLY_MISSING_ATOMIC_PHYSICAL_GRANT")
     method=r'''
 -- Expose the SAME player-owned welded actor to a host departure service.
 -- Incomplete or unverified physical assembly is not a launchable craft.
