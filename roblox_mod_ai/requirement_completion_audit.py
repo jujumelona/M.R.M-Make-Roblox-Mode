@@ -1774,9 +1774,20 @@ def audit_whole_requirement_completion(
         return report
     report["fully_covered"] = True
     report["status"] = "issues_found" if report["findings"] else "reviewed_no_blockers"
+    report["scope_review_status"] = (
+        "model_scope_suggestions_unverified"
+        if report.get("unverified_scope_claims") else "no_unanchored_model_scope_claims"
+    )
     report["reason"] = (
         "Individual original-request effects are missing in generated sources"
         if report["findings"] else
         "All independently listed effects source-reviewed; Studio NOT executed"
     )
+    if report.get("unverified_scope_claims"):
+        report["reason"] += (
+            "; " + str(len(report["unverified_scope_claims"]))
+            + " model-only proposed extra actions lacked literal user-request "
+            "provenance and cannot establish a defect or original-language "
+            "semantic completeness"
+        )
     return report
