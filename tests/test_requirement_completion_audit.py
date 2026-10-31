@@ -1762,3 +1762,112 @@ def test_separate_update_and_payment_effects_are_individually_counted():
     effects = _obligations(req)
     assert len(effects) == 4, effects
     assert sum("balance" in row["behavior"] for row in effects) == 1
+
+
+
+def test_composite_witness_rechecks_a_real_multistatement_gameplay_effect(tmp_path):
+    """Only host-owned real lines can be bundled after an initial choice 0."""
+    import json
+    proposal = fixture(tmp_path)
+    req = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
+    req["owner_files"] = [SHIP]
+    req["server_state_changes"] = [
+        "After successful transfer the server reduces available stock "
+        "and credits the authenticated owner's balance"
+    ]
+    (tmp_path / SHIP).write_text(
+        "local function transfer()\n"
+        "    stock.available -= 1\n"
+        "    balance.owned += 1\n"
+        "end\n", encoding="utf-8",
+    )
+
+    class CompositeReviewer:
+        def __init__(self):
+            self.calls = []
+        def complete_json(self, **kwargs):
+            prompt = kwargs["prompt"]
+            self.calls.append(prompt)
+            if prompt.startswith("Find user-requested"):
+                return {"missing_actions": []}
+            if prompt.startswith("Check ONE Roblox gameplay"):
+                data = json.loads(prompt[prompt.index('{"effect":'):])
+                assert len(data["bundles"]) == 1
+                assert len(data["bundles"][0]["statements"]) == 2
+                return {"choice": 1}
+            assert prompt.startswith("Check ONE promised")
+            return {"choice": 0}
+
+    review = CompositeReviewer()
+    result = audit_whole_requirement_completion(
+        proposal, tmp_path, review, host_witness_only=True,
+    )
+    assert result["fully_covered"], result
+    assert result["checks"][0]["proof_lines"] == [
+        {"line": 2, "quote": "stock.available -= 1"},
+        {"line": 3, "quote": "balance.owned += 1"},
+    ]
+    assert any(row.get("status") == "composite_witness_selected"
+               for row in result["recovery"])
+
+
+def test_composite_zero_remains_failed_without_invented_implementation(tmp_path):
+    proposal = fixture(tmp_path)
+    req = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
+    req["owner_files"] = [SHIP]
+    req["server_state_changes"] = [
+        "The game transitions and provides an independently verified outcome"
+    ]
+    (tmp_path / SHIP).write_text(
+        "counter.a += 1\ncounter.b += 1\n", encoding="utf-8",
+    )
+
+    class RefusesWeakEvidence:
+        def complete_json(self, **kwargs):
+            if kwargs["prompt"].startswith("Find user-requested"):
+                return {"missing_actions": []}
+            return {"choice": 0}
+
+    result = audit_whole_requirement_completion(
+        proposal, tmp_path, RefusesWeakEvidence(), host_witness_only=True,
+    )
+    assert not result["fully_covered"], result
+    assert result["status"] == "failed"
+    assert not result["findings"]
+    assert result["unverified_effects"][0]["reason"] == (
+        "no_conclusive_composite_witness"
+    )
+
+
+def test_composite_source_citation_rejects_mismatched_secondary_line(tmp_path, monkeypatch):
+    import roblox_mod_ai.requirement_completion_audit as audit
+    proposal = fixture(tmp_path)
+    req = proposal.game_design["detailed_implementation_plan"]["required_functions"][0]
+    req["owner_files"] = [SHIP]
+    req["server_state_changes"] = [
+        "The server commits two authenticated state changes"
+    ]
+    (tmp_path / SHIP).write_text(
+        "state.a += 1\nstate.b += 1\n", encoding="utf-8",
+    )
+    def tampered(*args, **kwargs):
+        return ({
+            "verdict": "implemented", "file": SHIP,
+            "line": 1, "quote": "state.a += 1",
+            "proof_lines": [
+                {"line": 1, "quote": "state.a += 1"},
+                {"line": 2, "quote": "state.nonexistent += 1"},
+            ],
+            "issue": "none", "repair": "none",
+        }, {"stage": "host_witness_fallback", "status": "source_witness_selected"})
+    monkeypatch.setattr(audit, "_fallback_effect_witness_review", tampered)
+
+    class ScopeOnly:
+        def complete_json(self, **kwargs):
+            return {"missing_actions": []}
+
+    result = audit.audit_whole_requirement_completion(
+        proposal, tmp_path, ScopeOnly(), host_witness_only=True,
+    )
+    assert result["status"] == "failed"
+    assert "ungrounded composite source citation" in result["reason"]
