@@ -1871,3 +1871,43 @@ def test_composite_source_citation_rejects_mismatched_secondary_line(tmp_path, m
     )
     assert result["status"] == "failed"
     assert "ungrounded composite source citation" in result["reason"]
+
+
+
+def test_routed_authoritative_owned_actor_alias_exposes_actual_motion():
+    from roblox_mod_ai.requirement_completion_audit import _host_effect_witnesses
+
+    path = "src/server/GenericTravelService.luau"
+    source = (
+        "local Service = {}\n"
+        "function Service.handleAction(player, services)\n"
+        "    local vehicle = services.CraftBuilder.GetOwnedActor(player)\n"
+        "    if not vehicle then return false end\n"
+        "    vehicle:PivotTo(workspace.Destination.CFrame)\n"
+        "end\n"
+        "return Service\n"
+    )
+    found = _host_effect_witnesses(
+        "Move the owned craft into the next world", {path: source}, [],
+    )
+    assert len(found) == 1, found
+    assert found[0]["quote"] == (
+        "vehicle:PivotTo(workspace.Destination.CFrame)"
+    )
+
+
+def test_unrelated_getownedactor_call_cannot_prove_authenticated_motion():
+    from roblox_mod_ai.requirement_completion_audit import _host_effect_witnesses
+
+    path = "src/server/GenericTravelService.luau"
+    source = (
+        "local Service = {}\n"
+        "function Service.handleAction(player, services)\n"
+        '    local vehicle = services.CraftBuilder.GetOwnedActor("someone_else")\n'
+        "    vehicle:PivotTo(workspace.Destination.CFrame)\n"
+        "end\n"
+        "return Service\n"
+    )
+    assert _host_effect_witnesses(
+        "Move authenticated owned craft", {path: source}, [],
+    ) == []
