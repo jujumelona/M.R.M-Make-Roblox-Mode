@@ -128,6 +128,33 @@ function Service.handleAction(player,services,...)
     local humanoid=player.Character and player.Character:FindFirstChildOfClass("Humanoid")
     if not seat or not seat:IsA("VehicleSeat") or not humanoid
         or seat.Occupant~=humanoid then return {success=false,reason="not_aboard"} end
+    -- Capture ALL occupied seats on the actual owned vehicle, not only the
+    -- pilot. A passenger who exits or changes seat interrupts the voyage.
+    -- A standing character is not a seat occupant and is not promised a ride.
+    local occupiedSeats={}
+    for _,part in vehicle:GetDescendants() do
+        if part:IsA("Seat") or part:IsA("VehicleSeat") then
+            local occupant=part.Occupant
+            if occupant then
+                if not occupant:IsA("Humanoid") or occupant.Health<=0
+                    or not occupant.Parent then
+                    return {success=false,reason="invalid_occupant"} end
+                table.insert(occupiedSeats,{seat=part,humanoid=occupant})
+            end
+        end
+    end
+    if #occupiedSeats==0 then
+        return {success=false,reason="empty_vehicle"} end
+    local function occupantsIntact()
+        for _,rider in occupiedSeats do
+            if not rider.seat:IsDescendantOf(vehicle)
+                or rider.seat.Occupant~=rider.humanoid
+                or rider.humanoid.Health<=0 or rider.humanoid.Parent==nil then
+                return false
+            end
+        end
+        return true
+    end
     local destination=workspace:FindFirstChild(destinationName)
     if not destination or not destination:IsA("BasePart") then
         return {success=false,reason="missing_destination"} end
@@ -188,7 +215,8 @@ function Service.handleAction(player,services,...)
         while inFlight[player]==flightToken and player.Parent==Players
             and vehicle.Parent~=nil and vehicle:GetAttribute("OwnerUserId")==player.UserId
             and humanoid.Health>0 and humanoid.Parent~=nil
-            and seat.Parent==vehicle and seat.Occupant==humanoid do
+            and seat:IsDescendantOf(vehicle) and seat.Occupant==humanoid
+            and occupantsIntact() do
             local alpha=math.clamp((os.clock()-begin)/duration,0,1)
             vehicle:PivotTo(start:Lerp(target,alpha))
             if alpha>=1 then completed=true;break end
