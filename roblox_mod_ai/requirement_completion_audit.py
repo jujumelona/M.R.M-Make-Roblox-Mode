@@ -758,6 +758,38 @@ def _host_effect_witnesses(
     ]
 
 
+def _host_composite_witness_bundles(
+    witnesses: list[dict[str, Any]], limit: int = 12,
+) -> list[dict[str, Any]]:
+    """Use source-owned groups where one statement cannot prove a composite.
+
+    These are actual line citations from ONE owner, not model-authored code.
+    A bundle must contain at least two distinct source statements; its
+    existence alone proves nothing until a separate review selects it.
+    """
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in witnesses:
+        grouped.setdefault(row["file"], []).append(row)
+    result: list[dict[str, Any]] = []
+    for path, rows in grouped.items():
+        if len(rows) < 2:
+            continue
+        # A small prompt cannot display unlimited writes from large modules.
+        # Retain ranked candidates (and their real physical line locations).
+        selected = sorted(rows[:6], key=lambda row: row["line"])
+        result.append({
+            "id": len(result) + 1,
+            "file": path,
+            "statements": [
+                {"line": row["line"], "quote": row["quote"]}
+                for row in selected
+            ],
+        })
+        if len(result) >= limit:
+            break
+    return result
+
+
 def _fallback_effect_witness_review(
     router: Any, effect: dict[str, str], sources: dict[str, str],
     modules: list[Any],
@@ -879,10 +911,65 @@ def _fallback_effect_witness_review(
     if chosen is None:
         return None, diagnostics
     if chosen == 0:
-        # Absence from a ranked candidate list does NOT establish that the
-        # gameplay effect is absent from the complete program. It also must
-        # never trigger a speculative destructive repair.
-        diagnostics["reason"] = "no_conclusive_source_witness"
+        # The promised behavior may require multiple independent physical
+        # state writes. One line cannot prove a source extraction, a debit+
+        # credit or a stateful travel sequence. The host groups REAL writes
+        # within each owner, then asks for a second, bounded integer review.
+        # A second 0 or malformed output remains fail-closed.
+        bundles = _host_composite_witness_bundles(witnesses)
+        diagnostics["composite_candidate_count"] = len(bundles)
+        if bundles:
+            try:
+                compound = router.complete_json(
+                    prompt=(
+                        "Check ONE Roblox gameplay requirement against "
+                        "HOST-EXTRACTED bundles of real source mutations. "
+                        "An individual line was insufficient. Choose one "
+                        "bundle ONLY if its COMBINED executable statements "
+                        "support the exact behavior, including necessary "
+                        "state transitions. If no bundle proves the whole "
+                        "behavior, choose 0. Never treat owner descriptions "
+                        "or client feedback as proof. Output only {choice:N}.\n"
+                        + json.dumps({
+                            "effect": effect["behavior"],
+                            "bundles": bundles,
+                        }, ensure_ascii=False)
+                    ),
+                    role="analyzer", temperature=0, max_tokens=80,
+                    json_schema={
+                        "type": "object",
+                        "properties": {
+                            "choice": {"type": "integer", "minimum": 0,
+                                       "maximum": len(bundles)},
+                        },
+                        "required": ["choice"], "additionalProperties": False,
+                    },
+                )
+                if (isinstance(compound, dict)
+                        and set(compound) == {"choice"}
+                        and type(compound["choice"]) is int
+                        and 1 <= compound["choice"] <= len(bundles)):
+                    bundle = bundles[compound["choice"] - 1]
+                    entries = bundle["statements"]
+                    chosen_row = entries[0]
+                    diagnostics["status"] = "composite_witness_selected"
+                    diagnostics["composite_id"] = compound["choice"]
+                    return {
+                        "verdict": "implemented",
+                        "file": bundle["file"],
+                        "line": chosen_row["line"],
+                        "quote": chosen_row["quote"],
+                        "proof_lines": entries,
+                        "issue": "none", "repair": "none",
+                    }, diagnostics
+                diagnostics["reason"] = "no_conclusive_composite_witness"
+            except Exception as exc:
+                diagnostics["reason"] = (
+                    "composite_review_error:" + type(exc).__name__
+                    + ": " + str(exc)[:150]
+                )
+        else:
+            diagnostics["reason"] = "no_conclusive_source_witness"
         return None, diagnostics
     selected = witnesses[chosen - 1]
     diagnostics["status"] = "source_witness_selected"
@@ -1502,6 +1589,33 @@ def audit_whole_requirement_completion(
             if not line:
                 report["reason"] = req_id + ": ungrounded effect quote in " + file_path
                 return report
+            proof = entry.get("proof_lines")
+            if proof is not None:
+                if (verdict != "implemented" or not isinstance(proof, list)
+                        or not 2 <= len(proof) <= 6):
+                    report["reason"] = req_id + ": malformed composite evidence"
+                    return report
+                used_proof: set[int] = set()
+                visible_lines = _mask_luau_comments(
+                    actual_sources[file_path]
+                ).splitlines()
+                for part in proof:
+                    if not isinstance(part, dict) or set(part) != {"line", "quote"}:
+                        report["reason"] = req_id + ": invalid composite source citation"
+                        return report
+                    physical = part["line"]
+                    if (type(physical) is not int
+                            or not 1 <= physical <= len(visible_lines)
+                            or physical in used_proof
+                            or visible_lines[physical - 1].strip() != part["quote"]
+                            or not _is_effectful_source_line(
+                                actual_sources[file_path], physical)):
+                        report["reason"] = req_id + ": ungrounded composite source citation"
+                        return report
+                    used_proof.add(physical)
+                if line not in used_proof:
+                    report["reason"] = req_id + ": composite anchor not included"
+                    return report
             if verdict == "implemented":
                 if not _is_effectful_source_line(actual_sources[file_path], line):
                     report["reason"] = (
