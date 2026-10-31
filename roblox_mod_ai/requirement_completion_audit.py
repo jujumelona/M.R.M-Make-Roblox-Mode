@@ -634,6 +634,7 @@ def _fallback_effect_witness_review(
         "verdict": "implemented",
         "file": selected["file"],
         "quote": selected["quote"],
+        "line": selected["line"],
         "issue": "none", "repair": "none",
     }, diagnostics
 
@@ -1197,7 +1198,23 @@ def audit_whole_requirement_completion(
             if not isinstance(file_path, str) or file_path not in server_paths:
                 report["reason"] = req_id + ": effect cites unauthorized server"
                 return report
-            line = _real_source_quote(root, file_path, entry.get("quote"))
+            # Host-owned evidence preserves its original physical position.
+            # Searching again by quote could bind two identical statements
+            # from different branches to the same first occurrence.
+            line = entry.get("line")
+            if line is not None:
+                actual_lines = actual_sources[file_path].splitlines()
+                if (type(line) is not int or not 1 <= line <= len(actual_lines)
+                        or actual_lines[line - 1].strip() != entry.get("quote")
+                        or not _is_effectful_source_line(
+                            actual_sources[file_path], line)):
+                    report["reason"] = (
+                        req_id + ": host witness line/quote mismatch in "
+                        + file_path
+                    )
+                    return report
+            else:
+                line = _real_source_quote(root, file_path, entry.get("quote"))
             if not line:
                 report["reason"] = req_id + ": ungrounded effect quote in " + file_path
                 return report
