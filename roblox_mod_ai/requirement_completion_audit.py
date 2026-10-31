@@ -16,7 +16,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from .effect_scope_reconciliation import reconcile_omitted_actions
+from .effect_scope_reconciliation import reconcile_original_scope_claims
 from .source_transition_attestation import attest_compound_state_transition
 
 SCHEMA = "rmm/whole-requirement-completion-audit-v1"
@@ -1503,9 +1503,20 @@ def audit_whole_requirement_completion(
                     if not isinstance(omissions, list) or any(
                             not isinstance(item, str) for item in omissions):
                         raise ValueError("invalid_missing_actions")
-                    omissions, already = reconcile_omitted_actions(
-                        omissions, obligations,
+                    omissions, already, ungrounded = reconcile_original_scope_claims(
+                        omissions, original, obligations,
                     )
+                    if ungrounded:
+                        report.setdefault("unverified_scope_claims", []).extend({
+                            "requirement_id": req_id, "action": action,
+                            "reason": "model claim not grounded in original request",
+                        } for action in ungrounded)
+                        report.setdefault("recovery", []).append({
+                            "requirement_id": req_id,
+                            "stage": "omitted_effects",
+                            "status": "unverified_model_scope_claims",
+                            "count": len(ungrounded),
+                        })
                     if already:
                         report.setdefault("recovery", []).append({
                             "requirement_id": req_id,
@@ -1586,9 +1597,15 @@ def audit_whole_requirement_completion(
                             })
                         elif re.fullmatch(r"MISSING:\s+.{12,300}", answer, re.I):
                             missing = answer.split(":", 1)[1].strip()
-                            omitted, already = reconcile_omitted_actions(
-                                [missing], obligations,
+                            omitted, already, ungrounded = reconcile_original_scope_claims(
+                                [missing], original, obligations,
                             )
+                            if ungrounded:
+                                report.setdefault("unverified_scope_claims", []).extend({
+                                    "requirement_id": req_id, "action": action,
+                                    "reason": "model claim not grounded in original request",
+                                } for action in ungrounded)
+                                extras = list(retained_extras)
                             if already:
                                 extras = list(retained_extras)
                                 report.setdefault("recovery", []).append({
@@ -1597,7 +1614,7 @@ def audit_whole_requirement_completion(
                                     "status": "duplicates_in_existing_effect_ledger",
                                     "actions": already,
                                 })
-                            else:
+                            elif omitted:
                                 report.setdefault("unplanned_actions", []).extend(
                                     omitted,
                                 )
